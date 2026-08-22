@@ -1,0 +1,148 @@
+/** The small presentational pieces the pages are built from. */
+import { Fragment } from 'react';
+import { Link } from 'react-router-dom';
+
+export function PageHead({ icon, title, subtitle, actions = null }) {
+  return (
+    <div className="page-head">
+      <div className="ph-icon">{icon}</div>
+      <h1>{title}{subtitle ? <span>{subtitle}</span> : null}</h1>
+      {actions ? <div className="ph-actions">{actions}</div> : null}
+    </div>
+  );
+}
+
+export function Card({ title, badge, right, tight, children, className = '' }) {
+  return (
+    <div className={`card ${className}`}>
+      {title || badge || right ? (
+        <div className="card-head">
+          {title ? <h2>{title}</h2> : null}
+          {badge}
+          {right ? <div className="right">{right}</div> : null}
+        </div>
+      ) : null}
+      <div className={`card-body ${tight ? 'tight' : ''}`}>{children}</div>
+    </div>
+  );
+}
+
+export function Field({ label, hint, children, className = '' }) {
+  return (
+    <div className={`field ${className}`}>
+      <label>{label}</label>
+      {children}
+      {hint ? <div className="hint">{hint}</div> : null}
+    </div>
+  );
+}
+
+export const Split = ({ children }) => <div className="split">{children}</div>;
+export const Stack = ({ children, style }) => <div className="stack" style={style}>{children}</div>;
+export const Row = ({ children, style }) => <div className="row" style={style}>{children}</div>;
+export const Toolbar = ({ children, className = '' }) => (
+  <div className={`toolbar ${className}`}>{children}</div>
+);
+export const FormGrid = ({ children, two = false }) => (
+  <div className={`form-grid ${two ? 'two' : ''}`}>{children}</div>
+);
+export const FormActions = ({ children, style }) => (
+  <div className="form-actions" style={style}>{children}</div>
+);
+
+export const Badge = ({ kind = '', children, style, title }) => (
+  <span className={`badge ${kind}`} style={style} title={title}>{children}</span>
+);
+
+export const Empty = ({ children = 'ไม่มีข้อมูล' }) => <div className="empty">{children}</div>;
+
+export const Loading = ({ text = 'กำลังโหลด…' }) => (
+  <div className="loading"><span className="spin" /> {text}</div>
+);
+
+export function Kpi({ label, value, sub, kind = '' }) {
+  return (
+    <div className={`kpi ${kind}`}>
+      <div className="k-label">{label}</div>
+      <div className="k-value">{value}</div>
+      {sub ? <div className="k-sub">{sub}</div> : null}
+    </div>
+  );
+}
+
+export const Kpis = ({ children }) => <div className="kpis">{children}</div>;
+
+export function Fieldset({ legend, children }) {
+  return <fieldset><legend>{legend}</legend>{children}</fieldset>;
+}
+
+export function Check({ name, checked, onChange, children, defaultChecked }) {
+  return (
+    <label className="check">
+      <input type="checkbox" name={name} checked={checked} defaultChecked={defaultChecked} onChange={onChange} />
+      {' '}{children}
+    </label>
+  );
+}
+
+/** Tabs whose panels are rendered lazily by the caller. */
+export function Tabs({ names, active, onSelect }) {
+  return (
+    <div className="tabs">
+      {names.map((n) => (
+        <a
+          key={n}
+          href="#"
+          className={n === active ? 'active' : ''}
+          onClick={(e) => { e.preventDefault(); onSelect(n); }}
+        >
+          {n}
+        </a>
+      ))}
+    </div>
+  );
+}
+
+/** Tab strip whose entries are real links (used for list filters). */
+export function LinkTabs({ items, isActive }) {
+  return (
+    <div className="tabs">
+      {items.map(([to, label]) => (
+        <Link key={to} to={to} className={isActive(to) ? 'active' : ''}>{label}</Link>
+      ))}
+    </div>
+  );
+}
+
+/** The order badge shared by several tables. */
+export function OrderStatusBadge({ order }) {
+  if (Number(order.order_closed)) return <Badge kind="ok">ปิดการขายแล้ว</Badge>;
+  const unfilled = !order.lens_product_id || !order.right_lens_product_id || !order.frame_product_id;
+  return unfilled
+    ? <Badge kind="warn">รอของ / ยังไม่เติม</Badge>
+    : <Badge kind="blue">รอลูกค้ารับ</Badge>;
+}
+
+export const PrintButton = () => (
+  <button type="button" className="btn btn-ghost no-print" onClick={() => window.print()}>
+    🖨 พิมพ์
+  </button>
+);
+
+/**
+ * key/value description list.
+ * `dl.kv` is a two-column grid, so the pairs are emitted as fragments — a
+ * wrapper element would become a single grid item and break the columns.
+ */
+export function Kv({ rows, style }) {
+  return (
+    <dl className="kv" style={style}>
+      {rows.filter(Boolean).map(([k, v], i) => (
+        <Fragment key={`${k}-${i}`}>
+          <dt>{k}</dt>
+          <dd>{v}</dd>
+        </Fragment>
+      ))}
+    </dl>
+  );
+}

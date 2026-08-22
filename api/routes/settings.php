@@ -6,13 +6,14 @@ GET('/api/settings', function () {
     $s     = Telegram::settings(true);
     $token = (string) ($s['telegram_bot_token'] ?? '');
 
-    return $s + [
-        // never hand the raw token back to the browser
-        'telegram_bot_token'     => $token !== '' ? '••••••' . substr($token, -4) : '',
-        'telegram_configured'    => Telegram::isConfigured(),
+    // array_merge, not `+` — the union operator keeps the left-hand value, so
+    // the raw token would survive and be handed to the browser
+    return array_merge($s, [
+        'telegram_bot_token'      => $token !== '' ? '••••••' . substr($token, -4) : '',
+        'telegram_configured'     => Telegram::isConfigured(),
         'telegram_token_from_env' => getenv('TELEGRAM_BOT_TOKEN') !== false
             && getenv('TELEGRAM_BOT_TOKEN') !== '',
-    ];
+    ]);
 });
 
 PUT('/api/settings', function (array $req) {

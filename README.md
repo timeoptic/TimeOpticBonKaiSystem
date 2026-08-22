@@ -3,29 +3,86 @@
 เว็บแอปสำหรับร้านแว่นตา TimeOptic ทำงานบนฐานข้อมูล **MariaDB `timeoptic`** ของ XAMPP
 (schema เดิมที่ออกแบบไว้แล้ว 27 ตาราง + 7 views — แอปนี้ต่อเข้ากับของเดิม ไม่ได้สร้างใหม่)
 
+**สแต็กปัจจุบัน: React (frontend) + PHP REST API (backend)**
+
+---
+
+## โครงสร้างโฟลเดอร์
+
+```
+timeoptic-web/
+├── api/                      Backend — PHP REST API (85 endpoints)
+│   ├── index.php               front controller: โหลด core → services → routes
+│   ├── router.php              ทางเข้าเวลารันด้วย  php -S
+│   ├── .htaccess               ทางเข้าเวลาให้ Apache เสิร์ฟ
+│   ├── config.php              อ่านค่าจาก .env / environment
+│   ├── core/                   Db(PDO) · Router · Http · Helpers · Sql · Lookups
+│   ├── services/               Telegram · Migrate · Scheduler · Booking
+│   ├── routes/                 18 ไฟล์ — หนึ่งไฟล์ต่อหนึ่งกลุ่มข้อมูล
+│   └── cli/                    reminder.php (Task Scheduler) · serve.php (banner)
+│
+├── frontend/                 Frontend — React 19 + Vite + React Router
+│   └── src/
+│       ├── api/                client.js (fetch) · meta.jsx (context ของ dropdown)
+│       ├── lib/                format.js · constants.js · hooks.js
+│       ├── components/         Shell · Card/Table/Field · Picker · Toast · Confirm
+│       ├── pages/              39 หน้าจอ แยกตามโดเมน
+│       └── styles/app.css      สไตล์เดิม ยกมาทั้งไฟล์
+│
+├── lib/  public/  server.js   ⚠️ ของเดิม (Node + vanilla JS) — เก็บไว้เทียบผล
+└── start-api.bat  start-web.bat
+```
+
+ที่แยก `api/routes/` เป็น 18 ไฟล์เพราะเดิม endpoint ทั้ง 85 ตัวอยู่ใน `lib/api.js`
+ไฟล์เดียว 1,773 บรรทัด — จะแก้อะไรทีต้องไล่หาทั้งไฟล์ ตอนนี้แก้ `bookings`
+ก็เปิดแค่ `api/routes/bookings.php`
+
 ---
 
 ## เริ่มใช้งาน
 
-```bash
-cd C:\test\timeoptic-web
-npm start            # หรือ:  node server.js
-```
-
-เปิด **http://127.0.0.1:3000** (หรือดับเบิลคลิก `start.bat`)
-
 **ต้องเปิด MySQL ของ XAMPP ก่อน** (XAMPP Control Panel → MySQL → Start)
-ถ้าต่อฐานข้อมูลไม่ได้ เซิร์ฟเวอร์จะแจ้งเตือนแล้วหยุดทันที ไม่รันแบบครึ่ง ๆ กลาง ๆ
 
-ตั้งค่าเชื่อมต่อผ่าน environment variable (ค่าปริยายตรงกับ XAMPP อยู่แล้ว — ดู `.env.example`):
+เปิดสองหน้าต่าง (หรือดับเบิลคลิกสองไฟล์นี้):
+
+```bat
+start-api.bat        REM  PHP API   → http://127.0.0.1:8080
+start-web.bat        REM  React     → http://localhost:5173
+```
+
+ใช้งานจริงที่ **http://localhost:5173** — Vite จะส่งต่อ `/api/*` ไปที่ PHP ให้เอง
+
+ตั้งค่าเชื่อมต่อในไฟล์ `.env` (ไม่เข้า git — ดู `.env.example`):
 
 ```
-DB_HOST=127.0.0.1  DB_PORT=3306  DB_USER=root  DB_PASS=  DB_NAME=timeoptic  PORT=3000
+DB_HOST=127.0.0.1  DB_PORT=3306  DB_USER=root  DB_PASS=  DB_NAME=timeoptic
+TELEGRAM_BOT_TOKEN=...   TELEGRAM_CHAT_ID=...
 ```
 
-* ต้องใช้ **Node.js 18+** (เครื่องนี้ v24.18.0 ✔)
-* dependency เดียวคือ `mysql2`
+* PHP **8.0+** ต้องมี `pdo_mysql` (XAMPP มีให้อยู่แล้ว — เครื่องนี้ 8.0.30 ✔)
+* Node **20+** ใช้เฉพาะตอน dev/build ฝั่ง React (เครื่องนี้ v24.18.0 ✔)
 * ดูข้อมูลดิบผ่าน **phpMyAdmin**: http://localhost/phpmyadmin (ต้องเปิด Apache ด้วย)
+
+### ขึ้นใช้งานจริงบน Apache
+
+```bat
+cd frontend && npm run build
+```
+
+แล้วชี้ Apache ไปที่โฟลเดอร์โปรเจกต์ โดยเสิร์ฟ `frontend/dist/` เป็น document root
+และ `api/` เป็นโฟลเดอร์ย่อย — `.htaccess` ใน `api/` จัดการ routing ให้แล้ว
+(ไม่ต้องรัน `php -S` และไม่ต้องรัน Node)
+
+### ตัวเตือนคิว Telegram
+
+เดิมเป็น `setInterval` อยู่ในโปรเซส Node — PHP ไม่มีโปรเซสค้างแบบนั้น
+ให้ตั้ง **Task Scheduler** ของ Windows เรียกทุก 1 นาที:
+
+```
+C:\xampp\php\php.exe C:\test\timeoptic-web\api\cli\reminder.php
+```
+
+หรือกดปุ่ม "⏱ รันตัวเตือนเดี๋ยวนี้" ในหน้า ตั้งค่า
 
 ---
 
