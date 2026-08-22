@@ -1,0 +1,112 @@
+<?php
+/** Money received — against an order, a case, or a walk-in sale. */
+declare(strict_types=1);
+
+GET('/api/payments', function (array $req) {
+    $q     = $req['query'];
+    $where = [];
+    $args  = [];
+
+    if ($oid = int_or($q['order_id'] ?? null)) {
+        $where[] = 'p.order_id = ?';
+        $args[]  = $oid;
+    }
+    if ($cid = int_or($q['case_id'] ?? null)) {
+        $where[] = 'p.case_id = ?';
+        $args[]  = $cid;
+    }
+    if ($from = str_or($q['from'] ?? null)) {
+        $where[] = 'DATE(p.paid_at) >= ?';
+        $args[]  = $from;
+    }
+    if ($to = str_or($q['to'] ?? null)) {
+        $where[] = 'DATE(p.paid_at) <= ?';
+        $args[]  = $to;
+    }
+    $sqlWhere = $where ? 'WHERE ' . implode(' AND ', $where) : '';
+    $args[]   = min(int_or($q['limit'] ?? null, 300), 2000);
+
+    return Db::all(
+        "SELECT p.*, e.employee_name AS received_by_name, o.invoice_code, c.case_code
+           FROM payments p
+           LEFT JOIN employees e     ON e.id = p.received_by
+           LEFT JOIN custom_orders o ON o.id = p.order_id
+           LEFT JOIN cases c         ON c.id = p.case_id
+           $sqlWhere
+          ORDER BY p.paid_at DESC, p.id DESC LIMIT ?",
+        ...$args
+    );
+});
+
+POST('/api/payments', function (array $req) {
+    $body   = $req['body'];
+    $amount = num($body['amount'] ?? null);
+    if (!($amount > 0)) {
+        bad('จำนวนเงินต้องมากกว่า 0');
+    }
+    $kindIn = str_or($body['kind'] ?? null);
+    $kind   = in_array($kindIn, ['deposit', 'partial', 'full', 'final'], true) ? $kindIn : 'partial';
+    $method = str_or($body['method'] ?? null, 'Cash') ?: 'Cash';
+
+    $id = Db::tx(function (Tx $q) use ($body, $amount, $kind, $method) {
+        $r = $q->run(
+            'INSERT INTO payments (case_id, order_id, sale_id, kind, method, amount,
+               reference, received_by, paid_at, notes)
+             VALUES (?,?,?,?,?,?,?,?,?,?)',
+            int_or($body['case_id'] ?? null),
+            int_or($body['order_id'] ?? null),
+            int_or($body['sale_id'] ?? null),
+            $kind,
+            $method,
+            $amount,
+            nul($body['reference'] ?? null),
+            int_or($body['received_by'] ?? null),
+            str_or($body['paid_at'] ?? null) ?: nowStamp(),
+            nul($body['notes'] ?? null)
+        );
+        if (int_or($body['order_id'] ?? null) && $kind === 'deposit') {
+            $q->run(
+                'UPDATE custom_orders SET deposit = deposit + ?,
+                   deposit_pay_type = COALESCE(deposit_pay_type, ?) WHERE id = ?',
+                $amount,
+                $method,
+                int_or($body['order_id'])
+            );
+        }
+        logEvent($q, int_or($body['case_id'] ?? null), [
+            'action'      => 'payment',
+            'entity'      => 'payment',
+            'entity_id'   => $r['insertId'],
+            'employee_id' => int_or($body['received_by'] ?? null),
+            'note'        => "$kind $amount ($method)",
+        ]);
+        return $r['insertId'];
+    });
+
+    return Db::get('SELECT * FROM payments WHERE id = ?', $id);
+});
+
+DELETE('/api/payments/:id', function (array $req) {
+    $id = int_or($req['params']['id']);
+    $p  = Db::get('SELECT * FROM payments WHERE id = ?', $id);
+    if (!$p) {
+        missing();
+    }
+    Db::tx(function (Tx $q) use ($id, $p) {
+        if ($p['order_id'] && $p['kind'] === 'deposit') {
+            $q->run(
+                'UPDATE custom_orders SET deposit = GREATEST(deposit - ?, 0) WHERE id = ?',
+                (float) $p['amount'],
+                (int) $p['order_id']
+            );
+        }
+        $q->run('DELETE FROM payments WHERE id = ?', $id);
+        logEvent($q, int_or($p['case_id']), [
+            'action'    => 'payment_deleted',
+            'entity'    => 'payment',
+            'entity_id' => $id,
+            'note'      => (string) $p['amount'],
+        ]);
+    });
+    return ['ok' => true];
+});
