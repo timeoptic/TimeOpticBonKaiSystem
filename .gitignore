@@ -1,0 +1,22 @@
+# dependencies
+node_modules/
+frontend/node_modules/
+
+# build output
+frontend/dist/
+dist/
+
+# local config & secrets
+.env
+.env.local
+*.local
+
+# logs
+*.log
+npm-debug.log*
+
+# editor / OS
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
