@@ -52,12 +52,30 @@ routing-model swap, not a backend or database change.
   deploy story identical to what the project has today, which matters given
   the target host (Hostinger) may not have a Node-capable plan.
 - **File-based routing replaces the central `<Routes>` table.** Each page in
-  `frontend/src/pages/**/*.jsx` becomes `app/<route>/page.jsx`. Dynamic
-  segments (`/customers/:id`) become `app/customers/[id]/page.jsx`. The
+  `frontend/src/pages/**/*.jsx` becomes `app/<route>/page.jsx`. The
   `TITLES`/`crumbFor` breadcrumb table and the `Shell` component move
   together, same as previously planned for the monorepo version — `Shell`
   computes its own crumb from `usePathname()` instead of receiving it from a
   parent route table.
+- **Record-ID routes use a query string, not a `[id]` path segment.**
+  `output: 'export'` pre-renders every path at build time via
+  `generateStaticParams` — it has no server to generate a page for an ID it
+  hasn't seen before, so a folder like `app/customers/[id]/page.jsx` cannot
+  serve arbitrary, ever-growing database IDs (`/customers/9381` for a
+  customer created after the last build would 404; there's no Node process
+  at request time to generate it on demand). Every page keyed by a database
+  row id becomes a single static route reading the id from a query string
+  instead of a path segment, e.g. `/customers/:id` → `/customers/detail?id=:id`,
+  read with `next/navigation`'s `useSearchParams()`. A static export only
+  needs to pre-render the one `app/customers/detail/page.jsx` file; the id
+  varies per request without needing a matching build-time path. This is a
+  deliberate URL-scheme change from both the current Vite app (path params
+  under a `HashRouter`) and the original superseded monorepo spec (which had
+  a real Node server, so `[id]` path segments would have worked there) —
+  bookmarks to today's `#/customers/5`-style URLs will not carry over
+  either way, since the router itself is changing.
+  Applies to every detail/edit page: customers, prescriptions, bookings,
+  cases, orders (detail/edit/fill/close), stock, and the two print pages.
 - **`react-router-dom` is dropped**; `next/link`'s `Link` and
   `next/navigation`'s `usePathname`/`useRouter` replace `Link`/`NavLink`/
   `useLocation`/`useNavigate` everywhere they're used.
@@ -93,10 +111,9 @@ timeoptic-web/
 │   │   ├── customers/
 │   │   │   ├── page.jsx             list
 │   │   │   ├── new/page.jsx
-│   │   │   └── [id]/
-│   │   │       ├── page.jsx          detail
-│   │   │       └── edit/page.jsx
-│   │   ├── prescriptions/ ...     (same nesting pattern per domain)
+│   │   │   ├── detail/page.jsx       reads ?id= via useSearchParams()
+│   │   │   └── edit/page.jsx         reads ?id= via useSearchParams()
+│   │   ├── prescriptions/ ...     (same list/new/detail?id=/edit?id= pattern)
 │   │   ├── bookings/ ...
 │   │   ├── cases/ ...
 │   │   ├── lens-tracker/page.jsx
@@ -110,8 +127,8 @@ timeoptic-web/
 │   │   ├── settings/page.jsx
 │   │   ├── reports/ ...
 │   │   └── print/
-│   │       ├── order/[id]/page.jsx
-│   │       └── prescription/[id]/page.jsx
+│   │       ├── order/page.jsx        reads ?id= via useSearchParams()
+│   │       └── prescription/page.jsx reads ?id= via useSearchParams()
 │   ├── components/                ui.jsx, DataTable.jsx, Selects.jsx, Shell.jsx,
 │   │                               Toast.jsx, Confirm.jsx, Picker.jsx, RxTable.jsx,
 │   │                               StatusChip.jsx, StockPicker.jsx
