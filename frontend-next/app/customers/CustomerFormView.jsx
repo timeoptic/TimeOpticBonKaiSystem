@@ -26,7 +26,7 @@ export function CustomerFormView({ editing }) {
 
   const id = editing ? params.get('id') : null;
 
-  const { data: c, loading, error } = useAsync(() => {
+  const { data, loading, error } = useAsync(() => {
     if (editing && !id) return Promise.resolve({});
     return editing ? api.get('/api/customers/' + id) : Promise.resolve({});
   }, [editing, id]);
@@ -36,6 +36,8 @@ export function CustomerFormView({ editing }) {
   if (editing && !id) {
     return <Card><h2>ไม่พบรหัสลูกค้า</h2><p className="muted">ไม่มี id ของลูกค้าที่จะแก้ไข</p></Card>;
   }
+
+  const c = data || {};
 
   const save = async (body) => {
     try {
