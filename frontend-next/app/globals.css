@@ -249,6 +249,11 @@ table.doc td.lbl{background:#f7f9fc;font-weight:700;text-align:left;width:66px}
   .sidebar.open{transform:none;box-shadow:0 0 40px rgba(0,0,0,.4)}
   .icon-btn{display:block}
   .content{padding:14px}
+  /* .topbar (incl. the #menu-toggle ☰ button) must stay above the fixed,
+     higher-z-index .sidebar drawer once it's open, or the drawer paints
+     over its own close button and the menu becomes unclosable — the exact
+     iPad-portrait (810px) incident this breakpoint check exists to catch. */
+  .topbar{z-index:70}
 }
 
 /* ---------------- case board ---------------- */
