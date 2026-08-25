@@ -20,3 +20,7 @@ npm-debug.log*
 .idea/
 Thumbs.db
 desktop.ini
+backups/
+
+# subagent-driven-development scratch workspace
+.superpowers/
