@@ -127,6 +127,11 @@ export const PrintButton = () => (
   </button>
 );
 
+/**
+ * key/value description list.
+ * `dl.kv` is a two-column grid, so the pairs are emitted as fragments — a
+ * wrapper element would become a single grid item and break the columns.
+ */
 export function Kv({ rows, style }) {
   return (
     <dl className="kv" style={style}>

@@ -2,6 +2,10 @@
 /** Dropdowns fed from /api/meta. Port of frontend/src/components/Selects.jsx. */
 import { useMeta } from '../contexts/MetaContext.jsx';
 
+/**
+ * `options` accepts ['a', 'b'] or [[value, label], …].
+ * Uncontrolled by default (defaultValue) so forms can be read with readForm().
+ */
 export function Select({ name, options, value, defaultValue, onChange, ...rest }) {
   const norm = (options || []).map((o) => (Array.isArray(o) ? o : [o, o]));
   const controlled = value !== undefined;

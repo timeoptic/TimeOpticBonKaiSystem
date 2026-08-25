@@ -46,7 +46,7 @@ return [
         'bot_token' => env('TELEGRAM_BOT_TOKEN'),
         'chat_id'   => env('TELEGRAM_CHAT_ID'),
     ],
-    // origins allowed to call the API (the Vite dev server)
+    // origins allowed to call the API (the Vite and Next.js dev servers)
     'cors_origins' => [
         'http://localhost:5173',
         'http://127.0.0.1:5173',

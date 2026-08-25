@@ -1,7 +1,10 @@
 'use client';
 /**
- * The one table the whole app uses. Port of frontend/src/components/DataTable.jsx.
+ * The one table the whole app uses.
+ *
  * columns: [{ label, key?, render?(row, i), cls?, }]
+ * A row click is ignored when it lands on a control, so buttons inside cells
+ * keep working.
  */
 import { Empty } from './ui.jsx';
 

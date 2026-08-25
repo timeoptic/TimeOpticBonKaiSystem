@@ -7,6 +7,9 @@
 import { Fragment, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { crumbFor } from '../lib/crumb.js';
+
+export { crumbFor };
 
 const NAV = [
   ['หน้าหลัก', [
@@ -38,52 +41,6 @@ const NAV = [
     ['⚙️', 'ตั้งค่า/แจ้งเตือน', '/settings'],
   ]],
 ];
-
-/** path -> breadcrumb, matched longest-first. Detail/edit pages under a
-    domain (e.g. /customers/detail?id=5) still match their domain's '/customers'
-    entry, since the id lives in the query string, not the path. */
-const TITLES = [
-  ['/', 'เมนูหลัก'],
-  ['/customers/new', 'ลูกค้าใหม่'],
-  ['/customers/detail', 'รายละเอียดลูกค้า'],
-  ['/customers/edit', 'แก้ไขลูกค้า'],
-  ['/customers', 'ลูกค้า'],
-  ['/prescriptions/new', 'บันทึกการวัดสายตา'],
-  ['/prescriptions', 'วัดสายตา'],
-  ['/bookings/new', 'จองคิวใหม่'],
-  ['/bookings', 'ปฏิทินจองคิว'],
-  ['/settings', 'ตั้งค่า/แจ้งเตือน'],
-  ['/cases/new', 'เปิดเคสใหม่'],
-  ['/cases', 'กระดานงาน'],
-  ['/lens-tracker', 'ติดตามเลนส์'],
-  ['/employees', 'พนักงาน'],
-  ['/orders/new', 'เปิดออเดอร์ใหม่'],
-  ['/orders', 'ออเดอร์ตัดแว่น'],
-  ['/sales/new', 'ขายสินค้าทั่วไป'],
-  ['/sales', 'ขายสินค้า'],
-  ['/stock/new', 'เพิ่มสินค้าเข้าคลัง'],
-  ['/stock', 'สต็อกสินค้า'],
-  ['/locations', 'ตำแหน่งสินค้า'],
-  ['/suppliers', 'ซัพพลายเออร์'],
-  ['/income', 'รายรับ'],
-  ['/expense', 'รายจ่าย'],
-  ['/reports/daily', 'สรุปรายวัน'],
-  ['/reports/monthly', 'รายรับรายเดือน'],
-  ['/reports/checklist', 'เช็คลิสต์สต็อก'],
-  ['/reports/labels', 'พิมพ์ป้ายราคา'],
-  ['/reports/unsold', 'สินค้าค้างสต็อก'],
-  ['/reports', 'รายงาน'],
-  ['/print/order', 'ใบสั่งตัดแว่น'],
-  ['/print/prescription', 'ใบวัดสายตา'],
-];
-
-export function crumbFor(pathname) {
-  if (pathname === '/') return 'เมนูหลัก';
-  const hit = TITLES
-    .filter(([p]) => p !== '/' && (pathname === p || pathname.startsWith(p + '/')))
-    .sort((a, b) => b[0].length - a[0].length)[0];
-  return hit ? hit[1] : 'TimeOptic';
-}
 
 function Clock() {
   const [now, setNow] = useState(() => new Date());
