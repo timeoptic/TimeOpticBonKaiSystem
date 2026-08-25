@@ -1,4 +1,5 @@
 import './globals.css';
+import { Providers } from './providers.jsx';
 
 export const metadata = {
   title: 'TimeOptic — ระบบจัดการร้านแว่นตา',
@@ -10,7 +11,9 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="th">
-      <body>{children}</body>
+      <body>
+        <Providers>{children}</Providers>
+      </body>
     </html>
   );
 }
