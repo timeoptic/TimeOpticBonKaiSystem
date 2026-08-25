@@ -1,7 +1,9 @@
 # TimeOptic Web — Migration to Next.js Monorepo
 
 **Date:** 2026-08-25
-**Status:** Approved for planning
+**Status:** Superseded — replaced by `2026-08-25-nextjs-frontend-only-migration-design.md`.
+The user narrowed scope: keep the PHP backend and MariaDB as-is, port only the
+frontend to Next.js. No implementation was started against this spec.
 
 ## Context
 
