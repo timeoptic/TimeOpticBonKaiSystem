@@ -50,7 +50,7 @@ function Clock() {
   }, []);
   const p = (n) => String(n).padStart(2, '0');
   return (
-    <span id="clock">
+    <span id="clock" suppressHydrationWarning>
       {`${p(now.getDate())}/${p(now.getMonth() + 1)}/${now.getFullYear()}  ${p(now.getHours())}:${p(now.getMinutes())}`}
     </span>
   );
