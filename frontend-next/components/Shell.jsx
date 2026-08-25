@@ -107,6 +107,19 @@ export function Shell({ children }) {
   useEffect(() => { setOpen(false); }, [pathname]);
 
   useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open]);
+
+  useEffect(() => {
+    const onResize = () => { if (window.innerWidth > 820) setOpen(false); };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  useEffect(() => {
     document.title = `${crumb} — TimeOptic`;
     window.scrollTo(0, 0);
   }, [crumb, pathname]);
@@ -134,6 +147,10 @@ export function Shell({ children }) {
         </nav>
         <div className="sidebar-foot"><Clock /></div>
       </aside>
+
+      {open && (
+        <div className="sidebar-overlay" onClick={() => setOpen(false)} aria-hidden="true" />
+      )}
 
       <main className="main">
         <header className="topbar">
