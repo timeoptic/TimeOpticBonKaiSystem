@@ -4,6 +4,12 @@
  * inline in JSX and so could never be unit tested.
  */
 
+/**
+ * Number of days in `month` (1-based). `new Date(year, month, 0)` looks 0-based, but
+ * because JS Date months are internally 0-based, passing our 1-based `month` as the
+ * 0-based slot means "day 0 of the following month" — i.e. the last day of the month
+ * we actually want — which is exactly the day count we're after.
+ */
 export function daysInMonth(year, month) {
   return new Date(year, month, 0).getDate();
 }

@@ -21,6 +21,9 @@ import { EmployeeSelect, Select } from '../../components/Selects.jsx';
 import { custName, dateOnly, hhmm, todayISO } from '../../lib/format.js';
 
 export function BookingFormView({ editing }) {
+  // `editing` must always be passed explicitly (true or false) by the caller —
+  // if omitted it's undefined (falsy), which silently renders a *create* form
+  // on what was meant to be an *edit* route.
   const router = useRouter();
   const params = useSearchParams();
   const { ok, err } = useToast();
@@ -30,7 +33,10 @@ export function BookingFormView({ editing }) {
   const queryCustomer = params.get('customer');
   const queryDate = params.get('date');
 
-  const { data, loading } = useAsync(async () => {
+  const { data, loading, error } = useAsync(async () => {
+    // guard mirrors the `editing && !id` check below — avoids ever calling
+    // GET /api/bookings/null when someone lands on /bookings/edit with no id
+    if (editing && !id) return { b: {}, customer: null };
     const b = editing ? await api.get('/api/bookings/' + id) : {};
     let customer = null;
     if (editing && b.customer_id) customer = await api.get('/api/customers/' + b.customer_id);
@@ -42,7 +48,11 @@ export function BookingFormView({ editing }) {
   const [override, setOverride] = useState(undefined);
   const [answers, setAnswers] = useState({});
 
+  if (editing && !id) {
+    return <Card><h2>ไม่พบรหัสการจอง</h2><p className="muted">ไม่มี id ของการจองที่จะแก้ไข</p></Card>;
+  }
   if (loading) return <Loading />;
+  if (error) return <Card><h2>โหลดข้อมูลไม่สำเร็จ</h2><p className="muted">{error.message}</p></Card>;
 
   const b = data.b;
   const customer = override === undefined ? data.customer : override;
