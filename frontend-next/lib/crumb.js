@@ -21,6 +21,7 @@ export const TITLES = [
   ['/bookings', 'ปฏิทินจองคิว'],
   ['/settings', 'ตั้งค่า/แจ้งเตือน'],
   ['/cases/new', 'เปิดเคสใหม่'],
+  ['/cases/detail', 'รายละเอียดเคส'],
   ['/cases', 'กระดานงาน'],
   ['/lens-tracker', 'ติดตามเลนส์'],
   ['/employees', 'พนักงาน'],
