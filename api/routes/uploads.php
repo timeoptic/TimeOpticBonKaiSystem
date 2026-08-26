@@ -59,6 +59,18 @@ POST('/api/uploads', function (array $req) {
     if (!Db::get('SELECT id FROM cases WHERE id = ?', $caseId)) {
         bad('ไม่พบเคส');
     }
+    $centeringId = int_or($body['centering_id'] ?? null);
+    if ($centeringId && !Db::get('SELECT id FROM centerings WHERE id = ?', $centeringId)) {
+        bad('ไม่พบข้อมูลศูนย์เลนส์');
+    }
+    $paymentId = int_or($body['payment_id'] ?? null);
+    if ($paymentId && !Db::get('SELECT id FROM payments WHERE id = ?', $paymentId)) {
+        bad('ไม่พบข้อมูลการชำระเงิน');
+    }
+    $takenBy = int_or($body['taken_by'] ?? null);
+    if ($takenBy && !Db::get('SELECT id FROM employees WHERE id = ?', $takenBy)) {
+        bad('ไม่พบพนักงาน');
+    }
     $file = $_FILES['file'] ?? null;
     if (!$file || $file['error'] !== UPLOAD_ERR_OK) {
         bad('กรุณาเลือกไฟล์');
@@ -78,27 +90,27 @@ POST('/api/uploads', function (array $req) {
         bad('บันทึกไฟล์ไม่สำเร็จ');
     }
 
-    $id = Db::tx(function (Tx $q) use ($body, $caseId, $fileName, $file, $mime) {
+    $id = Db::tx(function (Tx $q) use ($body, $caseId, $centeringId, $paymentId, $takenBy, $fileName, $file, $mime) {
         $r = $q->run(
             'INSERT INTO case_photos (case_id, centering_id, payment_id, kind, file_name,
                original_name, mime_type, file_size, caption, taken_by)
              VALUES (?,?,?,?,?,?,?,?,?,?)',
             $caseId,
-            int_or($body['centering_id'] ?? null),
-            int_or($body['payment_id'] ?? null),
+            $centeringId,
+            $paymentId,
             str_or($body['kind'] ?? null, 'other') ?: 'other',
             $fileName,
             str_or($file['name'] ?? null),
             $mime,
             (int) $file['size'],
             nul($body['caption'] ?? null),
-            int_or($body['taken_by'] ?? null)
+            $takenBy
         );
         logEvent($q, $caseId, [
             'action'      => 'photo_uploaded',
             'entity'      => 'case_photo',
             'entity_id'   => $r['insertId'],
-            'employee_id' => int_or($body['taken_by'] ?? null),
+            'employee_id' => $takenBy,
         ]);
         return $r['insertId'];
     });
