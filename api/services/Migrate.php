@@ -109,7 +109,49 @@ final class Migrate
                 KEY fk_nl_booking (booking_id),
                 CONSTRAINT fk_nl_booking FOREIGN KEY (booking_id) REFERENCES bookings (id) ON DELETE SET NULL
               ) $c",
+
+            /* every stock item pulled for a case's production — the initial
+               pickLot() calls at "เริ่มผลิต" and any later "เบิกเพิ่ม" */
+            'production_withdrawals' => "CREATE TABLE IF NOT EXISTS production_withdrawals (
+                id                int(10) unsigned NOT NULL AUTO_INCREMENT,
+                case_id           int(10) unsigned NOT NULL,
+                production_job_id int(10) unsigned DEFAULT NULL,
+                item_type         varchar(20) NOT NULL,
+                stock_lot_id      int(10) unsigned DEFAULT NULL,
+                is_extra          tinyint(1) NOT NULL DEFAULT 0,
+                reason            varchar(255) DEFAULT NULL,
+                withdrawn_by      int(10) unsigned DEFAULT NULL,
+                withdrawn_at      datetime NOT NULL DEFAULT current_timestamp(),
+                PRIMARY KEY (id),
+                KEY idx_pw_case (case_id),
+                KEY fk_pw_job (production_job_id),
+                KEY fk_pw_lot (stock_lot_id),
+                KEY fk_pw_emp (withdrawn_by),
+                CONSTRAINT fk_pw_case FOREIGN KEY (case_id) REFERENCES cases (id) ON DELETE CASCADE,
+                CONSTRAINT fk_pw_job  FOREIGN KEY (production_job_id) REFERENCES production_jobs (id) ON DELETE SET NULL,
+                CONSTRAINT fk_pw_lot  FOREIGN KEY (stock_lot_id) REFERENCES stock_lots (id) ON DELETE SET NULL,
+                CONSTRAINT fk_pw_emp  FOREIGN KEY (withdrawn_by) REFERENCES employees (id) ON DELETE SET NULL
+              ) $c",
         ];
+    }
+
+    /** @return string[] "table.column" names actually added this run */
+    private static function addColumns(string $table, array $columns): array
+    {
+        $added = [];
+        foreach ($columns as $name => $ddl) {
+            $exists = Db::get(
+                'SELECT COUNT(*) n FROM information_schema.columns
+                  WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?',
+                $table,
+                $name
+            );
+            if (!(int) ($exists['n'] ?? 0)) {
+                Db::pdo()->exec("ALTER TABLE `$table` ADD COLUMN `$name` $ddl");
+                $added[] = "$table.$name";
+            }
+        }
+        return $added;
     }
 
     /** @return string[] names of tables that were created on this run */
@@ -127,6 +169,39 @@ final class Migrate
                 $created[] = $name;
             }
         }
+        $added = array_merge(
+            self::addColumns('custom_orders', [
+                'frame_price'    => 'decimal(10,2) NOT NULL DEFAULT 0',
+                'lens_od_price'  => 'decimal(10,2) NOT NULL DEFAULT 0',
+                'lens_os_price'  => 'decimal(10,2) NOT NULL DEFAULT 0',
+                'options_price'  => 'decimal(10,2) NOT NULL DEFAULT 0',
+            ]),
+            self::addColumns('frame_fittings', [
+                'frame_box_a' => 'decimal(6,2) DEFAULT NULL',
+                'frame_box_b' => 'decimal(6,2) DEFAULT NULL',
+            ]),
+            self::addColumns('qc_checks', [
+                'check_lens_od' => 'tinyint(1) NOT NULL DEFAULT 0',
+                'check_lens_os' => 'tinyint(1) NOT NULL DEFAULT 0',
+            ]),
+            self::addColumns('payments', [
+                'cancelled_at'  => 'datetime DEFAULT NULL',
+                'cancelled_by'  => 'int(10) unsigned DEFAULT NULL',
+                'cancel_reason' => 'varchar(255) DEFAULT NULL',
+            ]),
+            self::addColumns('production_jobs', [
+                'status'                    => "varchar(30) NOT NULL DEFAULT 'WAITING_FOR_ITEMS'",
+                'started_at'                => 'datetime DEFAULT NULL',
+                'started_by'                => 'int(10) unsigned DEFAULT NULL',
+                'received_by_customer_name' => 'varchar(120) DEFAULT NULL',
+            ]),
+            self::addColumns('cases', [
+                'closed_by' => 'int(10) unsigned DEFAULT NULL',
+            ])
+        );
+        Db::run("UPDATE case_statuses SET stage_group = 'centering' WHERE code = 'centering'");
+        Db::run("UPDATE case_statuses SET stage_group = 'payment' WHERE code = 'payment'");
+        $created = array_merge($created, $added);
         foreach (self::DEFAULT_SETTINGS as $key => $value) {
             Db::run('INSERT IGNORE INTO app_settings (`key`, `value`) VALUES (?, ?)', $key, $value);
         }
