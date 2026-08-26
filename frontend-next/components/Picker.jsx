@@ -48,9 +48,9 @@ export function Picker({ placeholder, fetcher, label, sub, onPick, autoLoad = tr
         {state === 'loading' && <div className="p-row"><span className="spin" /> กำลังค้นหา…</div>}
         {state === 'error' && <div className="p-row">{error}</div>}
         {state === 'done' && rows.length === 0 && <div className="p-row muted">ไม่พบข้อมูล</div>}
-        {state === 'done' && rows.map((r) => (
+        {state === 'done' && rows.map((r, i) => (
           <div
-            key={r.id}
+            key={`${r.id}-${i}`}
             className={`p-row ${String(r.id) === String(selectedId) ? 'sel' : ''}`}
             onClick={() => onPick(r)}
           >
