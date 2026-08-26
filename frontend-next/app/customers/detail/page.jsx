@@ -20,17 +20,23 @@ function CustomerDetailInner() {
   const { ok, err } = useToast();
   const confirm = useConfirm();
 
-  const { data, loading, error } = useAsync(() => api.get('/api/customers/' + id), [id]);
+  const { data, loading, error } = useAsync(() => {
+    if (!id) return Promise.resolve(null);
+    return api.get('/api/customers/' + id);
+  }, [id]);
 
   if (loading) return <Loading />;
   if (error) return <Card><h2>โหลดข้อมูลไม่สำเร็จ</h2><p className="muted">{error.message}</p></Card>;
+  if (!data || !data.id) {
+    return <Card><h2>ไม่พบข้อมูลลูกค้า</h2><p className="muted">ไม่พบลูกค้ารายนี้ในระบบ</p></Card>;
+  }
 
-  const c = data || {};
+  const c = data;
 
   const remove = async () => {
     if (!await confirm('ลบลูกค้า', `ลบ "${custName(c)}" ออกจากระบบ?`, { confirmText: 'ลบ', danger: true })) return;
     try {
-      await api.del('/api/customers/' + c.id);
+      await api.del('/api/customers/' + id);
       ok('ลบแล้ว');
       router.push('/customers');
     } catch (ex) {

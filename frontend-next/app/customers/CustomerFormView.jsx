@@ -27,8 +27,8 @@ export function CustomerFormView({ editing }) {
   const id = editing ? params.get('id') : null;
 
   const { data, loading, error } = useAsync(() => {
-    if (editing && !id) return Promise.resolve({});
-    return editing ? api.get('/api/customers/' + id) : Promise.resolve({});
+    if (!editing || !id) return Promise.resolve({});
+    return api.get('/api/customers/' + id);
   }, [editing, id]);
 
   if (loading) return <Loading />;
@@ -36,13 +36,16 @@ export function CustomerFormView({ editing }) {
   if (editing && !id) {
     return <Card><h2>ไม่พบรหัสลูกค้า</h2><p className="muted">ไม่มี id ของลูกค้าที่จะแก้ไข</p></Card>;
   }
+  if (editing && (!data || !data.id)) {
+    return <Card><h2>ไม่พบข้อมูลลูกค้า</h2><p className="muted">ไม่พบลูกค้ารายนี้ในระบบ</p></Card>;
+  }
 
-  const c = data || {};
+  const c = data;
 
   const save = async (body) => {
     try {
       const saved = editing
-        ? await api.put('/api/customers/' + c.id, body)
+        ? await api.put('/api/customers/' + id, body)
         : await api.post('/api/customers', body);
       ok('บันทึกลูกค้าเรียบร้อย');
       if (params.get('next') === 'case') router.push('/cases/new?customer=' + saved.id);
@@ -102,7 +105,7 @@ export function CustomerFormView({ editing }) {
             <button className="btn btn-lg" type="submit">
               {editing ? '💾 บันทึกการแก้ไข' : '✔ บันทึกลูกค้าใหม่'}
             </button>
-            <Link className="btn btn-light" href={editing ? '/customers/detail?id=' + c.id : '/customers'}>ยกเลิก</Link>
+            <Link className="btn btn-light" href={editing ? '/customers/detail?id=' + id : '/customers'}>ยกเลิก</Link>
           </FormActions>
         </div>
       </form>
