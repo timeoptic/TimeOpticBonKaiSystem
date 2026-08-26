@@ -12,16 +12,30 @@ const ORDER_COLS = ['case_id', 'customer_id', 'employee_id', 'recorded_by',
     'lens_type', 'frame_product_id', 'frame_name', 'frame_brand', 'frame_model',
     'frame_color', 'frame_size', 'frame_sku', 'lens_product_id', 'right_lens_product_id',
     'lens_name', 'lens_brand', 'lens_design', 'lens_index', 'lens_coating', 'lens_tint',
-    'lens_addons', 'total_price', 'discount', 'deposit', 'deposit_pay_type',
+    'lens_addons', 'frame_price', 'lens_od_price', 'lens_os_price', 'options_price',
+    'total_price', 'discount', 'deposit', 'deposit_pay_type',
     'marketing', 'notes'];
 
 const INT_ORDER_COLS = ['case_id', 'customer_id', 'employee_id', 'recorded_by',
     'final_prescription_id', 'frame_product_id', 'lens_product_id', 'right_lens_product_id'];
 
-const MONEY_ORDER_COLS = ['total_price', 'discount', 'deposit'];
+const MONEY_ORDER_COLS = ['frame_price', 'lens_od_price', 'lens_os_price', 'options_price',
+    'total_price', 'discount', 'deposit'];
 
 function orderVals(array $b): array
 {
+    $hasBreakdown = array_key_exists('frame_price', $b) || array_key_exists('lens_od_price', $b)
+        || array_key_exists('lens_os_price', $b) || array_key_exists('options_price', $b);
+    if ($hasBreakdown) {
+        $b['total_price'] = num($b['frame_price'] ?? null) + num($b['lens_od_price'] ?? null)
+            + num($b['lens_os_price'] ?? null) + num($b['options_price'] ?? null);
+    }
+    $total    = num($b['total_price'] ?? null);
+    $discount = num($b['discount'] ?? null);
+    if ($discount > $total) {
+        bad('ส่วนลดห้ามมากกว่ายอดรวม');
+    }
+
     $out = [];
     foreach (ORDER_COLS as $c) {
         if (in_array($c, INT_ORDER_COLS, true)) {
