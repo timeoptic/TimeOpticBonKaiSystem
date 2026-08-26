@@ -62,7 +62,7 @@ if (!str_starts_with($path, '/api/') && $path !== '/api') {
 }
 
 try {
-    $body = ($method === 'GET' || $method === 'DELETE') ? [] : Http::body();
+    $body = ($method === 'GET') ? [] : Http::body();
     // null is a real answer here ("this case has no fitting row yet"), so it is
     // passed through rather than turned into an ok-envelope
     $result = Router::dispatch($method, $path, $_GET, $body);
