@@ -73,9 +73,9 @@ function caseDetail(?int $id): array
         'SELECT lj.*, sup.name AS supplier_name,
                 ls.product_name AS left_lens_name, rs.product_name AS right_lens_name
            FROM lens_jobs lj
-           LEFT JOIN suppliers sup ON sup.id = lj.supplier_id
-           LEFT JOIN stock ls      ON ls.id  = lj.left_lens_stock_id
-           LEFT JOIN stock rs      ON rs.id  = lj.right_lens_stock_id
+           LEFT JOIN suppliers sup    ON sup.id = lj.supplier_id
+           LEFT JOIN v_stock_lot ls   ON ls.id  = lj.left_lens_stock_id
+           LEFT JOIN v_stock_lot rs   ON rs.id  = lj.right_lens_stock_id
           WHERE lj.case_id = ? ORDER BY lj.id DESC LIMIT 1',
         $id
     );
