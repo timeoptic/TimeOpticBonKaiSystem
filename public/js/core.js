@@ -1,4 +1,5 @@
 /* TimeOptic Web — shared front-end helpers */
+import { emojiToNodes } from './icons.js';
 
 /* ---------------------------- API client -------------------------- */
 async function request(method, path, body) {
@@ -48,7 +49,7 @@ export function el(tag, attrs = {}, children = []) {
     if (v === null || v === undefined || v === false) continue;
     if (k === 'class') node.className += (node.className ? ' ' : '') + v;
     else if (k === 'html') node.innerHTML = v;
-    else if (k === 'text') node.textContent = v;
+    else if (k === 'text') setText(node, v);
     else if (k === 'dataset') Object.assign(node.dataset, v);
     else if (k.startsWith('on') && typeof v === 'function') node.addEventListener(k.slice(2), v);
     else if (k === 'value') node.value = v;
@@ -57,15 +58,29 @@ export function el(tag, attrs = {}, children = []) {
   }
   for (const c of [].concat(children)) {
     if (c === null || c === undefined || c === false) continue;
-    node.append(c instanceof Node ? c : document.createTextNode(String(c)));
+    if (c instanceof Node) node.append(c);
+    else node.append(...toNodes(String(c)));
   }
   return node;
+}
+
+/* อิโมจิที่รู้จักถูกเปลี่ยนเป็นไอคอน SVG ตรงนี้จุดเดียว ทุกหน้าจึงได้ไปพร้อมกัน
+   โดยไม่ต้องแก้ที่เรียกใช้ทีละจุด (ดู public/js/icons.js) */
+function toNodes(str) {
+  const parts = emojiToNodes(str);
+  if (!parts) return [document.createTextNode(str)];
+  return parts.map((p) => (p instanceof Node ? p : document.createTextNode(p)));
+}
+
+function setText(node, value) {
+  node.replaceChildren(...toNodes(String(value)));
 }
 export const frag = (children) => {
   const f = document.createDocumentFragment();
   for (const c of [].concat(children)) {
     if (c === null || c === undefined || c === false) continue;
-    f.append(c instanceof Node ? c : document.createTextNode(String(c)));
+    if (c instanceof Node) f.append(c);
+    else f.append(...toNodes(String(c)));
   }
   return f;
 };
@@ -167,10 +182,92 @@ export function confirmDialog(title, message, { confirmText = 'ยืนยั�
   });
 }
 
+/**
+ * เพิ่มลูกค้าใหม่จากในกล่องเด้ง โดยไม่ต้องออกจากฟอร์มที่กรอกค้างอยู่
+ * เดาให้ว่าคำที่พิมพ์ค้นหาเป็นเบอร์โทรหรือชื่อ แล้วเติมช่องให้เลย
+ * @returns {Promise<object|null>} ลูกค้าที่สร้าง หรือ null เมื่อยกเลิก
+ */
+export function newCustomerDialog(term = '') {
+  return new Promise((resolve) => {
+    const t = String(term).trim();
+    const looksLikePhone = /^[\d\s()+-]{6,}$/.test(t);
+    const words = looksLikePhone ? [] : t.split(/\s+/).filter(Boolean);
+
+    const first = el('input', { value: words[0] || '', placeholder: 'เช่น สมชาย' });
+    const last = el('input', { value: words.slice(1).join(' '), placeholder: 'เช่น ใจกว้าง' });
+    const phone = el('input', { type: 'tel', value: looksLikePhone ? t : '', placeholder: '08x-xxx-xxxx' });
+    const msg = el('p.hint', { style: 'color:var(--danger);min-height:1em;margin:0' });
+    const saveBtn = el('button.btn.btn-accent', { text: 'เพิ่มลูกค้า' });
+
+    const close = (v) => { back.remove(); document.removeEventListener('keydown', esc); resolve(v); };
+    function esc(e) { if (e.key === 'Escape') close(null); }
+
+    const save = async () => {
+      if (!first.value.trim() && !last.value.trim()) {
+        msg.textContent = 'กรุณากรอกชื่อหรือนามสกุลอย่างน้อยหนึ่งช่อง';
+        first.focus();
+        return;
+      }
+      saveBtn.disabled = true;
+      msg.textContent = '';
+      try {
+        close(await request('POST', '/api/customers', {
+          first_name: first.value.trim(),
+          last_name: last.value.trim(),
+          phone: phone.value.trim(),
+        }));
+      } catch (e) {
+        msg.textContent = e.message;
+        saveBtn.disabled = false;
+      }
+    };
+    saveBtn.addEventListener('click', save);
+    for (const inp of [first, last, phone]) {
+      inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); save(); } });
+    }
+
+    const back = el('div.modal-back', {
+      onclick: (e) => { if (e.target === back) close(null); },
+    }, [
+      el('div.modal', {}, [
+        el('h3', { text: 'เพิ่มลูกค้าใหม่' }),
+        el('div.m-body', {}, [
+          el('div.form-grid', {}, [
+            field('ชื่อ', first),
+            field('นามสกุล', last),
+            field('เบอร์โทร', phone),
+          ]),
+          el('p.hint', { text: 'กรอกเท่านี้ก่อนได้ ข้อมูลอื่นไปเพิ่มทีหลังที่หน้าลูกค้า' }),
+          msg,
+        ]),
+        el('div.m-foot', {}, [
+          el('button.btn.btn-light', { text: 'ยกเลิก', onclick: () => close(null) }),
+          saveBtn,
+        ]),
+      ]),
+    ]);
+    $('#modal-root').append(back);
+    document.addEventListener('keydown', esc);
+    first.focus();
+  });
+}
+
+/** ปุ่ม "เพิ่มลูกค้าใหม่" สำหรับส่งให้ picker ใช้ตอนค้นไม่เจอ */
+export const addCustomerAction = (onAdded) => (term, choose) =>
+  el('button.btn.btn-accent.btn-sm.p-empty-btn', {
+    type: 'button', text: '+ เพิ่มลูกค้าใหม่',
+    onclick: async () => {
+      const c = await newCustomerDialog(term);
+      if (!c) return;
+      choose(c);
+      if (onAdded) onAdded(c);
+    },
+  });
+
 /* --------------------------- UI builders -------------------------- */
 export function pageHead(icon, title, subtitle, actions = []) {
   return el('div.page-head', {}, [
-    el('div.ph-icon', { text: icon }),
+    el('div.ph-icon.icon-only', { text: icon }),
     el('h1', {}, [title, subtitle ? el('span', { text: subtitle }) : null]),
     actions.length ? el('div.ph-actions', {}, actions) : null,
   ]);
@@ -286,6 +383,24 @@ export function statusChip(row) {
   });
 }
 
+/** ป้ายของรายการที่เก็บเป็นคู่ [รหัส, ป้าย] เช่น rx_source / old_glasses_type
+    ไม่รู้จักรหัสไหนก็คืนรหัสดิบ ดีกว่าโชว์ว่างจนดูเหมือนไม่เคยกรอก */
+export const listLabel = (kind, code) => {
+  if (!code) return '';
+  const hit = ((meta.lists || {})[kind] || [])
+    .find((o) => Array.isArray(o) && String(o[0]) === String(code));
+  return hit ? hit[1] : String(code);
+};
+
+/** ชนิดเลนส์ที่สั่งตัดไว้ -> ชนิดแว่นที่ลูกค้าใส่อยู่
+    เลนส์ออฟฟิศกับ "อื่น ๆ" เทียบไม่ได้ตรง ๆ คืน '' ให้คนกรอกเลือกเอง */
+export const glassesTypeOfLens = (lensType) => ({
+  SVDistance: 'single',
+  SVReading: 'single',
+  Bifocal: 'bifocal',
+  Progressive: 'progressive',
+}[lensType] || '');
+
 export const caseStatuses = () => meta.statuses || [];
 export const statusByCode = (code) =>
   (meta.statuses || []).find((s) => s.code === code) || null;
@@ -298,7 +413,12 @@ export const linkBtn = (href, text, cls = 'btn-light') =>
  * Renders a search box + result list. onPick(row) fires on click.
  * fetcher(term) -> Promise<rows>;  label(row) -> string
  */
-export function picker({ placeholder, fetcher, label, sub, onPick, autoLoad = true }) {
+/**
+ * ช่องค้นหา + รายการให้เลือก
+ * @param emptyAction (term, pick) => Node|null — สิ่งที่จะโชว์แทนเมื่อค้นไม่เจอ
+ *        เรียก pick(row) เพื่อเลือกรายการที่เพิ่งสร้างเข้ามาเลย
+ */
+export function picker({ placeholder, fetcher, label, sub, onPick, autoLoad = true, emptyAction = null }) {
   const box = el('div.stack');
   const search = el('input', { type: 'search', placeholder, autocomplete: 'off' });
   const list = el('div.picker');
@@ -309,7 +429,12 @@ export function picker({ placeholder, fetcher, label, sub, onPick, autoLoad = tr
     try {
       const rows = await fetcher(term || '');
       if (!rows.length) {
-        list.replaceChildren(el('div.p-row.muted', { text: 'ไม่พบข้อมูล' }));
+        const t = String(term || '').trim();
+        const choose = (r) => { selected = r; onPick(r); };
+        list.replaceChildren(el('div.p-empty', {}, [
+          el('div.p-empty-msg', { text: t ? `ไม่พบรายการที่ตรงกับ “${t}”` : 'ไม่พบข้อมูล' }),
+          emptyAction ? emptyAction(t, choose) : null,
+        ].filter(Boolean)));
         return;
       }
       list.replaceChildren(...rows.map((r) => {

@@ -3,6 +3,7 @@ import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { extname, join, normalize, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { networkInterfaces } from 'node:os';
 import { handle, HttpError } from './lib/api.js';
 import { verifyConnection, CONFIG, pool } from './lib/db.js';
 import { migrate } from './lib/migrate.js';
@@ -126,7 +127,17 @@ const tickMs = scheduler.start();
 server.listen(PORT, HOST, () => {
   console.log('');
   console.log('  TimeOptic Web  —  ระบบจัดการร้านแว่นตา');
-  console.log(`  ▶  http://${HOST}:${PORT}`);
+  console.log(`  ▶  http://localhost:${PORT}`);
+  // when bound to every interface, print the addresses other devices can use
+  if (HOST === '0.0.0.0' || HOST === '::') {
+    for (const list of Object.values(networkInterfaces())) {
+      for (const net of list ?? []) {
+        if (net.family === 'IPv4' && !net.internal) {
+          console.log(`  ▶  http://${net.address}:${PORT}   (เครื่องอื่นในวงเดียวกัน)`);
+        }
+      }
+    }
+  }
   console.log(`  DB  MariaDB ${info.version} · ${info.db} · ${info.tables} tables`);
   if (created.length) console.log(`  ✚  สร้างตารางใหม่: ${created.join(', ')}`);
   console.log(`  ⏰ ตัวเตือนคิว Telegram ทำงานทุก ${Math.round(tickMs / 1000)} วินาที`);

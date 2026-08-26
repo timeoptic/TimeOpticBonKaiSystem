@@ -3,6 +3,7 @@ import {
   api, meta, el, frag, card, table, pageHead, field, input, select, listSelect,
   employeeSelect, formData, money, fmtDate, fmtDateTime, dateOnly, custName,
   ok, err, confirmDialog, picker, todayISO,
+  addCustomerAction,
 } from '../core.js';
 
 const TH_MONTHS = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
@@ -28,10 +29,27 @@ const bookingName = (b) =>
   [b.first_name, b.last_name].filter(Boolean).join(' ') || '(ไม่ระบุชื่อ)';
 
 /* ============================== CALENDAR =========================== */
+const TH_MON_SHORT = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
+  'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+
+const iso = (y, m, d) =>
+  `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+const addDays = (isoStr, n) => {
+  const [y, m, d] = isoStr.split('-').map(Number);
+  const t = new Date(y, m - 1, d + n);
+  return iso(t.getFullYear(), t.getMonth() + 1, t.getDate());
+};
+/* วันอาทิตย์เป็นวันแรกของสัปดาห์ ให้ตรงกับหัวตาราง TH_DOW */
+const weekStart = (isoStr) => {
+  const [y, m, d] = isoStr.split('-').map(Number);
+  return addDays(isoStr, -new Date(y, m - 1, d).getDay());
+};
+
 export async function bookingCalendar({ navigate, query }) {
   const wrap = el('div');
   let month = /^\d{4}-\d{2}$/.test(query.month || '') ? query.month : todayISO().slice(0, 7);
   let selected = query.date || todayISO();
+  let view = ['week', 'month', 'year'].includes(query.view) ? query.view : 'month';
 
   wrap.append(pageHead('📅', 'Queue Booking', 'ปฏิทินจองคิวลูกค้า', [
     el('a.btn.btn-ghost', { href: '#/bookings/new', text: '+ จองคิวใหม่' }),
@@ -43,71 +61,160 @@ export async function bookingCalendar({ navigate, query }) {
 
   const shiftMonth = (delta) => {
     const [y, m] = month.split('-').map(Number);
-    const d = new Date(y, m - 1 + delta, 1);
-    month = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const t = new Date(y, m - 1 + delta, 1);
+    month = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}`;
     drawCalendar();
   };
+  const shift = (delta) => {
+    if (view === 'year') { month = `${Number(month.slice(0, 4)) + delta}-${month.slice(5)}`; drawCalendar(); }
+    else if (view === 'week') { selected = addDays(selected, delta * 7); month = selected.slice(0, 7); drawCalendar(); drawDay(); }
+    else shiftMonth(delta);
+  };
+  const goToday = () => {
+    month = todayISO().slice(0, 7);
+    selected = todayISO();
+    drawCalendar(); drawDay();
+  };
+  const setView = (v) => { view = v; drawCalendar(); };
+  const pickDay = (d) => { selected = d; month = d.slice(0, 7); drawCalendar(); drawDay(); };
+
+  /* ---------------- แถบหัว: ชื่อช่วงเวลา + เลื่อน + สลับมุมมอง ---------------- */
+  function calHead() {
+    const [y, m] = month.split('-').map(Number);
+    let title;
+    if (view === 'year') title = String(y + 543);
+    else if (view === 'week') {
+      const s = weekStart(selected), e = addDays(s, 6);
+      const sm = Number(s.slice(5, 7)), em = Number(e.slice(5, 7));
+      title = sm === em
+        ? `${Number(s.slice(8))} – ${Number(e.slice(8))} ${TH_MONTHS[sm - 1]} ${Number(s.slice(0, 4)) + 543}`
+        : `${Number(s.slice(8))} ${TH_MON_SHORT[sm - 1]} – ${Number(e.slice(8))} ${TH_MON_SHORT[em - 1]} ${Number(e.slice(0, 4)) + 543}`;
+    } else title = `${TH_MONTHS[m - 1]} ${y + 543}`;
+
+    const viewBtn = (v, label) => el('button.cal-vbtn', {
+      type: 'button', class: view === v ? 'active' : '',
+      text: label, onclick: () => setView(v),
+    });
+
+    return el('div.cal-head', {}, [
+      el('h2.cal-title', { text: title }),
+      el('div.cal-nav', {}, [
+        el('button.cal-arrow', { type: 'button', title: 'ก่อนหน้า', text: '‹', onclick: () => shift(-1) }),
+        el('button.cal-arrow', { type: 'button', title: 'ถัดไป', text: '›', onclick: () => shift(1) }),
+      ]),
+      el('button.cal-today', { type: 'button', text: 'วันนี้', onclick: goToday }),
+      el('div.cal-views', {}, [
+        viewBtn('week', 'สัปดาห์'), viewBtn('month', 'เดือน'), viewBtn('year', 'ปี'),
+      ]),
+    ]);
+  }
+
+  const dowRow = (cls = '') =>
+    el('div.cal-grid.cal-dow', { class: cls }, TH_DOW.map((d, i) =>
+      el('div.cal-dowcell', { class: i === 0 ? 'sun' : '', text: d })));
+
+  /* แถบคิวหนึ่งรายการในช่องวัน — เวลา + ชื่อลูกค้า สีตามสถานะ */
+  const pill = (b) => el('div.cal-ev', {
+    class: STATUS_CLASS[b.status] || 'gray',
+    title: `${hhmm(b.booking_time)} ${bookingName(b)} · ${statusLabel(b.status)}`,
+    onclick: (e) => { e.stopPropagation(); navigate('#/bookings/' + b.id); },
+  }, [
+    el('span.cal-ev-t', { text: hhmm(b.booking_time) }),
+    el('span.cal-ev-n', { text: bookingName(b) }),
+  ]);
+
+  /* ช่องวันหนึ่งช่องในมุมมองเดือน/สัปดาห์ */
+  function dayCell(dIso, curMonth, list, today) {
+    const [yy, mm, dd] = dIso.split('-').map(Number);
+    const dow = new Date(yy, mm - 1, dd).getDay();
+    const evs = list.slice(0, 3);
+    const more = list.length - evs.length;
+    return el('div.cal-cell', {
+      class: [
+        dIso.slice(0, 7) !== curMonth ? 'out' : '',
+        dIso === today ? 'today' : '',
+        dIso === selected ? 'selected' : '',
+        dow === 0 || dow === 6 ? 'weekend' : '',
+      ].filter(Boolean).join(' '),
+      onclick: () => pickDay(dIso),
+    }, [
+      el('div.cal-date', { text: String(Number(dIso.slice(8))) }),
+      el('div.cal-evs', {}, [
+        ...evs.map(pill),
+        more > 0 ? el('div.cal-more', { text: `+ อีก ${more} คิว` }) : null,
+      ]),
+    ]);
+  }
 
   async function drawCalendar() {
-    calBox.replaceChildren(el('div.loading', {}, [el('span.spin'), ' กำลังโหลดปฏิทิน…']));
-    const { days } = await api.get('/api/bookings/calendar', { month });
-    const byDate = Object.fromEntries(days.map((d) => [dateOnly(d.d), d]));
-
-    const [y, m] = month.split('-').map(Number);
-    const first = new Date(y, m - 1, 1);
-    const daysInMonth = new Date(y, m, 0).getDate();
-    const lead = first.getDay();
+    calBox.replaceChildren(el('div.card', {}, [
+      el('div.card-body', {}, [el('div.loading', {}, [el('span.spin'), ' กำลังโหลดปฏิทิน…'])]),
+    ]));
     const today = todayISO();
+    const [y, m] = month.split('-').map(Number);
+
+    if (view === 'year') {
+      const { days } = await api.get('/api/bookings/calendar',
+        { from: iso(y, 1, 1), to: iso(y, 12, 31) });
+      const byDate = Object.fromEntries(days.map((d) => [dateOnly(d.d), Number(d.total)]));
+      const months = [];
+      for (let mm = 1; mm <= 12; mm++) {
+        const lead = new Date(y, mm - 1, 1).getDay();
+        const len = new Date(y, mm, 0).getDate();
+        const cells = [];
+        for (let i = 0; i < lead; i++) cells.push(el('div.mini-d.blank'));
+        for (let d = 1; d <= len; d++) {
+          const dIso = iso(y, mm, d);
+          const n = byDate[dIso] || 0;
+          cells.push(el('div.mini-d', {
+            class: [
+              dIso === today ? 'today' : '',
+              new Date(y, mm - 1, d).getDay() === 0 ? 'sun' : '',
+              n ? 'has' : '',
+            ].filter(Boolean).join(' '),
+            title: n ? `${n} คิว` : '',
+            onclick: (e) => { e.stopPropagation(); view = 'month'; pickDay(dIso); },
+          }, [String(d)]));
+        }
+        months.push(el('div.mini-month', {
+          onclick: () => { month = `${y}-${String(mm).padStart(2, '0')}`; view = 'month'; drawCalendar(); },
+        }, [
+          el('div.mini-name', { class: mm === Number(todayISO().slice(5, 7)) && y === Number(todayISO().slice(0, 4)) ? 'now' : '', text: TH_MON_SHORT[mm - 1] }),
+          el('div.mini-dow', {}, TH_DOW.map((d, i) => el('span', { class: i === 0 ? 'sun' : '', text: d }))),
+          el('div.mini-grid', {}, cells),
+        ]));
+      }
+      calBox.replaceChildren(el('div.card', {}, [
+        el('div.card-body', {}, [calHead(), el('div.year-grid', {}, months),
+          el('p.hint', { text: 'กดชื่อเดือนเพื่อเปิดเดือนนั้น หรือกดวันที่เพื่อไปที่วันนั้นเลย · วันที่มีจุดคือมีคิวจองอยู่' })]),
+      ]));
+      return;
+    }
+
+    /* มุมมองเดือน / สัปดาห์ — ดึงคิวจริงมาแสดงเป็นแถบสี */
+    const from = view === 'week' ? weekStart(selected) : weekStart(iso(y, m, 1));
+    const cellCount = view === 'week' ? 7 : 42;
+    const to = addDays(from, cellCount - 1);
+    const rows = await api.get('/api/bookings', { from, to, limit: 1000 });
+    const byDate = {};
+    for (const b of rows) (byDate[dateOnly(b.booking_date)] ||= []).push(b);
 
     const cells = [];
-    for (let i = 0; i < lead; i++) cells.push(el('div.cal-cell.cal-blank'));
-    for (let d = 1; d <= daysInMonth; d++) {
-      const iso = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-      const info = byDate[iso];
-      const dow = new Date(y, m - 1, d).getDay();
-      cells.push(el('div.cal-cell', {
-        class: [
-          iso === today ? 'today' : '',
-          iso === selected ? 'selected' : '',
-          dow === 0 || dow === 6 ? 'weekend' : '',
-          info ? 'has' : '',
-        ].filter(Boolean).join(' '),
-        onclick: () => { selected = iso; drawCalendar(); drawDay(); },
-      }, [
-        el('div.cal-date', { text: String(d) }),
-        info ? el('div.cal-badges', {}, [
-          Number(info.pending) ? el('span.cal-b.b-blue', { title: 'รอมา', text: String(info.pending) }) : null,
-          Number(info.arrived) + Number(info.in_service)
-            ? el('span.cal-b.b-warn', { title: 'มาถึง/กำลังบริการ', text: String(Number(info.arrived) + Number(info.in_service)) }) : null,
-          Number(info.done) ? el('span.cal-b.b-ok', { title: 'เสร็จสิ้น', text: String(info.done) }) : null,
-          Number(info.no_show) ? el('span.cal-b.b-danger', { title: 'ไม่มา', text: String(info.no_show) }) : null,
-        ]) : null,
-      ]));
+    for (let i = 0; i < cellCount; i++) {
+      const dIso = addDays(from, i);
+      cells.push(dayCell(dIso, month, byDate[dIso] || [], today));
     }
 
     calBox.replaceChildren(el('div.card', {}, [
-      el('div.card-head', {}, [
-        el('button.btn.btn-sm.btn-light', { text: '‹', onclick: () => shiftMonth(-1) }),
-        el('h2', { text: `${TH_MONTHS[m - 1]} ${y + 543}` }),
-        el('button.btn.btn-sm.btn-light', { text: '›', onclick: () => shiftMonth(1) }),
-        el('div.right', {}, [
-          el('button.btn.btn-sm.btn-light', {
-            text: 'วันนี้',
-            onclick: () => {
-              month = todayISO().slice(0, 7); selected = todayISO();
-              drawCalendar(); drawDay();
-            },
-          }),
-        ]),
-      ]),
       el('div.card-body', {}, [
-        el('div.cal-grid.cal-dow', {}, TH_DOW.map((d) => el('div.cal-dowcell', { text: d }))),
-        el('div.cal-grid', {}, cells),
-        el('div.row', { style: 'margin-top:12px;font-size:12px' }, [
-          el('span', {}, [el('span.cal-b.b-blue', { text: ' ' }), ' รอมา']),
-          el('span', {}, [el('span.cal-b.b-warn', { text: ' ' }), ' มาถึง/กำลังบริการ']),
-          el('span', {}, [el('span.cal-b.b-ok', { text: ' ' }), ' เสร็จสิ้น']),
-          el('span', {}, [el('span.cal-b.b-danger', { text: ' ' }), ' ไม่มาตามนัด']),
+        calHead(),
+        dowRow(),
+        el('div.cal-grid', { class: view === 'week' ? 'cal-week' : '' }, cells),
+        el('div.cal-legend', {}, [
+          el('span', {}, [el('i.dot.blue'), 'รอมา']),
+          el('span', {}, [el('i.dot.warn'), 'มาถึง/กำลังบริการ']),
+          el('span', {}, [el('i.dot.ok'), 'เสร็จสิ้น']),
+          el('span', {}, [el('i.dot.danger'), 'ไม่มาตามนัด']),
         ]),
       ]),
     ]));
@@ -189,13 +296,14 @@ export async function bookingForm({ params, query, navigate }) {
     field('ชื่อ', input('first_name', { value: b.customer_id ? '' : (b.first_name || '') })),
     field('นามสกุล', input('last_name', { value: b.customer_id ? '' : (b.last_name || '') })),
     field('เบอร์โทร', input('phone', { value: b.customer_id ? '' : (b.phone || '') })),
-    field('LINE ID', input('line_id', { value: b.customer_id ? '' : (b.line_id || '') })),
   );
   drawChosen();
 
   const pick = picker({
     placeholder: 'ค้นหาลูกค้าเดิม (ชื่อ / เบอร์โทร / รหัส)',
     fetcher: (q) => api.get('/api/customers', { q, limit: 40 }),
+    // ค้นไม่เจอ = ลูกค้าใหม่ ให้เพิ่มได้ตรงนั้นเลย ไม่ต้องทิ้งฟอร์มที่กรอกค้างไว้
+    emptyAction: addCustomerAction(),
     label: custName,
     sub: (r) => r.phone || '',
     onPick: (r) => { customer = r; drawChosen(); },
@@ -224,34 +332,12 @@ export async function bookingForm({ params, query, navigate }) {
         type: 'number', min: '0', max: '1440',
         value: b.reminder_minutes ?? defaultReminder,
       }), 'ส่งเข้า Telegram ก่อนถึงคิว · ใส่ 0 = ไม่แจ้ง'),
-      field('ผู้รับจอง', employeeSelect('created_by', b.created_by || '')),
-    ]),
-    el('div.field.full', {}, [
-      el('label', { text: 'บันทึกเบื้องต้น / Intake note' }),
-      el('textarea', {
-        name: 'intake_note', text: b.intake_note || '',
-        placeholder: 'ลูกค้าโทรมาเรื่องอะไร มีอาการอย่างไร ต้องการอะไรเป็นพิเศษ',
-      }),
     ]),
     el('div.field.full', {}, [
       el('label', { text: 'หมายเหตุอื่น ๆ' }),
       el('textarea', { name: 'notes', text: b.notes || '' }),
     ]),
   ]));
-
-  /* intake questionnaire — only when creating */
-  const qBoxes = [];
-  if (!editing) {
-    const list = bk().intake_questions || [];
-    form.append(card('คำถามเบื้องต้นตอนรับจอง (กรอกเท่าที่ถามได้)', [
-      el('div.stack', {}, list.map((q) => {
-        const inp = input('q_' + list.indexOf(q), { placeholder: 'คำตอบ…' });
-        qBoxes.push({ question: q, inp });
-        return el('div.field', {}, [el('label', { text: q }), inp]);
-      })),
-      el('p.hint', { text: 'ข้อมูลนี้จะถูกส่งไปกับการแจ้งเตือน Telegram และคัดลอกเข้าเคสอัตโนมัติเมื่อลูกค้ามาถึง' }),
-    ]));
-  }
 
   form.append(el('div.form-actions', {}, [
     el('button.btn.btn-lg', { type: 'submit', text: editing ? '💾 บันทึกการแก้ไข' : '✔ บันทึกการจอง' }),
@@ -264,14 +350,9 @@ export async function bookingForm({ params, query, navigate }) {
     e.preventDefault();
     try {
       const body = { ...formData(form), customer_id: customer ? customer.id : null };
-      for (const k of Object.keys(body)) if (k.startsWith('q_')) delete body[k];
       if (customer) {
+        // ข้อมูลลูกค้ามาจากทะเบียนลูกค้าแล้ว ไม่ต้องเก็บซ้ำในใบจอง
         body.first_name = null; body.last_name = null; body.phone = null; body.line_id = null;
-      }
-      if (!editing) {
-        body.step_notes = qBoxes
-          .filter((x) => x.inp.value.trim())
-          .map((x) => ({ step: 'intake', question: x.question, note: x.inp.value.trim() }));
       }
       const saved = editing
         ? await api.put('/api/bookings/' + b.id, body)

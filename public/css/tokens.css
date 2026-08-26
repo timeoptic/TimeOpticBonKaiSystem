@@ -1,0 +1,38 @@
+/* TimeOptic Web — tokens
+ * ตัวแปรสี ขนาด เงา และ reset — ไฟล์อื่นอ้างอิงค่าจากที่นี่ทั้งหมด
+ * แก้ที่นี่ = เปลี่ยนทั้งระบบ ตั้งใจให้เป็นแบบนั้น
+ */
+
+/* TimeOptic Web — styles */
+:root{
+  /* teal / turquoise brand ramp */
+  --navy:#0c4a4a; --navy-dark:#08403f;
+  --navy-2:#116b64; --accent:#0b8282; --accent-soft:#def7f4;
+  --accent-2:#14b8a6; --accent-deep:#086565;
+  --bg:#f1f6f6; --card:#fff; --line:#dae7e5; --line-soft:#ebf3f2;
+  --ink:#13302e; --ink-soft:#4f6c6a; --ink-faint:#657a78;
+  --ok:#15803d; --ok-soft:#dcfce7;
+  --warn:#b45309; --warn-soft:#fef3c7;
+  --danger:#be123c; --danger-soft:#ffe4e6;
+  --radius:16px; --radius-sm:10px;
+  --shadow:0 1px 2px rgba(12,74,74,.05),0 8px 24px rgba(12,74,74,.07);
+  --shadow-lg:0 12px 30px rgba(12,74,74,.14);
+  --grad-side:linear-gradient(180deg,#0a4342 0%,#0d6b64 55%,#0e7871 100%);
+  --grad-head:linear-gradient(100deg,#0c4a4a 0%,#12857c 100%);
+  --surface-alt:#f4f9f8;
+  --sidebar-w:236px;
+}
+
+*{box-sizing:border-box}
+
+html,body{height:100%}
+
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font:15px/1.5 "Segoe UI","Noto Sans Thai","Sarabun",system-ui,-apple-system,sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+
+a{color:var(--accent);text-decoration:none}
+
+a:hover{text-decoration:underline}

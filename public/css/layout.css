@@ -1,0 +1,197 @@
+/* TimeOptic Web — layout
+ * โครงหน้า: sidebar, แถบบน, พื้นที่เนื้อหา, หัวเพจ, ไอคอน
+ * ใช้ร่วมกันทุกหน้า แก้แล้วกระทบทั้งเว็บ
+ */
+
+/* ---------------- layout ---------------- */
+.app{display:flex;min-height:100vh}
+
+.sidebar{
+  width:var(--sidebar-w);flex:0 0 var(--sidebar-w);background:var(--grad-side);
+  color:#d6f0ed;transition:width .18s ease,flex-basis .18s ease;display:flex;flex-direction:column;position:sticky;top:0;height:100vh;
+}
+
+.brand{display:flex;gap:10px;align-items:center;padding:16px 16px 14px;border-bottom:1px solid rgba(255,255,255,.09)}
+
+.brand-mark{font-size:20px;letter-spacing:-2px;color:#fff}
+
+.brand-text{display:flex;flex-direction:column;line-height:1.15}
+
+.brand-text b{color:#fff;font-size:16px;letter-spacing:.3px}
+
+.brand-text small{color:#a5ded8;font-size:11px}
+
+#nav{flex:1;overflow-y:auto;padding:8px 8px 10px;scrollbar-width:none;-ms-overflow-style:none}
+
+#nav::-webkit-scrollbar{width:0;height:0}
+
+#nav a{
+  display:flex;align-items:center;gap:9px;padding:8px 12px;border-radius:999px;
+  color:#dcf3f0;font-size:14px;text-decoration:none;margin-bottom:1px;
+  transition:background .14s ease,color .14s ease;
+}
+
+#nav a:hover{background:rgba(255,255,255,.13);color:#fff}
+
+#nav a.active{background:#fff;color:var(--navy);font-weight:700;box-shadow:0 3px 10px rgba(4,40,40,.22)}
+
+#nav a .ic{width:18px;text-align:center;font-size:14px;opacity:.95}
+
+.sidebar-foot{padding:10px 16px;border-top:1px solid rgba(255,255,255,.09);font-size:11.5px;color:#e9f8f6}
+
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+
+.topbar{
+  display:flex;align-items:center;gap:12px;padding:10px 20px;background:var(--card);
+  border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20;
+}
+
+.crumb{font-weight:600;color:var(--ink-soft);font-size:14px}
+
+.spacer{flex:1}
+
+.icon-btn{display:flex;align-items:center;justify-content:center;background:none;border:0;
+  font-size:20px;cursor:pointer;color:var(--ink-soft);padding:6px;border-radius:999px;line-height:0}
+
+.icon-btn:hover{background:var(--accent-soft);color:var(--accent)}
+
+.content{padding:20px;width:100%;max-width:none}
+
+/* ---------------- page header (mirrors the Access form banner) --- */
+.page-head{
+  background:var(--grad-head);
+  color:#fff;border-radius:var(--radius);padding:16px 20px;margin-bottom:18px;
+  display:flex;align-items:center;gap:14px;box-shadow:var(--shadow);
+}
+
+/* จัดกึ่งกลางด้วย flex ไม่งั้น svg แบบ inline จะถูกที่ว่างใต้เส้นฐานดันขึ้นไปราว 2px */
+.page-head .ph-icon{font-size:26px;opacity:.95;display:flex;align-items:center;justify-content:center}
+
+.page-head h1{margin:0;font-size:21px;font-weight:700;letter-spacing:.2px}
+
+.page-head h1 span{font-weight:400;opacity:.82;font-size:17px;margin-left:8px}
+
+.page-head .ph-actions{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+
+/* ---------------- tiles (main menu) ---------------- */
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px}
+
+.tile{
+  display:flex;align-items:center;gap:13px;background:var(--grad-head);color:#fff;
+  border-radius:var(--radius);padding:17px 17px;text-decoration:none;
+  box-shadow:var(--shadow);transition:transform .14s ease,box-shadow .14s ease;
+}
+
+.tile:hover{transform:translateY(-3px);box-shadow:var(--shadow-lg);text-decoration:none}
+
+.tile .t-ic{font-size:26px;line-height:1}
+
+.tile b{display:block;font-size:15px;font-weight:650}
+
+.tile small{display:block;opacity:.8;font-size:12.5px}
+
+.page-head .btn-ghost{background:rgba(255,255,255,.16);color:#fff;border-color:rgba(255,255,255,.28)}
+
+.page-head .btn-ghost:hover{background:rgba(255,255,255,.26);color:#fff}
+
+@media (max-width:820px){
+  .sidebar{position:fixed;left:0;top:0;z-index:60;transform:translateX(-100%);transition:transform .2s}
+  .sidebar.open{transform:none;box-shadow:0 0 40px rgba(0,0,0,.4)}
+  .content{padding:14px}
+}
+
+/* ---------------- icons (public/js/icons.js) ---------------- */
+.ico{
+  width:1.15em;height:1.15em;flex:0 0 auto;vertical-align:-.19em;
+  fill:currentColor;pointer-events:none;
+}
+
+/* ปุ่ม / ลิงก์ / badge เว้นระยะไอคอนกับข้อความด้วย gap อยู่แล้ว
+   ส่วนข้อความธรรมดาไม่มี flex เลยต้องเว้นเอง
+
+   กล่องที่มีแต่ไอคอนอย่างเดียว (วงกลมบนแถบขั้นตอน, ไอคอนหัวหน้า ฯลฯ) ใส่ .icon-only
+   ไม่งั้น margin ขวาจะดันไอคอนไปเยื้องซ้ายจากจุดกึ่งกลางครึ่งหนึ่งของระยะนั้น
+   ห่อด้วย :where() ให้ specificity เหลือแค่ .ico กฎรายจุดข้างล่างจึงเขียนทับได้ตามปกติ
+   ของเดิมใช้ :not() ซ้อนกันจน specificity สูงกว่าทุกกฎ margin:0 ที่เขียนไว้ */
+:where(:not(.btn,.tile,.icon-only,#nav a,.card-head,.page-head)) > .ico{margin-right:.34em}
+
+.btn .ico,.tile .ico,.tabs a .ico,.icon-only > .ico{margin:0}
+
+.badge .ico{width:1em;height:1em;vertical-align:-.14em;margin-right:.22em}
+
+.page-head .ph-icon .ico{width:1.5em;height:1.5em;margin:0}
+
+#nav a .ic{display:flex;align-items:center;justify-content:center;width:18px;flex:0 0 18px}
+
+#nav a .ic .ico{width:17px;height:17px;margin:0;opacity:.95}
+
+#nav a.active .ic .ico{opacity:1}
+
+.tile .t-ic .ico{width:26px;height:26px;margin:0}
+
+.k-label .ico{width:.95em;height:.95em;margin-right:.2em}
+
+.icon-btn .ico{width:22px;height:22px;margin:0}
+
+.brand-mark .ico{width:24px;height:24px;color:#fff;margin:0}
+
+/* ---------------- sidebar ยุบ/ขยาย ---------------- */
+.app.collapsed{--sidebar-w:66px}
+
+.app.collapsed .brand{justify-content:center;padding:16px 8px 14px}
+
+.app.collapsed .brand-text,
+.app.collapsed .nav-group,
+.app.collapsed .sidebar-foot{display:none}
+
+.app.collapsed #nav{padding:10px 9px 20px}
+
+.app.collapsed #nav a{justify-content:center;padding:9px 0}
+
+.app.collapsed #nav a .lbl{display:none}
+
+.app.collapsed #nav a .ic{width:20px;flex-basis:20px}
+
+.app.collapsed #nav a .ic .ico{width:19px;height:19px}
+
+/* ตอนยุบ ปุ่มกลมพอดีไอคอน ไม่ยืดเต็มความกว้าง */
+.app.collapsed #nav a.active{box-shadow:0 2px 8px rgba(4,40,40,.28)}
+
+@media (max-width:820px){
+  /* จอเล็กใช้แผงเลื่อนทับเนื้อหาเหมือนเดิม การยุบไม่มีผล */
+  .app.collapsed{--sidebar-w:236px}
+  .app.collapsed .brand-text,
+  .app.collapsed .nav-group,
+  .app.collapsed .sidebar-foot,
+  .app.collapsed #nav a .lbl{display:revert}
+  .app.collapsed #nav a{justify-content:flex-start;padding:8px 12px}
+}
+
+/* เมนูยาวเกินจอ: ไล่จางที่ขอบล่างแทนแถบเลื่อนที่ซ่อนไว้ */
+#nav.scrollable{
+  -webkit-mask-image:linear-gradient(#000 calc(100% - 26px), transparent);
+  mask-image:linear-gradient(#000 calc(100% - 26px), transparent);
+}
+
+/* ---------------- แผงเมนูบนจอเล็ก / แท็บเล็ต ---------------- */
+.nav-close{
+  display:none;margin-left:auto;background:rgba(255,255,255,.14);border:0;border-radius:999px;
+  width:32px;height:32px;align-items:center;justify-content:center;cursor:pointer;
+  color:#fff;padding:0;line-height:0;flex:0 0 32px;
+}
+
+.nav-close:hover{background:rgba(255,255,255,.26)}
+
+.nav-close .ico{width:18px;height:18px;margin:0}
+
+.scrim{
+  position:fixed;inset:0;background:rgba(6,40,40,.45);z-index:55;
+  opacity:0;pointer-events:none;transition:opacity .2s ease;
+}
+
+@media (max-width:820px){
+  .nav-close{display:flex}
+  body.nav-open .scrim{opacity:1;pointer-events:auto}
+  /* แผงเปิดอยู่แล้วห้ามให้หน้าข้างหลังเลื่อนตาม */
+  body.nav-open{overflow:hidden}
+}

@@ -46,11 +46,51 @@ function buildNav() {
   for (const [group, items] of NAV) {
     nav.append(el('div.nav-group', { text: group }));
     for (const [ic, label, href] of items) {
-      nav.append(el('a', { href, dataset: { href } }, [
-        el('span.ic', { text: ic }), label,
+      // title ทำให้ยังรู้ว่าเมนูไหนตอน sidebar ยุบเหลือแต่ไอคอน
+      nav.append(el('a', { href, title: label, dataset: { href } }, [
+        el('span.ic', { text: ic }), el('span.lbl', { text: label }),
       ]));
     }
   }
+}
+
+/* --------------------------- sidebar ------------------------------ */
+const SIDEBAR_KEY = 'timeoptic:sidebar-collapsed';
+/* จอเล็ก sidebar เป็นแผงเลื่อนทับเนื้อหา (คลาส .open)
+   จอใหญ่ sidebar ยุบเหลือแถบไอคอนแทน (คลาส .collapsed บน #app) */
+const isNarrow = () => window.matchMedia('(max-width:820px)').matches;
+
+/* บนจอเล็กแผงเมนูทับปุ่ม ☰ จนกดไม่โดน ต้องมีทางปิดของตัวเอง:
+   ปุ่มกากบาทในแผง แตะฉากมืดด้านหลัง หรือกด Esc */
+function closeNav() {
+  $('#sidebar').classList.remove('open');
+  document.body.classList.remove('nav-open');
+}
+
+function toggleSidebar() {
+  if (isNarrow()) {
+    const open = $('#sidebar').classList.toggle('open');
+    document.body.classList.toggle('nav-open', open);
+    return;
+  }
+  const collapsed = $('#app').classList.toggle('collapsed');
+  markNavScrollable();
+  try {
+    localStorage.setItem(SIDEBAR_KEY, collapsed ? '1' : '0');
+  } catch { /* โหมดส่วนตัวเขียนไม่ได้ ไม่ใช่เรื่องคอขาดบาดตาย */ }
+}
+
+/* แถบเลื่อนของเมนูถูกซ่อนไว้ ถ้าเมนูยาวเกินจอจึงต้องมีอย่างอื่นบอก
+   ไม่งั้นบนจอเตี้ยจะไม่มีใครรู้ว่ายังมีเมนูอยู่ข้างล่าง */
+function markNavScrollable() {
+  const nav = $('#nav');
+  if (nav) nav.classList.toggle('scrollable', nav.scrollHeight > nav.clientHeight + 1);
+}
+
+function restoreSidebar() {
+  let saved = null;
+  try { saved = localStorage.getItem(SIDEBAR_KEY); } catch { /* อ่านไม่ได้ก็ใช้ค่าเริ่มต้น */ }
+  if (saved === '1') $('#app').classList.add('collapsed');
 }
 
 function markActive(hash) {
@@ -198,10 +238,19 @@ async function boot() {
   tickClock();
   setInterval(tickClock, 30000);
 
-  $('#menu-toggle').addEventListener('click', () => $('#sidebar').classList.toggle('open'));
+  restoreSidebar();
+  markNavScrollable();
+  window.addEventListener('resize', markNavScrollable);
+  $('#menu-toggle').addEventListener('click', toggleSidebar);
   $('#nav').addEventListener('click', (e) => {
-    if (e.target.closest('a')) $('#sidebar').classList.remove('open');
+    // บนจอเล็ก sidebar ทับเนื้อหาอยู่ พอเลือกเมนูแล้วต้องปิดเอง
+    if (e.target.closest('a')) closeNav();
   });
+  $('#nav-close').addEventListener('click', closeNav);
+  $('#scrim').addEventListener('click', closeNav);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeNav(); });
+  // กางจอจนพ้นโหมดจอเล็กแล้ว ต้องล้างสถานะทิ้ง ไม่งั้นฉากมืดค้าง
+  window.addEventListener('resize', () => { if (!isNarrow()) closeNav(); });
   window.addEventListener('hashchange', render);
 
   try {

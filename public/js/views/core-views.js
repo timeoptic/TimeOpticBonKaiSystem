@@ -3,7 +3,8 @@ import {
   api, meta, el, frag, card, table, pageHead, field, input, select, listSelect,
   employeeSelect, formData, money, moneyShort, fmtDate, fmtDateTime, dateOnly, dtLocal,
   nowLocal, custName, power, rxNum, ok, err, confirmDialog, statusBadge, statusChip,
-  picker, loadMeta, todayISO, stageInfo,
+  picker, loadMeta, todayISO, stageInfo, glassesTypeOfLens,
+  addCustomerAction,
 } from '../core.js';
 
 /* ============================== MAIN MENU ========================== */
@@ -365,23 +366,263 @@ export async function prescriptionList({ navigate }) {
   return wrap;
 }
 
-const eyeSide = (side, t) => {
-  const k = side === 'R' ? 'r' : 'l';
-  const v = (f) => t[`${k}_${f}`] ?? '';
-  return el('fieldset', {}, [
-    el('legend', { text: side === 'R' ? 'ตาขวา — Right (R)' : 'ตาซ้าย — Left (L)' }),
-    el('div.form-grid', {}, [
-      field('Sphere', input(`${k}_sphere`, { value: v('sphere'), placeholder: '-1.25' })),
-      field('Cylinder', input(`${k}_cylinder`, { value: v('cylinder'), placeholder: '-0.50' })),
-      field('Axis', input(`${k}_axis`, { value: v('axis'), placeholder: '90' })),
-      field('Add', input(`${k}_add`, { value: v('add'), placeholder: '+2.00' })),
-      field('PD', input(`${k}_pd`, { value: v('pd'), placeholder: '32' })),
-      field('VA', input(`${k}_va`, { value: v('va'), placeholder: '1.0' })),
-      field('Prism', input(`${k}_prism`, { value: v('prism') })),
-      field('Base', input(`${k}_base`, { value: v('base') })),
-    ]),
+/* ใบวัดสายตาอ่านเป็นตาราง: แถวคือค่าที่วัด คอลัมน์คือตาข้างซ้าย/ขวา
+   วางแบบนี้เทียบค่าสองตาได้ในบรรทัดเดียว เหมือนใบกระดาษที่ร้านใช้อยู่ */
+const RX_ROWS = [
+  ['va', 'VA', 'Visual acuity', '20/20'],
+  ['sphere', 'Sphere', 'SPH · ค่าสายตา', '-2.25'],
+  ['cylinder', 'Cylinder', 'CYL · ค่าเอียง', '-0.50'],
+  ['axis', 'Axis', 'AXIS · องศา', '180'],
+  ['add', 'Add', 'ADD · สายตายาว', '+2.00'],
+  ['pd', 'PD', 'PD · ระยะรูม่านตา', '32'],
+];
+
+/* ปริซึมใช้เฉพาะเคสตาเข/ตาเหล่ ไม่ได้กรอกทุกใบ จึงพับเก็บไว้หลังปุ่ม */
+const PRISM_ROWS = [
+  ['prism', 'Prism', 'PRISM · ค่าปริซึม', '2Δ'],
+  ['base', 'Base', 'BASE · ฐานปริซึม', 'IN / OUT / UP / DOWN'],
+];
+
+const rxHead = () => el('thead', {}, [el('tr', {}, [
+  el('th'),
+  el('th.od', {}, [el('b', { text: 'OD · ตาขวา ' }), el('span.eye-tag', { text: 'R' })]),
+  el('th.os', {}, [el('b', { text: 'OS · ตาซ้าย ' }), el('span.eye-tag', { text: 'L' })]),
+])]);
+
+const rxRow = (t, [key, name, sub, ph], prefix = '') => el('tr', {}, [
+  el('td.rx-lbl', {}, [el('b', { text: name }), el('small', { text: sub })]),
+  ...['r', 'l'].map((k) => el('td', {}, [
+    input(`${prefix}${k}_${key}`, { value: t[`${prefix}${k}_${key}`] ?? '', placeholder: ph }),
+  ])),
+]);
+
+/** ตารางค่าสายตาแยกตา + ปุ่มเปิดแถว Prism / Base */
+const rxGrid = (t) => {
+  const prism = PRISM_ROWS.map((r) => {
+    const tr = rxRow(t, r);
+    tr.classList.add('rx-prism');
+    return tr;
+  });
+  /* เคยกรอกปริซึมไว้ก็กางให้เห็นเลย ไม่ต้องให้ไปกดหาเอง */
+  let open = PRISM_ROWS.some(([key]) => ['r', 'l'].some((k) => t[`${k}_${key}`]));
+  const draw = () => prism.forEach((tr) => { tr.style.display = open ? '' : 'none'; });
+
+  const toggle = el('button.btn.btn-sm.btn-light', {
+    type: 'button',
+    style: 'margin-top:10px',
+    text: open ? '− Prism / Base' : '+ Prism / Base',
+    onclick: (e) => {
+      open = !open;
+      draw();
+      e.currentTarget.textContent = open ? '− Prism / Base' : '+ Prism / Base';
+    },
+  });
+  draw();
+
+  return frag([
+    el('div.rx-wrap', {}, [el('table.rx-grid', {}, [
+      rxHead(),
+      el('tbody', {}, [
+        ...RX_ROWS.map((r) => rxRow(t, r)),
+        el('tr.rx-total', {}, [
+          el('td.rx-lbl', {}, [el('b', { text: 'PD รวม' }), el('small', { text: 'PD total' })]),
+          el('td', {}, [input('pd_total', { value: t.pd_total ?? '', placeholder: '64' })]),
+          el('td'),
+        ]),
+        ...prism,
+      ]),
+    ])]),
+    toggle,
   ]);
 };
+
+/* วัดสองตาพร้อมกัน ใบกระดาษถามแค่ 4 ค่า จึงใช้ตารางย่อชุดเดียวกัน */
+const BIN_ROWS = [
+  ['sphere', 'Sphere', 'SPH · ค่าสายตา', '-2.25'],
+  ['add', 'Add', 'ADD · สายตายาว', '+2.00'],
+  ['va', 'VA', 'Visual acuity', '20/20'],
+  ['pd', 'PD', 'PD · ระยะรูม่านตา', '32'],
+];
+
+const rxBinoGrid = (t) => el('div.rx-wrap', {}, [el('table.rx-grid', {}, [
+  rxHead(),
+  el('tbody', {}, BIN_ROWS.map((r) => rxRow(t, r, 'bin_'))),
+])]);
+
+/* Old Glasses — ค่าที่อ่านได้จากแว่นที่ลูกค้าใส่มา ใบกระดาษถาม SPH / ADD / VA / PD เท่ากัน */
+const rxOldGrid = (t) => el('div.rx-wrap', {}, [el('table.rx-grid', {}, [
+  rxHead(),
+  el('tbody', {}, BIN_ROWS.map((r) => rxRow(t, r, 'old_'))),
+])]);
+
+export function rxFormFields(
+  t = {}, { kindField = true, headerRow = true, historyRx = null, historyGlasses = null } = {}) {
+  const out = frag([]);
+  /* ที่มาของค่า / ใช้สำหรับ / ผู้วัด ย้ายไปอยู่ในกล่อง Old Glasses แล้ว
+     หัวฟอร์มจึงเหลือแค่ช่องที่เป็นของทั้งใบ และมีเฉพาะหน้าบันทึกเต็ม
+     headerRow: 'compact' = ไม่ต้องมีหัวเลย เพราะช่องที่เหลือหน้าเคสไม่ได้ถาม */
+  if (headerRow && headerRow !== 'compact') {
+    out.append(el('div.form-grid.two', {}, [
+      kindField
+        ? field('ชนิดค่าสายตา', select('kind',
+          [['old', 'ค่าเดิม (แว่นเก่า)'], ['measured', 'ค่าที่วัดได้'], ['final', 'ค่าที่ใช้จริง']],
+          t.kind || 'measured'))
+        : null,
+      field('วันที่วัด', input('test_date', {
+        type: 'datetime-local', value: dtLocal(t.test_date) || nowLocal(),
+      })),
+    ]));
+  }
+  /* บล็อกบนสุดของใบกระดาษ — ตาเปล่า กับ ระยะที่ใช้สายตา */
+  out.append(el('fieldset', { style: 'margin-top:14px' }, [
+    el('legend', { text: 'ตาเปล่า / ระยะใช้งาน' }),
+    el('div.form-grid', {}, [
+      field('ตาเปล่า R', input('va_naked_r', { value: t.va_naked_r || '', placeholder: '20/40' })),
+      field('ตาเปล่า L', input('va_naked_l', { value: t.va_naked_l || '', placeholder: '20/40' })),
+      field('ระยะอ่านหนังสือ R (ซม.)', input('dist_vertical_r', { value: t.dist_vertical_r || '' })),
+      field('ระยะอ่านหนังสือ L (ซม.)', input('dist_vertical_l', { value: t.dist_vertical_l || '' })),
+      field('ระยะคอมพิวเตอร์ R (ซม.)', input('dist_monitor_r', { value: t.dist_monitor_r || '' })),
+      field('ระยะคอมพิวเตอร์ L (ซม.)', input('dist_monitor_l', { value: t.dist_monitor_l || '' })),
+      field('รู้จักร้านจาก', listSelect('known_from', 'marketing', t.known_from, { blank: '—' })),
+    ]),
+  ]));
+
+  out.append(el('fieldset', {}, [
+    el('legend', { text: 'ประวัติสุขภาพ' }),
+    el('div.row', { style: 'gap:16px' }, [
+      ['health_cataract', 'ต้อกระจก'], ['health_eye_surgery', 'เคยผ่าตัดตา'],
+      ['health_diabetes', 'เบาหวาน'], ['health_bp', 'ความดัน'], ['health_heart', 'โรคหัวใจ'],
+    ].map(([k, label]) =>
+      el('label.check', {}, [input(k, { type: 'checkbox', checked: !!t[k] }), ' ' + label]))),
+    el('div.field.full', { style: 'margin-top:12px' }, [
+      el('label', { text: 'รายละเอียดสุขภาพ' }),
+      input('health_note', { value: t.health_note || '' }),
+    ]),
+  ]));
+
+  /* Old Glasses — แว่นที่ลูกค้าใส่มา
+     ค่าชุดนี้ได้มาจากไหน ใช้สำหรับระยะไหน ใครเป็นคนอ่าน อยู่ในกล่องเดียวกับตัวค่า
+     จะได้อ่านเป็นใบเดียวกันเหมือนใบกระดาษ */
+  /* ค่าแว่นเดิมมาได้ 3 ทางเท่านั้น — ดึงจากประวัติ / วัดจากแว่น / ใบจากภายนอก */
+  const srcSel = listSelect('source', 'rx_source_old', t.source, { blank: '—' });
+  const typeSel = listSelect('old_glasses_type', 'old_glasses_type', t.old_glasses_type,
+    { blank: '— ไม่มีแว่นเดิม —' });
+  /* select ที่ disabled จะไม่ถูกส่งไปกับฟอร์ม ต้องมีตัวเงาคอยถือค่าไว้แทน
+     วางไว้ก่อน select จริง เวลาปลดล็อกค่าจาก select จึงเขียนทับตัวเงา */
+  const typeMirror = input('old_glasses_type', { type: 'hidden', value: t.old_glasses_type || '' });
+  const srcHint = el('p.hint', { style: 'margin:6px 0 0' });
+
+  const performedSel = employeeSelect('performed_by', t.performed_by);
+
+  const lockType = (on) => {
+    typeSel.disabled = on;
+    typeMirror.value = on ? typeSel.value : '';
+  };
+
+  const oldFs = el('fieldset', {}, [
+    el('legend', { text: 'Old Glasses — แว่นเดิมที่ลูกค้าใส่มา' }),
+    el('div.form-grid', { style: 'margin-bottom:4px' }, [
+      field('ที่มาของค่า', srcSel),
+      field('ผู้วัด / ผู้อ่านค่า', performedSel),
+      el('div.field', {}, [
+        el('label', { text: 'แว่นเดิมเป็นแบบ' }), typeMirror, typeSel,
+      ]),
+    ]),
+    el('div', { style: 'margin-bottom:12px' }, [srcHint]),
+    rxOldGrid(t),
+  ]);
+
+  /* "ดึงจากประวัติในระบบ" = ค่ามาจากใบเก่า คนกรอกไม่ต้องพิมพ์และแก้ไม่ได้
+     อีกสองทางคนกรอกอ่านค่ามาเอง จึงปลดล็อกให้เลือก/พิมพ์ตามจริง */
+  /* จำค่าที่เติมให้จากประวัติไว้ พอเปลี่ยนไปที่มาอื่นจะได้ล้างเฉพาะช่องที่ยังไม่ถูกแก้
+     ถ้าคนกรอกพิมพ์ทับไปแล้วก็ปล่อยไว้ ไม่ลบงานที่เขาทำ */
+  let pulled = null;
+
+  const clearPulled = () => {
+    if (!pulled) return;
+    for (const [name, val] of Object.entries(pulled)) {
+      const box = oldFs.querySelector(`[name=${name}]`);
+      if (box && box.value === val) box.value = '';
+    }
+    if (typeSel.value === (pulled.__type || '')) typeSel.value = '';
+    pulled = null;
+  };
+
+  const applySource = async () => {
+    if (srcSel.value !== 'history') {
+      clearPulled();
+      lockType(false);
+      srcHint.textContent = '';
+      return;
+    }
+    const r = historyRx ? await historyRx() : null;
+    if (!r) {
+      lockType(false);
+      srcHint.textContent = 'ไม่พบค่าสายตาเดิมของลูกค้ารายนี้ในระบบ — เลือกที่มาเป็นทางอื่นแล้วกรอกเองได้เลย';
+      return;
+    }
+    /* ค่าในแว่นที่ใส่อยู่ = ค่าที่สั่งตัดไว้ในใบก่อนหน้า */
+    pulled = {};
+    for (const k of ['r', 'l']) {
+      for (const fld of ['sphere', 'add', 'va', 'pd']) {
+        const name = `old_${k}_${fld}`;
+        const box = oldFs.querySelector(`[name=${name}]`);
+        if (!box) continue;
+        box.value = r[`${k}_${fld}`] ?? '';
+        pulled[name] = box.value;
+      }
+    }
+    // เติมชื่อผู้วัดจากใบเก่าไว้ก่อน แก้ไขได้ตามปกติ (ไม่ล็อกเหมือนชนิดแว่น)
+    if (r.performed_by) {
+      performedSel.value = String(r.performed_by);
+      pulled.performed_by = performedSel.value;
+    }
+    /* ใบเก่าส่วนใหญ่ไม่ได้กรอกช่องนี้ไว้ ให้ดูจากเลนส์ที่สั่งตัดในออเดอร์เก่าแทน
+       เพราะแว่นที่ลูกค้าใส่มาก็คือแว่นที่เราตัดให้รอบก่อนนั่นเอง */
+    const fromOrder = historyGlasses ? await historyGlasses() : null;
+    const type = r.old_glasses_type || fromOrder?.type || '';
+    typeSel.value = type;
+    pulled.__type = type;
+    lockType(!!type);
+    const when = fmtDate(r.test_date);
+    srcHint.textContent = type
+      ? `ดึงจากใบวันที่ ${when} · ชนิดแว่น${fromOrder && !r.old_glasses_type ? 'มาจากเลนส์ที่ตัดให้รอบก่อน' : 'ตามที่บันทึกไว้'} — ล็อกไว้ แก้ไม่ได้`
+      : `ดึงจากใบวันที่ ${when} — ประวัติไม่ได้ระบุชนิดแว่น เลือกเองได้`;
+  };
+  srcSel.addEventListener('change', applySource);
+  if (srcSel.value === 'history') applySource();
+
+  out.append(oldFs);
+
+  /* RX Monocular — ค่าแยกตาทีละข้าง ตรงกับบล็อกบนใบวัดสายตาของร้าน */
+  out.append(el('fieldset', {}, [
+    el('legend', { text: 'RX Monocular — ค่าแยกตา' }),
+    rxGrid(t),
+  ]));
+
+  /* RX Binocular — วัดสองตาพร้อมกัน กระดาษถามแค่ SPH / ADD / VA / PD */
+  out.append(el('fieldset', {}, [
+    el('legend', { text: 'RX Binocular — วัดสองตาพร้อมกัน' }),
+    rxBinoGrid(t),
+  ]));
+
+  out.append(el('div.form-grid', {}, [
+    /* ผู้บันทึก = คนที่นั่งคีย์ข้อมูล อาจคนละคนกับผู้วัด ใบกระดาษถามแยกกัน */
+    field('ผู้บันทึก', employeeSelect('recorded_by', t.recorded_by)),
+  ]));
+
+  out.append(el('div.form-grid.two', {}, [
+    el('div.field', {}, [
+      el('label', { text: 'บันทึกการตรวจ / Exam note' }),
+      el('textarea', { name: 'exam_note', text: t.exam_note || '' }),
+    ]),
+    el('div.field', {}, [
+      el('label', { text: 'หมายเหตุ / Notes' }),
+      el('textarea', { name: 'notes', text: t.notes || '' }),
+    ]),
+  ]));
+  return out;
+}
 
 export async function prescriptionForm({ params, query, navigate }) {
   const editing = !!params.id;
@@ -403,61 +644,35 @@ export async function prescriptionForm({ params, query, navigate }) {
   const pick = picker({
     placeholder: 'ค้นหาลูกค้า (ชื่อ / เบอร์โทร / รหัส)',
     fetcher: (q) => api.get('/api/customers', { q, limit: 40 }),
+    // ค้นไม่เจอ = ลูกค้าใหม่ ให้เพิ่มได้ตรงนั้นเลย ไม่ต้องทิ้งฟอร์มที่กรอกค้างไว้
+    emptyAction: addCustomerAction(),
     label: custName,
     sub: (r) => r.phone || '',
     onPick: (r) => { customer = r; customerId = r.id; drawChosen(); },
   });
 
   const form = el('form');
-  form.append(el('div.form-grid.two', {}, [
-    field('ชนิดค่าสายตา', select('kind',
-      [['old', 'ค่าเดิม (แว่นเก่า)'], ['measured', 'ค่าที่วัดได้'], ['final', 'ค่าที่ใช้จริง']],
-      t.kind || 'measured')),
-    field('พนักงานผู้วัด', employeeSelect('performed_by', t.performed_by)),
-    field('วันที่วัด', input('test_date', {
-      type: 'datetime-local', value: dtLocal(t.test_date) || nowLocal(),
-    })),
-    field('ใช้สำหรับ / TestFor', listSelect('test_for', 'test_for', t.test_for, { blank: '—' })),
-  ]));
-  form.append(el('div.split', { style: 'margin-top:14px' }, [eyeSide('R', t), eyeSide('L', t)]));
+  /* ลูกค้าเปลี่ยนได้ระหว่างกรอก จึงอ่าน customerId ตอนกดเลือก ไม่ใช่ตอนสร้างฟอร์ม */
+  const historyRx = () => (customerId
+    ? api.get('/api/prescriptions', { customer_id: customerId })
+      .then((all) => {
+        const other = (all || []).filter((r) => r.id !== t.id);
+        return other.find((r) => r.kind === 'final') || other[0] || null;
+      })
+      .catch(() => null)
+    : Promise.resolve(null));
 
-  form.append(el('fieldset', {}, [
-    el('legend', { text: 'ข้อมูลเพิ่มเติม' }),
-    el('div.form-grid', {}, [
-      field('PD รวม', input('pd_total', { value: t.pd_total || '' })),
-      field('แว่นเดิมเป็นแบบ', input('old_glasses_type', { value: t.old_glasses_type || '' })),
-      field('ระยะแนวตั้ง R', input('dist_vertical_r', { value: t.dist_vertical_r || '' })),
-      field('ระยะแนวตั้ง L', input('dist_vertical_l', { value: t.dist_vertical_l || '' })),
-      field('ระยะจอ R', input('dist_monitor_r', { value: t.dist_monitor_r || '' })),
-      field('ระยะจอ L', input('dist_monitor_l', { value: t.dist_monitor_l || '' })),
-      field('รู้จักร้านจาก', listSelect('known_from', 'marketing', t.known_from, { blank: '—' })),
-    ]),
-  ]));
+  const historyGlasses = () => (customerId
+    ? api.get('/api/orders', { customer_id: customerId })
+      .then((rows) => {
+        const o = (rows || [])[0];
+        const type = o ? glassesTypeOfLens(o.lens_type) : '';
+        return type ? { type, lens_type: o.lens_type } : null;
+      })
+      .catch(() => null)
+    : Promise.resolve(null));
 
-  form.append(el('fieldset', {}, [
-    el('legend', { text: 'ประวัติสุขภาพ' }),
-    el('div.row', { style: 'gap:16px' }, [
-      ['health_cataract', 'ต้อกระจก'], ['health_eye_surgery', 'เคยผ่าตัดตา'],
-      ['health_diabetes', 'เบาหวาน'], ['health_bp', 'ความดัน'], ['health_heart', 'โรคหัวใจ'],
-    ].map(([k, label]) =>
-      el('label.check', {}, [input(k, { type: 'checkbox', checked: !!t[k] }), ' ' + label]))),
-    el('div.field.full', { style: 'margin-top:12px' }, [
-      el('label', { text: 'รายละเอียดสุขภาพ' }),
-      input('health_note', { value: t.health_note || '' }),
-    ]),
-  ]));
-
-  form.append(el('div.form-grid.two', {}, [
-    el('div.field', {}, [
-      el('label', { text: 'บันทึกการตรวจ / Exam note' }),
-      el('textarea', { name: 'exam_note', text: t.exam_note || '' }),
-    ]),
-    el('div.field', {}, [
-      el('label', { text: 'หมายเหตุ / Notes' }),
-      el('textarea', { name: 'notes', text: t.notes || '' }),
-    ]),
-  ]));
-
+  form.append(rxFormFields(t, { historyRx, historyGlasses }));
   form.append(el('div.form-actions', { style: 'margin-top:14px' }, [
     el('button.btn.btn-lg', { type: 'submit', text: editing ? '💾 บันทึกการแก้ไข' : '✔ บันทึกผลวัดสายตา' }),
     editing ? el('a.btn.btn-light', { href: '#/print/prescription/' + t.id, text: '🖨 พิมพ์' }) : null,

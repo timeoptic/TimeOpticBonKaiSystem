@@ -3,6 +3,7 @@ import {
   api, meta, el, frag, card, table, pageHead, field, input, select, listSelect,
   employeeSelect, formData, money, fmtDate, fmtDateTime, dtLocal, dateOnly, custName,
   power, rxNum, ok, err, confirmDialog, statusBadge, picker, todayISO, nowLocal,
+  addCustomerAction,
 } from '../core.js';
 
 const STATUS_TABS = [
@@ -182,6 +183,8 @@ export async function orderForm({ params, query, navigate }) {
   const custPicker = picker({
     placeholder: 'ค้นหาลูกค้า (ชื่อ / เบอร์โทร / รหัส)',
     fetcher: (q) => api.get('/api/customers', { q, limit: 40 }),
+    // ค้นไม่เจอ = ลูกค้าใหม่ ให้เพิ่มได้ตรงนั้นเลย ไม่ต้องทิ้งฟอร์มที่กรอกค้างไว้
+    emptyAction: addCustomerAction(),
     label: custName,
     sub: (r) => r.phone || '',
     onPick: async (r) => {

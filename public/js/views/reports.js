@@ -2,27 +2,41 @@
 import {
   api, meta, el, frag, card, table, pageHead, field, input, select, listSelect,
   money, moneyShort, fmtDate, fmtDateTime, custName, power, rxNum, todayISO, err,
+  listLabel,
 } from '../core.js';
+import { groupedBars, SERIES_COLORS } from '../chart.js';
 
 const SHOP = { name: 'TIME OPTIC', tagline: 'ร้านแว่นตาไทม์ออพติก', line2: 'โทร. ___-___-____' };
 
 /* ============================== INDEX ============================== */
-const REPORTS = [
-  ['📅', 'สรุปรายวัน', 'Daily Order Closed — ยอดปิดออเดอร์ / มัดจำ / ขายสินค้า แยกตามวิธีชำระ', '#/reports/daily'],
-  ['📈', 'รายรับรายเดือน', 'Sale Income By Month — สรุปรายรับ-รายจ่ายรายเดือน', '#/reports/monthly'],
-  ['📋', 'เช็คลิสต์สต็อก', 'Lens / ContactLen / Frame Checklist — นับสินค้าคงเหลือตามชื่อ', '#/reports/checklist'],
-  ['🏷', 'พิมพ์ป้ายราคา', 'Stock Label — ป้ายติดสินค้าพร้อมรหัสและราคา', '#/reports/labels'],
-  ['🕰', 'สินค้าค้างสต็อก', 'Unsold Stock — สินค้าที่รับเข้ามานานแล้วยังไม่ขาย', '#/reports/unsold'],
+const REPORT_GROUPS = [
+  ['การเงิน', [
+    ['📅', 'สรุปรายวัน', 'Daily Order Closed', 'ยอดปิดออเดอร์ มัดจำ และขายสินค้า แยกตามวิธีชำระเงิน', '#/reports/daily'],
+    ['📈', 'รายรับรายเดือน', 'Sale Income By Month', 'เปรียบเทียบรายรับกับรายจ่ายย้อนหลังเป็นรายเดือน', '#/reports/monthly'],
+  ]],
+  ['คลังสินค้า', [
+    ['📋', 'เช็คลิสต์สต็อก', 'Stock Checklist', 'นับสินค้าคงเหลือตามชื่อ แยก เลนส์ / คอนแทคเลนส์ / กรอบแว่น', '#/reports/checklist'],
+    ['🏷', 'พิมพ์ป้ายราคา', 'Stock Label', 'ป้ายติดสินค้าพร้อมรหัสและราคา สั่งพิมพ์ได้ทันที', '#/reports/labels'],
+    ['🕰', 'สินค้าค้างสต็อก', 'Unsold Stock', 'สินค้าที่รับเข้ามานานแล้วยังขายไม่ออก พร้อมมูลค่าที่จม', '#/reports/unsold'],
+  ]],
 ];
 
 export async function reportIndex() {
   return frag([
     pageHead('📊', 'Reports', 'รายงาน'),
-    el('div.tiles', {}, REPORTS.map(([ic, th, en, href]) =>
-      el('a.tile', { href }, [
-        el('span.t-ic', { text: ic }),
-        el('span', {}, [el('b', { text: th }), el('small', { text: en })]),
-      ]))),
+    ...REPORT_GROUPS.map(([group, items]) => el('section.rep-group', {}, [
+      el('h2.rep-group-title', { text: group }),
+      el('div.rep-grid', {}, items.map(([ic, th, en, desc, href]) =>
+        el('a.rep-card', { href }, [
+          el('span.rep-ic', { text: ic }),
+          el('span.rep-body', {}, [
+            el('b.rep-th', { text: th }),
+            el('span.rep-en', { text: en }),
+            el('span.rep-desc', { text: desc }),
+          ]),
+          el('span.rep-go', { text: '→' }),
+        ]))),
+    ])),
   ]);
 }
 
@@ -153,21 +167,52 @@ export async function dailyClosed({ query }) {
 /* ============================== MONTHLY ============================ */
 export async function monthly() {
   const rows = await api.get('/api/reports/income-by-month');
-  const max = Math.max(1, ...rows.map((r) => r.total_income));
-  const bar = (r) => {
-    const w = Math.round((r.total_income / max) * 100);
-    return el('div', {
-      style: `height:9px;border-radius:5px;background:var(--accent);width:${w}%;min-width:2px`,
-    });
-  };
   const sum = rows.reduce((a, r) => ({
     pay: a.pay + r.payment_income, sale: a.sale + r.sale_income,
     other: a.other + r.other_income, exp: a.exp + r.expense, net: a.net + r.net,
   }), { pay: 0, sale: 0, other: 0, exp: 0, net: 0 });
 
+  /* กราฟแท่งคู่ รับ/จ่าย — หน่วยบาททั้งคู่จึงใช้แกนเดียวได้
+     ยอดสุทธิไม่เอามาปนในกราฟ เพราะติดลบได้และจะทำให้อ่านสัดส่วนผิด */
+  const chartBox = el('div.chart-box');
+  const chart = rows.length ? card('รายรับเทียบรายจ่ายรายเดือน', [
+    el('div.chart-legend', {}, [
+      el('span', {}, [el('i.sw', { style: `background:${SERIES_COLORS[0]}` }), 'รายรับ']),
+      el('span', {}, [el('i.sw', { style: `background:${SERIES_COLORS[1]}` }), 'รายจ่าย']),
+    ]),
+    chartBox,
+    el('p.hint', { text: 'ชี้ค้างที่แท่งเพื่อดูตัวเลข · ตัวเลขเต็มอยู่ในตารางด้านล่าง' }),
+  ]) : null;
+
+  if (rows.length) {
+    // ต้องรอให้ต่อเข้าหน้าเว็บก่อน ไม่งั้นวัดความกว้างได้ 0
+    // API คืนเดือนล่าสุดก่อน แต่กราฟเวลาต้องไล่จากเก่าไปใหม่ ไม่งั้นอ่านผิดทาง
+    const asc = [...rows].sort((a, b) => String(a.ym).localeCompare(String(b.ym)));
+    queueMicrotask(() => groupedBars(chartBox, {
+      categories: asc.map((r) => r.ym),
+      series: [
+        { name: 'รายรับ', values: asc.map((r) => Number(r.total_income) || 0) },
+        { name: 'รายจ่าย', values: asc.map((r) => Number(r.expense) || 0) },
+      ],
+      format: moneyShort,
+    }));
+  }
+
+  const statTile = (label, value, cls = '') =>
+    el('div.kpi', { class: cls }, [
+      el('div.k-label', { text: label }),
+      el('div.k-value', { text: money(value) }),
+    ]);
+
   return frag([
     pageHead('📈', 'Sale Income By Month', 'สรุปรายรับรายเดือน', [printBtn()]),
-    card(null, [table([
+    rows.length ? el('div.kpis', {}, [
+      statTile('รวมรายรับ', sum.pay + sum.other, 'accent'),
+      statTile('รวมรายจ่าย', sum.exp, 'danger'),
+      statTile('คงเหลือสุทธิ', sum.net, sum.net < 0 ? 'danger' : 'ok'),
+    ]) : null,
+    chart,
+    card('แยกตามเดือน', [table([
       { label: 'เดือน', key: 'ym', cls: 'nowrap' },
       { label: 'รับเงินจากลูกค้า', render: (r) => money(r.payment_income), cls: 'num' },
       { label: '(ในนั้นเป็นขายสินค้า)', render: (r) => money(r.sale_income), cls: 'num' },
@@ -175,7 +220,6 @@ export async function monthly() {
       { label: 'รวมรับ', render: (r) => money(r.total_income), cls: 'num' },
       { label: 'รายจ่าย', render: (r) => money(r.expense), cls: 'num' },
       { label: 'สุทธิ', render: (r) => el('b', { text: money(r.net) }), cls: 'num' },
-      { label: 'สัดส่วน', render: bar },
     ], rows, {
       empty: 'ยังไม่มีข้อมูล',
       footer: rows.length ? el('tr', {}, [
@@ -186,7 +230,6 @@ export async function monthly() {
         el('td.num', { text: money(sum.pay + sum.other) }),
         el('td.num', { text: money(sum.exp) }),
         el('td.num', { text: money(sum.net) }),
-        el('td'),
       ]) : null,
     })], { tight: true }),
   ]);
@@ -366,6 +409,25 @@ export async function printPrescription({ params }) {
       .map((v) => el('td', { text: String(v) })),
   ]);
 
+  const shortRow = (side, prefix, k) => el('tr', {}, [
+    el('td.lbl', { text: side }),
+    ...[power(t[`${prefix}${k}_sphere`]), power(t[`${prefix}${k}_add`]),
+      rxNum(t[`${prefix}${k}_va`]), rxNum(t[`${prefix}${k}_pd`])]
+      .map((v) => el('td', { text: String(v) })),
+  ]);
+  const shortTable = (prefix) => el('table.doc', {}, [
+    el('thead', {}, [el('tr', {}, ['', 'SPH', 'ADD', 'VA', 'PD']
+      .map((h) => el('th', { text: h })))]),
+    el('tbody', {}, [shortRow('R (ขวา)', prefix, 'r'), shortRow('L (ซ้าย)', prefix, 'l')]),
+  ]);
+  const filled = (prefix) => ['r', 'l'].some((k) => ['sphere', 'add', 'va', 'pd']
+    .some((fld) => ![null, undefined, ''].includes(t[`${prefix}${k}_${fld}`])));
+  const hasBin = filled('bin_');
+  const hasOld = filled('old_');
+  const health = [t.health_cataract && 'ต้อกระจก', t.health_eye_surgery && 'เคยผ่าตัดตา',
+    t.health_diabetes && 'เบาหวาน', t.health_bp && 'ความดัน', t.health_heart && 'โรคหัวใจ']
+    .filter(Boolean);
+
   return frag([
     pageHead('🖨', 'ใบวัดสายตา', `#${t.id}`, [
       printBtn(),
@@ -386,12 +448,33 @@ export async function printPrescription({ params }) {
         el('dt', { text: 'ลูกค้า' }), el('dd', { text: custName(t) }),
         el('dt', { text: 'เบอร์โทร' }), el('dd', { text: t.phone || '-' }),
         el('dt', { text: 'ใช้สำหรับ' }), el('dd', { text: t.test_for || '-' }),
+        el('dt', { text: 'ที่มาของค่า' }),
+        el('dd', { text: listLabel('rx_source', t.source) || '-' }),
+        el('dt', { text: 'ตาเปล่า' }),
+        el('dd', { text: `R ${t.va_naked_r || '-'}  /  L ${t.va_naked_l || '-'}` }),
+        el('dt', { text: 'ระยะอ่านหนังสือ' }),
+        el('dd', { text: `R ${t.dist_vertical_r || '-'}  /  L ${t.dist_vertical_l || '-'} ซม.` }),
+        el('dt', { text: 'ระยะคอมพิวเตอร์' }),
+        el('dd', { text: `R ${t.dist_monitor_r || '-'}  /  L ${t.dist_monitor_l || '-'} ซม.` }),
+        el('dt', { text: 'Old Glasses' }),
+        el('dd', { text: listLabel('old_glasses_type', t.old_glasses_type) || '-' }),
       ]),
+      el('h3', { style: 'margin:14px 0 6px', text: 'RX Monocular' }),
       el('table.doc', {}, [
         el('thead', {}, [el('tr', {}, ['', 'SPH', 'CYL', 'AXIS', 'ADD', 'PD', 'VA']
           .map((h) => el('th', { text: h })))]),
         el('tbody', {}, [row('R (ขวา)', 'r'), row('L (ซ้าย)', 'l')]),
       ]),
+      /* ใบกระดาษมีบล็อก Binocular แยกอยู่ใต้ Monocular พิมพ์เมื่อกรอกไว้จริงเท่านั้น */
+      hasBin ? el('h3', { style: 'margin:14px 0 6px', text: 'RX Binocular' }) : null,
+      hasBin ? shortTable('bin_') : null,
+      /* ค่าจากแว่นเดิม พิมพ์ต่อท้ายเมื่อกรอกไว้ ช่างจะได้เทียบก่อน/หลังในใบเดียว */
+      hasOld ? el('h3', { style: 'margin:14px 0 6px', text: 'Old Glasses — แว่นเดิม' }) : null,
+      hasOld ? shortTable('old_') : null,
+      health.length
+        ? el('p', {}, [el('b', { text: 'ประวัติสุขภาพ: ' }),
+          health.join(', ') + (t.health_note ? ' — ' + t.health_note : '')])
+        : null,
       t.notes ? el('p', {}, [el('b', { text: 'หมายเหตุ: ' }), t.notes]) : null,
       el('div.sign', {}, [
         el('div', {}, [el('div.line'), 'ผู้วัดสายตา: ' + (t.employee_name || '')]),

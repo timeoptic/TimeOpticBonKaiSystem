@@ -3,10 +3,47 @@ import {
   api, meta, el, frag, card, table, pageHead, field, input, select, listSelect,
   employeeSelect, formData, money, moneyShort, fmtDate, fmtDateTime, dateOnly, dtLocal,
   nowLocal, custName, power, rxNum, ok, err, confirmDialog, picker, todayISO,
-  stageInfo, statusChip, statusByCode,
+  stageInfo, statusChip, listLabel, glassesTypeOfLens,
+  addCustomerAction,
 } from '../core.js';
+import { rxFormFields } from './core-views.js';
 
 const GROUPS = ['reception', 'exam', 'sales', 'production', 'qc', 'delivery'];
+
+/* ข้อมูลเก่าเก็บเป็นรหัส ถ้าวันหลังลบตัวเลือกออกจากรายการ ให้โชว์รหัสดิบไว้ก่อน
+   ดีกว่าโชว์ค่าว่างจนดูเหมือนไม่เคยกรอก */
+const referralLabel = (code) =>
+  ((meta.referral_sources || []).find(([c]) => c === code) || [null, code])[1];
+
+/* ข้อมูลที่เลือกให้แสดงได้บนการ์ดและในตาราง
+   รหัสเคส ชื่อลูกค้า และขั้นตอน ไม่อยู่ในนี้เพราะขาดไม่ได้ */
+const CASE_FIELDS = [
+  ['invoice', 'เลข Invoice'],
+  ['phone', 'เบอร์โทร'],
+  ['status', 'สถานะย่อย'],
+  ['item', 'เลนส์ / กรอบ'],
+  ['received', 'ผู้รับเรื่อง'],
+  ['opened', 'วันเปิดเคส'],
+  ['age', 'อายุเคส'],
+  ['appt', 'วันนัดรับ'],
+  ['total', 'ยอดรวม'],
+  ['paid', 'รับแล้ว'],
+  ['balance', 'ยอดคงค้าง'],
+  ['tags', 'ป้ายด่วน / รอของ'],
+];
+const FIELDS_KEY = 'timeoptic:case-fields';
+const DEFAULT_FIELDS = ['invoice', 'phone', 'status', 'item', 'age', 'appt', 'balance', 'tags'];
+
+function loadFields() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(FIELDS_KEY));
+    if (Array.isArray(raw)) return new Set(raw);
+  } catch { /* อ่านไม่ได้ก็ใช้ค่าเริ่มต้น */ }
+  return new Set(DEFAULT_FIELDS);
+}
+const saveFields = (set) => {
+  try { localStorage.setItem(FIELDS_KEY, JSON.stringify([...set])); } catch { /* ไม่ใช่เรื่องคอขาดบาดตาย */ }
+};
 
 /* ============================== BOARD ============================== */
 export async function caseBoard({ navigate, query }) {
@@ -20,7 +57,84 @@ export async function caseBoard({ navigate, query }) {
   const rushOnly = el('input', { type: 'checkbox' });
   const showDone = el('input', { type: 'checkbox' });
   const holder = el('div');
+  const chipBar = el('div.stage-filter');
   let timer = null;
+  let stage = GROUPS.includes(query.stage) ? query.stage : '';
+  let view = query.view === 'list' ? 'list' : 'board';
+  const fields = loadFields();
+
+  /* ---- เลือกเองว่าจะให้แสดงข้อมูลอะไรบ้าง ---- */
+  const fieldMenu = el('div.field-menu', {}, [
+    el('div.fm-head', {}, [
+      el('b', { text: 'ข้อมูลที่แสดง' }),
+      el('button.btn.btn-sm.btn-light', {
+        type: 'button', text: 'ทั้งหมด',
+        onclick: () => { CASE_FIELDS.forEach(([k]) => fields.add(k)); syncFieldMenu(); },
+      }),
+      el('button.btn.btn-sm.btn-light', {
+        type: 'button', text: 'ล้าง',
+        onclick: () => { fields.clear(); syncFieldMenu(); },
+      }),
+    ]),
+    ...CASE_FIELDS.map(([key, label]) => el('label.check.fm-row', {}, [
+      el('input', {
+        type: 'checkbox', dataset: { f: key },
+        onchange: (e) => {
+          if (e.target.checked) fields.add(key); else fields.delete(key);
+          saveFields(fields); run();
+        },
+      }),
+      ' ' + label,
+    ])),
+  ]);
+  function syncFieldMenu() {
+    for (const box of fieldMenu.querySelectorAll('input[type=checkbox]')) {
+      box.checked = fields.has(box.dataset.f);
+    }
+    saveFields(fields); run();
+  }
+  const fieldBtn = el('button.btn.btn-light', {
+    type: 'button', text: '⚙ ข้อมูลที่แสดง',
+    onclick: (e) => {
+      e.stopPropagation();
+      fieldMenu.classList.toggle('open');
+    },
+  });
+  // แตะที่อื่นแล้วปิดเมนู ไม่งั้นบนแท็บเล็ตมันค้างบังของอื่น
+  document.addEventListener('click', (e) => {
+    if (!fieldMenu.contains(e.target)) fieldMenu.classList.remove('open');
+  });
+
+  /* ---- ปุ่มสลับมุมมอง ---- */
+  const viewBtn = (v, label) => el('button.cal-vbtn', {
+    type: 'button', class: view === v ? 'active' : '', text: label,
+    onclick: () => { view = v; syncViewBtns(); run(); },
+  });
+  const boardBtn = viewBtn('board', 'กระดาน');
+  const listBtn = viewBtn('list', 'รายการ');
+  const syncViewBtns = () => {
+    boardBtn.classList.toggle('active', view === 'board');
+    listBtn.classList.toggle('active', view === 'list');
+  };
+
+  /* ---- แถบกรองตามขั้นตอน ---- */
+  function drawChips(counts, total) {
+    const chip = (g, label, icon, n) => el('button.stage-chip', {
+      type: 'button',
+      class: (stage === g ? 'active' : '') + (n ? '' : ' empty'),
+      style: g ? `--stage:${stageInfo(g).color}` : '--stage:var(--ink-soft)',
+      onclick: () => { stage = stage === g ? '' : g; run(); },
+    }, [
+      icon ? el('span.sc-ic', { text: icon }) : null,
+      el('span', { text: label }),
+      el('span.sc-n', { text: String(n) }),
+    ]);
+    chipBar.replaceChildren(
+      chip('', 'ทั้งหมด', null, total),
+      ...(showDone.checked ? [...GROUPS, 'done'] : GROUPS)
+        .map((g) => chip(g, stageInfo(g).label, stageInfo(g).icon, counts[g] || 0)),
+    );
+  }
 
   async function run() {
     holder.replaceChildren(el('div.loading', {}, [el('span.spin'), ' กำลังโหลด…']));
@@ -32,22 +146,14 @@ export async function caseBoard({ navigate, query }) {
     });
     const byGroup = {};
     for (const r of rows) (byGroup[r.stage_group] ||= []).push(r);
+    drawChips(Object.fromEntries(Object.entries(byGroup).map(([k, v]) => [k, v.length])), rows.length);
 
-    const cols = (showDone.checked ? [...GROUPS, 'done'] : GROUPS).map((g) => {
-      const info = stageInfo(g);
-      const list = byGroup[g] || [];
-      return el('div.board-col', {}, [
-        el('div.board-head', { style: `border-top-color:${info.color}` }, [
-          el('span', { text: `${info.icon} ${info.label}` }),
-          el('span.badge.gray', { text: String(list.length) }),
-        ]),
-        el('div.board-body', {}, list.length
-          ? list.map((c) => caseCard(c, navigate))
-          : [el('div.board-empty', { text: '—' })]),
-      ]);
-    });
-    holder.replaceChildren(el('div.board', {}, cols));
+    const shown = stage ? rows.filter((r) => r.stage_group === stage) : rows;
+    holder.replaceChildren(view === 'list'
+      ? listView(shown, navigate, fields)
+      : boardView(byGroup, showDone.checked, stage, navigate, run, fields));
   }
+
   search.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(run, 250); });
   rushOnly.addEventListener('change', run);
   showDone.addEventListener('change', run);
@@ -56,42 +162,349 @@ export async function caseBoard({ navigate, query }) {
     el('div.field.grow', {}, [el('label', { text: 'ค้นหา' }), search]),
     el('label.check', {}, [rushOnly, ' ด่วนเท่านั้น 🔥']),
     el('label.check', {}, [showDone, ' แสดงเคสที่จบแล้ว']),
+    el('div.cal-views', {}, [boardBtn, listBtn]),
+    el('div.field-menu-wrap', {}, [fieldBtn, fieldMenu]),
     el('button.btn.btn-light', { text: '↻ รีเฟรช', onclick: run }),
   ]));
-  wrap.append(holder);
+  syncFieldMenu();
+  wrap.append(chipBar, holder);
   run();
   return wrap;
 }
 
-function caseCard(c, navigate) {
+/* มุมมองกระดาน — กรองขั้นแล้วเหลือคอลัมน์เดียว */
+function boardView(byGroup, withDone, stage, navigate, onMoved, fields) {
+  const groups = (withDone ? [...GROUPS, 'done'] : GROUPS).filter((g) => !stage || g === stage);
+  const cols = groups.map((g) => {
+    const info = stageInfo(g);
+    const list = byGroup[g] || [];
+    // สีของขั้นตอนส่งต่อเป็นตัวแปร CSS ให้ทั้งหัวคอลัมน์และการ์ดใช้ชุดเดียวกัน
+    const due = list.reduce((a, c) => a + (Number(c.balance) || 0), 0);
+    return el('div.board-col', { style: `--stage:${info.color}`, dataset: { group: g } }, [
+      el('div.board-head', {}, [
+        el('span.bh-ic', { text: info.icon }),
+        el('span.bh-name', { text: info.label }),
+        el('span.bh-count', { text: String(list.length) }),
+      ]),
+      el('div.board-body', {}, list.length
+        ? list.map((c) => caseCard(c, navigate, fields))
+        : [el('div.board-empty', { text: 'ไม่มีเคสในขั้นนี้' })]),
+      due > 0 ? el('div.board-foot', { text: 'ยอดค้างรวม ' + moneyShort(due) }) : null,
+    ]);
+  });
+  const board = el('div.board', { class: cols.length === 1 ? 'board-single' : '' }, cols);
+  enableCardDrag(board, onMoved);
+  return board;
+}
+
+/* มุมมองรายการ — เต็มความกว้าง ข้อมูลครบทุกช่อง ไม่ตัดคำ */
+function listView(rows, navigate, fields = new Set(DEFAULT_FIELDS)) {
+  const on = (k) => fields.has(k);
+  const due = rows.reduce((a, c) => a + (Number(c.balance) || 0), 0);
+  const money0 = (v) => money(Number(v) || 0);
+
+  /* คอลัมน์สร้างตามที่เลือกไว้ สามอันแรกขาดไม่ได้จึงอยู่นอกเงื่อนไข */
+  const cols = [
+    {
+      label: 'เคส',
+      render: (c) => el('div.lv-code', {}, [
+        el('b', { text: c.case_code }),
+        on('invoice') && c.invoice_code ? el('span.muted', { text: c.invoice_code }) : null,
+      ]),
+      cls: 'nowrap',
+    },
+    {
+      label: 'ลูกค้า',
+      render: (c) => el('div', {}, [
+        el('b', { text: [c.first_name, c.last_name].filter(Boolean).join(' ') || '(ไม่ระบุชื่อ)' }),
+        on('phone') && c.phone
+          ? el('div.muted', { style: 'font-size:12px', text: '☎ ' + c.phone }) : null,
+      ]),
+    },
+    {
+      label: 'ขั้นตอน',
+      render: (c) => {
+        const st = stageInfo(c.stage_group);
+        return el('span.badge', { style: `background:${st.color}1a;color:${st.color}`, text: st.label });
+      },
+      cls: 'nowrap',
+    },
+  ];
+  const opt = {
+    status: { label: 'สถานะ', render: (c) => `${c.stage_no} ${c.status_label_th}` },
+    item: {
+      label: 'เลนส์ / กรอบ',
+      render: (c) => el('div', {}, [
+        c.lens_name ? el('div', { text: c.lens_name }) : null,
+        c.frame_name ? el('div.muted', { style: 'font-size:12px', text: c.frame_name }) : null,
+        !c.lens_name && !c.frame_name ? el('span.muted', { text: '—' }) : null,
+      ]),
+    },
+    received: { label: 'ผู้รับเรื่อง', render: (c) => c.received_by_name || '—', cls: 'nowrap' },
+    opened: { label: 'เปิดเมื่อ', render: (c) => fmtDate(c.opened_at), cls: 'nowrap' },
+    age: {
+      label: 'อายุเคส',
+      render: (c) => el('span.cc-age', {
+        class: ageClass(c.age_days),
+        text: c.age_days === 0 ? 'วันนี้' : `${c.age_days} วัน`,
+      }),
+      cls: 'nowrap',
+    },
+    appt: { label: 'นัดรับ', render: (c) => fmtDate(c.appointment_date) || '—', cls: 'nowrap' },
+    total: { label: 'ยอดรวม', render: (c) => money0(c.total_price), cls: 'num' },
+    paid: { label: 'รับแล้ว', render: (c) => money0(c.paid), cls: 'num' },
+    balance: {
+      label: 'คงค้าง',
+      render: (c) => (Number(c.balance) > 0
+        ? el('b', { style: 'color:var(--warn)', text: money0(c.balance) })
+        : el('span.muted', { text: '—' })),
+      cls: 'num',
+    },
+    tags: {
+      label: 'ป้าย',
+      render: (c) => el('div.row', { style: 'gap:4px' }, [
+        c.is_rush ? el('span.cc-rush', { text: '🔥 ด่วน' }) : null,
+        c.is_waiting ? el('span.badge.warn', { text: 'รอของ' }) : null,
+      ]),
+      cls: 'nowrap',
+    },
+  };
+  for (const [key] of CASE_FIELDS) if (opt[key] && on(key)) cols.push(opt[key]);
+
+  const balCol = cols.findIndex((x) => x.label === 'คงค้าง');
+  return card(`รายการเคส ${rows.length} รายการ`, [
+    table(cols, rows, {
+      empty: 'ไม่มีเคสที่ตรงกับเงื่อนไข',
+      onRowClick: (c) => navigate('#/cases/' + c.id),
+      footer: rows.length && balCol >= 0
+        ? el('tr', {}, [
+          el('td', { colspan: balCol, text: `รวม ${rows.length} เคส` }),
+          el('td.num', { text: money0(due) }),
+          ...cols.slice(balCol + 1).map(() => el('td')),
+        ])
+        : null,
+    }),
+  ], { tight: true });
+}
+
+/* เคสค้างยิ่งนานยิ่งต้องสะดุดตา ไม่ใช่ตัวเทาเท่ากันหมด */
+function ageClass(days) {
+  if (days >= 14) return 'age-bad';
+  if (days >= 7) return 'age-warn';
+  return '';
+}
+
+function caseCard(c, navigate, fields = new Set(DEFAULT_FIELDS)) {
+  const on = (k) => fields.has(k);
   const late = c.expected_arrival && new Date(c.expected_arrival) < new Date()
     && c.lens_status === 'waiting_arrival';
+  const item = [c.lens_name, c.frame_name].filter(Boolean).join(' / ');
+  const balance = Number(c.balance) || 0;
+
   return el('div.case-card', {
     class: c.is_rush ? 'rush' : '',
+    dataset: { id: c.id },
     onclick: () => navigate('#/cases/' + c.id),
   }, [
     el('div.cc-top', {}, [
-      el('b', { text: [c.first_name, c.last_name].filter(Boolean).join(' ') }),
-      c.is_rush ? el('span.badge.danger', { text: '🔥 ด่วน' }) : null,
+      el('b.cc-name', { text: [c.first_name, c.last_name].filter(Boolean).join(' ') }),
+      c.is_rush ? el('span.cc-rush', { text: '🔥 ด่วน' }) : null,
     ]),
-    el('div.cc-code', { text: `${c.case_code}${c.invoice_code ? ' · ' + c.invoice_code : ''}` }),
-    el('div.cc-status', { text: `${c.stage_no} ${c.status_label_th}` }),
-    c.lens_name || c.frame_name
-      ? el('div.cc-item', { text: [c.lens_name, c.frame_name].filter(Boolean).join(' / ') })
-      : null,
+    el('div.cc-code', {
+      text: c.case_code + (on('invoice') && c.invoice_code ? ' · ' + c.invoice_code : ''),
+    }),
+    on('status') ? el('div.cc-status', {}, [
+      el('i.cc-dot'),
+      el('span', { text: `${c.stage_no} ${c.status_label_th}` }),
+    ]) : null,
+    on('phone') && c.phone ? el('div.cc-item', { text: '☎ ' + c.phone }) : null,
+    on('item') && item ? el('div.cc-item', { title: item, text: item }) : null,
+    on('received') && c.received_by_name
+      ? el('div.cc-item', { text: '🧑‍💼 ' + c.received_by_name }) : null,
     el('div.cc-foot', {}, [
-      c.appointment_date
-        ? el('span', { text: '📅 ' + fmtDate(c.appointment_date) })
-        : el('span.muted', { text: '—' }),
-      c.balance !== null && c.balance !== undefined
-        ? el('span', { text: 'ค้าง ' + moneyShort(c.balance) }) : null,
+      on('opened') ? el('span.cc-date', { text: 'เปิด ' + fmtDate(c.opened_at) }) : null,
+      on('appt') && c.appointment_date
+        ? el('span.cc-date', { text: '📅 ' + fmtDate(c.appointment_date) }) : null,
     ]),
     el('div.cc-foot', {}, [
-      el('span.muted', { text: `เปิดมา ${c.age_days} วัน` }),
-      late ? el('span.badge.danger', { text: 'เลนส์เลย ETA' }) : null,
-      c.is_waiting ? el('span.badge.warn', { text: 'รอ' }) : null,
+      on('total') ? el('span', { text: 'รวม ' + moneyShort(c.total_price) }) : null,
+      on('paid') ? el('span', { text: 'รับ ' + moneyShort(c.paid) }) : null,
+      on('balance') && balance > 0
+        ? el('span.cc-bal', { text: 'ค้าง ' + moneyShort(balance) }) : null,
+    ]),
+    el('div.cc-tags', {}, [
+      on('age') ? el('span.cc-age', {
+        class: ageClass(c.age_days),
+        text: c.age_days === 0 ? 'เปิดวันนี้' : `เปิดมา ${c.age_days} วัน`,
+      }) : null,
+      on('tags') && late ? el('span.badge.danger', { text: 'เลนส์เลยกำหนด' }) : null,
+      on('tags') && c.is_waiting ? el('span.badge.warn', { text: 'รอของ' }) : null,
     ]),
   ]);
+}
+
+/* ------------------------- ลากการ์ดข้ามคอลัมน์ -------------------------
+ * ใช้ Pointer Events ไม่ใช่ HTML5 drag-and-drop เพราะ Safari บน iPad
+ * ไม่รองรับ HTML5 drag เลย ลากไม่ติดสักครั้ง
+ *
+ * การ์ดตั้ง touch-action:pan-y ไว้ นิ้วปัดขึ้นลง = เลื่อนคอลัมน์ตามปกติ
+ * ปัดออกข้าง = เริ่มลาก จึงไม่แย่งท่าเลื่อนหน้าจอไปจากผู้ใช้
+ */
+
+/** สถานะถัดไปตามลำดับงานจริง — คืน null เมื่อเคสจบแล้วหรือไม่มีต่อ */
+/** สถานะย่อยทั้งหมดของขั้นนั้น เรียงตามลำดับงานจริง
+    เอา is_terminal มาด้วย เพราะขั้น "จบงาน" มีแต่สถานะปิดเคส */
+function statusesOfGroup(group) {
+  return (meta.statuses || [])
+    .filter((s) => s.stage_group === group)
+    .sort((a, b) => a.sort_order - b.sort_order);
+}
+
+/** ขั้นตอนไหน "เสร็จแล้ว" ดูจากข้อมูลที่กรอกครบ ไม่ใช่จากสถานะที่กดไว้
+    คืนรายการสิ่งที่ยังขาด ถ้าว่าง = ขั้นนั้นครบแล้ว
+    เก็บเป็นข้อความไว้โชว์ตอนชี้ที่วงกลม จะได้รู้ว่าต้องไปกรอกอะไรต่อ */
+const STAGE_CHECKS = {
+  reception: (c) => [
+    !c.customer_id && 'ข้อมูลลูกค้า',
+    !c.received_by && 'ผู้รับเรื่อง',
+  ],
+  exam: (c) => [
+    !(c.prescriptions || []).some((r) => r.kind === 'final' || r.confirmed_at)
+      && 'ค่าสายตาที่ยืนยันแล้ว',
+  ],
+  sales: (c) => [
+    !c.order && 'ออเดอร์',
+    c.order && !c.order.frame_name && 'กรอบแว่น',
+    c.order && !c.order.lens_name && 'เลนส์',
+    !(c.centering && c.centering.pd_total) && 'วัดจุดศูนย์กลาง',
+    c.order && !c.order.appointment_date && 'วันนัดรับ',
+  ],
+  production: (c) => [
+    !c.lens_job && 'ใบงานเลนส์',
+    c.lens_job && !(c.lens_job.received_at || c.lens_job.picked_at) && 'รับเลนส์เข้า',
+    !(c.production && c.production.edging_finished_at) && 'ฝนเลนส์เสร็จ',
+  ],
+  qc: (c) => [
+    !(c.qc_checks || []).some((q) => q.result === 'pass') && 'ผล QC ที่ผ่าน',
+  ],
+  delivery: (c) => [
+    !(c.production && c.production.pack_glasses) && 'แพ็คสินค้า',
+    !(c.notifications || []).length && 'แจ้งลูกค้า',
+    Number(c.balance) > 0 && 'เก็บเงินให้ครบ',
+  ],
+  done: (c) => [
+    !(c.closed_at || c.is_terminal) && 'ปิดเคส',
+  ],
+};
+
+/** สิ่งที่ยังขาดของขั้นนั้น — [] แปลว่าครบ */
+const stageMissing = (group, c) =>
+  ((STAGE_CHECKS[group] || (() => []))(c)).filter(Boolean);
+
+/** สถานะแรกของขั้นตอนนั้น = สถานะที่เคสควรไปอยู่เมื่อถูกย้ายเข้ามา */
+function entryStatusOf(group) {
+  return (meta.statuses || [])
+    .filter((s) => s.stage_group === group && !s.is_terminal)
+    .sort((a, b) => a.sort_order - b.sort_order)[0] || null;
+}
+
+const DRAG_THRESHOLD = 8;
+
+function enableCardDrag(board, onMoved) {
+  let st = null;
+
+  const cleanup = () => {
+    if (!st) return;
+    st.ghost?.remove();
+    st.card.classList.remove('dragging');
+    document.body.classList.remove('board-dragging');
+    board.querySelectorAll('.board-col.drop-target')
+      .forEach((c) => c.classList.remove('drop-target'));
+    st = null;
+  };
+
+  const colUnder = (x, y) => {
+    if (st?.ghost) st.ghost.style.display = 'none';
+    const hit = document.elementFromPoint(x, y);
+    if (st?.ghost) st.ghost.style.display = '';
+    return hit ? hit.closest('.board-col') : null;
+  };
+
+  board.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 && e.pointerType === 'mouse') return;
+    const card = e.target.closest('.case-card');
+    if (!card) return;
+    st = {
+      card, id: card.dataset.id, from: card.closest('.board-col').dataset.group,
+      x0: e.clientX, y0: e.clientY, active: false, ghost: null, target: null,
+    };
+  });
+
+  board.addEventListener('pointermove', (e) => {
+    if (!st) return;
+    const dx = e.clientX - st.x0, dy = e.clientY - st.y0;
+
+    if (!st.active) {
+      // ต้องปัดออกข้างมากกว่าขึ้นลง ไม่งั้นถือว่าผู้ใช้ตั้งใจเลื่อนคอลัมน์
+      if (Math.abs(dx) < DRAG_THRESHOLD || Math.abs(dx) <= Math.abs(dy)) return;
+      st.active = true;
+      st.card.setPointerCapture?.(e.pointerId);
+      const r = st.card.getBoundingClientRect();
+      st.offX = st.x0 - r.left;
+      st.offY = st.y0 - r.top;
+      const g = st.card.cloneNode(true);
+      g.className = 'case-card card-ghost';
+      g.style.width = r.width + 'px';
+      document.body.append(g);
+      st.ghost = g;
+      st.card.classList.add('dragging');
+      document.body.classList.add('board-dragging');
+    }
+
+    st.ghost.style.left = (e.clientX - st.offX) + 'px';
+    st.ghost.style.top = (e.clientY - st.offY) + 'px';
+
+    const col = colUnder(e.clientX, e.clientY);
+    if (col !== st.target) {
+      st.target?.classList.remove('drop-target');
+      st.target = col && col.dataset.group !== st.from ? col : null;
+      st.target?.classList.add('drop-target');
+    }
+  });
+
+  const finish = async (e) => {
+    if (!st) return;
+    const { active, target, id, card } = st;
+    const toGroup = target?.dataset.group;
+    cleanup();
+    if (!active) return;          // แค่แตะเฉยๆ ปล่อยให้ click พาไปหน้าเคส
+    e.preventDefault();
+    if (!toGroup) return;
+
+    const to = entryStatusOf(toGroup);
+    if (!to) { err(new Error('ขั้นตอนนี้ไม่มีสถานะให้ย้ายเข้า')); return; }
+
+    // บอกให้ชัดว่าจะกลายเป็นสถานะอะไร ไม่เดาแทนผู้ใช้เงียบๆ
+    const name = card.querySelector('.cc-name')?.textContent || 'เคสนี้';
+    const okGo = await confirmDialog(
+      'ย้ายเคส',
+      `ย้าย "${name}" ไปขั้น ${stageInfo(toGroup).label}\nสถานะจะเปลี่ยนเป็น "${to.stage_no} ${to.label_th}"`,
+      { confirmText: 'ย้ายเลย' });
+    if (!okGo) return;
+
+    try {
+      await api.post(`/api/cases/${id}/status`, { status: to.code });
+      ok(`ย้าย ${name} ไป ${stageInfo(toGroup).label} แล้ว`);
+      onMoved();
+    } catch (ex) { err(ex); }
+  };
+
+  board.addEventListener('pointerup', finish);
+  board.addEventListener('pointercancel', () => cleanup());
+  // ลากแล้วปล่อย ต้องไม่ให้ click เด้งไปหน้าเคส
+  board.addEventListener('click', (e) => {
+    if (document.body.classList.contains('board-dragging')) e.stopPropagation();
+  }, true);
 }
 
 /* ============================= NEW CASE ============================ */
@@ -110,6 +523,8 @@ export async function caseForm({ query, navigate }) {
   const pick = picker({
     placeholder: 'ค้นหาลูกค้า (ชื่อ / เบอร์โทร / รหัส)',
     fetcher: (q) => api.get('/api/customers', { q, limit: 40 }),
+    // ค้นไม่เจอ = ลูกค้าใหม่ ให้เพิ่มได้ตรงนั้นเลย ไม่ต้องทิ้งฟอร์มที่กรอกค้างไว้
+    emptyAction: addCustomerAction(),
     label: custName,
     sub: (r) => r.phone || '',
     onPick: (r) => { customer = r; draw(); },
@@ -122,6 +537,8 @@ export async function caseForm({ query, navigate }) {
       field('สถานะเริ่มต้น', select('status',
         (meta.statuses || []).filter((s) => !s.is_terminal)
           .map((s) => [s.code, `${s.stage_no} ${s.label_th}`]), 'reception')),
+      field('รู้จักร้านจากช่องทางไหน', select('referral_source',
+        [['', '— ไม่ระบุ —'], ...(meta.referral_sources || [])], '')),
       el('div.field', {}, [
         el('label', { text: 'ประเภทงาน' }),
         el('div.row', {}, [
@@ -129,10 +546,9 @@ export async function caseForm({ query, navigate }) {
           el('label.check', {}, [input('is_new_customer', { type: 'checkbox' }), ' ลูกค้าใหม่']),
         ]),
       ]),
-      field('หมายเหตุความเร่งด่วน', input('priority_note')),
     ]),
     el('div.field.full', {}, [
-      el('label', { text: 'บันทึกตอนรับเรื่อง / Reception note' }),
+      el('label', { text: 'หมายเหตุ' }),
       el('textarea', { name: 'reception_note', placeholder: 'ลูกค้าต้องการอะไร มีอาการอย่างไร' }),
     ]),
     el('div.form-actions', {}, [
@@ -179,17 +595,35 @@ function rxTable(t) {
       power(t[`${k}_add`]), rxNum(t[`${k}_pd`]), rxNum(t[`${k}_va`]),
       t[`${k}_prism`] || '—'].map((v) => el('td', { text: String(v) })),
   ]);
+  /* ค่าวัดสองตาพร้อมกัน กระดาษถามแค่ SPH / ADD / VA / PD ช่องที่เหลือจึงเว้นไว้ */
+  const shortRow = (label, prefix, k) => el('tr.bin', {}, [
+    el('td.lbl', { text: label }),
+    ...[power(t[`${prefix}${k}_sphere`]), '—', '—', power(t[`${prefix}${k}_add`]),
+      rxNum(t[`${prefix}${k}_pd`]), rxNum(t[`${prefix}${k}_va`]), '—']
+      .map((v) => el('td', { text: String(v) })),
+  ]);
+  const filled = (prefix) => ['r', 'l'].some((k) => ['sphere', 'add', 'va', 'pd']
+    .some((fld) => ![null, undefined, ''].includes(t[`${prefix}${k}_${fld}`])));
+  const hasBin = filled('bin_');
+  const hasOld = filled('old_');
+
   return el('table.doc', {}, [
     el('thead', {}, [el('tr', {}, ['', 'SPH', 'CYL', 'AXIS', 'ADD', 'PD', 'VA', 'PRISM']
       .map((h) => el('th', { text: h })))]),
-    el('tbody', {}, [row('R', 'r'), row('L', 'l')]),
+    el('tbody', {}, [
+      row('R', 'r'), row('L', 'l'),
+      ...(hasBin ? [shortRow('Bino R', 'bin_', 'r'), shortRow('Bino L', 'bin_', 'l')] : []),
+      ...(hasOld ? [shortRow('แว่นเดิม R', 'old_', 'r'), shortRow('แว่นเดิม L', 'old_', 'l')] : []),
+    ]),
   ]);
 }
 
 export async function caseDetail({ params, navigate, refresh }) {
   const c = await api.get('/api/cases/' + params.id);
   const wrap = el('div');
-  const empId = () => Number(document.querySelector('#actor-select')?.value) || null;
+  /* ไม่มีช่อง "ผู้ทำรายการ" รวมแล้ว แต่ละแท็บที่ต้องระบุคนทำมีช่องของตัวเอง
+     ที่เหลือส่ง null ไป ฝั่ง server รับได้ */
+  const empId = () => null;
 
   wrap.append(pageHead('🗂', c.case_code, custName(c), [
     el('a.btn.btn-ghost', { href: '#/customers/' + c.customer_id, text: '👤 ข้อมูลลูกค้า' }),
@@ -197,11 +631,60 @@ export async function caseDetail({ params, navigate, refresh }) {
     c.order ? el('a.btn.btn-ghost', { href: '#/print/order/' + c.order.id, text: '🖨 ใบสั่ง' }) : null,
   ]));
 
-  /* ---- status strip ---- */
-  const actor = employeeSelect('actor', '');
-  actor.id = 'actor-select';
-  const statusSel = select('to_status',
-    (meta.statuses || []).map((s) => [s.code, `${s.stage_no} ${s.label_th}`]), c.status);
+  /* ---- status strip ----
+     ย้ายขั้นทำที่แถบขั้นตอนที่เดียว ไม่มีปุ่มซ้ำอีกที่ */
+
+  const goStatus = async (code) => {
+    if (!code || code === c.status) return;
+    try {
+      await api.post(`/api/cases/${c.id}/status`, { status: code, employee_id: empId() });
+      ok('เปลี่ยนสถานะแล้ว'); refresh();
+    } catch (ex) { err(ex); }
+  };
+
+  /* แถบขั้นตอน — ✔ = ข้อมูลขั้นนั้นกรอกครบแล้ว (ดูจากข้อมูลจริง ไม่ใช่จากสถานะที่กดไว้)
+     วงแหวน = ขั้นที่เคสอยู่ตอนนี้
+     กดวงกลม = ย้ายเคสไปขั้นนั้นทันที · กดชื่อขั้น = เปิดดูข้อมูล แยกเป้ากดคนละจุด */
+  const allGroups = [...GROUPS, 'done'];
+  /* ขั้นไหนข้อมูลไปอยู่แท็บไหน */
+  const STAGE_TAB = {
+    reception: 'รับเรื่อง', exam: 'ค่าสายตา', sales: 'การเงิน',
+    production: 'เลนส์', qc: 'ผลิต & QC', delivery: 'ติดต่อลูกค้า', done: 'ไทม์ไลน์',
+  };
+  let showTab = () => {};   // ผูกจริงหลังสร้างแท็บเสร็จข้างล่าง
+
+  /* ย้ายทันทีที่กด ไม่ถามซ้ำ — เข้าที่สถานะแรกของขั้นนั้น
+     ขั้น "จบงาน" มีแต่สถานะปิดเคส entryStatusOf จึงคืน null ต้องหยิบตัวแรกมาเอง */
+  const moveToStage = (g) =>
+    goStatus((entryStatusOf(g) || statusesOfGroup(g)[0] || {}).code);
+
+  const stepper = el('div.stepper', {}, allGroups.map((g) => {
+    const info = stageInfo(g);
+    const missing = stageMissing(g, c);
+    const filled = !missing.length;
+    /* now = เคสอยู่ขั้นนี้, done = ข้อมูลครบ — เป็นได้พร้อมกัน คนละเรื่องกัน */
+    const state = `${filled ? 'done' : 'todo'}${g === c.stage_group ? ' now' : ''}`;
+    return el('div.step', {
+      class: state,
+      style: `--stage:${info.color}`,
+    }, [
+      el('span.step-line'),
+      el('button.step-dot.icon-only', {
+        type: 'button',
+        title: filled
+          ? `ข้อมูลครบแล้ว — กดเพื่อย้ายเคสไปขั้น ${info.label}`
+          : `ยังขาด: ${missing.join(', ')} — กดเพื่อย้ายเคสไปขั้น ${info.label}`,
+        text: filled ? '✔' : info.icon,
+        onclick: () => moveToStage(g),
+      }),
+      el('button.step-label', {
+        type: 'button',
+        title: `ดูข้อมูลขั้น ${info.label}`,
+        text: info.label,
+        onclick: () => showTab(STAGE_TAB[g]),
+      }),
+    ]);
+  }));
 
   wrap.append(el('div.card', {}, [
     el('div.card-body', {}, [
@@ -212,21 +695,8 @@ export async function caseDetail({ params, navigate, refresh }) {
         el('span.muted', { text: `เปิดเมื่อ ${fmtDateTime(c.opened_at)}` }),
         c.received_by_name ? el('span.muted', { text: `รับโดย ${c.received_by_name}` }) : null,
         c.phone ? el('span.muted', { text: '☎ ' + c.phone }) : null,
-      ]),
-      el('div.toolbar', { style: 'margin:0' }, [
-        field('ผู้ทำรายการ', actor),
-        field('เปลี่ยนสถานะเป็น', statusSel),
-        el('button.btn.btn-accent', {
-          text: '→ เปลี่ยนสถานะ',
-          onclick: async () => {
-            try {
-              await api.post(`/api/cases/${c.id}/status`,
-                { status: statusSel.value, employee_id: empId() });
-              ok('เปลี่ยนสถานะแล้ว'); refresh();
-            } catch (ex) { err(ex); }
-          },
-        }),
-        el('button.btn.btn-light', {
+        el('button.btn.btn-sm.btn-light', {
+          type: 'button',
           text: c.is_rush ? 'ยกเลิกงานด่วน' : '🔥 ตั้งเป็นงานด่วน',
           onclick: async () => {
             try {
@@ -235,7 +705,15 @@ export async function caseDetail({ params, navigate, refresh }) {
             } catch (ex) { err(ex); }
           },
         }),
+        c.referral_source
+          ? el('span.badge.blue', { text: 'รู้จักจาก ' + referralLabel(c.referral_source) })
+          : null,
       ]),
+      stepper,
+      el('p.hint', {
+        style: 'margin:-10px 0 12px;text-align:center',
+        text: '✔ = ข้อมูลขั้นนั้นกรอกครบแล้ว · กดวงกลม = ย้ายเคสไปขั้นนั้น · กดชื่อขั้น = เปิดดูข้อมูล',
+      }),
     ]),
   ]));
 
@@ -260,6 +738,7 @@ export async function caseDetail({ params, navigate, refresh }) {
 
   /* ---- tab panels ---- */
   const panels = {
+    'รับเรื่อง': receptionPanel(c),
     'ค่าสายตา': rxPanel(c, refresh, empId),
     'เลนส์': lensPanel(c, refresh, empId),
     'ผลิต & QC': productionPanel(c, refresh, empId),
@@ -272,19 +751,49 @@ export async function caseDetail({ params, navigate, refresh }) {
   const tabs = el('div.tabs', {}, names.map((n, i) =>
     el('a', {
       href: 'javascript:void 0', class: i === 0 ? 'active' : '', text: n,
-      onclick: (e) => {
-        e.preventDefault();
-        [...tabs.children].forEach((a) => a.classList.remove('active'));
-        e.target.classList.add('active');
-        body.replaceChildren(panels[n]);
-      },
+      dataset: { tab: n },
+      onclick: (e) => { e.preventDefault(); showTab(n); },
     })));
-  body.replaceChildren(panels[names[0]]);
+
+  showTab = (name) => {
+    if (!panels[name]) return;
+    for (const a of tabs.children) a.classList.toggle('active', a.dataset.tab === name);
+    body.replaceChildren(panels[name]);
+    // กดจากแถบขั้นตอนแล้วเนื้อหาอยู่ต่ำกว่าจอ ต้องเลื่อนไปให้เห็น
+    tabs.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  };
+
+  // เปิดหน้ามาให้อยู่แท็บของขั้นที่เคสอยู่ตอนนี้เลย ไม่ต้องไล่หาเอง
+  showTab(STAGE_TAB[c.stage_group] || names[0]);
   wrap.append(tabs, body);
   return wrap;
 }
 
 /* ---------------------------- rx panel ---------------------------- */
+/* ข้อมูลที่บันทึกไว้ตอนเปิดเคส — เดิมกรอกแล้วไม่มีที่ดูเลย */
+function receptionPanel(c) {
+  const row = (label, value) => (value
+    ? frag([el('dt', { text: label }), el('dd', { text: value })])
+    : null);
+  return card('ข้อมูลตอนรับเรื่อง', [
+    el('dl.kv', {}, [
+      row('เปิดเคสเมื่อ', fmtDateTime(c.opened_at)),
+      row('พนักงานผู้รับเรื่อง', c.received_by_name),
+      row('รู้จักร้านจาก', c.referral_source ? referralLabel(c.referral_source) : null),
+      row('ประเภทลูกค้า', c.is_new_customer ? 'ลูกค้าใหม่' : 'ลูกค้าเก่า'),
+      row('เบอร์โทร', c.phone),
+      row('LINE', c.line_id),
+      row('อีเมล', c.email),
+    ]),
+    c.reception_note
+      ? el('div', { style: 'margin-top:14px' }, [
+        el('label', { text: 'หมายเหตุ' }),
+        el('p', { style: 'white-space:pre-wrap;margin:4px 0 0', text: c.reception_note }),
+      ])
+      : el('p.hint', { style: 'margin-top:12px', text: 'ไม่ได้บันทึกหมายเหตุไว้ตอนเปิดเคส' }),
+  ]);
+}
+
 function rxPanel(c, refresh, empId) {
   const rows = c.prescriptions || [];
   const KIND = { old: 'ค่าเดิม', measured: 'ที่วัดได้', final: 'ที่ใช้จริง' };
@@ -295,6 +804,13 @@ function rxPanel(c, refresh, empId) {
       rxTable(t),
       el('div.row', {}, [
         t.test_for ? el('span.badge.gray', { text: t.test_for }) : null,
+        t.source ? el('span.badge.blue', { text: listLabel('rx_source', t.source) }) : null,
+        t.old_glasses_type
+          ? el('span.badge.gray', { text: listLabel('old_glasses_type', t.old_glasses_type) })
+          : null,
+        (t.va_naked_r || t.va_naked_l)
+          ? el('span.muted', { text: `ตาเปล่า R ${t.va_naked_r || '—'} / L ${t.va_naked_l || '—'}` })
+          : null,
         t.performed_by_name ? el('span.muted', { text: 'ผู้วัด ' + t.performed_by_name }) : null,
         t.confirmed_at ? el('span.badge.ok', { text: 'ยืนยันแล้ว' }) : null,
       ]),
@@ -322,12 +838,54 @@ function rxPanel(c, refresh, empId) {
       ]),
     ], { badge: t.kind === 'final' ? el('span.badge.ok', { text: 'FINAL' }) : null }));
   }
-  if (!rows.length) box.append(el('div.empty', { text: 'ยังไม่มีค่าสายตาในเคสนี้' }));
-  box.append(el('div.row', {}, [
-    el('a.btn.btn-accent', {
-      href: `#/prescriptions/new?customer=${c.customer_id}&case=${c.id}`,
-      text: '+ บันทึกค่าสายตาใหม่',
-    }),
+  /* กรอกใบวัดสายตาตรงนี้ได้เลย ไม่ต้องเด้งไปอีกหน้าแล้วเดินกลับมา
+     ลูกค้ากับเคสรู้อยู่แล้วจากหน้านี้ จึงไม่ต้องถามซ้ำ
+     วันที่วัดไม่ต้องถาม ฝั่ง server เติมเวลาปัจจุบันให้ */
+  const rxForm = el('form.card-body');
+  /* ใบล่าสุดของลูกค้าจากเคสอื่น = ค่าที่อยู่ในแว่นที่ใส่มาวันนี้
+     โหลดตอนกดเลือก "ดึงจากประวัติ" เท่านั้น ไม่ต้องยิงทุกครั้งที่เปิดแท็บ */
+  const historyRx = () => api.get('/api/prescriptions', { customer_id: c.customer_id })
+    .then((all) => {
+      const other = (all || []).filter((r) => r.case_id !== c.id);
+      return other.find((r) => r.kind === 'final') || other[0] || null;
+    })
+    .catch(() => null);
+
+  /* แว่นที่ลูกค้าใส่มา = แว่นที่เราตัดให้รอบก่อน ชนิดจึงดูจากเลนส์ในออเดอร์เก่าได้ */
+  const historyGlasses = () => api.get('/api/orders', { customer_id: c.customer_id })
+    .then((rows) => {
+      const o = (rows || []).find((x) => x.case_id !== c.id);
+      const type = o ? glassesTypeOfLens(o.lens_type) : '';
+      return type ? { type, lens_type: o.lens_type } : null;
+    })
+    .catch(() => null);
+
+  rxForm.append(rxFormFields({}, {
+    kindField: false, headerRow: 'compact', historyRx, historyGlasses,
+  }));
+  rxForm.append(el('div.form-actions', { style: 'margin-top:14px' }, [
+    el('button.btn.btn-accent.btn-lg', { type: 'submit', text: '✔ บันทึกค่าสายตา' }),
+  ]));
+  rxForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try {
+      const body = formData(rxForm);
+      /* ใบเดียวเก็บทั้งค่าแว่นเดิม (old_*) และค่าที่วัดรอบนี้ (r_* / l_* / bin_*)
+         เหมือนใบกระดาษหนึ่งแผ่น จึงบันทึกเป็นชนิด "ค่าที่วัดได้" เสมอ
+         ส่วนช่อง "ที่มาของค่า" อธิบายเฉพาะว่าค่าแว่นเดิมได้มาจากไหน */
+      await api.post('/api/prescriptions', {
+        ...body,
+        kind: 'measured',
+        case_id: c.id,
+        customer_id: c.customer_id,
+        recorded_by: Number(body.recorded_by) || empId(),
+      });
+      ok('บันทึกค่าสายตาแล้ว'); refresh();
+    } catch (ex) { err(ex); }
+  });
+  box.append(el('div.card', {}, [
+    el('div.card-head', {}, [el('h2', { text: 'บันทึกค่าสายตาใหม่' })]),
+    rxForm,
   ]));
   return box;
 }
