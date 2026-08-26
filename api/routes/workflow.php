@@ -27,6 +27,7 @@ POST('/api/frame-fittings', upsertFactory([
     'action' => 'frame_fitting_saved',
     'status' => 'lens_source',
     'cols'   => ['order_id', 'frame_size', 'lens_width', 'bridge_width', 'temple_length', 'ed', 'dbl',
+        'frame_box_a', 'frame_box_b',
         'r_pd', 'l_pd', 'r_height', 'l_height', 'fitting_data', 'other_params',
         'performed_by', 'recorded_by', 'notes'],
     'intCols' => ['order_id', 'performed_by', 'recorded_by'],
@@ -63,14 +64,16 @@ POST('/api/qc-checks', function (array $req) {
         bad('กรุณาระบุเคส');
     }
     $result = str_or($body['result'] ?? null) === 'fail' ? 'fail' : 'pass';
+    $lensOd = boolInt($body['check_lens_od'] ?? null);
+    $lensOs = boolInt($body['check_lens_os'] ?? null);
 
-    $id = Db::tx(function (Tx $q) use ($body, $caseId, $result) {
+    $id = Db::tx(function (Tx $q) use ($body, $caseId, $result, $lensOd, $lensOs) {
         $a = $q->get('SELECT COALESCE(MAX(attempt),0) n FROM qc_checks WHERE case_id = ?', $caseId);
         $r = $q->run(
             'INSERT INTO qc_checks (case_id, job_id, attempt, result, action_taken,
-               check_rx, check_centering, check_lens, check_frame, check_finish,
-               defects, note, checked_by)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
+               check_rx, check_centering, check_lens, check_lens_od, check_lens_os,
+               check_frame, check_finish, defects, note, checked_by)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
             $caseId,
             int_or($body['job_id'] ?? null),
             (int) $a['n'] + 1,
@@ -78,7 +81,9 @@ POST('/api/qc-checks', function (array $req) {
             nul($body['action_taken'] ?? null),
             boolInt($body['check_rx'] ?? null),
             boolInt($body['check_centering'] ?? null),
-            boolInt($body['check_lens'] ?? null),
+            $lensOd && $lensOs ? 1 : 0,
+            $lensOd,
+            $lensOs,
             boolInt($body['check_frame'] ?? null),
             boolInt($body['check_finish'] ?? null),
             nul($body['defects'] ?? null),
