@@ -133,3 +133,21 @@ function sumBy(array $rows, string $key, callable $amount): array
     }
     return $m;
 }
+
+/** expand one lot row (with initial_qty/remaining_qty) into per-unit rows —
+ *  a direct port of lib/api.js's expandLots(), for the item-level list/print
+ *  endpoints (stock list, price labels, unsold-stock report). Anything that
+ *  only needs a total should use SUM(remaining_qty) directly instead. */
+function expandLots(array $lots): array
+{
+    $out = [];
+    foreach ($lots as $lot) {
+        for ($i = 0; $i < (int) $lot['remaining_qty']; $i++) {
+            $out[] = array_merge($lot, ['sold' => 0]);
+        }
+        for ($i = 0; $i < (int) $lot['initial_qty'] - (int) $lot['remaining_qty']; $i++) {
+            $out[] = array_merge($lot, ['sold' => 1]);
+        }
+    }
+    return $out;
+}

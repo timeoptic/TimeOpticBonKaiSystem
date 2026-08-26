@@ -19,8 +19,8 @@ GET('/api/reports/daily-closed', function (array $req) {
     $sales = Db::all(
         'SELECT s.*, st.product_name, e.employee_name
            FROM sales s
-           LEFT JOIN stock st    ON st.id = s.product_stock_id
-           LEFT JOIN employees e ON e.id  = s.employee_id
+           LEFT JOIN v_stock_lot st ON st.id = s.product_stock_id
+           LEFT JOIN employees e    ON e.id  = s.employee_id
           WHERE DATE(s.sale_date) BETWEEN ? AND ? ORDER BY s.sale_date',
         $from, $to
     );
@@ -114,15 +114,17 @@ GET('/api/reports/income-by-month', function () {
 });
 
 GET('/api/reports/checklist', fn(array $r) => Db::all(
-    'SELECT product_name, COUNT(*) qty, MAX(product_price) price, MIN(stock_date) oldest
-       FROM stock WHERE sold = 0 AND product_type = ?
-      GROUP BY product_name ORDER BY product_name',
+    'SELECT p.name AS product_name, SUM(sl.remaining_qty) qty,
+            MAX(p.base_selling_price) price, MIN(sl.received_date) oldest
+       FROM stock_lots sl JOIN products p ON p.id = sl.product_id
+      WHERE sl.remaining_qty > 0 AND p.product_type = ?
+      GROUP BY p.name ORDER BY p.name',
     str_or($r['query']['type'] ?? null, 'Lens') ?: 'Lens'
 ));
 
 GET('/api/reports/stock-labels', function (array $req) {
     $q     = $req['query'];
-    $where = ['s.sold = 0'];
+    $where = [];
     $args  = [];
 
     if ($type = str_or($q['type'] ?? null)) {
@@ -133,24 +135,31 @@ GET('/api/reports/stock-labels', function (array $req) {
         $where[] = 's.product_name LIKE ?';
         $args[]  = like($term);
     }
-    $sqlWhere = implode(' AND ', $where);
+    $sqlWhere = $where ? 'WHERE ' . implode(' AND ', $where) : '';
 
-    return Db::all(
-        "SELECT s.id, s.product_name, s.product_type, s.product_price, l.location
-           FROM stock s LEFT JOIN product_locations l ON l.product_name = s.product_name
-          WHERE $sqlWhere
-          GROUP BY s.id ORDER BY s.product_name, s.id LIMIT 500",
+    $lots = Db::all(
+        "SELECT s.id, s.product_name, s.product_type, s.product_price,
+                s.remaining_qty, s.initial_qty, l.location
+           FROM v_stock_lot s LEFT JOIN product_locations l ON l.product_name = s.product_name
+           $sqlWhere
+          ORDER BY s.product_name, s.id",
         ...$args
     );
+    $rows = array_values(array_filter(expandLots($lots), fn($r) => !$r['sold']));
+    return array_slice($rows, 0, 500);
 });
 
-GET('/api/reports/unsold-stock', fn(array $r) => Db::all(
-    'SELECT s.*, l.location, DATEDIFF(NOW(), s.stock_date) age_days
-       FROM stock s LEFT JOIN product_locations l ON l.product_name = s.product_name
-      WHERE s.sold = 0 AND DATEDIFF(NOW(), s.stock_date) >= ?
-      GROUP BY s.id ORDER BY s.stock_date LIMIT 500',
-    int_or($r['query']['days'] ?? null, 180)
-));
+GET('/api/reports/unsold-stock', function (array $r) {
+    $lots = Db::all(
+        'SELECT s.*, l.location, DATEDIFF(NOW(), s.stock_date) age_days
+           FROM v_stock_lot s LEFT JOIN product_locations l ON l.product_name = s.product_name
+          WHERE DATEDIFF(NOW(), s.stock_date) >= ?
+          ORDER BY s.stock_date',
+        int_or($r['query']['days'] ?? null, 180)
+    );
+    $rows = array_values(array_filter(expandLots($lots), fn($x) => !$x['sold']));
+    return array_slice($rows, 0, 500);
+});
 
 /* the two print views reuse the detail endpoints verbatim */
 GET('/api/reports/order/:id', fn(array $r) => orderDetail(int_or($r['params']['id'])));
