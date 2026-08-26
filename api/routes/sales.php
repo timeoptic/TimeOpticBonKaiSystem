@@ -5,6 +5,48 @@
  */
 declare(strict_types=1);
 
+/** Sell 1 unit from the given lot (replaces the old `UPDATE stock SET sold=1`).
+ *  Returns false if the lot has nothing left (guards a double-sell race) — does
+ *  nothing and returns true if $lotId is falsy (a sale with no stock item attached). */
+function pickLot(Tx $q, ?int $lotId, ?string $note): bool
+{
+    if (!$lotId) {
+        return true;
+    }
+    $r = $q->run(
+        'UPDATE stock_lots SET remaining_qty = remaining_qty - 1 WHERE id = ? AND remaining_qty > 0',
+        $lotId
+    );
+    if (!$r['affected']) {
+        return false;
+    }
+    $lot = $q->get('SELECT product_id FROM stock_lots WHERE id = ?', $lotId);
+    $q->run(
+        "INSERT INTO inventory_logs (product_id, lot_id, action_type, quantity, notes)
+         VALUES (?,?,'OUT',-1,?)",
+        (int) $lot['product_id'], $lotId, nul($note)
+    );
+    return true;
+}
+
+/** Return 1 unit to the given lot (replaces the old `UPDATE stock SET sold=0`). */
+function releaseLot(Tx $q, ?int $lotId, ?string $note): void
+{
+    if (!$lotId) {
+        return;
+    }
+    $r = $q->run('UPDATE stock_lots SET remaining_qty = remaining_qty + 1 WHERE id = ?', $lotId);
+    if (!$r['affected']) {
+        return;
+    }
+    $lot = $q->get('SELECT product_id FROM stock_lots WHERE id = ?', $lotId);
+    $q->run(
+        "INSERT INTO inventory_logs (product_id, lot_id, action_type, quantity, notes)
+         VALUES (?,?,'RETURN',1,?)",
+        (int) $lot['product_id'], $lotId, nul($note)
+    );
+}
+
 GET('/api/sales', function (array $req) {
     $q     = $req['query'];
     $where = [];
@@ -30,7 +72,7 @@ GET('/api/sales', function (array $req) {
         "SELECT s.*, st.product_name, st.product_type, e.employee_name,
                 c.first_name, c.last_name
            FROM sales s
-           LEFT JOIN stock st     ON st.id = s.product_stock_id
+           LEFT JOIN v_stock_lot st ON st.id = s.product_stock_id
            LEFT JOIN employees e  ON e.id  = s.employee_id
            LEFT JOIN customers c  ON c.id  = s.customer_id
            $sqlWhere
@@ -47,7 +89,7 @@ POST('/api/sales', function (array $req) {
     }
 
     $id = Db::tx(function (Tx $q) use ($body, $sid) {
-        $s = $q->get('SELECT * FROM stock WHERE id = ?', $sid);
+        $s = $q->get('SELECT * FROM v_stock_lot WHERE id = ?', $sid);
         if (!$s) {
             bad("ไม่พบสินค้ารหัส $sid");
         }
@@ -62,36 +104,29 @@ POST('/api/sales', function (array $req) {
             : num($rawPrice);
         $discount = num($body['discount'] ?? null);
         $payType  = str_or($body['pay_type'] ?? null, 'Cash') ?: 'Cash';
+        $invoiceCode = str_or($body['invoice_code'] ?? null) ?: invoiceCode();
 
         $r = $q->run(
             'INSERT INTO sales (invoice_code, sale_date, product_stock_id, customer_id,
                employee_id, price, discount, pay_type, marketing, notes)
              VALUES (?,?,?,?,?,?,?,?,?,?)',
-            str_or($body['invoice_code'] ?? null) ?: invoiceCode(),
-            $stamp,
-            $sid,
-            int_or($body['customer_id'] ?? null),
-            int_or($body['employee_id'] ?? null),
-            $price,
-            $discount,
-            $payType,
+            $invoiceCode, $stamp, $sid, int_or($body['customer_id'] ?? null),
+            int_or($body['employee_id'] ?? null), $price, $discount, $payType,
             str_or($body['marketing'] ?? null, 'Walk-in') ?: 'Walk-in',
             nul($body['notes'] ?? null)
         );
-        $q->run('UPDATE stock SET sold = 1, clear_date = ? WHERE id = ?', $stamp, $sid);
+
+        if (!pickLot($q, $sid, trim("ขายสินค้า $invoiceCode"))) {
+            bad("สินค้ารหัส $sid ({$s['product_name']}) ถูกขายไปแล้ว");
+        }
 
         $net = round2($price - $discount);
         if ($net > 0) {
             $q->run(
                 'INSERT INTO payments (sale_id, kind, method, amount, received_by, paid_at, notes)
                  VALUES (?,?,?,?,?,?,?)',
-                $r['insertId'],
-                'full',
-                $payType,
-                $net,
-                int_or($body['employee_id'] ?? null),
-                $stamp,
-                'ขายสินค้าทั่วไป'
+                $r['insertId'], 'full', $payType, $net,
+                int_or($body['employee_id'] ?? null), $stamp, 'ขายสินค้าทั่วไป'
             );
         }
         return $r['insertId'];
@@ -107,12 +142,8 @@ DELETE('/api/sales/:id', function (array $req) {
         missing();
     }
     Db::tx(function (Tx $q) use ($id, $s) {
-        if ($s['product_stock_id']) {
-            $q->run(
-                'UPDATE stock SET sold = 0, clear_date = NULL WHERE id = ?',
-                (int) $s['product_stock_id']
-            );
-        }
+        $sid = $s['product_stock_id'] ? (int) $s['product_stock_id'] : null;
+        releaseLot($q, $sid, trim('ยกเลิกการขาย ' . ($s['invoice_code'] ?? '')));
         $q->run('DELETE FROM payments WHERE sale_id = ?', $id);
         $q->run('DELETE FROM sales WHERE id = ?', $id);
     });
