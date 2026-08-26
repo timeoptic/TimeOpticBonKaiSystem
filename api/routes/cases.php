@@ -82,6 +82,12 @@ function caseDetail(?int $id): array
     $centering  = Db::get('SELECT * FROM centerings WHERE case_id = ? ORDER BY id DESC LIMIT 1', $id);
     $fitting    = Db::get('SELECT * FROM frame_fittings WHERE case_id = ? ORDER BY id DESC LIMIT 1', $id);
     $production = Db::get('SELECT * FROM production_jobs WHERE case_id = ? ORDER BY id DESC LIMIT 1', $id);
+    $withdrawals = Db::all(
+        'SELECT w.*, e.employee_name AS withdrawn_by_name FROM production_withdrawals w
+           LEFT JOIN employees e ON e.id = w.withdrawn_by
+          WHERE w.case_id = ? ORDER BY w.id',
+        $id
+    );
     $qc = Db::all(
         'SELECT q.*, e.employee_name AS checked_by_name FROM qc_checks q
            LEFT JOIN employees e ON e.id = q.checked_by
@@ -129,6 +135,7 @@ function caseDetail(?int $id): array
         'centering'     => $centering,
         'frame_fitting' => $fitting,
         'production'    => $production,
+        'production_withdrawals' => $withdrawals,
         'qc_checks'     => $qc,
         'payments'      => $payments,
         'notifications' => $notifs,
@@ -216,6 +223,10 @@ POST('/api/cases/:id/status', function (array $req) {
         ]);
         if ($to === 'cancelled' && nul($body['note'] ?? null) !== null) {
             $q->run('UPDATE cases SET cancelled_reason = ? WHERE id = ?', str_or($body['note']), $id);
+        }
+        $target = $q->get('SELECT is_terminal FROM case_statuses WHERE code = ?', $to);
+        if ($target && (int) $target['is_terminal'] === 1) {
+            $q->run('UPDATE cases SET closed_by = ? WHERE id = ?', int_or($body['employee_id'] ?? null), $id);
         }
     });
     return caseDetail($id);
