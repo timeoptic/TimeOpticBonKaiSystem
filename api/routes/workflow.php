@@ -120,7 +120,7 @@ POST('/api/production-jobs/:id/start', function (array $req) {
     if (!$job) {
         missing();
     }
-    if ($job['status'] === 'IN_PRODUCTION' || $job['status'] === 'COMPLETED') {
+    if ($job['started_at'] !== null || $job['status'] === 'IN_PRODUCTION' || $job['status'] === 'COMPLETED') {
         bad('งานนี้เริ่มผลิตไปแล้ว');
     }
     $order = $job['order_id'] ? Db::get('SELECT * FROM custom_orders WHERE id = ?', (int) $job['order_id']) : null;
