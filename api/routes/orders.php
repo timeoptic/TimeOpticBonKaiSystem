@@ -51,6 +51,25 @@ function orderVals(array $b): array
     return $out;
 }
 
+/**
+ * True when this case's production `start` flow (POST /api/production-jobs/:id/start)
+ * already withdrew this specific item — i.e. a non-extra production_withdrawals row
+ * exists for it. Used by close()/reopen() so they don't double-withdraw or
+ * double-release stock that the production flow already accounted for.
+ */
+function wasWithdrawnByProduction(Tx $q, ?int $caseId, string $itemType): bool
+{
+    if (!$caseId) {
+        return false;
+    }
+    $row = $q->get(
+        'SELECT id FROM production_withdrawals WHERE case_id = ? AND item_type = ? AND is_extra = 0 LIMIT 1',
+        $caseId,
+        $itemType
+    );
+    return (bool) $row;
+}
+
 function orderDetail(?int $id): array
 {
     $sel  = Sql::ORDER_SELECT;
@@ -317,8 +336,13 @@ POST('/api/orders/:id/close', function (array $req) {
                 'รับเงินตอนปิดการขาย'
             );
         }
-        foreach ([$o['lens_product_id'], $o['right_lens_product_id'], $o['frame_product_id']] as $sid) {
-            if ($sid) {
+        $items = [
+            'lens_od' => $o['lens_product_id'],
+            'lens_os' => $o['right_lens_product_id'],
+            'frame'   => $o['frame_product_id'],
+        ];
+        foreach ($items as $type => $sid) {
+            if ($sid && !wasWithdrawnByProduction($q, int_or($o['case_id']), $type)) {
                 pickLot($q, (int) $sid, 'ปิดการขายออเดอร์ ' . ($o['invoice_code'] ?? ''));
             }
         }
@@ -354,8 +378,13 @@ POST('/api/orders/:id/reopen', function (array $req) {
             $id
         );
         $q->run("DELETE FROM payments WHERE order_id = ? AND kind = 'final'", $id);
-        foreach ([$o['lens_product_id'], $o['right_lens_product_id'], $o['frame_product_id']] as $sid) {
-            if ($sid) {
+        $items = [
+            'lens_od' => $o['lens_product_id'],
+            'lens_os' => $o['right_lens_product_id'],
+            'frame'   => $o['frame_product_id'],
+        ];
+        foreach ($items as $type => $sid) {
+            if ($sid && !wasWithdrawnByProduction($q, int_or($o['case_id']), $type)) {
                 releaseLot($q, (int) $sid, 'เปิดออเดอร์ ' . ($o['invoice_code'] ?? '') . ' กลับ');
             }
         }
