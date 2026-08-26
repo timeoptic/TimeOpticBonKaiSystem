@@ -65,9 +65,16 @@ final class Http
         }
     }
 
-    /** Decode the JSON request body; {} when there is none. */
+    /** Decode the JSON request body; {} when there is none.
+     *  A multipart request (file upload) has already been parsed into
+     *  $_POST/$_FILES by PHP itself — hand that back instead of trying to
+     *  JSON-decode the raw multipart body. */
     public static function body(): array
     {
+        $ct = $_SERVER['CONTENT_TYPE'] ?? $_SERVER['HTTP_CONTENT_TYPE'] ?? '';
+        if (str_starts_with($ct, 'multipart/form-data')) {
+            return $_POST;
+        }
         $raw = file_get_contents('php://input');
         if ($raw === false || trim($raw) === '') {
             return [];

@@ -29,3 +29,6 @@ frontend-next/node_modules
 frontend-next/.next
 frontend-next/out
 frontend-next/.env.local
+
+# uploaded case photos/files (local disk only)
+api/uploads/

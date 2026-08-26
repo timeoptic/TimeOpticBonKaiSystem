@@ -36,7 +36,7 @@ Telegram::configure($config['telegram']);
 foreach ([
     'meta', 'dashboard', 'cases', 'customers', 'employees', 'prescriptions',
     'stock', 'locations', 'suppliers', 'orders', 'payments', 'lens_jobs',
-    'workflow', 'sales', 'cashflow', 'reports', 'bookings', 'settings',
+    'workflow', 'uploads', 'sales', 'cashflow', 'reports', 'bookings', 'settings',
 ] as $group) {
     require __DIR__ . "/routes/$group.php";
 }
