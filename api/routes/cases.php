@@ -216,6 +216,7 @@ POST('/api/cases/:id/status', function (array $req) {
         bad('กรุณาระบุสถานะปลายทาง');
     }
     Db::tx(function (Tx $q) use ($id, $to, $body) {
+        $before = $q->get('SELECT status FROM cases WHERE id = ?', $id);
         setStatus($q, $id, $to, [
             'employee_id' => int_or($body['employee_id'] ?? null),
             'note'        => nul($body['note'] ?? null),
@@ -225,7 +226,7 @@ POST('/api/cases/:id/status', function (array $req) {
             $q->run('UPDATE cases SET cancelled_reason = ? WHERE id = ?', str_or($body['note']), $id);
         }
         $target = $q->get('SELECT is_terminal FROM case_statuses WHERE code = ?', $to);
-        if ($target && (int) $target['is_terminal'] === 1) {
+        if ($target && (int) $target['is_terminal'] === 1 && $before && $before['status'] !== $to) {
             $q->run('UPDATE cases SET closed_by = ? WHERE id = ?', int_or($body['employee_id'] ?? null), $id);
         }
     });
