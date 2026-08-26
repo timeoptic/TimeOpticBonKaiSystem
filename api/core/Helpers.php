@@ -151,3 +151,45 @@ function expandLots(array $lots): array
     }
     return $out;
 }
+
+/** Sell 1 unit from the given lot (replaces the old `UPDATE stock SET sold=1`).
+ *  Returns false if the lot has nothing left (guards a double-sell race) — does
+ *  nothing and returns true if $lotId is falsy (a sale with no stock item attached). */
+function pickLot(Tx $q, ?int $lotId, ?string $note): bool
+{
+    if (!$lotId) {
+        return true;
+    }
+    $r = $q->run(
+        'UPDATE stock_lots SET remaining_qty = remaining_qty - 1 WHERE id = ? AND remaining_qty > 0',
+        $lotId
+    );
+    if (!$r['affected']) {
+        return false;
+    }
+    $lot = $q->get('SELECT product_id FROM stock_lots WHERE id = ?', $lotId);
+    $q->run(
+        "INSERT INTO inventory_logs (product_id, lot_id, action_type, quantity, notes)
+         VALUES (?,?,'OUT',-1,?)",
+        (int) $lot['product_id'], $lotId, nul($note)
+    );
+    return true;
+}
+
+/** Return 1 unit to the given lot (replaces the old `UPDATE stock SET sold=0`). */
+function releaseLot(Tx $q, ?int $lotId, ?string $note): void
+{
+    if (!$lotId) {
+        return;
+    }
+    $r = $q->run('UPDATE stock_lots SET remaining_qty = remaining_qty + 1 WHERE id = ?', $lotId);
+    if (!$r['affected']) {
+        return;
+    }
+    $lot = $q->get('SELECT product_id FROM stock_lots WHERE id = ?', $lotId);
+    $q->run(
+        "INSERT INTO inventory_logs (product_id, lot_id, action_type, quantity, notes)
+         VALUES (?,?,'RETURN',1,?)",
+        (int) $lot['product_id'], $lotId, nul($note)
+    );
+}

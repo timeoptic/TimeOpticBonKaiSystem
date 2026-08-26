@@ -18,7 +18,7 @@ function stockAttributes(array $b): string
     foreach (STOCK_ATTR_FIELDS as $f) {
         $out[$f] = nul($b[$f] ?? null);
     }
-    return json_encode($out);
+    return json_encode($out, JSON_UNESCAPED_UNICODE);
 }
 
 /** Find an existing product by sku (adding stock for an existing SKU = a new lot

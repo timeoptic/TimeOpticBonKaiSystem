@@ -53,7 +53,7 @@ function orderDetail(?int $id): array
         ? Db::get('SELECT * FROM prescriptions WHERE id = ?', (int) $o['final_prescription_id'])
         : null;
 
-    $item = fn($sid) => $sid ? Db::get('SELECT * FROM stock WHERE id = ?', (int) $sid) : null;
+    $item = fn($sid) => $sid ? Db::get('SELECT * FROM v_stock_lot WHERE id = ?', (int) $sid) : null;
     $o['left_lens']  = $item($o['lens_product_id']);
     $o['right_lens'] = $item($o['right_lens_product_id']);
     $o['frame']      = $item($o['frame_product_id']);
@@ -202,7 +202,7 @@ POST('/api/orders/:id/fill', function (array $req) {
         if (!$sid) {
             return null;
         }
-        $s = Db::get('SELECT * FROM stock WHERE id = ?', $sid);
+        $s = Db::get('SELECT * FROM v_stock_lot WHERE id = ?', $sid);
         if (!$s) {
             bad("ไม่พบสินค้ารหัส $sid");
         }
@@ -302,11 +302,7 @@ POST('/api/orders/:id/close', function (array $req) {
         }
         foreach ([$o['lens_product_id'], $o['right_lens_product_id'], $o['frame_product_id']] as $sid) {
             if ($sid) {
-                $q->run(
-                    'UPDATE stock SET sold = 1, clear_date = ? WHERE id = ? AND sold = 0',
-                    $stamp,
-                    (int) $sid
-                );
+                pickLot($q, (int) $sid, 'ปิดการขายออเดอร์ ' . ($o['invoice_code'] ?? ''));
             }
         }
         logEvent($q, int_or($o['case_id']), [
@@ -343,7 +339,7 @@ POST('/api/orders/:id/reopen', function (array $req) {
         $q->run("DELETE FROM payments WHERE order_id = ? AND kind = 'final'", $id);
         foreach ([$o['lens_product_id'], $o['right_lens_product_id'], $o['frame_product_id']] as $sid) {
             if ($sid) {
-                $q->run('UPDATE stock SET sold = 0, clear_date = NULL WHERE id = ?', (int) $sid);
+                releaseLot($q, (int) $sid, 'เปิดออเดอร์ ' . ($o['invoice_code'] ?? '') . ' กลับ');
             }
         }
         logEvent($q, int_or($o['case_id']), [
