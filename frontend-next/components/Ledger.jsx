@@ -55,6 +55,8 @@ export function Ledger({ title, subtitle, icon, endpoint, typeKey, typeList, wit
     setTo(todayISO());
   };
 
+  const { rows = [], total = 0 } = data || {};
+
   const columns = [
     { label: 'ID', key: 'id', cls: 'mono' },
     { label: 'วันที่', render: (r) => fmtDate(r.cf_date), cls: 'nowrap' },
@@ -131,12 +133,12 @@ export function Ledger({ title, subtitle, icon, endpoint, typeKey, typeList, wit
         <Card tight>
           <DataTable
             columns={columns}
-            rows={data.rows}
+            rows={rows}
             empty="ไม่พบรายการ"
-            footer={data.rows.length ? (
+            footer={rows.length ? (
               <tr>
-                <td colSpan={4}>{`รวม ${data.rows.length} รายการ`}</td>
-                <td className="num">{money(data.total)}</td>
+                <td colSpan={4}>{`รวม ${rows.length} รายการ`}</td>
+                <td className="num">{money(total)}</td>
                 <td colSpan={withPayType ? 3 : 2} />
               </tr>
             ) : null}
