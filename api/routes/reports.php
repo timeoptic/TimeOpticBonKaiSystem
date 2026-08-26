@@ -35,7 +35,8 @@ GET('/api/reports/daily-closed', function (array $req) {
            FROM payments p
            LEFT JOIN custom_orders o ON o.id = p.order_id
            LEFT JOIN employees e     ON e.id = p.received_by
-          WHERE DATE(p.paid_at) BETWEEN ? AND ? ORDER BY p.paid_at',
+          WHERE DATE(p.paid_at) BETWEEN ? AND ? AND p.cancelled_at IS NULL
+          ORDER BY p.paid_at',
         $from, $to
     );
 
@@ -84,7 +85,7 @@ GET('/api/reports/income-by-month', function () {
            FROM (
              SELECT DATE_FORMAT(paid_at,'%Y-%m') ym, SUM(amount) payment_income,
                     0 sale_income, 0 other_income, 0 expense
-               FROM payments GROUP BY ym
+               FROM payments WHERE cancelled_at IS NULL GROUP BY ym
              UNION ALL
              SELECT DATE_FORMAT(sale_date,'%Y-%m'), 0, SUM(price - discount), 0, 0
                FROM sales GROUP BY 1

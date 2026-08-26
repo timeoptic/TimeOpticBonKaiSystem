@@ -83,7 +83,8 @@ GET('/api/dashboard', function () {
                 "SELECT COUNT(*) n FROM lens_jobs WHERE status = 'waiting_arrival'"
             )['n'] ?? 0),
             'received_today' => $one(
-                'SELECT COUNT(*) n, COALESCE(SUM(amount),0) amount FROM payments WHERE DATE(paid_at) = ?',
+                'SELECT COUNT(*) n, COALESCE(SUM(amount),0) amount FROM payments
+                  WHERE DATE(paid_at) = ? AND cancelled_at IS NULL',
                 $d
             ),
             'sales_today' => $one(
