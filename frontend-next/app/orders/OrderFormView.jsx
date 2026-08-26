@@ -48,14 +48,26 @@ function PickedItem({ item, onClear }) {
 // editing must always be passed explicitly by the caller (true or false) — if a future
 // page forgets it, editing becomes undefined (falsy), silently serving a *create* form
 // on what was meant to be an *edit* route.
-export function OrderFormView({ editing }) {
+//
+// caseId/customerId/orderId are optional overrides for the query-string-derived
+// `case`/`customer`/`id` values, used when this form is embedded somewhere that has
+// no query string of its own (e.g. a case-detail tab) rather than routed to directly.
+// When omitted, behavior is identical to before: values come from useSearchParams().
+// `embedded` (default false) drops the standalone <PageHead> and the "ยกเลิก" nav
+// link, since an embedding page already has its own header/chrome. `onSaved`, when
+// given, is called with the saved order after a successful write — the standalone
+// pages don't pass it and keep navigating away exactly as before; an embedded caller
+// (e.g. SalesPanel) uses it to reload() its own data instead of navigating away.
+export function OrderFormView({
+  editing, caseId: caseIdProp, customerId: customerIdProp, orderId, embedded = false, onSaved,
+}) {
   const router = useRouter();
   const params = useSearchParams();
   const { ok, err } = useToast();
 
-  const id = editing ? params.get('id') : null;
-  const queryCustomer = params.get('customer');
-  const queryCase = params.get('case');
+  const id = editing ? (orderId ?? params.get('id')) : null;
+  const queryCustomer = customerIdProp != null ? String(customerIdProp) : params.get('customer');
+  const queryCase = caseIdProp != null ? String(caseIdProp) : params.get('case');
 
   const { data, loading, error } = useAsync(() => {
     if (editing && !id) return Promise.resolve(null);
@@ -156,7 +168,10 @@ export function OrderFormView({ editing }) {
         : await api.post('/api/orders', body);
       const oid = editing ? id : saved.id;
       ok(editing ? 'บันทึกออเดอร์แล้ว' : 'เปิดออเดอร์ ' + saved.invoice_code + ' เรียบร้อย');
-      router.push(caseId ? '/cases/detail?id=' + caseId : '/orders/detail?id=' + oid);
+      onSaved?.(saved);
+      if (!embedded) {
+        router.push(caseId ? '/cases/detail?id=' + caseId : '/orders/detail?id=' + oid);
+      }
     } catch (ex) {
       err(ex);
     }
@@ -169,11 +184,13 @@ export function OrderFormView({ editing }) {
 
   return (
     <>
-      <PageHead
-        icon="👓"
-        title="Custom Order"
-        subtitle={editing ? 'แก้ไขออเดอร์ตัดแว่น' : 'เปิดออเดอร์ตัดแว่นใหม่'}
-      />
+      {!embedded && (
+        <PageHead
+          icon="👓"
+          title="Custom Order"
+          subtitle={editing ? 'แก้ไขออเดอร์ตัดแว่น' : 'เปิดออเดอร์ตัดแว่นใหม่'}
+        />
+      )}
 
       <Split>
         <Card
@@ -391,7 +408,7 @@ export function OrderFormView({ editing }) {
             <button className="btn btn-lg" type="submit" disabled={discountTooHigh}>
               {editing ? '💾 บันทึกการแก้ไข' : '✔ เปิดออเดอร์'}
             </button>
-            <Link className="btn btn-light" href={cancelHref}>ยกเลิก</Link>
+            {!embedded && <Link className="btn btn-light" href={cancelHref}>ยกเลิก</Link>}
           </FormActions>
         </Card>
       </form>
