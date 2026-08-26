@@ -106,3 +106,169 @@ POST('/api/qc-checks', function (array $req) {
 
     return Db::get('SELECT * FROM qc_checks WHERE id = ?', $id);
 });
+
+/**
+ * "เริ่มผลิต" — only allowed once frame + both lenses are attached to the
+ * order (fill already happened) and none of the three is already sold.
+ * Withdraws all three via pickLot() in one transaction and marks the job
+ * IN_PRODUCTION.
+ */
+POST('/api/production-jobs/:id/start', function (array $req) {
+    $id   = int_or($req['params']['id']);
+    $body = $req['body'];
+    $job  = Db::get('SELECT * FROM production_jobs WHERE id = ?', $id);
+    if (!$job) {
+        missing();
+    }
+    if ($job['status'] === 'IN_PRODUCTION' || $job['status'] === 'COMPLETED') {
+        bad('งานนี้เริ่มผลิตไปแล้ว');
+    }
+    $order = $job['order_id'] ? Db::get('SELECT * FROM custom_orders WHERE id = ?', (int) $job['order_id']) : null;
+    if (!$order) {
+        bad('ไม่พบออเดอร์ของเคสนี้');
+    }
+    $items = [
+        'frame'   => $order['frame_product_id'],
+        'lens_od' => $order['lens_product_id'],
+        'lens_os' => $order['right_lens_product_id'],
+    ];
+    foreach ($items as $type => $sid) {
+        if (!$sid) {
+            bad("ยังไม่มีสินค้า ($type) ในออเดอร์ — เข้าสู่ Flow สั่งสินค้าก่อน");
+        }
+        $s = Db::get('SELECT sold FROM v_stock_lot WHERE id = ?', (int) $sid);
+        if (!$s || (int) $s['sold']) {
+            bad("สินค้า ($type) ไม่พร้อมในสต็อก — เข้าสู่ Flow สั่งสินค้าก่อน");
+        }
+    }
+
+    $empId = int_or($body['employee_id'] ?? null);
+    Db::tx(function (Tx $q) use ($id, $job, $items, $empId) {
+        foreach ($items as $type => $sid) {
+            if (!pickLot($q, (int) $sid, 'เริ่มผลิต')) {
+                bad("สินค้า ($type) ถูกขายไปแล้วระหว่างนี้ — ลองใหม่");
+            }
+            $q->run(
+                'INSERT INTO production_withdrawals (case_id, production_job_id, item_type,
+                   stock_lot_id, is_extra, withdrawn_by) VALUES (?,?,?,?,0,?)',
+                (int) $job['case_id'], $id, $type, (int) $sid, $empId
+            );
+        }
+        $q->run(
+            "UPDATE production_jobs SET status='IN_PRODUCTION', started_at=?, started_by=? WHERE id=?",
+            nowStamp(), $empId, $id
+        );
+        logEvent($q, (int) $job['case_id'], [
+            'action' => 'production_started', 'entity' => 'production_job',
+            'entity_id' => $id, 'employee_id' => $empId,
+        ]);
+        setStatus($q, (int) $job['case_id'], 'edging', ['employee_id' => $empId, 'action' => 'production_started']);
+    });
+    return Db::get('SELECT * FROM production_jobs WHERE id = ?', $id);
+});
+
+/** "เบิกเพิ่ม" — an item already withdrawn broke; pick a replacement unit. */
+POST('/api/production-jobs/:id/withdraw', function (array $req) {
+    $id   = int_or($req['params']['id']);
+    $body = $req['body'];
+    $job  = Db::get('SELECT * FROM production_jobs WHERE id = ?', $id);
+    if (!$job) {
+        missing();
+    }
+    $type = str_or($body['item_type'] ?? null);
+    if (!in_array($type, ['frame', 'lens_od', 'lens_os'], true)) {
+        bad('กรุณาระบุประเภทสินค้า (frame, lens_od, lens_os)');
+    }
+    $sid = int_or($body['stock_lot_id'] ?? null);
+    if (!$sid) {
+        bad('กรุณาเลือกสินค้าจากสต็อก');
+    }
+    $s = Db::get('SELECT sold FROM v_stock_lot WHERE id = ?', $sid);
+    if (!$s || (int) $s['sold']) {
+        bad('สินค้าชิ้นนี้ไม่พร้อมในสต็อก');
+    }
+    $empId = int_or($body['employee_id'] ?? null);
+
+    Db::tx(function (Tx $q) use ($id, $job, $type, $sid, $empId, $body) {
+        if (!pickLot($q, $sid, 'เบิกเพิ่ม: ' . str_or($body['reason'] ?? null))) {
+            bad('สินค้าชิ้นนี้ถูกขายไปแล้วระหว่างนี้ — ลองใหม่');
+        }
+        $q->run(
+            'INSERT INTO production_withdrawals (case_id, production_job_id, item_type,
+               stock_lot_id, is_extra, reason, withdrawn_by) VALUES (?,?,?,?,1,?,?)',
+            (int) $job['case_id'], $id, $type, $sid, nul($body['reason'] ?? null), $empId
+        );
+        logEvent($q, (int) $job['case_id'], [
+            'action' => 'production_withdraw_extra', 'entity' => 'production_withdrawal',
+            'employee_id' => $empId, 'note' => "$type: " . str_or($body['reason'] ?? null),
+        ]);
+    });
+    return Db::all('SELECT * FROM production_withdrawals WHERE production_job_id = ? ORDER BY id', $id);
+});
+
+/** "หยุดการผลิต / รอสินค้า" */
+POST('/api/production-jobs/:id/pause', function (array $req) {
+    $id   = int_or($req['params']['id']);
+    $body = $req['body'];
+    $job  = Db::get('SELECT * FROM production_jobs WHERE id = ?', $id);
+    if (!$job) {
+        missing();
+    }
+    $empId = int_or($body['employee_id'] ?? null);
+    Db::tx(function (Tx $q) use ($id, $job, $empId, $body) {
+        $q->run("UPDATE production_jobs SET status='WAITING_FOR_ITEM' WHERE id=?", $id);
+        logEvent($q, (int) $job['case_id'], [
+            'action' => 'production_paused', 'entity' => 'production_job', 'entity_id' => $id,
+            'employee_id' => $empId, 'note' => str_or($body['reason'] ?? null),
+        ]);
+        setStatus($q, (int) $job['case_id'], 'waiting_edging', ['employee_id' => $empId, 'action' => 'production_paused']);
+    });
+    return Db::get('SELECT * FROM production_jobs WHERE id = ?', $id);
+});
+
+/** กลับมาผลิตต่อ */
+POST('/api/production-jobs/:id/resume', function (array $req) {
+    $id   = int_or($req['params']['id']);
+    $body = $req['body'];
+    $job  = Db::get('SELECT * FROM production_jobs WHERE id = ?', $id);
+    if (!$job) {
+        missing();
+    }
+    $empId = int_or($body['employee_id'] ?? null);
+    Db::tx(function (Tx $q) use ($id, $job, $empId) {
+        $q->run("UPDATE production_jobs SET status='IN_PRODUCTION' WHERE id=?", $id);
+        logEvent($q, (int) $job['case_id'], [
+            'action' => 'production_resumed', 'entity' => 'production_job', 'entity_id' => $id,
+            'employee_id' => $empId,
+        ]);
+        setStatus($q, (int) $job['case_id'], 'edging', ['employee_id' => $empId, 'action' => 'production_resumed']);
+    });
+    return Db::get('SELECT * FROM production_jobs WHERE id = ?', $id);
+});
+
+/** ส่งมอบ — records who handed it over and who received it. */
+POST('/api/production-jobs/:id/deliver', function (array $req) {
+    $id   = int_or($req['params']['id']);
+    $body = $req['body'];
+    $job  = Db::get('SELECT * FROM production_jobs WHERE id = ?', $id);
+    if (!$job) {
+        missing();
+    }
+    $empId = int_or($body['handed_over_by'] ?? null);
+    Db::tx(function (Tx $q) use ($id, $job, $empId, $body) {
+        $q->run(
+            "UPDATE production_jobs SET status='COMPLETED', pickup_at=?, handed_over_by=?,
+               received_by_customer_name=? WHERE id=?",
+            str_or($body['pickup_at'] ?? null) ?: nowStamp(),
+            $empId,
+            nul($body['received_by_customer_name'] ?? null),
+            $id
+        );
+        logEvent($q, (int) $job['case_id'], [
+            'action' => 'delivered', 'entity' => 'production_job', 'entity_id' => $id,
+            'employee_id' => $empId, 'note' => str_or($body['received_by_customer_name'] ?? null),
+        ]);
+        setStatus($q, (int) $job['case_id'], 'pickup', ['employee_id' => $empId, 'action' => 'delivered']);
+    });
+    return Db::get('SELECT * FROM production_jobs WHERE id = ?', $id);
+});
