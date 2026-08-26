@@ -22,7 +22,8 @@ final class Sql
       LEFT JOIN employees ce  ON ce.id = o.order_close_employee_id
       LEFT JOIN cases cs      ON cs.id = o.case_id
       LEFT JOIN (SELECT order_id, SUM(amount) paid FROM payments
-                 WHERE order_id IS NOT NULL GROUP BY order_id) pay ON pay.order_id = o.id';
+                 WHERE order_id IS NOT NULL AND cancelled_at IS NULL
+                 GROUP BY order_id) pay ON pay.order_id = o.id';
 
     /** an order still missing one of its three physical items */
     public const UNFILLED = '(COALESCE(o.lens_product_id,0)=0

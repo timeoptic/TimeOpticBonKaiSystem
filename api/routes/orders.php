@@ -278,7 +278,10 @@ POST('/api/orders/:id/close', function (array $req) {
     }
 
     Db::tx(function (Tx $q) use ($id, $o, $body) {
-        $paidRow = $q->get('SELECT COALESCE(SUM(amount),0) paid FROM payments WHERE order_id = ?', $id);
+        $paidRow = $q->get(
+            'SELECT COALESCE(SUM(amount),0) paid FROM payments WHERE order_id = ? AND cancelled_at IS NULL',
+            $id
+        );
         $balance = round2((float) $o['total_price'] - (float) $o['discount'] - (float) $paidRow['paid']);
 
         $rawIncome = $body['order_close_income'] ?? null;

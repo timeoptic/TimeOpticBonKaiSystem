@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 GET('/api/payments', function (array $req) {
     $q     = $req['query'];
-    $where = [];
+    $where = ['p.cancelled_at IS NULL'];
     $args  = [];
 
     if ($oid = int_or($q['order_id'] ?? null)) {
@@ -87,12 +87,16 @@ POST('/api/payments', function (array $req) {
 });
 
 DELETE('/api/payments/:id', function (array $req) {
-    $id = int_or($req['params']['id']);
-    $p  = Db::get('SELECT * FROM payments WHERE id = ?', $id);
+    $id   = int_or($req['params']['id']);
+    $body = $req['body'];
+    $p    = Db::get('SELECT * FROM payments WHERE id = ?', $id);
     if (!$p) {
         missing();
     }
-    Db::tx(function (Tx $q) use ($id, $p) {
+    if ($p['cancelled_at']) {
+        bad('รายการนี้ถูกยกเลิกไปแล้ว');
+    }
+    Db::tx(function (Tx $q) use ($id, $p, $body) {
         if ($p['order_id'] && $p['kind'] === 'deposit') {
             $q->run(
                 'UPDATE custom_orders SET deposit = GREATEST(deposit - ?, 0) WHERE id = ?',
@@ -100,9 +104,15 @@ DELETE('/api/payments/:id', function (array $req) {
                 (int) $p['order_id']
             );
         }
-        $q->run('DELETE FROM payments WHERE id = ?', $id);
+        $q->run(
+            'UPDATE payments SET cancelled_at = ?, cancelled_by = ?, cancel_reason = ? WHERE id = ?',
+            nowStamp(),
+            int_or($body['employee_id'] ?? null),
+            nul($body['reason'] ?? null),
+            $id
+        );
         logEvent($q, int_or($p['case_id']), [
-            'action'    => 'payment_deleted',
+            'action'    => 'payment_cancelled',
             'entity'    => 'payment',
             'entity_id' => $id,
             'note'      => (string) $p['amount'],

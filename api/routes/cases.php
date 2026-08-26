@@ -120,7 +120,7 @@ function caseDetail(?int $id): array
         );
     }
 
-    $paid = sumCol($payments, 'amount');
+    $paid = sumCol(array_filter($payments, fn($p) => !$p['cancelled_at']), 'amount');
 
     return $c + [
         'prescriptions' => $rx,
