@@ -35,6 +35,7 @@ export const TITLES = [
   ['/delivery', 'ส่งมอบ'],
   ['/employees', 'พนักงาน'],
   ['/orders/new', 'เปิดออเดอร์ใหม่'],
+  ['/orders/edit', 'แก้ไขออเดอร์'],
   ['/orders/detail', 'รายละเอียดออเดอร์'],
   ['/orders', 'ออเดอร์ตัดแว่น'],
   ['/sales/new', 'ขายสินค้าทั่วไป'],
