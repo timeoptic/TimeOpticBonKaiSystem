@@ -78,7 +78,7 @@ GET('/api/dashboard', function () {
             'open_orders' => (int) ($one(
                 'SELECT COUNT(*) n FROM custom_orders WHERE order_closed = 0'
             )['n'] ?? 0),
-            'stock_on_hand' => (int) ($one('SELECT COUNT(*) n FROM stock_lots WHERE remaining_qty > 0')['n'] ?? 0),
+            'stock_on_hand' => (int) ($one('SELECT COALESCE(SUM(remaining_qty),0) n FROM stock_lots')['n'] ?? 0),
             'lens_waiting'  => (int) ($one(
                 "SELECT COUNT(*) n FROM lens_jobs WHERE status = 'waiting_arrival'"
             )['n'] ?? 0),
