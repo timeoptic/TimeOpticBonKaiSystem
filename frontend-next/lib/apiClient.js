@@ -36,9 +36,23 @@ async function request(method, path, body, signal) {
   return data;
 }
 
+async function upload(path, formData) {
+  const res = await fetch(apiOrigin() + path, { method: 'POST', body: formData });
+  let data = null;
+  try {
+    data = await res.json();
+  } catch {
+    /* empty body */
+  }
+  if (!res.ok) throw new Error((data && data.error) || `HTTP ${res.status}`);
+  return data;
+}
+
 export const api = {
   get: (path, query, signal) => request('GET', path + qs(query), null, signal),
   post: (path, body) => request('POST', path, body || {}),
   put: (path, body) => request('PUT', path, body || {}),
   del: (path) => request('DELETE', path),
+  upload: (path, formData) => upload(path, formData),
+  url: (path) => apiOrigin() + path,
 };
