@@ -42,16 +42,16 @@ GET('/api/frame-fittings/:case_id', fn(array $r) => Db::get(
 POST('/api/production-jobs', upsertFactory([
     'table'  => 'production_jobs',
     'action' => 'production_saved',
+    /* the packing checklist and its two employees are no longer on the บันทึกงานผลิต
+       form, so they are not listed here either — an upsert writes every column it
+       names, and naming a field nobody sends is how saved values get wiped */
     'cols'   => ['order_id', 'matched_at', 'matched_by', 'match_customer_ok', 'match_rx_ok',
         'match_note', 'assigned_technician', 'edging_started_at', 'edging_finished_at',
-        'edged_by', 'edging_remark', 'pack_glasses', 'pack_case', 'pack_cloth',
-        'pack_warranty', 'pack_prescription', 'pack_accessories', 'packed_by',
-        'pack_checked_by', 'packed_at', 'packing_note', 'pickup_at', 'handed_over_by',
-        'adjustment_by', 'adjustment_remark'],
-    'intCols' => ['order_id', 'matched_by', 'assigned_technician', 'edged_by', 'packed_by',
-        'pack_checked_by', 'handed_over_by', 'adjustment_by'],
-    'boolCols' => ['match_customer_ok', 'match_rx_ok', 'pack_glasses', 'pack_case', 'pack_cloth',
-        'pack_warranty', 'pack_prescription', 'pack_accessories'],
+        'edged_by', 'edging_remark', 'packed_at', 'packing_note', 'pickup_at',
+        'handed_over_by', 'adjustment_by', 'adjustment_remark'],
+    'intCols' => ['order_id', 'matched_by', 'assigned_technician', 'edged_by',
+        'handed_over_by', 'adjustment_by'],
+    'boolCols' => ['match_customer_ok', 'match_rx_ok'],
 ]));
 
 /**

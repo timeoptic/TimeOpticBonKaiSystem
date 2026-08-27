@@ -26,6 +26,7 @@ import { EmployeeSelect, Select } from '../../../../components/Selects.jsx';
 import { StockPicker } from '../../../../components/StockPicker.jsx';
 import { Icon } from '../../../../components/Icon.jsx';
 import { useProcessActions } from '../../../../components/ProcessShell.jsx';
+import { RxSetBlock } from '../../../../components/RxSets.jsx';
 import { ACTION_LABEL } from '../../../../lib/constants.js';
 import { dtLocal, fmtDateTime, power } from '../../../../lib/format.js';
 
@@ -56,12 +57,6 @@ const PAUSE_REASONS = [
   ['order_lens', 'รอสั่งเลนส์'],
   ['order_frame', 'รอสั่งกรอบ'],
   ['other', 'อื่น ๆ'],
-];
-
-const PACK_ITEMS = [
-  ['pack_glasses', 'แว่น'], ['pack_case', 'กล่อง'], ['pack_cloth', 'ผ้าเช็ด'],
-  ['pack_warranty', 'ใบรับประกัน'], ['pack_prescription', 'ใบค่าสายตา'],
-  ['pack_accessories', 'อุปกรณ์เสริม'],
 ];
 
 const PRODUCTION_ACTIONS = ['production_started', 'production_withdraw_extra', 'production_paused',
@@ -290,6 +285,10 @@ export function ProductionPanel({ c, reload }) {
   };
 
   const log = (c.events || []).filter((ev) => PRODUCTION_ACTIONS.includes(ev.action));
+  const rxList = c.prescriptions || [];
+  const buildRx = rxList.find((r) => Number(r.id) === Number(c.order?.final_prescription_id))
+    || rxList.find((r) => r.kind === 'final' && Number(r.case_id) === Number(c.id))
+    || null;
   const eye = (side) => {
     const k = side === 'od' ? 'r' : 'l';
     const rx = (c.prescriptions || []).find((r) => r.kind === 'final' && Number(r.case_id) === Number(c.id));
@@ -382,6 +381,14 @@ export function ProductionPanel({ c, reload }) {
         </div>
       </Card>
 
+      {/* the powers the glasses are being built to — the order's own choice
+          (custom_orders.final_prescription_id) rather than "the newest final
+          row", so re-measuring a customer later cannot silently change what
+          this pair was cut for */}
+      <Card title="ค่าสายตาที่ใช้ประกอบแว่น" right={<span className="muted">อ่านอย่างเดียว</span>}>
+        <RxSetBlock row={buildRx} title="ค่าสายตาที่ใช้ใน Case" sub="Final Prescription" star />
+      </Card>
+
       {/* the numbers the bench cuts to */}
       <Card title="ค่าจากขั้นวัด Center" right={<span className="muted">อ่านอย่างเดียว</span>}>
         <div className="measure-grid cols-4">
@@ -443,17 +450,6 @@ export function ProductionPanel({ c, reload }) {
                 <Check name="match_customer_ok" defaultChecked={!!Number(p.match_customer_ok)}>ตรงลูกค้า</Check>
                 <Check name="match_rx_ok" defaultChecked={!!Number(p.match_rx_ok)}>ตรงค่าสายตา</Check>
               </Row>
-            </Field>
-            <Field label="Checklist การแพ็ค" className="full">
-              <Row>
-                {PACK_ITEMS.map(([k, label]) => (
-                  <Check key={k} name={k} defaultChecked={!!Number(p[k])}>{label}</Check>
-                ))}
-              </Row>
-            </Field>
-            <Field label="ผู้แพ็ค"><EmployeeSelect name="packed_by" defaultValue={p.packed_by || ''} /></Field>
-            <Field label="ผู้ตรวจการแพ็ค">
-              <EmployeeSelect name="pack_checked_by" defaultValue={p.pack_checked_by || ''} />
             </Field>
           </FormGrid>
           <Field label="บันทึกการผลิต" className="full">

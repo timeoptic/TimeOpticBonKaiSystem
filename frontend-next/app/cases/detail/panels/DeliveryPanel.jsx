@@ -54,7 +54,6 @@ export function DeliveryPanel({ c, reload, actorId }) {
             <Ready ok={qc?.result === 'pass'}>
               {qc ? (qc.result === 'pass' ? 'QC ผ่าน' : 'QC ไม่ผ่าน — ต้องแก้ไขก่อน') : 'ยังไม่ได้ตรวจ QC'}
             </Ready>
-            <Ready ok={!!Number(p.pack_glasses)}>แพ็คสินค้าเรียบร้อย</Ready>
             <Ready ok={Number(c.balance) <= 0}>
               {Number(c.balance) <= 0 ? 'ชำระเงินครบแล้ว' : `ค้างชำระ ${money(c.balance)}`}
             </Ready>
