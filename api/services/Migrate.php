@@ -110,6 +110,25 @@ final class Migrate
                 CONSTRAINT fk_nl_booking FOREIGN KEY (booking_id) REFERENCES bookings (id) ON DELETE SET NULL
               ) $c",
 
+            /* one row per (case, process) — the 9-process workflow's own status
+               axis, written only by an explicit action on that process. A case
+               with no rows still reports a status; it is derived from its data
+               (api/routes/processes.php). */
+            'case_processes' => "CREATE TABLE IF NOT EXISTS case_processes (
+                id           int(10) unsigned NOT NULL AUTO_INCREMENT,
+                case_id      int(10) unsigned NOT NULL,
+                process      varchar(20) NOT NULL,
+                status       varchar(20) NOT NULL DEFAULT 'not_started',
+                started_at   datetime DEFAULT NULL,
+                completed_at datetime DEFAULT NULL,
+                note         varchar(500) DEFAULT NULL,
+                created_at   datetime NOT NULL DEFAULT current_timestamp(),
+                updated_at   datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+                PRIMARY KEY (id),
+                UNIQUE KEY uq_cp_case_process (case_id, process),
+                CONSTRAINT fk_cp_case FOREIGN KEY (case_id) REFERENCES cases (id) ON DELETE CASCADE
+              ) $c",
+
             /* every stock item pulled for a case's production — the initial
                pickLot() calls at "เริ่มผลิต" and any later "เบิกเพิ่ม" */
             'production_withdrawals' => "CREATE TABLE IF NOT EXISTS production_withdrawals (

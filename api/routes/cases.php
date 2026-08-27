@@ -128,7 +128,7 @@ function caseDetail(?int $id): array
 
     $paid = sumCol(array_filter($payments, fn($p) => !$p['cancelled_at']), 'amount');
 
-    return $c + [
+    $detail = $c + [
         'prescriptions' => $rx,
         'order'         => $order,
         'lens_job'      => $lensJob,
@@ -145,6 +145,11 @@ function caseDetail(?int $id): array
             ? round2((float) $order['total_price'] - (float) $order['discount'] - $paid)
             : null,
     ];
+
+    /* the 9-process status axis (api/routes/processes.php) — needs everything
+       above it to decide what each process still needs */
+    $detail['processes'] = caseProcessStates($detail);
+    return $detail;
 }
 
 GET('/api/cases/:id', fn(array $r) => caseDetail(int_or($r['params']['id'])));
