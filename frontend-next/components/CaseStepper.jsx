@@ -11,6 +11,7 @@
  * (components/ProcessShell.jsx).
  */
 import { CASE_PROCESSES, PROCESS_STATE_META, stateMeta } from '../lib/caseProcesses.js';
+import { Icon } from './Icon.jsx';
 
 export function CaseStepper({ processes = {}, viewing, onView }) {
   return (
@@ -31,7 +32,7 @@ export function CaseStepper({ processes = {}, viewing, onView }) {
                 title={`${p.label}: ${sm.label}${reasons.length ? ` — ยังขาด: ${reasons.join(', ')}` : ''}`}
                 onClick={() => onView(p.id)}
               >
-                {state.status === 'not_started' ? p.icon : sm.icon}
+                <Icon name={state.status === 'not_started' ? p.icon : sm.icon} />
               </button>
               <button
                 type="button"
@@ -48,7 +49,7 @@ export function CaseStepper({ processes = {}, viewing, onView }) {
 
       <div className="stepper-legend">
         {Object.entries(PROCESS_STATE_META).map(([k, m]) => (
-          <span key={k} className={`legend-item ${m.cls}`}>{`${m.icon} ${m.label}`}</span>
+          <span key={k} className={`legend-item ${m.cls}`}><Icon name={m.icon} /> {m.label}</span>
         ))}
       </div>
     </>

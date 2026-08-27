@@ -12,6 +12,7 @@ import { BookingStatusBadge } from '../../components/BookingStatusBadge.jsx';
 import { daysInMonth, leadOffset, shiftMonth } from '../../lib/calendar.js';
 import { TH_DOW, TH_MONTHS } from '../../lib/constants.js';
 import { bookingName, dateOnly, fmtDate, hhmm, todayISO } from '../../lib/format.js';
+import { Icon } from '../../components/Icon.jsx';
 
 // Port of public/js/views/bookings.js's STATUS_CLASS — colors a booking pill
 // (and, elsewhere, its detail-page badge) by status.
@@ -104,7 +105,7 @@ function BookingCalendarInner() {
         actions={(
           <>
             <Link className="btn btn-ghost" href="/bookings/new">+ จองคิวใหม่</Link>
-            <Link className="btn btn-ghost" href="/settings">⚙️ ตั้งค่าแจ้งเตือน</Link>
+            <Link className="btn btn-ghost" href="/settings"><Icon name="gear" /> ตั้งค่าแจ้งเตือน</Link>
           </>
         )}
       />
@@ -159,7 +160,7 @@ function BookingCalendarInner() {
               {
                 label: 'แจ้งเตือน',
                 render: (b) => (b.reminder_sent_at
-                  ? <Badge kind="ok">✓ ส่งแล้ว</Badge>
+                  ? <Badge kind="ok"><Icon name="check" /> ส่งแล้ว</Badge>
                   : <span className="muted">{`ก่อน ${b.reminder_minutes} น.`}</span>),
               },
               { label: 'บันทึกเบื้องต้น', render: (b) => (b.intake_note || '').slice(0, 60) },
@@ -167,7 +168,7 @@ function BookingCalendarInner() {
                 label: '',
                 cls: 'nowrap',
                 render: (b) => (b.case_id
-                  ? <Link className="btn btn-sm btn-light" href={'/cases/detail?id=' + b.case_id}>{'🗂 ' + b.case_code}</Link>
+                  ? <Link className="btn btn-sm btn-light" href={'/cases/detail?id=' + b.case_id}><Icon name="board" /> {b.case_code}</Link>
                   : <span className="muted">—</span>),
               },
             ]}

@@ -13,6 +13,7 @@ import { StatusChip } from '../../../components/StatusChip.jsx';
 import { ExamHistory } from '../../../components/ExamHistory.jsx';
 import { QueryParamPage } from '../../../components/QueryParamPage.jsx';
 import { custName, fmtDate, fmtDateTime, money } from '../../../lib/format.js';
+import { Icon } from '../../../components/Icon.jsx';
 
 function CustomerDetailInner() {
   const params = useSearchParams();
@@ -53,10 +54,10 @@ function CustomerDetailInner() {
         subtitle={`รหัสลูกค้า #${c.id}`}
         actions={(
           <>
-            <Link className="btn btn-ghost" href={`/cases/new?customer=${c.id}`}>🗂 เปิดเคส</Link>
-            <Link className="btn btn-ghost" href={`/prescriptions/new?customer=${c.id}`}>👁 วัดสายตา</Link>
-            <Link className="btn btn-ghost" href={`/orders/new?customer=${c.id}`}>👓 เปิดออเดอร์</Link>
-            <Link className="btn btn-ghost" href={`/customers/edit?id=${c.id}`}>✎ แก้ไข</Link>
+            <Link className="btn btn-ghost" href={`/cases/new?customer=${c.id}`}><Icon name="board" /> เปิดเคส</Link>
+            <Link className="btn btn-ghost" href={`/prescriptions/new?customer=${c.id}`}><Icon name="eye" /> วัดสายตา</Link>
+            <Link className="btn btn-ghost" href={`/orders/new?customer=${c.id}`}><Icon name="glasses" /> เปิดออเดอร์</Link>
+            <Link className="btn btn-ghost" href={`/customers/edit?id=${c.id}`}><Icon name="pencil" /> แก้ไข</Link>
           </>
         )}
       />
@@ -76,7 +77,7 @@ function CustomerDetailInner() {
           ]}
           />
           <FormActions style={{ marginTop: 14 }}>
-            <button type="button" className="btn btn-sm btn-danger" onClick={remove}>🗑 ลบลูกค้า</button>
+            <button type="button" className="btn btn-sm btn-danger" onClick={remove}><Icon name="trash" /> ลบลูกค้า</button>
           </FormActions>
         </Card>
 

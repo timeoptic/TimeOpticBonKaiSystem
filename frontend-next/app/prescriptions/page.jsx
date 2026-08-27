@@ -8,6 +8,7 @@ import { Badge, Card, Field, Loading, PageHead, Toolbar } from '../../components
 import { DataTable } from '../../components/DataTable.jsx';
 import { QueryParamPage } from '../../components/QueryParamPage.jsx';
 import { custName, fmtDateTime, power, rxNum } from '../../lib/format.js';
+import { Icon } from '../../components/Icon.jsx';
 
 function PrescriptionListInner() {
   const router = useRouter();
@@ -61,7 +62,7 @@ function PrescriptionListInner() {
               {
                 label: '',
                 cls: 'nowrap',
-                render: (t) => <Link className="btn btn-sm btn-light" href={'/print/prescription?id=' + t.id}>🖨</Link>,
+                render: (t) => <Link className="btn btn-sm btn-light" href={'/print/prescription?id=' + t.id}><Icon name="printer" /></Link>,
               },
             ]}
             rows={rows}

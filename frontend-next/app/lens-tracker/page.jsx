@@ -9,6 +9,7 @@ import { QueryParamPage } from '../../components/QueryParamPage.jsx';
 import { DataTable } from '../../components/DataTable.jsx';
 import { Select } from '../../components/Selects.jsx';
 import { custName, fmtDate } from '../../lib/format.js';
+import { Icon } from '../../components/Icon.jsx';
 
 const RISKS = [['', 'ทุกระดับ'], ['late', 'เลย ETA'], ['soon', 'ใกล้ถึง'], ['ok', 'ปกติ']];
 
@@ -29,7 +30,7 @@ function LensTrackerInner() {
         icon="🔎"
         title="Lens Tracker"
         subtitle="ติดตามเลนส์ที่สั่งซัพพลายเออร์"
-        actions={<Link className="btn btn-ghost" href="/cases">← กระดานงาน</Link>}
+        actions={<Link className="btn btn-ghost" href="/cases"><Icon name="arrowLeft" /> กระดานงาน</Link>}
       />
 
       <Toolbar>
@@ -37,7 +38,7 @@ function LensTrackerInner() {
           <Select options={RISKS} value={risk} onChange={(e) => setRisk(e.target.value)} />
         </Field>
         <Check checked={threat} onChange={(e) => setThreat(e.target.checked)}>เฉพาะที่กระทบวันนัด</Check>
-        <button type="button" className="btn btn-light" onClick={reload}>↻ รีเฟรช</button>
+        <button type="button" className="btn btn-light" onClick={reload}><Icon name="refresh" /> รีเฟรช</button>
       </Toolbar>
 
       {loading && <Loading />}
@@ -47,7 +48,7 @@ function LensTrackerInner() {
           <DataTable
             columns={[
               { label: 'เคส', key: 'case_code', cls: 'mono' },
-              { label: '', render: (r) => (Number(r.is_rush) ? <Badge kind="danger">🔥</Badge> : '') },
+              { label: '', render: (r) => (Number(r.is_rush) ? <Badge kind="danger"><Icon name="flame" /></Badge> : '') },
               { label: 'ลูกค้า', render: custName },
               { label: 'เบอร์', key: 'phone', cls: 'nowrap' },
               { label: 'Invoice', key: 'invoice_code', cls: 'mono' },

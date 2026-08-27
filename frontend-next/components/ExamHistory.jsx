@@ -12,6 +12,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { Badge, Empty, Row } from './ui.jsx';
 import { fmtDate, power } from '../lib/format.js';
+import { Icon } from './Icon.jsx';
 
 const SET_META = [
   ['old', 'OLD GLASSES', 'ค่าสายตาเดิม'],
@@ -114,7 +115,7 @@ export function ExamHistory({ sessions }) {
                 {s.case_id ? (
                   <Row>
                     <Link className="btn btn-sm btn-light" href={'/cases/detail?id=' + s.case_id + '&step=exam'}>
-                      ✎ แก้ไขที่ขั้นวัดสายตาของเคส
+                      <Icon name="pencil" /> แก้ไขที่ขั้นวัดสายตาของเคส
                     </Link>
                   </Row>
                 ) : null}

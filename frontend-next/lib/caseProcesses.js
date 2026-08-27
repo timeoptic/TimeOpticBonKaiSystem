@@ -33,7 +33,7 @@ export const PROCESS_STATE_META = {
   in_progress: { label: 'กำลังดำเนินการ', icon: '●', cls: 'warn' },
   completed: { label: 'เสร็จแล้ว', icon: '✓', cls: 'done' },
   waiting: { label: 'รอ', icon: '⏳', cls: 'warn' },
-  problem: { label: 'มีปัญหา', icon: '!', cls: 'danger' },
+  problem: { label: 'มีปัญหา', icon: '⚠', cls: 'danger' },
   locked: { label: 'ยังทำไม่ได้', icon: '🔒', cls: 'locked' },
 };
 

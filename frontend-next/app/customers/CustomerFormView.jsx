@@ -15,6 +15,7 @@ import { Card, Field, FormActions, FormGrid, Loading, PageHead } from '../../com
 import { ListSelect } from '../../components/Selects.jsx';
 import { NATIONALITIES } from '../../lib/constants.js';
 import { dateOnly } from '../../lib/format.js';
+import { Icon } from '../../components/Icon.jsx';
 
 // editing must always be passed explicitly by the caller (true or false) — if a future
 // page forgets it, editing becomes undefined (falsy), silently serving a *create* form
@@ -103,7 +104,7 @@ export function CustomerFormView({ editing }) {
 
           <FormActions>
             <button className="btn btn-lg" type="submit">
-              {editing ? '💾 บันทึกการแก้ไข' : '✔ บันทึกลูกค้าใหม่'}
+              <Icon name="save" /> {editing ? 'บันทึกการแก้ไข' : 'บันทึกลูกค้าใหม่'}
             </button>
             <Link className="btn btn-light" href={editing ? '/customers/detail?id=' + id : '/customers'}>ยกเลิก</Link>
           </FormActions>

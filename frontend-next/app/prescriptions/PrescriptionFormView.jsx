@@ -17,6 +17,7 @@ import {
 import { Picker } from '../../components/Picker.jsx';
 import { EmployeeSelect, ListSelect, Select } from '../../components/Selects.jsx';
 import { custName, dtLocal, nowLocal, toStamp } from '../../lib/format.js';
+import { Icon } from '../../components/Icon.jsx';
 
 const HEALTH = [
   ['health_cataract', 'ต้อกระจก'], ['health_eye_surgery', 'เคยผ่าตัดตา'],
@@ -105,7 +106,7 @@ export function PrescriptionFormView({ editing }) {
         icon="👁"
         title="Prescription"
         subtitle="บันทึกการวัดสายตา"
-        actions={caseId ? <Link className="btn btn-ghost" href={'/cases/detail?id=' + caseId}>← กลับไปที่เคส</Link> : null}
+        actions={caseId ? <Link className="btn btn-ghost" href={'/cases/detail?id=' + caseId}><Icon name="arrowLeft" /> กลับไปที่เคส</Link> : null}
       />
 
       <Split>
@@ -192,9 +193,9 @@ export function PrescriptionFormView({ editing }) {
 
           <FormActions style={{ marginTop: 14 }}>
             <button className="btn btn-lg" type="submit">
-              {editing ? '💾 บันทึกการแก้ไข' : '✔ บันทึกผลวัดสายตา'}
+              <Icon name="save" /> {editing ? 'บันทึกการแก้ไข' : 'บันทึกผลวัดสายตา'}
             </button>
-            {editing && <Link className="btn btn-light" href={'/print/prescription?id=' + id}>🖨 พิมพ์</Link>}
+            {editing && <Link className="btn btn-light" href={'/print/prescription?id=' + id}><Icon name="printer" /> พิมพ์</Link>}
             <Link className="btn btn-light" href={caseId ? '/cases/detail?id=' + caseId : '/prescriptions'}>ยกเลิก</Link>
           </FormActions>
         </form>

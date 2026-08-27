@@ -30,6 +30,7 @@ import { RX_KIND_LABEL } from '../../lib/constants.js';
 import {
   custName, fmtDateTime, money, power, rxNum,
 } from '../../lib/format.js';
+import { Icon } from '../../components/Icon.jsx';
 
 const n = (v) => Number(v || 0);
 
@@ -206,7 +207,7 @@ export function OrderFormView({
               <span className="muted">{contextCustomer.phone || ''}</span>
               {(contextCustomer.case_code || o.case_code) && (
                 <Link className="btn btn-sm btn-light" href={'/cases/detail?id=' + caseId}>
-                  🗂 {contextCustomer.case_code || o.case_code}
+                  <Icon name="board" /> {contextCustomer.case_code || o.case_code}
                 </Link>
               )}
             </Row>
@@ -235,7 +236,7 @@ export function OrderFormView({
                 className="btn btn-sm btn-accent"
                 href={`/prescriptions/new?customer=${customerId}${caseId ? '&case=' + caseId : ''}`}
               >
-                👁 วัดสายตาเลย
+                <Icon name="eye" /> วัดสายตาเลย
               </Link>
             </div>
           )}
@@ -406,7 +407,7 @@ export function OrderFormView({
           />
           <FormActions style={{ marginTop: 14 }}>
             <button className="btn btn-lg" type="submit" disabled={discountTooHigh}>
-              {editing ? '💾 บันทึกการแก้ไข' : '✔ เปิดออเดอร์'}
+              <Icon name="save" /> {editing ? 'บันทึกการแก้ไข' : 'เปิดออเดอร์'}
             </button>
             {!embedded && <Link className="btn btn-light" href={cancelHref}>ยกเลิก</Link>}
           </FormActions>

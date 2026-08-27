@@ -30,6 +30,7 @@ import {
 import { EmployeeSelect, ListSelect } from '../../../../components/Selects.jsx';
 import { useProcessActions } from '../../../../components/ProcessShell.jsx';
 import { dtLocal, fmtDate, fmtDateTime, nowLocal, power, toStamp } from '../../../../lib/format.js';
+import { Icon } from '../../../../components/Icon.jsx';
 
 const HEALTH = [
   ['health_diabetes', 'เบาหวาน'], ['health_bp', 'ความดัน'], ['health_heart', 'โรคหัวใจ'],
@@ -296,7 +297,7 @@ export function ExamPanel({ c, reload }) {
     return { measured, old };
   };
 
-  /* ✓ ยืนยันผลวัดสายตา: save the round, then write the final row this case will
+  /* <Icon name="check" /> ยืนยันผลวัดสายตา: save the round, then write the final row this case will
      build from — a copy of the chosen set, never a pointer at it. */
   const beforeComplete = async () => {
     if (finalSource === 'adjusted' && !adjustReason.trim()) {
@@ -423,7 +424,7 @@ export function ExamPanel({ c, reload }) {
                   : 'เลือกรอบการตรวจเก่าเพื่อคัดลอกค่ามาใช้'}
               </span>
               <button type="button" className="btn btn-sm btn-light" onClick={() => setPickHistory((v) => !v)}>
-                {pickHistory ? 'ปิดรายการ' : '↧ เลือกจากประวัติ'}
+                {pickHistory ? 'ปิดรายการ' : <><Icon name="download" /> เลือกจากประวัติ</>}
               </button>
             </Row>
             {pickHistory && (
@@ -584,7 +585,7 @@ export function ExamPanel({ c, reload }) {
           <Row style={{ marginTop: 10 }}>
             <Badge kind="ok">FINAL</Badge>
             <span className="muted">{`บันทึกไว้เมื่อ ${fmtDateTime(finalRow.confirmed_at || finalRow.test_date)}`}</span>
-            <Link className="btn btn-sm btn-light" href={'/print/prescription?id=' + finalRow.id}>🖨 พิมพ์</Link>
+            <Link className="btn btn-sm btn-light" href={'/print/prescription?id=' + finalRow.id}><Icon name="printer" /> พิมพ์</Link>
           </Row>
         )}
       </Section>
@@ -611,7 +612,7 @@ export function ExamPanel({ c, reload }) {
                 </b>
                 <span>{`OD ${power(r.r_sphere)} / ${power(r.r_cylinder)} x ${r.r_axis || '—'}`}</span>
                 <span>{`OS ${power(r.l_sphere)} / ${power(r.l_cylinder)} x ${r.l_axis || '—'}`}</span>
-                <Link className="btn btn-sm btn-light" href={'/prescriptions/edit?id=' + r.id}>✎ แก้ไขทั้งใบ</Link>
+                <Link className="btn btn-sm btn-light" href={'/prescriptions/edit?id=' + r.id}><Icon name="pencil" /> แก้ไขทั้งใบ</Link>
               </div>
             ))}
           </div>

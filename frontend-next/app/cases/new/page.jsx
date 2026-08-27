@@ -29,6 +29,7 @@ import { Picker } from '../../../components/Picker.jsx';
 import { EmployeeSelect, ListSelect, StatusSelect } from '../../../components/Selects.jsx';
 import { NATIONALITIES } from '../../../lib/constants.js';
 import { custName, fmtDate } from '../../../lib/format.js';
+import { Icon } from '../../../components/Icon.jsx';
 
 /** the new-customer half of step 1 — saves the customer, hands it back */
 function NewCustomerForm({ onCreated }) {
@@ -61,7 +62,7 @@ function NewCustomerForm({ onCreated }) {
         {NATIONALITIES.map((n) => <option key={n} value={n} />)}
       </datalist>
       <FormActions>
-        <button className="btn" type="submit" disabled={busy}>✔ บันทึกลูกค้าใหม่</button>
+        <button className="btn" type="submit" disabled={busy}><Icon name="check" /> บันทึกลูกค้าใหม่</button>
       </FormActions>
     </form>
   );
@@ -129,14 +130,14 @@ function CaseFormInner() {
             className={`chip-btn ${mode === 'existing' ? 'active' : ''}`}
             onClick={() => chooseMode('existing')}
           >
-            👤 ลูกค้าเก่า — มีข้อมูลในระบบแล้ว
+            <Icon name="user" /> ลูกค้าเก่า — มีข้อมูลในระบบแล้ว
           </button>
           <button
             type="button"
             className={`chip-btn ${mode === 'new' ? 'active' : ''}`}
             onClick={() => chooseMode('new')}
           >
-            ✨ ลูกค้าใหม่ — ยังไม่เคยมีข้อมูล
+            <Icon name="sparkle" /> ลูกค้าใหม่ — ยังไม่เคยมีข้อมูล
           </button>
         </Row>
 
@@ -208,7 +209,7 @@ function CaseFormInner() {
               <StatusSelect name="status" openOnly defaultValue="reception" />
             </Field>
             <Field label="ความเร่งด่วน">
-              <Check name="is_rush">🔥 งานด่วน</Check>
+              <Check name="is_rush"><Icon name="flame" /> งานด่วน</Check>
             </Field>
             <Field label="หมายเหตุความเร่งด่วน"><input name="priority_note" /></Field>
           </FormGrid>
@@ -218,7 +219,7 @@ function CaseFormInner() {
           </Field>
 
           <FormActions>
-            <button className="btn btn-lg" type="submit" disabled={busy || !customer}>✔ เปิดเคส</button>
+            <button className="btn btn-lg" type="submit" disabled={busy || !customer}><Icon name="check" /> เปิดเคส</button>
             <Link className="btn btn-light" href="/cases">ยกเลิก</Link>
             {!customer && <span className="muted">เลือกลูกค้าก่อนจึงจะเปิดเคสได้</span>}
           </FormActions>

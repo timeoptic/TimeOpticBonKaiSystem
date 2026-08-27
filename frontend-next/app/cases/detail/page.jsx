@@ -38,6 +38,7 @@ import { ExamPanel } from './panels/ExamPanel.jsx';
 import { SalesPanel } from './panels/SalesPanel.jsx';
 import { CenteringPanel } from './panels/CenteringPanel.jsx';
 import { LensPanel } from './panels/LensPanel.jsx';
+import { Icon } from '../../../components/Icon.jsx';
 import { ProductionPanel } from './panels/ProductionPanel.jsx';
 import { QcPanel } from './panels/QcPanel.jsx';
 import { DeliveryPanel } from './panels/DeliveryPanel.jsx';
@@ -132,7 +133,7 @@ function OverviewTab({ c, showTab }) {
                 onClick={() => showTab(p.id)}
                 title={reasons.length ? `ยังขาด: ${reasons.join(', ')}` : undefined}
               >
-                <b>{`${p.icon} ${p.label}`}</b>
+                <b><Icon name={p.icon} /> {p.label}</b>
                 <span>
                   {st.status === 'completed'
                     ? (st.completed_at ? `ยืนยัน ${fmtDateTime(st.completed_at)}` : 'ข้อมูลครบแล้ว')
@@ -230,7 +231,7 @@ function OverviewTab({ c, showTab }) {
               rows={(c.events || []).slice(0, 5).map((ev) => [
                 fmtDateTime(ev.created_at),
                 `${ACTION_LABEL[ev.action] || ev.action}`
-                + `${ev.to_label ? ` → ${ev.to_label}` : ''}`
+                + `${ev.to_label ? ` <Icon name="arrowRight" /> ${ev.to_label}` : ''}`
                 + `${eventNote(ev) ? ` · ${eventNote(ev)}` : ''}`,
               ])}
             />
@@ -324,9 +325,9 @@ function CaseDetailInner() {
         subtitle={custName(c)}
         actions={(
           <>
-            <Link className="btn btn-ghost" href={'/customers/detail?id=' + c.customer_id}>👤 ข้อมูลลูกค้า</Link>
-            {c.order && <Link className="btn btn-ghost" href={'/orders/detail?id=' + c.order.id}>👓 ออเดอร์</Link>}
-            {c.order && <Link className="btn btn-ghost" href={'/print/order?id=' + c.order.id}>🖨 ใบสั่ง</Link>}
+            <Link className="btn btn-ghost" href={'/customers/detail?id=' + c.customer_id}><Icon name="user" /> ข้อมูลลูกค้า</Link>
+            {c.order && <Link className="btn btn-ghost" href={'/orders/detail?id=' + c.order.id}><Icon name="glasses" /> ออเดอร์</Link>}
+            {c.order && <Link className="btn btn-ghost" href={'/print/order?id=' + c.order.id}><Icon name="printer" /> ใบสั่ง</Link>}
           </>
         )}
       />
@@ -335,12 +336,12 @@ function CaseDetailInner() {
         <div className="card-body">
           <Row style={{ gap: 14, alignItems: 'center', marginBottom: 12 }}>
             <StatusChip row={c} />
-            {Number(c.is_rush) ? <Badge kind="danger">🔥 งานด่วน</Badge> : null}
+            {Number(c.is_rush) ? <Badge kind="danger"><Icon name="flame" /> งานด่วน</Badge> : null}
             {Number(c.is_waiting) ? <Badge kind="warn">สถานะรอ</Badge> : null}
-            {c.order ? <Badge kind={pay.kind}>{`💳 ${pay.label}`}</Badge> : null}
+            {c.order ? <Badge kind={pay.kind}><Icon name="card" /> {pay.label}</Badge> : null}
             <span className="muted">{`เปิดเมื่อ ${fmtDateTime(c.opened_at)}`}</span>
             {c.received_by_name ? <span className="muted">{`รับโดย ${c.received_by_name}`}</span> : null}
-            {c.phone ? <span className="muted">{'☎ ' + c.phone}</span> : null}
+            {c.phone ? <span className="muted"><Icon name="phone" /> {c.phone}</span> : null}
           </Row>
 
           <CaseStepper processes={processes} viewing={step} onView={requestStep} />

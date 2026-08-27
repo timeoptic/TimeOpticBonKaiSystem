@@ -2,11 +2,12 @@
 /** The small presentational pieces the pages are built from. Port of frontend/src/components/ui.jsx. */
 import { Fragment } from 'react';
 import Link from 'next/link';
+import { Icon } from './Icon.jsx';
 
 export function PageHead({ icon, title, subtitle, actions = null }) {
   return (
     <div className="page-head">
-      <div className="ph-icon">{icon}</div>
+      <div className="ph-icon"><Icon name={icon} /></div>
       <h1>{title}{subtitle ? <span>{subtitle}</span> : null}</h1>
       {actions ? <div className="ph-actions">{actions}</div> : null}
     </div>
@@ -123,7 +124,7 @@ export function OrderStatusBadge({ order }) {
 
 export const PrintButton = () => (
   <button type="button" className="btn btn-ghost no-print" onClick={() => window.print()}>
-    🖨 พิมพ์
+    <Icon name="printer" /> พิมพ์
   </button>
 );
 

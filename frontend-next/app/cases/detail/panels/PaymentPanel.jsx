@@ -7,6 +7,7 @@ import { Badge, Field, FormActions, FormGrid } from '../../../../components/ui.j
 import { DataTable } from '../../../../components/DataTable.jsx';
 import { EmployeeSelect, ListSelect, Select } from '../../../../components/Selects.jsx';
 import { fmtDateTime, money, nowLocal, toStamp } from '../../../../lib/format.js';
+import { Icon } from '../../../../components/Icon.jsx';
 
 const KINDS = [
   ['deposit', 'มัดจำ'], ['partial', 'จ่ายบางส่วน'],
@@ -62,7 +63,7 @@ export function PaymentPanel({ c, reload }) {
                 label: '',
                 cls: 'nowrap',
                 render: (p) => (
-                  <button type="button" className="btn btn-sm btn-light" onClick={() => remove(p)}>🗑</button>
+                  <button type="button" className="btn btn-sm btn-light" onClick={() => remove(p)}><Icon name="trash" /></button>
                 ),
               },
             ]}

@@ -8,6 +8,7 @@ import { Badge, Card, Check, Field, Loading, PageHead, Toolbar } from '../../com
 import { QueryParamPage } from '../../components/QueryParamPage.jsx';
 import { STAGE_GROUPS, stageInfo } from '../../lib/constants.js';
 import { fmtDate, moneyShort } from '../../lib/format.js';
+import { Icon } from '../../components/Icon.jsx';
 
 function CaseCard({ c, onOpen }) {
   const late = c.expected_arrival
@@ -18,7 +19,7 @@ function CaseCard({ c, onOpen }) {
     <div className={`case-card ${Number(c.is_rush) ? 'rush' : ''}`} onClick={() => onOpen(c)}>
       <div className="cc-top">
         <b>{[c.first_name, c.last_name].filter(Boolean).join(' ')}</b>
-        {Number(c.is_rush) ? <Badge kind="danger">🔥 ด่วน</Badge> : null}
+        {Number(c.is_rush) ? <Badge kind="danger"><Icon name="flame" /> ด่วน</Badge> : null}
       </div>
       <div className="cc-code">{`${c.case_code}${c.invoice_code ? ' · ' + c.invoice_code : ''}`}</div>
       <div className="cc-status">{`${c.stage_no} ${c.status_label_th}`}</div>
@@ -27,7 +28,7 @@ function CaseCard({ c, onOpen }) {
       )}
       <div className="cc-foot">
         {c.appointment_date
-          ? <span>{'📅 ' + fmtDate(c.appointment_date)}</span>
+          ? <span><Icon name="calendar" /> {fmtDate(c.appointment_date)}</span>
           : <span className="muted">—</span>}
         {c.balance !== null && c.balance !== undefined
           ? <span>{'ค้าง ' + moneyShort(c.balance)}</span>
@@ -74,7 +75,7 @@ function CaseBoardInner() {
         actions={(
           <>
             <Link className="btn btn-ghost" href="/cases/new">+ เปิดเคสใหม่</Link>
-            <Link className="btn btn-ghost" href="/lens-tracker">🔎 ติดตามเลนส์</Link>
+            <Link className="btn btn-ghost" href="/lens-tracker"><Icon name="search" /> ติดตามเลนส์</Link>
           </>
         )}
       />
@@ -88,9 +89,9 @@ function CaseBoardInner() {
             onChange={(e) => setTerm(e.target.value)}
           />
         </Field>
-        <Check checked={rushOnly} onChange={(e) => setRushOnly(e.target.checked)}>ด่วนเท่านั้น 🔥</Check>
+        <Check checked={rushOnly} onChange={(e) => setRushOnly(e.target.checked)}>ด่วนเท่านั้น <Icon name="flame" /></Check>
         <Check checked={showDone} onChange={(e) => setShowDone(e.target.checked)}>แสดงเคสที่จบแล้ว</Check>
-        <button type="button" className="btn btn-light" onClick={reload}>↻ รีเฟรช</button>
+        <button type="button" className="btn btn-light" onClick={reload}><Icon name="refresh" /> รีเฟรช</button>
       </Toolbar>
 
       {loading && <Loading />}
@@ -103,7 +104,7 @@ function CaseBoardInner() {
             return (
               <div className="board-col" key={g}>
                 <div className="board-head" style={{ borderTopColor: info.color }}>
-                  <span>{`${info.icon} ${info.label}`}</span>
+                  <span><Icon name={info.icon} /> {info.label}</span>
                   <Badge kind="gray">{list.length}</Badge>
                 </div>
                 <div className="board-body">

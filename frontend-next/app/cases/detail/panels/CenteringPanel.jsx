@@ -5,6 +5,7 @@ import { useToast } from '../../../../components/Toast.jsx';
 import { Field, FormActions, FormGrid } from '../../../../components/ui.jsx';
 import { EmployeeSelect } from '../../../../components/Selects.jsx';
 import { PhotoUpload } from '../../../../components/PhotoUpload.jsx';
+import { Icon } from '../../../../components/Icon.jsx';
 
 export function CenteringPanel({ c, reload, actorId }) {
   const { ok, err } = useToast();
@@ -45,7 +46,7 @@ export function CenteringPanel({ c, reload, actorId }) {
           </Field>
         </FormGrid>
         <FormActions>
-          <button className="btn btn-light" type="submit">💾 บันทึกจุดศูนย์กลาง</button>
+          <button className="btn btn-light" type="submit"><Icon name="save" /> บันทึกจุดศูนย์กลาง</button>
         </FormActions>
       </form>
 

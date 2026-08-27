@@ -14,6 +14,7 @@ import { RX_KIND_LABEL } from '../../../lib/constants.js';
 import {
   custName, fmtDateTime, money, power, rxNum,
 } from '../../../lib/format.js';
+import { Icon } from '../../../components/Icon.jsx';
 
 /** one physical item line inside the order's key/value list */
 const itemValue = (s) => (s
@@ -62,11 +63,11 @@ function OrderDetailInner() {
         subtitle={custName(o)}
         actions={(
           <>
-            {!closed && <Link className="btn btn-ghost" href={`/orders/edit?id=${o.id}`}>✎ แก้ไข</Link>}
+            {!closed && <Link className="btn btn-ghost" href={`/orders/edit?id=${o.id}`}><Icon name="pencil" /> แก้ไข</Link>}
             {o.case_id && (
-              <Link className="btn btn-ghost" href={'/cases/detail?id=' + o.case_id}>🗂 {o.case_code || 'เคส'}</Link>
+              <Link className="btn btn-ghost" href={'/cases/detail?id=' + o.case_id}><Icon name="board" /> {o.case_code || 'เคส'}</Link>
             )}
-            <Link className="btn btn-ghost" href={'/customers/detail?id=' + o.customer_id}>👤 ลูกค้า</Link>
+            <Link className="btn btn-ghost" href={'/customers/detail?id=' + o.customer_id}><Icon name="user" /> ลูกค้า</Link>
           </>
         )}
       />
@@ -124,14 +125,14 @@ function OrderDetailInner() {
               ]}
               />
               <FormActions style={{ marginTop: 10 }}>
-                <Link className="btn btn-sm btn-light" href={'/print/prescription?id=' + t.id}>🖨 ใบวัดสายตา</Link>
+                <Link className="btn btn-sm btn-light" href={'/print/prescription?id=' + t.id}><Icon name="printer" /> ใบวัดสายตา</Link>
               </FormActions>
             </Card>
           )}
 
           <Card title="การจัดการ">
             <Row>
-              {!closed && <button type="button" className="btn btn-danger" onClick={remove}>🗑 ลบออเดอร์</button>}
+              {!closed && <button type="button" className="btn btn-danger" onClick={remove}><Icon name="trash" /> ลบออเดอร์</button>}
               {!!closed && <span className="muted">ออเดอร์นี้ปิดการขายแล้ว จึงลบไม่ได้</span>}
             </Row>
           </Card>

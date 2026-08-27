@@ -7,6 +7,7 @@ import { Badge, Card, Field, FormActions, FormGrid, Loading, PageHead } from '..
 import { DataTable } from '../../components/DataTable.jsx';
 import { ListSelect } from '../../components/Selects.jsx';
 import { fmtDate } from '../../lib/format.js';
+import { Icon } from '../../components/Icon.jsx';
 
 export default function EmployeeList() {
   const { reload: reloadMeta } = useMeta();
@@ -55,7 +56,7 @@ export default function EmployeeList() {
             </Field>
           </FormGrid>
           <FormActions>
-            <button className="btn" type="submit">✔ เพิ่มพนักงาน</button>
+            <button className="btn" type="submit"><Icon name="check" /> เพิ่มพนักงาน</button>
           </FormActions>
         </form>
       </div>

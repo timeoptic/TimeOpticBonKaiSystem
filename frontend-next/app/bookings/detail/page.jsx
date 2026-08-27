@@ -16,6 +16,7 @@ import { QueryParamPage } from '../../../components/QueryParamPage.jsx';
 import { BookingStatusBadge } from '../../../components/BookingStatusBadge.jsx';
 import { BOOKING_STEPS, BOOKING_STEP_LABEL } from '../../../lib/constants.js';
 import { bookingName, dateOnly, fmtDate, fmtDateTime, hhmm } from '../../../lib/format.js';
+import { Icon } from '../../../components/Icon.jsx';
 
 function BookingDetailInner() {
   const params = useSearchParams();
@@ -104,9 +105,9 @@ function BookingDetailInner() {
         subtitle={bookingName(b)}
         actions={(
           <>
-            {b.case_id && <Link className="btn btn-ghost" href={'/cases/detail?id=' + b.case_id}>{'🗂 ' + b.case_code}</Link>}
-            <Link className="btn btn-ghost" href={`/bookings/edit?id=${b.id}`}>✎ แก้ไข</Link>
-            <Link className="btn btn-ghost" href={`/bookings?date=${dateOnly(b.booking_date)}`}>← ปฏิทิน</Link>
+            {b.case_id && <Link className="btn btn-ghost" href={'/cases/detail?id=' + b.case_id}><Icon name="board" /> {b.case_code}</Link>}
+            <Link className="btn btn-ghost" href={`/bookings/edit?id=${b.id}`}><Icon name="pencil" /> แก้ไข</Link>
+            <Link className="btn btn-ghost" href={`/bookings?date=${dateOnly(b.booking_date)}`}><Icon name="arrowLeft" /> ปฏิทิน</Link>
           </>
         )}
       />
@@ -116,8 +117,8 @@ function BookingDetailInner() {
           <Row style={{ marginBottom: 12 }}>
             <BookingStatusBadge b={b} />
             {b.reminder_sent_at
-              ? <Badge kind="ok">{'🔔 แจ้งเตือนแล้ว ' + fmtDateTime(b.reminder_sent_at)}</Badge>
-              : <Badge kind="gray">{`🔔 จะแจ้งก่อน ${b.reminder_minutes} นาที`}</Badge>}
+              ? <Badge kind="ok"><Icon name="bell" /> {'แจ้งเตือนแล้ว ' + fmtDateTime(b.reminder_sent_at)}</Badge>
+              : <Badge kind="gray"><Icon name="bell" /> {`จะแจ้งก่อน ${b.reminder_minutes} นาที`}</Badge>}
           </Row>
 
           <Kv rows={[
@@ -158,20 +159,20 @@ function BookingDetailInner() {
             <Row style={{ marginTop: 12 }}>
               {b.status === 'booked' && (
                 <button type="button" className="btn btn-sm btn-accent" onClick={() => setStatus('confirmed')}>
-                  ✔ ยืนยันคิว
+                  <Icon name="check" /> ยืนยันคิว
                 </button>
               )}
               {['booked', 'confirmed'].includes(b.status) && (
                 <button type="button" className="btn btn-sm btn-ok" onClick={() => setStatus('arrived')}>
-                  🚶 ลูกค้ามาถึง
+                  <Icon name="userCheck" /> ลูกค้ามาถึง
                 </button>
               )}
               {!b.case_id && ['arrived', 'confirmed', 'booked'].includes(b.status) && (
-                <button type="button" className="btn btn-sm" onClick={openCase}>🗂 เปิดเคสให้ลูกค้า</button>
+                <button type="button" className="btn btn-sm" onClick={openCase}><Icon name="board" /> เปิดเคสให้ลูกค้า</button>
               )}
               {b.status !== 'done' && (
                 <button type="button" className="btn btn-sm btn-light" onClick={() => setStatus('done')}>
-                  ✅ เสร็จสิ้น
+                  <Icon name="checkCircle" /> เสร็จสิ้น
                 </button>
               )}
               {!['cancelled', 'no_show', 'done'].includes(b.status) && (
@@ -183,7 +184,7 @@ function BookingDetailInner() {
                     setStatus('no_show');
                   }}
                 >
-                  👻 ไม่มาตามนัด
+                  <Icon name="userX" /> ไม่มาตามนัด
                 </button>
               )}
               {b.status !== 'cancelled' && (
@@ -196,7 +197,7 @@ function BookingDetailInner() {
                     setStatus('cancelled');
                   }}
                 >
-                  ✕ ยกเลิกคิว
+                  <Icon name="x" /> ยกเลิกคิว
                 </button>
               )}
             </Row>
@@ -205,10 +206,10 @@ function BookingDetailInner() {
 
             <Row>
               <button type="button" className="btn btn-sm btn-light" disabled={sending} onClick={remind}>
-                🔔 ส่งแจ้งเตือน Telegram เดี๋ยวนี้
+                <Icon name="bell" /> ส่งแจ้งเตือน Telegram เดี๋ยวนี้
               </button>
               {!b.case_id && (
-                <button type="button" className="btn btn-sm btn-light" onClick={removeBooking}>🗑 ลบการจอง</button>
+                <button type="button" className="btn btn-sm btn-light" onClick={removeBooking}><Icon name="trash" /> ลบการจอง</button>
               )}
             </Row>
 
@@ -218,7 +219,7 @@ function BookingDetailInner() {
                 <div className="stack" style={{ gap: 4, marginTop: 5 }}>
                   {b.notifications.map((n) => (
                     <div className="row" style={{ fontSize: 12.5 }} key={n.id}>
-                      {Number(n.ok) ? <Badge kind="ok">✓</Badge> : <Badge kind="danger">✕</Badge>}
+                      {Number(n.ok) ? <Badge kind="ok"><Icon name="check" /></Badge> : <Badge kind="danger"><Icon name="x" /></Badge>}
                       <span className="muted">{fmtDateTime(n.created_at)}</span>
                       <span className="muted">{n.kind}</span>
                       {n.error ? <span style={{ color: 'var(--danger)' }}>{n.error}</span> : null}
@@ -252,7 +253,7 @@ function BookingDetailInner() {
                 label: '',
                 cls: 'nowrap',
                 render: (n) => (
-                  <button type="button" className="btn btn-sm btn-light" onClick={() => removeNote(n)}>🗑</button>
+                  <button type="button" className="btn btn-sm btn-light" onClick={() => removeNote(n)}><Icon name="trash" /></button>
                 ),
               },
             ]}

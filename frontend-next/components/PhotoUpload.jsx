@@ -5,6 +5,7 @@ import { api } from '../lib/apiClient.js';
 import { useAsync } from '../lib/hooks.js';
 import { useToast } from './Toast.jsx';
 import { useConfirm } from './Confirm.jsx';
+import { Icon } from './Icon.jsx';
 
 export function PhotoUpload({ caseId, kind = 'other', centeringId = null, paymentId = null, takenBy = null }) {
   const { ok, err } = useToast();
@@ -55,15 +56,15 @@ export function PhotoUpload({ caseId, kind = 'other', centeringId = null, paymen
         style={{ display: 'none' }}
         onChange={upload}
       />
-      <button type="button" className="btn btn-sm btn-light" onClick={pick}>📷 เพิ่มรูป</button>
+      <button type="button" className="btn btn-sm btn-light" onClick={pick}><Icon name="camera" /> เพิ่มรูป</button>
       {loading ? null : (
         <div className="photo-grid">
           {(photos || []).map((p) => (
             <div className="photo-thumb" key={p.id}>
               {p.mime_type === 'application/pdf'
-                ? <a href={api.url('/api/uploads/' + p.id)} target="_blank" rel="noreferrer">📄 {p.original_name}</a>
+                ? <a href={api.url('/api/uploads/' + p.id)} target="_blank" rel="noreferrer"><Icon name="file" /> {p.original_name}</a>
                 : <img src={api.url('/api/uploads/' + p.id)} alt={p.original_name || ''} />}
-              <button type="button" className="photo-thumb-del" onClick={() => remove(p)}>✕</button>
+              <button type="button" className="photo-thumb-del" onClick={() => remove(p)}><Icon name="x" /></button>
             </div>
           ))}
         </div>

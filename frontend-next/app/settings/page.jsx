@@ -8,6 +8,7 @@ import {
 } from '../../components/ui.jsx';
 import { DataTable } from '../../components/DataTable.jsx';
 import { fmtDateTime } from '../../lib/format.js';
+import { Icon } from '../../components/Icon.jsx';
 
 export default function SettingsPage() {
   const { ok, err } = useToast();
@@ -138,12 +139,12 @@ export default function SettingsPage() {
           </FormGrid>
 
           <FormActions>
-            <button className="btn btn-lg" type="submit">💾 บันทึกการตั้งค่า</button>
+            <button className="btn btn-lg" type="submit"><Icon name="save" /> บันทึกการตั้งค่า</button>
             <button type="button" className="btn btn-light" disabled={busy} onClick={test}>
-              🧪 ทดสอบส่งข้อความ
+              <Icon name="flask" /> ทดสอบส่งข้อความ
             </button>
             <button type="button" className="btn btn-light" onClick={runReminders}>
-              ⏱ รันตัวเตือนเดี๋ยวนี้
+              <Icon name="timer" /> รันตัวเตือนเดี๋ยวนี้
             </button>
           </FormActions>
         </form>
@@ -155,7 +156,7 @@ export default function SettingsPage() {
           <li>BotFather จะให้ Bot Token มา — ก็อปมาวางในช่องด้านบน</li>
           <li>สร้างกลุ่มของร้าน (เช่น &quot;TimeOptic คิวลูกค้า&quot;) แล้วเชิญบอทเข้ากลุ่ม</li>
           <li>เชิญ @getidsbot เข้ากลุ่มเพื่อดู Chat ID (ของกลุ่มจะขึ้นต้นด้วย -100) แล้วเตะออกได้</li>
-          <li>วาง Chat ID ติ๊กเปิดใช้งาน → บันทึก → กดปุ่มทดสอบ</li>
+          <li>วาง Chat ID ติ๊กเปิดใช้งาน <Icon name="arrowRight" /> บันทึก <Icon name="arrowRight" /> กดปุ่มทดสอบ</li>
         </ol>
       </Card>
 

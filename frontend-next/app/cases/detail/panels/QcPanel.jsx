@@ -59,7 +59,7 @@ export function QcPanel({ c, reload }) {
       <form className="card-body" onSubmit={saveQc}>
         <FormGrid>
           <Field label="ผลตรวจ">
-            <Select name="result" options={[['pass', '✅ ผ่าน'], ['fail', '❌ ไม่ผ่าน']]} defaultValue="pass" />
+            <Select name="result" options={[['pass', 'ผ่าน'], ['fail', 'ไม่ผ่าน']]} defaultValue="pass" />
           </Field>
           <Field label="ผู้ตรวจ"><EmployeeSelect name="checked_by" defaultValue="" /></Field>
           <Field label="การแก้ไขที่ทำ">

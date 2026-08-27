@@ -7,6 +7,7 @@ import { useAsync, useDebounced } from '../../lib/hooks.js';
 import { Card, Field, Loading, PageHead, Toolbar } from '../../components/ui.jsx';
 import { DataTable } from '../../components/DataTable.jsx';
 import { QueryParamPage } from '../../components/QueryParamPage.jsx';
+import { Icon } from '../../components/Icon.jsx';
 
 function CustomerListInner() {
   const router = useRouter();
@@ -59,9 +60,9 @@ function CustomerListInner() {
                 cls: 'nowrap',
                 render: (r) => (
                   <>
-                    <Link className="btn btn-sm btn-accent" href={`/cases/new?customer=${r.id}`}>🗂 เปิดเคส</Link>
+                    <Link className="btn btn-sm btn-accent" href={`/cases/new?customer=${r.id}`}><Icon name="board" /> เปิดเคส</Link>
                     {' '}
-                    <Link className="btn btn-sm btn-light" href={`/prescriptions/new?customer=${r.id}`}>👁</Link>
+                    <Link className="btn btn-sm btn-light" href={`/prescriptions/new?customer=${r.id}`}><Icon name="eye" /></Link>
                   </>
                 ),
               },

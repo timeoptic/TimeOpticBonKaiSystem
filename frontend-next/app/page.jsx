@@ -7,6 +7,7 @@ import { Badge, Card, Kpi, Kpis, Loading, PageHead } from '../components/ui.jsx'
 import { DataTable } from '../components/DataTable.jsx';
 import { stageInfo } from '../lib/constants.js';
 import { count, custName, fmtDate, fmtDateTime, hhmm, money, moneyShort } from '../lib/format.js';
+import { Icon } from '../components/Icon.jsx';
 
 const TILES = [
   ['📅', 'ปฏิทินจองคิว', 'Queue Booking', '/bookings'],
@@ -68,8 +69,8 @@ export default function Home() {
         subtitle="เมนูหลัก"
         actions={(
           <>
-            <Link className="btn btn-ghost" href="/cases">🗂 กระดานงาน</Link>
-            <Link className="btn btn-ghost" href="/reports/daily">📅 สรุปรายวัน</Link>
+            <Link className="btn btn-ghost" href="/cases"><Icon name="board" /> กระดานงาน</Link>
+            <Link className="btn btn-ghost" href="/reports/daily"><Icon name="calendar" /> สรุปรายวัน</Link>
           </>
         )}
       />
@@ -82,7 +83,7 @@ export default function Home() {
           kind="warn"
           label="เคสที่ยังไม่จบ"
           value={String(s.open_cases)}
-          sub={s.rush_cases ? `ด่วน ${s.rush_cases} เคส 🔥` : 'ทั้งร้าน'}
+          sub={s.rush_cases ? `ด่วน ${s.rush_cases} เคส` : 'ทั้งร้าน'}
         />
         <Kpi kind="warn" label="รอเลนส์มา" value={String(s.lens_waiting)} sub="Waiting arrival" />
         <Kpi
@@ -111,7 +112,7 @@ export default function Home() {
                     fontWeight: 700, textDecoration: 'none',
                   }}
                 >
-                  {`${info.icon} ${info.label}`}
+                  <Icon name={info.icon} />{' '}{info.label}
                   <span className="badge" style={{ background: info.color, color: '#fff' }}>{n}</span>
                 </Link>
               );
@@ -138,7 +139,7 @@ export default function Home() {
             {
               label: 'แจ้งเตือน',
               render: (b) => (b.reminder_sent_at
-                ? <Badge kind="ok">🔔 ส่งแล้ว</Badge>
+                ? <Badge kind="ok"><Icon name="bell" /> ส่งแล้ว</Badge>
                 : <span className="muted">{`ก่อน ${b.reminder_minutes} น.`}</span>),
             },
             { label: 'บันทึกเบื้องต้น', render: (b) => (b.intake_note || '').slice(0, 70) },
@@ -152,7 +153,7 @@ export default function Home() {
       <div className="tiles" style={{ marginBottom: 20 }}>
         {TILES.map(([ic, th, en, to]) => (
           <Link key={to + th} className="tile" href={to}>
-            <span className="t-ic">{ic}</span>
+            <span className="t-ic"><Icon name={ic} /></span>
             <span><b>{th}</b><small>{en}</small></span>
           </Link>
         ))}
@@ -167,7 +168,7 @@ export default function Home() {
           columns={orderCols}
           rows={d.unfilled}
           onRowClick={(o) => router.push(`/orders/detail?id=${o.id}`)}
-          empty="ไม่มีออเดอร์ที่รอของ 🎉"
+          empty="ไม่มีออเดอร์ที่รอของ"
         />
       </Card>
 

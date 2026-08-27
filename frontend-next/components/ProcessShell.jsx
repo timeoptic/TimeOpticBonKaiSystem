@@ -11,7 +11,7 @@
  * A panel that owns a form can put its own buttons in this bar instead of
  * growing a second one at the bottom of its content: call useProcessActions()
  * and register a saveDraft (adds "บันทึก Draft") and/or a beforeComplete hook
- * (runs first when ✓ is pressed; return false to stop).
+ * (runs first when <Icon name="check" /> is pressed; return false to stop).
  */
 import { createContext, useCallback, useContext, useState } from 'react';
 import { api } from '../lib/apiClient.js';
@@ -20,6 +20,7 @@ import { useConfirm } from './Confirm.jsx';
 import { Badge } from './ui.jsx';
 import { stateMeta } from '../lib/caseProcesses.js';
 import { fmtDateTime } from '../lib/format.js';
+import { Icon } from './Icon.jsx';
 
 const BADGE_KIND = { done: 'ok', warn: 'warn', danger: 'danger', locked: 'gray', '': 'gray' };
 
@@ -94,8 +95,8 @@ export function ProcessShell({ process, state = {}, caseId, reload, right = null
   return (
     <div className="card process-card">
       <div className="card-head">
-        <h2>{`${process.icon} ${process.label}`}</h2>
-        <Badge kind={BADGE_KIND[sm.cls] ?? 'gray'}>{`${sm.icon} ${sm.label}`}</Badge>
+        <h2><Icon name={process.icon} /> {process.label}</h2>
+        <Badge kind={BADGE_KIND[sm.cls] ?? 'gray'}><Icon name={sm.icon} /> {sm.label}</Badge>
         {right ? <div className="right">{right}</div> : null}
       </div>
 
@@ -127,13 +128,13 @@ export function ProcessShell({ process, state = {}, caseId, reload, right = null
         <div className="process-foot-actions">
           {confirmed ? (
             <button type="button" className="btn btn-light" onClick={reopen} disabled={busy}>
-              ✏ แก้ไขข้อมูล
+              <Icon name="pencil" /> แก้ไขข้อมูล
             </button>
           ) : (
             <>
               {actions.saveDraft && (
                 <button type="button" className="btn btn-light" onClick={saveDraft} disabled={busy}>
-                  💾 บันทึก Draft
+                  <Icon name="save" /> บันทึก Draft
                 </button>
               )}
               {!actions.saveDraft && (state.status === 'not_started' || state.status === 'locked') && (
@@ -154,7 +155,7 @@ export function ProcessShell({ process, state = {}, caseId, reload, right = null
                 disabled={busy || (!canComplete && !actions.beforeComplete)}
                 title={canComplete ? undefined : `ยังยืนยันไม่ได้ — ${[...blocking, ...missing].join(', ')}`}
               >
-                {`✓ ${process.completeLabel}`}
+                <Icon name="check" /> {process.completeLabel}
               </button>
             </>
           )}

@@ -15,6 +15,7 @@ import { Card, Field, FormActions, FormGrid, Loading, PageHead, Toolbar } from '
 import { DataTable } from './DataTable.jsx';
 import { ListSelect } from './Selects.jsx';
 import { fmtDate, money, todayISO } from '../lib/format.js';
+import { Icon } from './Icon.jsx';
 
 export function Ledger({ title, subtitle, icon, endpoint, typeKey, typeList, withPayType }) {
   const { ok, err } = useToast();
@@ -69,7 +70,7 @@ export function Ledger({ title, subtitle, icon, endpoint, typeKey, typeList, wit
       label: '',
       cls: 'nowrap',
       render: (r) => (
-        <button type="button" className="btn btn-sm btn-light" onClick={() => remove(r)}>🗑</button>
+        <button type="button" className="btn btn-sm btn-light" onClick={() => remove(r)}><Icon name="trash" /></button>
       ),
     },
   ];
@@ -104,7 +105,7 @@ export function Ledger({ title, subtitle, icon, endpoint, typeKey, typeList, wit
             </Field>
           </FormGrid>
           <FormActions>
-            <button className="btn btn-lg" type="submit">✔ Enter — บันทึก</button>
+            <button className="btn btn-lg" type="submit"><Icon name="check" /> Enter — บันทึก</button>
           </FormActions>
         </form>
       </div>

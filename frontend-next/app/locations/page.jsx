@@ -5,6 +5,7 @@ import { useAsync, useDebounced, onSubmit } from '../../lib/hooks.js';
 import { useToast } from '../../components/Toast.jsx';
 import { Card, Field, FormActions, FormGrid, Loading, PageHead, Toolbar } from '../../components/ui.jsx';
 import { DataTable } from '../../components/DataTable.jsx';
+import { Icon } from '../../components/Icon.jsx';
 
 export default function LocationsPage() {
   const { ok, err } = useToast();
@@ -75,7 +76,7 @@ export default function LocationsPage() {
                 label: '',
                 cls: 'nowrap',
                 render: (r) => (
-                  <button type="button" className="btn btn-sm btn-light" onClick={() => remove(r)}>🗑</button>
+                  <button type="button" className="btn btn-sm btn-light" onClick={() => remove(r)}><Icon name="trash" /></button>
                 ),
               },
             ]}

@@ -15,13 +15,14 @@ import {
   Badge, Field, FormActions, Kv, Row, Stack,
 } from '../../../../components/ui.jsx';
 import { fmtDateTime, money } from '../../../../lib/format.js';
+import { Icon } from '../../../../components/Icon.jsx';
 
 /** A checklist row — informative, not a hard block: the workflow is
  * deliberately non-linear, so the shop may close a case with items open. */
 function CheckRow({ ok: passed, children }) {
   return (
     <Row style={{ gap: 8, alignItems: 'center' }}>
-      <Badge kind={passed ? 'ok' : 'warn'}>{passed ? '✔' : '!'}</Badge>
+      <Badge kind={passed ? 'ok' : 'warn'}><Icon name={passed ? 'check' : 'warning'} /></Badge>
       <span className={passed ? '' : 'muted'}>{children}</span>
     </Row>
   );
@@ -74,7 +75,7 @@ export function ClosePanel({ c, reload }) {
             <textarea value={note} onChange={(e) => setNote(e.target.value)} />
           </Field>
           <FormActions>
-            <button type="submit" className="btn btn-light" disabled={busy}>💾 บันทึกหมายเหตุ</button>
+            <button type="submit" className="btn btn-light" disabled={busy}><Icon name="save" /> บันทึกหมายเหตุ</button>
           </FormActions>
         </form>
       )}

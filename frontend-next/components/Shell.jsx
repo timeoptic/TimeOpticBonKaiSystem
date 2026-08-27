@@ -8,6 +8,7 @@ import { Fragment, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { crumbFor } from '../lib/crumb.js';
+import { Icon } from './Icon.jsx';
 
 export { crumbFor };
 
@@ -105,7 +106,7 @@ export function Shell({ children }) {
               <div className="nav-group">{group}</div>
               {items.map(([icon, label, to]) => (
                 <Link key={to} href={to} className={to === base ? 'active' : ''}>
-                  <span className="ic">{icon}</span>{label}
+                  <span className="ic"><Icon name={icon} /></span>{label}
                 </Link>
               ))}
             </Fragment>
@@ -128,11 +129,11 @@ export function Shell({ children }) {
             aria-label="เมนู"
             onClick={() => setOpen((v) => !v)}
           >
-            ☰
+            <Icon name="menu" />
           </button>
           <div className="crumb" id="crumb">{crumb}</div>
           <div className="spacer" />
-          <Link className="btn btn-ghost" href="/">🏠 เมนูหลัก</Link>
+          <Link className="btn btn-ghost" href="/"><Icon name="home" /> เมนูหลัก</Link>
         </header>
         <div className="content" id="view">{children}</div>
       </main>

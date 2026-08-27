@@ -9,8 +9,9 @@ import {
 import { DataTable } from '../../../../components/DataTable.jsx';
 import { EmployeeSelect, Select, SupplierSelect } from '../../../../components/Selects.jsx';
 import { dateOnly, fmtDate, fmtDateTime, todayISO } from '../../../../lib/format.js';
+import { Icon } from '../../../../components/Icon.jsx';
 
-const yn = (v) => (Number(v) ? '✔' : '—');
+const yn = (v) => (Number(v) ? <Icon name="check" /> : '—');
 
 export function LensPanel({ c, reload, actorId }) {
   const { ok, err } = useToast();
@@ -108,9 +109,11 @@ export function LensPanel({ c, reload, actorId }) {
           </Field>
 
           <FormActions>
-            <button className="btn" type="submit">{j ? '💾 บันทึกงานเลนส์' : '+ สร้างงานเลนส์'}</button>
+            <button className="btn" type="submit">
+            {j ? <><Icon name="save" /> บันทึกงานเลนส์</> : '+ สร้างงานเลนส์'}
+          </button>
             {j && j.status !== 'ready' && (
-              <button type="button" className="btn btn-ok" onClick={receive}>📦 เลนส์มาถึงแล้ว</button>
+              <button type="button" className="btn btn-ok" onClick={receive}><Icon name="box" /> เลนส์มาถึงแล้ว</button>
             )}
           </FormActions>
         </form>

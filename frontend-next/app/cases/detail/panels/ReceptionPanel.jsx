@@ -14,6 +14,7 @@ import { useToast } from '../../../../components/Toast.jsx';
 import { Check, Field, FormActions, FormGrid, Kv } from '../../../../components/ui.jsx';
 import { EmployeeSelect, ListSelect } from '../../../../components/Selects.jsx';
 import { custName, fmtDate } from '../../../../lib/format.js';
+import { Icon } from '../../../../components/Icon.jsx';
 
 export function ReceptionPanel({ c, reload }) {
   const { ok, err } = useToast();
@@ -44,14 +45,14 @@ export function ReceptionPanel({ c, reload }) {
             <input name="referral_note" defaultValue={c.referral_note || ''} />
           </Field>
           <Field label="งานด่วน">
-            <Check name="is_rush" defaultChecked={!!Number(c.is_rush)}>🔥 ทำเป็นงานด่วน</Check>
+            <Check name="is_rush" defaultChecked={!!Number(c.is_rush)}><Icon name="flame" /> ทำเป็นงานด่วน</Check>
           </Field>
         </FormGrid>
         <Field label="บันทึกการรับเรื่อง" className="full">
           <textarea name="reception_note" defaultValue={c.reception_note || ''} />
         </Field>
         <FormActions>
-          <button className="btn btn-light" type="submit">💾 บันทึกข้อมูลการรับเคส</button>
+          <button className="btn btn-light" type="submit"><Icon name="save" /> บันทึกข้อมูลการรับเคส</button>
         </FormActions>
       </form>
 

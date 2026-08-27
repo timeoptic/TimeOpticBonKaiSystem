@@ -6,6 +6,7 @@ import { Field, FormActions, FormGrid } from '../../../../components/ui.jsx';
 import { DataTable } from '../../../../components/DataTable.jsx';
 import { EmployeeSelect, Select } from '../../../../components/Selects.jsx';
 import { fmtDateTime } from '../../../../lib/format.js';
+import { Icon } from '../../../../components/Icon.jsx';
 
 const RESULTS = [
   ['reached', 'ติดต่อได้'], ['no_answer', 'ไม่รับสาย'],
@@ -28,7 +29,7 @@ export function NotifyPanel({ c, reload }) {
     <div className="card">
       <div className="card-head">
         <h2>ประวัติการติดต่อลูกค้า</h2>
-        {c.phone ? <a className="btn btn-sm btn-light" href={'tel:' + c.phone}>{'☎ ' + c.phone}</a> : null}
+        {c.phone ? <a className="btn btn-sm btn-light" href={'tel:' + c.phone}><Icon name="phone" /> {c.phone}</a> : null}
       </div>
 
       <div className="card-body tight">

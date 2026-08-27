@@ -6,6 +6,7 @@ import { Badge, Empty, Field } from '../../../../components/ui.jsx';
 import { ACTION_LABEL } from '../../../../lib/constants.js';
 import { eventNote } from '../../../../lib/caseProcesses.js';
 import { fmtDateTime } from '../../../../lib/format.js';
+import { Icon } from '../../../../components/Icon.jsx';
 
 export function TimelinePanel({ c, reload, actorId }) {
   const { ok, err } = useToast();
@@ -47,7 +48,7 @@ export function TimelinePanel({ c, reload, actorId }) {
                 <div className="tl-body">
                   <div className="tl-head">
                     <b>{ACTION_LABEL[ev.action] || ev.action}</b>
-                    {ev.to_label ? <Badge kind="blue">{`→ ${ev.to_label}`}</Badge> : null}
+                    {ev.to_label ? <Badge kind="blue"><Icon name="arrowRight" /> {ev.to_label}</Badge> : null}
                     <span className="muted">{fmtDateTime(ev.created_at)}</span>
                     {ev.employee_name ? <span className="muted">{'· ' + ev.employee_name}</span> : null}
                   </div>

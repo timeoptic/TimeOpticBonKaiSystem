@@ -19,6 +19,7 @@ import {
 import { Picker } from '../../components/Picker.jsx';
 import { EmployeeSelect, Select } from '../../components/Selects.jsx';
 import { custName, dateOnly, hhmm, todayISO } from '../../lib/format.js';
+import { Icon } from '../../components/Icon.jsx';
 
 export function BookingFormView({ editing }) {
   // `editing` must always be passed explicitly (true or false) by the caller —
@@ -121,7 +122,7 @@ export function BookingFormView({ editing }) {
               <b>{custName(customer)}</b>
               <span className="muted">{customer.phone || ''}</span>
               <button type="button" className="btn btn-sm btn-light" onClick={() => setOverride(null)}>
-                ✕ ล้าง
+                <Icon name="x" /> ล้าง
               </button>
             </Row>
           ) : <span className="muted">ลูกค้าใหม่ — กรอกชื่อ/เบอร์ด้านล่างได้เลย</span>}
@@ -213,7 +214,7 @@ export function BookingFormView({ editing }) {
 
         <FormActions>
           <button className="btn btn-lg" type="submit">
-            {editing ? '💾 บันทึกการแก้ไข' : '✔ บันทึกการจอง'}
+            <Icon name="save" /> {editing ? 'บันทึกการแก้ไข' : 'บันทึกการจอง'}
           </button>
           <Link className="btn btn-light" href={editing ? '/bookings/detail?id=' + b.id : '/bookings'}>ยกเลิก</Link>
         </FormActions>

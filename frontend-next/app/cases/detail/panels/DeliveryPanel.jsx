@@ -8,12 +8,13 @@ import {
 import { EmployeeSelect } from '../../../../components/Selects.jsx';
 import { useMeta } from '../../../../contexts/MetaContext.jsx';
 import { fmtDateTime, money, nowLocal, toStamp } from '../../../../lib/format.js';
+import { Icon } from '../../../../components/Icon.jsx';
 
 /** One readiness row — a green check or an amber warning, never a hard block. */
 function Ready({ ok: passed, children }) {
   return (
     <Row style={{ gap: 8, alignItems: 'center' }}>
-      <Badge kind={passed ? 'ok' : 'warn'}>{passed ? '✔' : '!'}</Badge>
+      <Badge kind={passed ? 'ok' : 'warn'}><Icon name={passed ? 'check' : 'warning'} /></Badge>
       <span className={passed ? '' : 'muted'}>{children}</span>
     </Row>
   );
@@ -92,7 +93,7 @@ export function DeliveryPanel({ c, reload, actorId }) {
               </Field>
             </FormGrid>
             <FormActions>
-              <button className="btn" type="submit">📦 บันทึกการส่งมอบ</button>
+              <button className="btn" type="submit"><Icon name="box" /> บันทึกการส่งมอบ</button>
             </FormActions>
           </form>
         )}

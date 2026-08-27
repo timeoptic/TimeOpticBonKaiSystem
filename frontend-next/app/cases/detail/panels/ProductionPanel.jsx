@@ -10,6 +10,7 @@ import { DataTable } from '../../../../components/DataTable.jsx';
 import { EmployeeSelect, Select } from '../../../../components/Selects.jsx';
 import { StockPicker } from '../../../../components/StockPicker.jsx';
 import { dtLocal, fmtDateTime } from '../../../../lib/format.js';
+import { Icon } from '../../../../components/Icon.jsx';
 
 const PACK_ITEMS = [
   ['pack_glasses', 'แว่น'], ['pack_case', 'กล่อง'], ['pack_cloth', 'ผ้าเช็ด'],
@@ -57,7 +58,7 @@ function WithdrawPopup({ jobId, onClose, onDone, actorId }) {
   return (
     <div className="modal-back" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="modal">
-        <h3>🧾 เบิกเพิ่ม</h3>
+        <h3><Icon name="receipt" /> เบิกเพิ่ม</h3>
         <div className="m-body">
           <Stack>
             <Field label="ประเภทสินค้า">
@@ -165,7 +166,7 @@ export function ProductionPanel({ c, reload, actorId }) {
             {p.status === 'IN_PRODUCTION' || p.status === 'COMPLETED' ? (
               <Row style={{ gap: 8 }}>
                 <button type="button" className="btn btn-light" onClick={() => setWithdrawOpen(true)}>
-                  🧾 เบิกเพิ่ม
+                  <Icon name="receipt" /> เบิกเพิ่ม
                 </button>
                 {p.status === 'IN_PRODUCTION' && (
                   <button type="button" className="btn btn-light" onClick={pause}>⏸ หยุดการผลิต / รอสินค้า</button>
@@ -231,7 +232,7 @@ export function ProductionPanel({ c, reload, actorId }) {
             </Field>
           </FormGrid>
           <FormActions>
-            <button className="btn btn-light" type="submit">💾 บันทึกการวัดกรอบ</button>
+            <button className="btn btn-light" type="submit"><Icon name="save" /> บันทึกการวัดกรอบ</button>
           </FormActions>
         </form>
       </div>
@@ -275,7 +276,7 @@ export function ProductionPanel({ c, reload, actorId }) {
             <textarea name="edging_remark" defaultValue={p.edging_remark || ''} />
           </Field>
           <FormActions>
-            <button className="btn btn-light" type="submit">💾 บันทึกงานผลิต</button>
+            <button className="btn btn-light" type="submit"><Icon name="save" /> บันทึกงานผลิต</button>
           </FormActions>
         </form>
       </div>
