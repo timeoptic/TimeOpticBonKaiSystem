@@ -124,7 +124,7 @@ export function ProductionPanel({ c, reload, actorId }) {
    * upserts one when it is itself submitted, which may not have happened yet. */
   const ensureJobId = async () => {
     if (p.id) return p.id;
-    const created = await api.post('/api/production-jobs', { case_id: c.id, order_id: c.order?.id });
+    const created = await api.post('/api/production-jobs', { case_id: c.id, order_id: c.order?.id, employee_id: actorId() });
     return created.id;
   };
 
