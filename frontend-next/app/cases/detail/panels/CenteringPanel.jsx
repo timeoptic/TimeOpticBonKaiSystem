@@ -80,7 +80,9 @@ export function CenteringPanel({ c, reload }) {
       vertex_distance: ce.vertex_distance || '', pantoscopic_tilt: ce.pantoscopic_tilt || '',
       /* wrap ไม่ได้อยู่ในชุดที่ร้านวัด แต่ค่าที่เคยบันทึกไว้ต้องไม่หายตอนบันทึกทับ */
       wrap_angle: ce.wrap_angle || '', center_point_note: ce.center_point_note || '',
-      performed_by: ce.performed_by || '', recorded_by: ce.recorded_by || '',
+      performed_by: ce.performed_by || '',
+      /* ไม่ได้ถามว่าใครกรอก — ค่าที่เคยบันทึกไว้ยังส่งต่อไปกับการบันทึกครั้งถัดไป */
+      recorded_by: ce.recorded_by || '',
       measured_at: dtLocal(ce.measured_at) || nowLocal(),
     });
     setFit({
@@ -225,13 +227,6 @@ export function CenteringPanel({ c, reload }) {
                 name="performed_by"
                 value={form.performed_by ?? ''}
                 onChange={(e) => set('performed_by')(e.target.value)}
-              />
-            </Field>
-            <Field label="ผู้กรอกข้อมูล">
-              <EmployeeSelect
-                name="recorded_by"
-                value={form.recorded_by ?? ''}
-                onChange={(e) => set('recorded_by')(e.target.value)}
               />
             </Field>
             <Field label="วันที่และเวลาที่วัด">
