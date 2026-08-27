@@ -6,11 +6,10 @@ import { api } from '../../../lib/apiClient.js';
 import { useAsync } from '../../../lib/hooks.js';
 import { useToast } from '../../../components/Toast.jsx';
 import {
-  Badge, Card, Field, Kpi, Kpis, Kv, Loading, PageHead, Row, Split, Stack, Tabs, Toolbar,
+  Badge, Card, Kpi, Kpis, Kv, Loading, PageHead, Row, Split, Stack, Tabs,
 } from '../../../components/ui.jsx';
 import { QueryParamPage } from '../../../components/QueryParamPage.jsx';
 import { StatusChip } from '../../../components/StatusChip.jsx';
-import { EmployeeSelect } from '../../../components/Selects.jsx';
 import { useMeta } from '../../../contexts/MetaContext.jsx';
 import { ACTION_LABEL, STAGE_GROUPS, stageInfo } from '../../../lib/constants.js';
 import { custName, fmtDate, fmtDateTime, money, moneyShort } from '../../../lib/format.js';
@@ -256,9 +255,10 @@ function CaseDetailInner() {
   const [tab, setTab] = useState(TAB_NAMES[0]);
   const [closeOpen, setCloseOpen] = useState(false);
 
-  /* "ผู้ทำรายการ" is read by every panel when it writes, so it lives here */
-  const [actor, setActor] = useState('');
-  const actorId = () => Number(actor) || null;
+  /* Panels ask for this when they write. There is no page-level
+   * "ผู้ทำรายการ" picker any more — each panel carries its own employee
+   * field (ผู้รับเงิน, ผู้ตรวจ, ผู้ส่งมอบ, …) where the record needs one. */
+  const actorId = () => null;
 
   const { data: c, loading, error, reload } = useAsync(() => api.get('/api/cases/' + id), [id]);
 
@@ -277,13 +277,6 @@ function CaseDetailInner() {
   };
   const moveToStage = (g) => goStatus((entryStatusOf(meta.statuses, g) || statusesOfGroup(meta.statuses, g)[0] || {}).code);
   const showTab = (name) => { if (TAB_NAMES.includes(name)) setTab(name); };
-
-  const toggleRush = async () => {
-    try {
-      await api.put('/api/cases/' + c.id, { ...c, is_rush: Number(c.is_rush) ? 0 : 1 });
-      reload();
-    } catch (ex) { err(ex); }
-  };
 
   const panelProps = { c, reload, actorId };
   const PANELS = {
@@ -329,15 +322,6 @@ function CaseDetailInner() {
             {c.received_by_name ? <span className="muted">{`รับโดย ${c.received_by_name}`}</span> : null}
             {c.phone ? <span className="muted">{'☎ ' + c.phone}</span> : null}
           </Row>
-
-          <Toolbar>
-            <Field label="ผู้ทำรายการ">
-              <EmployeeSelect name="actor" value={actor} onChange={(e) => setActor(e.target.value)} />
-            </Field>
-            <button type="button" className="btn btn-light" onClick={toggleRush}>
-              {Number(c.is_rush) ? 'ยกเลิกงานด่วน' : '🔥 ตั้งเป็นงานด่วน'}
-            </button>
-          </Toolbar>
 
           {/* 9-process stepper. Each dot shows that process's own state
               (เสร็จ / กำลังทำ / รอ / ยังไม่เริ่ม / มีปัญหา / ส่งกลับมาแก้) computed
