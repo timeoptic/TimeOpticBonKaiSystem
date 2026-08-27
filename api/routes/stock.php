@@ -77,8 +77,61 @@ GET('/api/stock', function (array $req) {
         ...$args
     );
 
-    $rows = expandLots($lots);
     $sold = str_or($q['sold'] ?? null);
+
+    $group = str_or($q['group'] ?? null);
+
+    /* group=product: the product named ONCE, with everything left across all of
+       its batches. Picking one returns the oldest batch that still has stock
+       (FIFO), which is the lot the shop should be selling anyway — staff should
+       not have to choose between two identical lines to do that.
+       group=lot keeps one row per receiving batch, for when the batch matters. */
+    if ($group === 'product') {
+        $byProduct = [];
+        foreach ($lots as $l) {
+            $left = (int) $l['remaining_qty'];
+            if ($left <= 0) {
+                continue;
+            }
+            $key = $l['product_id'] ?? ('name:' . $l['product_name']);
+            if (!isset($byProduct[$key])) {
+                $byProduct[$key] = $l + ['lot_count' => 0, 'sold' => 0];
+                $byProduct[$key]['remaining_qty'] = 0;
+            }
+            $byProduct[$key]['remaining_qty'] += $left;
+            $byProduct[$key]['lot_count']     += 1;
+            /* oldest lot still holding stock wins — smaller id = received earlier */
+            if ((int) $l['id'] < (int) $byProduct[$key]['id']) {
+                $byProduct[$key]['id'] = $l['id'];
+            }
+        }
+        $rows = array_values($byProduct);
+        usort($rows, fn($a, $b) => strcmp((string) $a['product_name'], (string) $b['product_name']));
+        return array_slice($rows, 0, min(int_or($q['limit'] ?? null, 300), 2000));
+    }
+
+    /* group=lot: one row per received batch, carrying how many are left.
+       The default (per-unit) shape is what the stock screen still expects — a
+       lot of 7 as 7 lines. */
+    if ($group === 'lot') {
+        $rows = array_values(array_filter($lots, function ($l) use ($sold) {
+            $left = (int) $l['remaining_qty'];
+            if ($sold === '0') {
+                return $left > 0;
+            }
+            if ($sold === '1') {
+                return $left <= 0;
+            }
+            return true;
+        }));
+        foreach ($rows as &$r) {
+            $r['sold'] = (int) $r['remaining_qty'] > 0 ? 0 : 1;
+        }
+        unset($r);
+        return array_slice($rows, 0, min(int_or($q['limit'] ?? null, 300), 2000));
+    }
+
+    $rows = expandLots($lots);
     if ($sold === '0' || $sold === '1') {
         $target = (int) $sold;
         $rows = array_values(array_filter($rows, fn($r) => $r['sold'] === $target));

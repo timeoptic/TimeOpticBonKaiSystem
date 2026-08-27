@@ -24,7 +24,7 @@ import {
   Card, Field, Fieldset, FormActions, FormGrid, Kpi, Kpis, Loading, PageHead, Row, Split,
 } from '../../components/ui.jsx';
 import { Picker } from '../../components/Picker.jsx';
-import { StockPicker } from '../../components/StockPicker.jsx';
+import { StockPicker, stockLabel } from '../../components/StockPicker.jsx';
 import { EmployeeSelect, ListSelect } from '../../components/Selects.jsx';
 import { RX_KIND_LABEL } from '../../lib/constants.js';
 import {
@@ -35,17 +35,6 @@ import { Icon } from '../../components/Icon.jsx';
 const n = (v) => Number(v || 0);
 
 /** compact display line for a picked stock item, with a way to clear it */
-function PickedItem({ item, onClear }) {
-  if (!item) return <span className="muted">ยังไม่ได้เลือก</span>;
-  return (
-    <Row>
-      <b>{item.product_name}</b>
-      <span className="muted">{`#${item.id} · ${money(item.product_price)}`}</span>
-      <button type="button" className="btn btn-sm btn-light" onClick={onClear}>ล้าง</button>
-    </Row>
-  );
-}
-
 // editing must always be passed explicitly by the caller (true or false) — if a future
 // page forgets it, editing becomes undefined (falsy), silently serving a *create* form
 // on what was meant to be an *edit* route.
@@ -125,7 +114,16 @@ export function OrderFormView({
     lensOd: o.left_lens || null,
     lensOs: o.right_lens || null,
   };
-  const setPicked = (patch) => setItems({ ...picked, ...patch });
+  /* Picking a stock item is a statement of fact about the order: it fills in
+     that item's own details and its price, instead of leaving staff to retype
+     what the system already knows. The fields stay editable afterwards. */
+  const setPicked = (patch) => {
+    setItems({ ...picked, ...patch });
+    const [slot, item] = Object.entries(patch)[0] || [];
+    if (!item) return;
+    const priceField = { frame: 'frame_price', lensOd: 'lens_od_price', lensOs: 'lens_os_price' }[slot];
+    if (priceField) setP({ [priceField]: Number(item.product_price) || 0 });
+  };
 
   const p = prices ?? {
     frame_price: o.frame_price ?? 0,
@@ -279,18 +277,47 @@ export function OrderFormView({
 
         <Card title="กรอบแว่น — Frame">
           <p className="hint">ถ้ายังไม่มีของในคลัง ให้ข้ามการเลือกสต็อกไปก่อน แล้วกรอกแค่รายละเอียดกรอบ</p>
-          <StockPicker type="Frame" onPick={(r) => setPicked({ frame: r })} selectedId={picked.frame?.id ?? null} />
-          <div style={{ marginTop: 8 }}><PickedItem item={picked.frame} onClear={() => setPicked({ frame: null })} /></div>
+          <StockPicker
+            type="Frame"
+            picked={picked.frame}
+            onPick={(r) => setPicked({ frame: r })}
+            onClear={() => setItems({ ...picked, frame: null })}
+            selectedId={picked.frame?.id ?? null}
+          />
           <div style={{ marginTop: 10 }}>
             <FormGrid>
               <Field label="ชื่อกรอบ / Frame name">
-                <input name="frame_name" defaultValue={o.frame_name || ''} placeholder="เช่น Coach 5191 / กรอบลูกค้า" />
+                <input
+                  key={'fn' + (picked.frame?.id ?? '0')}
+                  name="frame_name"
+                  defaultValue={picked.frame ? stockLabel(picked.frame) : (o.frame_name || '')}
+                  placeholder="เช่น Coach 5191 / กรอบลูกค้า"
+                />
               </Field>
-              <Field label="ยี่ห้อ / Brand"><input name="frame_brand" defaultValue={o.frame_brand || ''} /></Field>
-              <Field label="รุ่น / Model"><input name="frame_model" defaultValue={o.frame_model || ''} /></Field>
-              <Field label="สี / Color"><input name="frame_color" defaultValue={o.frame_color || ''} /></Field>
-              <Field label="ไซส์ / Size"><input name="frame_size" defaultValue={o.frame_size || ''} /></Field>
-              <Field label="SKU"><input name="frame_sku" defaultValue={o.frame_sku || ''} /></Field>
+              <Field label="ราคากรอบ">
+                <input
+                  type="number"
+                  step="1"
+                  min="0"
+                  value={p.frame_price}
+                  onChange={(e) => setP({ frame_price: e.target.value })}
+                />
+              </Field>
+              <Field label="ยี่ห้อ / Brand">
+                <input key={'fb' + (picked.frame?.id ?? '0')} name="frame_brand" defaultValue={picked.frame?.brand || o.frame_brand || ''} />
+              </Field>
+              <Field label="รุ่น / Model">
+                <input key={'fm' + (picked.frame?.id ?? '0')} name="frame_model" defaultValue={picked.frame?.model || o.frame_model || ''} />
+              </Field>
+              <Field label="สี / Color">
+                <input key={'fc' + (picked.frame?.id ?? '0')} name="frame_color" defaultValue={picked.frame?.color || o.frame_color || ''} />
+              </Field>
+              <Field label="ไซส์ / Size">
+                <input key={'fs' + (picked.frame?.id ?? '0')} name="frame_size" defaultValue={picked.frame?.size || o.frame_size || ''} />
+              </Field>
+              <Field label="SKU">
+                <input key={'fk' + (picked.frame?.id ?? '0')} name="frame_sku" defaultValue={picked.frame?.sku || o.frame_sku || ''} />
+              </Field>
             </FormGrid>
           </div>
         </Card>
@@ -299,28 +326,75 @@ export function OrderFormView({
           <p className="hint">ถ้ายังต้องสั่งเลนส์จากซัพพลายเออร์ ให้ข้ามการเลือกสต็อกไปก่อน</p>
           <Split>
             <Fieldset legend="เลนส์ขวา (OD)">
-              <StockPicker type="Lens" onPick={(r) => setPicked({ lensOd: r })} selectedId={picked.lensOd?.id ?? null} />
-              <div style={{ marginTop: 8 }}>
-                <PickedItem item={picked.lensOd} onClear={() => setPicked({ lensOd: null })} />
-              </div>
+              <StockPicker
+                type="Lens"
+                picked={picked.lensOd}
+                onPick={(r) => setPicked({ lensOd: r })}
+                onClear={() => setItems({ ...picked, lensOd: null })}
+                selectedId={picked.lensOd?.id ?? null}
+              />
+              <Field label="ราคาเลนส์ขวา">
+                <input
+                  type="number"
+                  step="1"
+                  min="0"
+                  value={p.lens_od_price}
+                  onChange={(e) => setP({ lens_od_price: e.target.value })}
+                />
+              </Field>
+              <button
+                type="button"
+                className="btn btn-sm btn-light"
+                disabled={!picked.lensOd}
+                onClick={() => setPicked({ lensOs: picked.lensOd })}
+              >
+                ใช้เลนส์ตัวเดียวกันกับตาซ้าย
+              </button>
             </Fieldset>
             <Fieldset legend="เลนส์ซ้าย (OS)">
-              <StockPicker type="Lens" onPick={(r) => setPicked({ lensOs: r })} selectedId={picked.lensOs?.id ?? null} />
-              <div style={{ marginTop: 8 }}>
-                <PickedItem item={picked.lensOs} onClear={() => setPicked({ lensOs: null })} />
-              </div>
+              <StockPicker
+                type="Lens"
+                picked={picked.lensOs}
+                onPick={(r) => setPicked({ lensOs: r })}
+                onClear={() => setItems({ ...picked, lensOs: null })}
+                selectedId={picked.lensOs?.id ?? null}
+              />
+              <Field label="ราคาเลนส์ซ้าย">
+                <input
+                  type="number"
+                  step="1"
+                  min="0"
+                  value={p.lens_os_price}
+                  onChange={(e) => setP({ lens_os_price: e.target.value })}
+                />
+              </Field>
             </Fieldset>
           </Split>
           <div style={{ marginTop: 10 }}>
             <FormGrid>
               <Field label="ชื่อเลนส์ / Lens name">
-                <input name="lens_name" defaultValue={o.lens_name || ''} placeholder="เช่น Hoya Blue 1.5 -+0.50" />
+                <input
+                  key={'ln' + (picked.lensOd?.id ?? '0')}
+                  name="lens_name"
+                  defaultValue={picked.lensOd ? stockLabel(picked.lensOd) : (o.lens_name || '')}
+                  placeholder="เช่น Hoya Blue 1.5 -+0.50"
+                />
               </Field>
-              <Field label="ยี่ห้อ / Brand"><input name="lens_brand" defaultValue={o.lens_brand || ''} /></Field>
-              <Field label="ดีไซน์ / Design"><input name="lens_design" defaultValue={o.lens_design || ''} /></Field>
-              <Field label="ค่าดัชนี / Index"><input name="lens_index" defaultValue={o.lens_index || ''} /></Field>
-              <Field label="โค้ตติ้ง / Coating"><input name="lens_coating" defaultValue={o.lens_coating || ''} /></Field>
-              <Field label="สี / Tint"><input name="lens_tint" defaultValue={o.lens_tint || ''} /></Field>
+              <Field label="ยี่ห้อ / Brand">
+                <input key={'lb' + (picked.lensOd?.id ?? '0')} name="lens_brand" defaultValue={picked.lensOd?.brand || o.lens_brand || ''} />
+              </Field>
+              <Field label="ดีไซน์ / Design">
+                <input key={'ld' + (picked.lensOd?.id ?? '0')} name="lens_design" defaultValue={picked.lensOd?.lens_design || o.lens_design || ''} />
+              </Field>
+              <Field label="ค่าดัชนี / Index">
+                <input key={'li' + (picked.lensOd?.id ?? '0')} name="lens_index" defaultValue={picked.lensOd?.lens_index || o.lens_index || ''} />
+              </Field>
+              <Field label="โค้ตติ้ง / Coating">
+                <input key={'lc' + (picked.lensOd?.id ?? '0')} name="lens_coating" defaultValue={picked.lensOd?.coating || o.lens_coating || ''} />
+              </Field>
+              <Field label="สี / Tint">
+                <input key={'lt' + (picked.lensOd?.id ?? '0')} name="lens_tint" defaultValue={picked.lensOd?.tint || o.lens_tint || ''} />
+              </Field>
               <Field label="ออพชั่นเสริม / Add-ons" className="full">
                 <input name="lens_addons" defaultValue={o.lens_addons || ''} />
               </Field>
@@ -329,25 +403,12 @@ export function OrderFormView({
         </Card>
 
         <Card title="ราคา & ส่วนลด">
+          {/* ราคากรอบ/เลนส์ กรอกอยู่ข้างสินค้าแต่ละชิ้นด้านบน ส่งค่าไปกับฟอร์มผ่านช่องซ่อน
+              จะได้ไม่ต้องมีช่องราคาเดียวกันสองที่ให้สับสนว่าอันไหนจริง */}
+          <input type="hidden" name="frame_price" value={p.frame_price} readOnly />
+          <input type="hidden" name="lens_od_price" value={p.lens_od_price} readOnly />
+          <input type="hidden" name="lens_os_price" value={p.lens_os_price} readOnly />
           <FormGrid>
-            <Field label="ราคากรอบ / FramePrice">
-              <input
-                name="frame_price" type="number" step="1" min="0"
-                value={p.frame_price} onChange={(e) => setP({ frame_price: e.target.value })}
-              />
-            </Field>
-            <Field label="ราคาเลนส์ขวา / LensOdPrice">
-              <input
-                name="lens_od_price" type="number" step="1" min="0"
-                value={p.lens_od_price} onChange={(e) => setP({ lens_od_price: e.target.value })}
-              />
-            </Field>
-            <Field label="ราคาเลนส์ซ้าย / LensOsPrice">
-              <input
-                name="lens_os_price" type="number" step="1" min="0"
-                value={p.lens_os_price} onChange={(e) => setP({ lens_os_price: e.target.value })}
-              />
-            </Field>
             <Field label="ค่าออพชั่นเสริม / OptionsPrice">
               <input
                 name="options_price" type="number" step="1" min="0"
