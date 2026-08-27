@@ -2,7 +2,7 @@
 /**
  * Case workspace.
  *
- * The 9 processes are not a wizard: any of them can be opened at any time, in
+ * The 10 processes are not a wizard: any of them can be opened at any time, in
  * any order (ขาย before วัดสายตา is normal here). So this page keeps two ideas
  * apart on purpose:
  *
@@ -54,6 +54,7 @@ const PROCESS_PANELS = {
   sales: SalesPanel,
   centering: CenteringPanel,
   payment: PaymentPanel,
+  lens: LensPanel,
   production: ProductionPanel,
   qc: QcPanel,
   delivery: DeliveryPanel,
@@ -63,11 +64,10 @@ const PROCESS_PANELS = {
 /** views that are not a process — no status, no complete action */
 const EXTRA_VIEWS = [
   ['overview', 'ภาพรวม'],
-  ['lens', 'งานเลนส์'],
   ['notify', 'ติดต่อลูกค้า'],
   ['timeline', 'ไทม์ไลน์'],
 ];
-const EXTRA_PANELS = { lens: LensPanel, notify: NotifyPanel, timeline: TimelinePanel };
+const EXTRA_PANELS = { notify: NotifyPanel, timeline: TimelinePanel };
 
 const isProcess = (step) => Object.prototype.hasOwnProperty.call(PROCESS_PANELS, step);
 const isKnownStep = (step) => isProcess(step)

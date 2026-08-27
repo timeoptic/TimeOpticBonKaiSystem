@@ -1,16 +1,17 @@
 'use client';
 /**
- * Process 6 — ผลิต.
+ * Process 7 — ผลิต.
  *
- * The bench needs three things in front of it before anything else: the numbers
- * measured at Center Point, the three physical items the sale chose, and
- * whether each of those is actually on the shelf. Nothing can be cut until all
- * of them are, so the start button states plainly what is missing rather than
- * simply refusing.
+ * The bench needs two things in front of it: the numbers measured at Center
+ * Point, and the three physical pieces — already held for this case by the
+ * เลนส์ step, so nobody has to go looking for them here. A job the floor has
+ * not handed over cannot be started, and the button says so rather than simply
+ * refusing.
  *
- * Every piece that leaves stock leaves a row behind it (production_withdrawals)
- * — the first three at เริ่มผลิต and every replacement after — so a case can
- * always be asked how much material it really consumed.
+ * เริ่มผลิต is where stock is actually cut: each hold becomes a withdrawal
+ * (production_withdrawals) and the units leave the shelf. Every replacement
+ * after that leaves its own row, so a case can always be asked how much
+ * material it really consumed.
  */
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../../../../lib/apiClient.js';
@@ -37,7 +38,9 @@ const STATUS = {
 };
 
 const ITEM_STATUS = {
-  ready: { label: 'พร้อม', kind: 'ok', icon: 'checkCircle' },
+  reserved: { label: 'จองไว้แล้ว', kind: 'ok', icon: 'lock' },
+  not_required: { label: 'ไม่ใช้ชิ้นนี้', kind: 'gray', icon: 'x' },
+  ready: { label: 'มีของ — ยังไม่ได้จอง', kind: 'warn', icon: 'circleHalf' },
   withdrawn: { label: 'เบิกแล้ว', kind: 'blue', icon: 'box' },
   ordered: { label: 'สั่งแล้ว รอของเข้า', kind: 'warn', icon: 'clock' },
   out_of_stock: { label: 'หมดสต็อก', kind: 'danger', icon: 'xCircle' },
@@ -349,7 +352,7 @@ export function ProductionPanel({ c, reload }) {
       </Card>
 
       {/* the three things the job consumes */}
-      <Card title="สินค้าที่ใช้ในงานนี้" right={<span className="muted">มาจากขั้นการขาย</span>}>
+      <Card title="สินค้าที่ใช้ในงานนี้" right={<span className="muted">จองไว้ที่ขั้นเลนส์</span>}>
         <div className="prod-items">
           {items.map((i) => {
             const s = ITEM_STATUS[i.status] || ITEM_STATUS.not_chosen;

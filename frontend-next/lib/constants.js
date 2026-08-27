@@ -1,7 +1,7 @@
 /** Vocabulary that lives in the front-end rather than the database. */
 import { CASE_PROCESSES } from './caseProcesses.js';
 
-/* The 9 processes are configured in one place — lib/caseProcesses.js. These
+/* The 10 processes are configured in one place — lib/caseProcesses.js. These
    two exports are the shape the board, StatusChip and the dashboard already
    read, derived from that config so there is only ever one list to edit. */
 export const STAGE_META = Object.fromEntries(
@@ -29,6 +29,12 @@ export const ACTION_LABEL = {
   lens_job_saved: 'บันทึกงานเลนส์',
   lens_followup: 'ติดตามเลนส์',
   lens_received: 'รับเลนส์เข้าร้าน',
+  lens_item_saved: 'แก้ไขรายการสินค้าของเคส',
+  lens_reserved: 'จองสินค้าให้เคส',
+  lens_released: 'ยกเลิกการจองสินค้า',
+  lens_ordered: 'สั่งสินค้าเข้า',
+  lens_item_received: 'รับสินค้าที่สั่งเข้า',
+  lens_sent_to_production: 'ส่งเข้าห้องผลิต',
   centering_saved: 'บันทึกจุดศูนย์กลาง',
   frame_fitting_saved: 'บันทึกการวัดกรอบ',
   production_saved: 'บันทึกงานผลิต',

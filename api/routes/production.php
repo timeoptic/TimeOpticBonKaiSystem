@@ -18,11 +18,18 @@ const PRODUCTION_ITEMS = [
 
 /**
  * One row per thing the job consumes, with where that thing stands:
+ *   not_required — a one-eye job: the sale said this piece is not used
  *   not_chosen   — the sale never picked it
  *   withdrawn    — already taken out of stock for this job
- *   ready        — on the shelf, waiting to be taken
+ *   reserved     — held for this case at the เลนส์ step; still on the shelf
+ *   ready        — on the shelf and unclaimed, but not yet reserved for us
  *   ordered      — not on the shelf, but on order from a supplier
  *   out_of_stock — not on the shelf and nobody has ordered it
+ *
+ * "On the shelf" is not the same as "ours". A lot's remaining_qty counts units
+ * nobody has cut yet, including ones another case has already promised to a
+ * customer — so what this job can actually have is
+ *     available = remaining_qty − units reserved by other cases.
  */
 function productionItems(?array $order, ?array $job, ?array $lensJob = null): array
 {
@@ -37,68 +44,108 @@ function productionItems(?array $order, ?array $job, ?array $lensJob = null): ar
         }
     }
 
+    $caseId = int_or($order['case_id'] ?? null) ?: 0;
+    $ful    = $caseId ? lensFulfillment($caseId) : [];
+    $held   = $caseId ? lensReservations($caseId) : [];
+
     $out = [];
     foreach (PRODUCTION_ITEMS as $type => $meta) {
         $lotId = $order ? int_or($order[$meta['field']] ?? null) : null;
+        $f     = $ful[$type] ?? null;
+        $mine  = $held[$type] ?? null;
         $row = [
             'item_type'    => $type,
             'label'        => $meta['label'],
             'stock_lot_id' => $lotId,
+            'product_id'   => null,
             'withdrawn'    => $withdrawn[$type] ?? 0,
+            'is_required'  => $f ? (int) $f['is_required'] : 1,
             'product_name' => null, 'brand' => null, 'sku' => null,
             'lens_index'   => null, 'coating' => null, 'remaining_qty' => null,
+            'reserved_qty' => 0, 'available_qty' => null,
+            'reservation_id'   => $mine ? (int) $mine['id'] : null,
+            'supplier_id'      => $f['supplier_id'] ?? null,
+            'order_no'         => $f['order_no'] ?? null,
+            'expected_arrival' => $f['expected_arrival'] ?? null,
             'status'       => 'not_chosen',
-            'note'         => null,
+            'note'         => $f['note'] ?? null,
         ];
 
         if ($lotId) {
             $lot = Db::get('SELECT * FROM v_stock_lot WHERE id = ?', $lotId);
             if ($lot) {
+                $row['product_id']    = int_or($lot['product_id'] ?? null);
                 $row['product_name']  = $lot['product_name'];
                 $row['brand']         = $lot['brand'] ?: ($lot['brand_name'] ?? null);
                 $row['sku']           = $lot['sku'];
                 $row['lens_index']    = $lot['lens_index'] ?? null;
                 $row['coating']       = $lot['coating'] ?? null;
                 $row['remaining_qty'] = (int) ($lot['remaining_qty'] ?? 0);
-                $row['status'] = (int) $lot['sold'] === 0 && (int) $lot['remaining_qty'] > 0
-                    ? 'ready' : 'out_of_stock';
+                /* every hold on the lot counts, including this case's other eye
+                   when both lenses come out of the same lot — the only one that
+                   does not block us is the one we already have for THIS piece */
+                $row['reserved_qty']  = lotReservedQty($lotId);
+                $free = $row['remaining_qty'] - $row['reserved_qty'] + ($mine ? (int) $mine['qty'] : 0);
+                $row['available_qty'] = max(0, $free);
+                $row['status'] = $row['available_qty'] > 0 ? 'ready' : 'out_of_stock';
             } else {
                 $row['status'] = 'out_of_stock';
             }
         }
 
-        /* a lens that is not on the shelf may already be on its way */
-        if ($row['status'] === 'out_of_stock' && $type !== 'frame' && $lensJob) {
-            $ordered = in_array($lensJob['status'] ?? '', ['ordered', 'waiting', 'in_transit'], true)
-                || !empty($lensJob['order_no']) || !empty($lensJob['expected_arrival']);
-            if ($ordered && empty($lensJob['received_at'])) {
+        /* not on the shelf, but somebody has already ordered it in */
+        if ($row['status'] === 'out_of_stock') {
+            $eta = null;
+            if ($f && in_array($f['status'], ['ordered', 'received'], true) && empty($f['received_at'])) {
+                $eta = $f['expected_arrival'];
                 $row['status'] = 'ordered';
-                $row['note'] = $lensJob['expected_arrival']
-                    ? 'คาดว่าจะถึง ' . substr((string) $lensJob['expected_arrival'], 0, 10)
+            } elseif ($type !== 'frame' && $lensJob) {
+                $ordered = in_array($lensJob['status'] ?? '', ['ordered', 'waiting', 'in_transit'], true)
+                    || !empty($lensJob['order_no']) || !empty($lensJob['expected_arrival']);
+                if ($ordered && empty($lensJob['received_at'])) {
+                    $eta = $lensJob['expected_arrival'];
+                    $row['status'] = 'ordered';
+                }
+            }
+            if ($row['status'] === 'ordered' && !$row['note']) {
+                $row['note'] = $eta
+                    ? 'คาดว่าจะถึง ' . substr((string) $eta, 0, 10)
                     : 'สั่งแล้ว รอสินค้าเข้า';
             }
         }
 
+        /* held for this case — still on the shelf, but nobody else can have it */
+        if ($mine) {
+            $row['status'] = 'reserved';
+        }
         if ($row['withdrawn'] > 0) {
             $row['status'] = 'withdrawn';
+        }
+        if (!$row['is_required']) {
+            $row['status'] = 'not_required';
         }
         $out[] = $row;
     }
     return $out;
 }
 
-/** can the shop start cutting? and if not, exactly what is in the way */
+/**
+ * Can the bench start cutting? Only pieces this case actually holds count:
+ * a unit that is merely "on the shelf" still belongs to whoever asks first, so
+ * production waits until the เลนส์ step has reserved it.
+ */
 function productionReadiness(array $items): array
 {
     $blocking = [];
     foreach ($items as $i) {
-        if (in_array($i['status'], ['ready', 'withdrawn'], true)) {
+        if (!$i['is_required'] || in_array($i['status'], ['reserved', 'withdrawn'], true)) {
             continue;
         }
         $blocking[] = $i['label'] . match ($i['status']) {
-            'not_chosen'   => ' (ยังไม่ได้เลือกสินค้า)',
-            'ordered'      => ' (สั่งแล้ว รอของเข้า)',
-            default        => ' (หมดสต็อก)',
+            'not_chosen' => ' (ยังไม่ได้เลือกสินค้า)',
+            'ordered'    => ' (สั่งแล้ว รอของเข้า)',
+            'ready'      => ' (ยังไม่ได้จองของ)',
+            default      => ' (ของไม่พอ)',
         };
     }
     return ['ready' => !count($blocking), 'blocking' => $blocking];
@@ -107,21 +154,31 @@ function productionReadiness(array $items): array
 /** one word for the whole job's stock situation, for the list's colour chip */
 function productionStockState(array $items): string
 {
-    $state = 'ready';
+    $state = 'reserved';
     foreach ($items as $i) {
+        if (!$i['is_required'] || $i['status'] === 'withdrawn') {
+            continue;
+        }
         if ($i['status'] === 'out_of_stock' || $i['status'] === 'not_chosen') {
             return $i['status'] === 'not_chosen' ? 'not_chosen' : 'out_of_stock';
         }
         if ($i['status'] === 'ordered') {
             $state = 'ordered';
+        } elseif ($i['status'] === 'ready' && $state !== 'ordered') {
+            $state = 'ready';
         }
     }
     return $state;
 }
 
 /**
- * The production board — every case that has a sale and has not been delivered
- * yet, with what it needs and where it stands.
+ * The production board — the jobs the shop floor has actually been handed.
+ *
+ * A case only appears once the เลนส์ step has reserved its pieces and pressed
+ * ส่งเข้าห้องผลิต (or once a job is already running, for the cases that started
+ * before that step existed). Everything still short of a frame or waiting on a
+ * supplier belongs on /lens, not here — the bench should not be reading a list
+ * of work it cannot start.
  */
 GET('/api/production', function (array $req) {
     $q = $req['query'];
@@ -145,7 +202,9 @@ GET('/api/production', function (array $req) {
            LEFT JOIN prescriptions rx
                   ON rx.id = (SELECT MAX(r2.id) FROM prescriptions r2
                                WHERE r2.case_id = c.id AND r2.kind = 'final')
+           LEFT JOIN case_processes cp ON cp.case_id = c.id AND cp.process = 'lens'
           WHERE s.is_terminal = 0 AND o.id IS NOT NULL
+            AND (cp.status = 'completed' OR j.started_at IS NOT NULL)
           ORDER BY c.is_rush DESC, c.opened_at"
     );
 

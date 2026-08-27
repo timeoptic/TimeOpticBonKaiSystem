@@ -1,5 +1,5 @@
 /**
- * The 9 processes a case goes through — the single place their id, label,
+ * The 10 processes a case goes through — the single place their id, label,
  * colour and "ยืนยันเสร็จ" wording live. `lib/constants.js` builds STAGE_META /
  * STAGE_GROUPS from this list, so the board, the stepper and the sidebar all
  * read the same names.
@@ -18,7 +18,8 @@ export const CASE_PROCESSES = [
   { id: 'sales', label: 'ขาย/เลือกกรอบ', color: '#0f8f8f', icon: '🛍', completeLabel: 'ยืนยันรายการขาย' },
   { id: 'centering', label: 'วัด Center', color: '#8a6d00', icon: '🎯', completeLabel: 'ยืนยันค่า Center' },
   { id: 'payment', label: 'ชำระเงิน', color: '#0a7a3d', icon: '💳', completeLabel: 'ยืนยันการชำระเงิน' },
-  { id: 'production', label: 'ผลิต/เลนส์', color: '#c07000', icon: '🔧', completeLabel: 'ผลิตเสร็จแล้ว' },
+  { id: 'lens', label: 'เลนส์', color: '#0d7fa0', icon: '👓', completeLabel: 'ส่งเข้าห้องผลิต' },
+  { id: 'production', label: 'ผลิต', color: '#c07000', icon: '🔧', completeLabel: 'ผลิตเสร็จแล้ว' },
   { id: 'qc', label: 'ตรวจ QC', color: '#b32020', icon: '🔍', completeLabel: 'QC ผ่าน' },
   { id: 'delivery', label: 'ส่งมอบ', color: '#127a4a', icon: '📦', completeLabel: 'ส่งมอบแล้ว' },
   { id: 'done', label: 'จบงาน', color: '#6b7a90', icon: '✅', completeLabel: 'จบเคส' },

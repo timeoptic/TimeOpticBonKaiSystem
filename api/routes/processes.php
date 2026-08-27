@@ -16,10 +16,10 @@ declare(strict_types=1);
 
 /** canonical order — matches case_statuses.stage_group, so the board agrees */
 const CASE_PROCESSES = ['reception', 'exam', 'sales', 'centering', 'payment',
-    'production', 'qc', 'delivery', 'done'];
+    'lens', 'production', 'qc', 'delivery', 'done'];
 
 /** processes whose "เริ่ม/เสร็จ" action is gated by real stock/QC state */
-const GATED_PROCESSES = ['production', 'qc', 'delivery', 'done'];
+const GATED_PROCESSES = ['lens', 'production', 'qc', 'delivery', 'done'];
 
 function assertProcess(string $p): string
 {
@@ -78,6 +78,9 @@ function processMissing(array $c): array
             ? 'ยอดคงเหลือ ' . round2($balance) : null,
     ]));
 
+    /* ขั้นเลนส์เสร็จ = ของที่ต้องใช้ทุกชิ้นถูกจองไว้ให้เคสนี้แล้ว (หรือเบิกไปแล้ว) */
+    $m['lens'] = lensMissing($c);
+
     $prodDone = $prod && (($prod['status'] ?? '') === 'COMPLETED' || !empty($prod['edging_finished_at']));
     $m['production'] = $prodDone ? [] : ['งานผลิตที่เสร็จแล้ว'];
 
@@ -105,19 +108,13 @@ function processBlocking(array $c): array
     $prod  = $c['production'] ?? null;
     $qc    = ($c['qc_checks'] ?? [])[0] ?? null;
 
-    $items = [
-        'frame_product_id'       => 'กรอบ',
-        'lens_product_id'        => 'เลนส์ขวา (OD)',
-        'right_lens_product_id'  => 'เลนส์ซ้าย (OS)',
-    ];
+    /* ห้องผลิตไม่ตัดสินเรื่องของเอง — ของถูกจองไว้ที่ขั้นเลนส์แล้วเท่านั้นจึงเริ่มได้ */
     $prodBlock = [];
     if (!$order) {
         $prodBlock[] = 'ยังไม่มีออเดอร์';
     } else {
-        foreach ($items as $field => $label) {
-            if (empty($order[$field])) {
-                $prodBlock[] = "ยังไม่มี$label ในสต็อก";
-            }
+        foreach (lensMissing($c) as $label) {
+            $prodBlock[] = $label;
         }
     }
 
@@ -129,6 +126,7 @@ function processBlocking(array $c): array
         'sales'      => [],
         'centering'  => [],
         'payment'    => [],
+        'lens'       => $order ? [] : ['ยังไม่มีออเดอร์'],
         'production' => $prodBlock,
         'qc'         => $prodDone ? [] : ['งานผลิตยังไม่เสร็จ'],
         'delivery'   => $qc && ($qc['result'] ?? '') === 'pass' ? [] : ['QC ยังไม่ผ่าน'],
@@ -164,6 +162,14 @@ function processDerived(array $c, array $missing): array
     }
     if (count($c['payments'] ?? []) && $out['payment'] !== 'completed') {
         $out['payment'] = 'in_progress';
+    }
+    if ($out['lens'] !== 'completed') {
+        $ln = lensProgress($c);
+        if ($ln['waiting']) {
+            $out['lens'] = 'waiting';
+        } elseif ($ln['touched']) {
+            $out['lens'] = 'in_progress';
+        }
     }
     if ($out['production'] !== 'completed') {
         $status = $prod['status'] ?? null;
@@ -474,6 +480,20 @@ function caseStageMap(array $caseIds): array
            FROM qc_checks WHERE case_id IN ($in) GROUP BY case_id",
         ...$ids
     ));
+    /* ขั้นเลนส์: กี่ชิ้นถูกจองไว้แล้ว และมีชิ้นไหนถูกยกเว้น (งานข้างเดียว) บ้าง */
+    $reserved = $flat(Db::all(
+        "SELECT case_id, COUNT(DISTINCT item_type) AS n
+           FROM stock_reservations
+          WHERE case_id IN ($in) AND status IN ('active','consumed')
+          GROUP BY case_id",
+        ...$ids
+    ));
+    $fulfil = $flat(Db::all(
+        "SELECT case_id, SUM(is_required = 0) AS skipped,
+                MAX(status IN ('ordered','received')) AS ordering, COUNT(*) AS n
+           FROM case_item_fulfillment WHERE case_id IN ($in) GROUP BY case_id",
+        ...$ids
+    ));
     $stored = [];
     foreach (Db::all("SELECT case_id, process, status FROM case_processes WHERE case_id IN ($in)", ...$ids) as $r) {
         $stored[(int) $r['case_id']][$r['process']] = $r['status'];
@@ -495,6 +515,8 @@ function caseStageMap(array $caseIds): array
             'sales'      => !empty($orders[$id]['filled']),
             'centering'  => !empty($centering[$id]['done']),
             'payment'    => !empty($pay[$id]['n']) && $net > 0 && $paid >= $net - 0.001,
+            'lens'       => (int) ($reserved[$id]['n'] ?? 0)
+                >= count(LENS_ITEM_TYPES) - (int) ($fulfil[$id]['skipped'] ?? 0),
             'production' => !empty($prod[$id]['done']),
             'qc'         => !empty($qc[$id]['passed']),
             'delivery'   => !empty($prod[$id]['delivered']),
@@ -509,6 +531,7 @@ function caseStageMap(array $caseIds): array
             'sales'      => !empty($orders[$id]['n']),
             'centering'  => !empty($centering[$id]['n']),
             'payment'    => !empty($pay[$id]['n']),
+            'lens'       => !empty($reserved[$id]['n']) || !empty($fulfil[$id]['n']),
             'production' => !empty($prod[$id]['working']) || !empty($prod[$id]['done'])
                 || !empty($prod[$id]['started']),
             'qc'         => !empty($qc[$id]['n']),

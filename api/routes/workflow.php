@@ -159,8 +159,17 @@ POST('/api/production-jobs/:id/start', function (array $req) {
             }
             $q->run(
                 'INSERT INTO production_withdrawals (case_id, production_job_id, item_type,
-                   stock_lot_id, is_extra, withdrawn_by) VALUES (?,?,?,?,0,?)',
-                (int) $job['case_id'], $id, $type, (int) $sid, $empId
+                   stock_lot_id, is_extra, withdrawn_by, idem_key) VALUES (?,?,?,?,0,?,?)',
+                (int) $job['case_id'], $id, $type, (int) $sid, $empId,
+                'case-' . (int) $job['case_id'] . '-' . $type . '-1'
+            );
+            /* the hold taken at the เลนส์ step becomes the cut — leaving it
+               'active' would keep the unit reserved after it had already left
+               the shelf, and every other case would see one fewer than there is */
+            $q->run(
+                "UPDATE stock_reservations SET status='consumed', consumed_at=?
+                  WHERE case_id=? AND item_type=? AND status='active'",
+                nowStamp(), (int) $job['case_id'], $type
             );
         }
         $q->run(
@@ -208,10 +217,17 @@ POST('/api/production-jobs/:id/withdraw', function (array $req) {
         if (!pickLot($q, $sid, 'เบิกเพิ่ม: ' . str_or($body['reason'] ?? null))) {
             bad('สินค้าชิ้นนี้ถูกขายไปแล้วระหว่างนี้ — ลองใหม่');
         }
+        /* the key stays the same however many times this call is retried:
+           it is the n-th time this case took this piece, not a fresh uuid */
+        $seq = 1 + (int) $q->get(
+            'SELECT COUNT(*) n FROM production_withdrawals WHERE case_id = ? AND item_type = ?',
+            (int) $job['case_id'], $type
+        )['n'];
         $q->run(
             'INSERT INTO production_withdrawals (case_id, production_job_id, item_type,
-               stock_lot_id, is_extra, reason, withdrawn_by) VALUES (?,?,?,?,1,?,?)',
-            (int) $job['case_id'], $id, $type, $sid, nul($body['reason'] ?? null), $empId
+               stock_lot_id, is_extra, reason, withdrawn_by, idem_key) VALUES (?,?,?,?,1,?,?,?)',
+            (int) $job['case_id'], $id, $type, $sid, nul($body['reason'] ?? null), $empId,
+            'case-' . (int) $job['case_id'] . '-' . $type . '-' . $seq
         );
         logEvent($q, (int) $job['case_id'], [
             'action' => 'production_withdraw_extra', 'entity' => 'production_withdrawal',

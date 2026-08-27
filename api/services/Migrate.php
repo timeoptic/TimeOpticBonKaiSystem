@@ -151,6 +151,63 @@ final class Migrate
                 CONSTRAINT fk_pw_lot  FOREIGN KEY (stock_lot_id) REFERENCES stock_lots (id) ON DELETE SET NULL,
                 CONSTRAINT fk_pw_emp  FOREIGN KEY (withdrawn_by) REFERENCES employees (id) ON DELETE SET NULL
               ) $c",
+
+            /* ขั้น "เลนส์" จองของไว้ให้เคส แต่ยังไม่ตัดสต็อก — ของยังอยู่บนชั้น
+               แต่เคสอื่นหยิบไม่ได้ ยอดที่ขายได้จริงคือ
+               remaining_qty − SUM(qty ของการจองที่ยัง active) */
+            'stock_reservations' => "CREATE TABLE IF NOT EXISTS stock_reservations (
+                id           int(10) unsigned NOT NULL AUTO_INCREMENT,
+                case_id      int(10) unsigned NOT NULL,
+                order_id     int(10) unsigned DEFAULT NULL,
+                item_type    varchar(20) NOT NULL,
+                product_id   int(10) unsigned DEFAULT NULL,
+                stock_lot_id int(10) unsigned DEFAULT NULL,
+                qty          int(11) NOT NULL DEFAULT 1,
+                status       varchar(20) NOT NULL DEFAULT 'active',
+                note         varchar(255) DEFAULT NULL,
+                reserved_at  datetime NOT NULL DEFAULT current_timestamp(),
+                reserved_by  int(10) unsigned DEFAULT NULL,
+                released_at  datetime DEFAULT NULL,
+                released_by  int(10) unsigned DEFAULT NULL,
+                consumed_at  datetime DEFAULT NULL,
+                PRIMARY KEY (id),
+                KEY idx_sr_case (case_id, item_type, status),
+                KEY idx_sr_lot (stock_lot_id, status),
+                KEY idx_sr_product (product_id, status),
+                KEY fk_sr_emp (reserved_by),
+                CONSTRAINT fk_sr_case FOREIGN KEY (case_id)      REFERENCES cases (id)      ON DELETE CASCADE,
+                CONSTRAINT fk_sr_lot  FOREIGN KEY (stock_lot_id) REFERENCES stock_lots (id) ON DELETE SET NULL,
+                CONSTRAINT fk_sr_emp  FOREIGN KEY (reserved_by)  REFERENCES employees (id)  ON DELETE SET NULL
+              ) $c",
+
+            /* สถานะรายชิ้นของเคส — กรอบ / เลนส์ขวา / เลนส์ซ้าย
+               is_required = 0 คือ "งานข้างเดียว" ไม่ต้องใช้ชิ้นนี้
+               ส่วนการสั่งของกับซัพพลายเออร์เก็บที่นี่ด้วย เพราะ lens_jobs
+               เป็นรายเคส (ทั้งคู่รวมกัน) ไม่ใช่รายชิ้น */
+            'case_item_fulfillment' => "CREATE TABLE IF NOT EXISTS case_item_fulfillment (
+                id               int(10) unsigned NOT NULL AUTO_INCREMENT,
+                case_id          int(10) unsigned NOT NULL,
+                order_id         int(10) unsigned DEFAULT NULL,
+                item_type        varchar(20) NOT NULL,
+                is_required      tinyint(1) NOT NULL DEFAULT 1,
+                status           varchar(20) NOT NULL DEFAULT 'not_chosen',
+                supplier_id      int(10) unsigned DEFAULT NULL,
+                order_no         varchar(60) DEFAULT NULL,
+                ordered_at       datetime DEFAULT NULL,
+                expected_arrival date DEFAULT NULL,
+                received_at      datetime DEFAULT NULL,
+                note             varchar(255) DEFAULT NULL,
+                updated_by       int(10) unsigned DEFAULT NULL,
+                created_at       datetime NOT NULL DEFAULT current_timestamp(),
+                updated_at       datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+                PRIMARY KEY (id),
+                UNIQUE KEY uq_cif_case_item (case_id, item_type),
+                KEY fk_cif_supplier (supplier_id),
+                KEY fk_cif_emp (updated_by),
+                CONSTRAINT fk_cif_case     FOREIGN KEY (case_id)     REFERENCES cases (id)     ON DELETE CASCADE,
+                CONSTRAINT fk_cif_supplier FOREIGN KEY (supplier_id) REFERENCES suppliers (id) ON DELETE SET NULL,
+                CONSTRAINT fk_cif_emp      FOREIGN KEY (updated_by)  REFERENCES employees (id) ON DELETE SET NULL
+              ) $c",
         ];
     }
 
@@ -283,6 +340,11 @@ final class Migrate
             self::addColumns('list_pay_type', [
                 'is_active' => 'tinyint(1) NOT NULL DEFAULT 1',
             ]),
+            /* กุญแจกันตัดซ้ำเวลาเปลี่ยนไปตัดสต็อกผ่าน API ของคลัง —
+               ค่าคงที่ต่อรายการเบิก ไม่ใช่ uuid ที่เปลี่ยนทุกครั้งที่ retry */
+            self::addColumns('production_withdrawals', [
+                'idem_key' => 'varchar(80) DEFAULT NULL',
+            ]),
             self::addColumns('centerings', [
                 'measured_at' => 'datetime DEFAULT NULL',
             ]),
@@ -300,7 +362,17 @@ final class Migrate
                 'external_date'        => 'date DEFAULT NULL',
             ])
         );
+        /* ขั้น "เลนส์" แยกออกจากห้องผลิต — สถานะที่ว่าด้วยตัวเลนส์ (หาของ/สั่ง/รอเข้า)
+           เป็นงานของฝ่ายขาย ไม่ใช่ช่างหน้าเครื่อง จึงย้ายมาอยู่กลุ่มของตัวเอง */
+        Db::run(
+            "UPDATE case_statuses SET stage_group = 'lens'
+              WHERE code IN ('lens_source','waiting_lens_picking','lens_ready',
+                             'lens_ordered','waiting_lens_arrival','lens_received')"
+        );
         Db::run("UPDATE case_statuses SET stage_group = 'centering' WHERE code = 'centering'");
+        /* ลองกรอบ/วัดกรอบเป็นการวัด ไม่ใช่งานหน้าเครื่อง — และถ้ายังค้างอยู่กลุ่มผลิต
+           สถานะแรกของกลุ่มผลิตจะมาก่อนกลุ่มเลนส์ ทำให้ "ส่งเข้าห้องผลิต" ถูกมองว่าถอยหลัง */
+        Db::run("UPDATE case_statuses SET stage_group = 'centering' WHERE code = 'frame_fitting'");
         Db::run("UPDATE case_statuses SET stage_group = 'payment' WHERE code = 'payment'");
         /* พร้อมเพย์ / QR ไม่ได้ใช้แล้ว — ซ่อนจากตัวเลือก แต่แถวยังอยู่ให้ประวัติอ่านออก */
         Db::run("UPDATE list_pay_type SET is_active = 0 WHERE code = 'QR'");

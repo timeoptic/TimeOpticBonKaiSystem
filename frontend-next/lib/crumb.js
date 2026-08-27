@@ -30,6 +30,7 @@ export const TITLES = [
   ['/case-sales', 'ขาย-เลือกกรอบ'],
   ['/centering', 'วัด Center'],
   ['/case-payments', 'ชำระเงิน'],
+  ['/lens', 'เลนส์'],
   ['/production', 'ผลิต'],
   ['/qc', 'QC'],
   ['/delivery', 'ส่งมอบ'],

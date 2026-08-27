@@ -27,7 +27,8 @@ const JOB_STATUS = {
 };
 
 const STOCK_STATE = {
-  ready: { label: 'พร้อมทั้งหมด', kind: 'ok' },
+  reserved: { label: 'จองครบแล้ว', kind: 'ok' },
+  ready: { label: 'มีของ — ยังไม่ได้จอง', kind: 'warn' },
   ordered: { label: 'รอสินค้าเข้า', kind: 'warn' },
   out_of_stock: { label: 'ขาดสต็อก', kind: 'danger' },
   not_chosen: { label: 'ยังไม่เลือกสินค้า', kind: 'gray' },
@@ -45,7 +46,7 @@ function LensCell({ row, side }) {
   const sph = side === 'od' ? row.r_sphere : row.l_sphere;
   const cyl = side === 'od' ? row.r_cylinder : row.l_cylinder;
   const item = (row.items || []).find((i) => i.item_type === (side === 'od' ? 'lens_od' : 'lens_os'));
-  const bad = item && !['ready', 'withdrawn'].includes(item.status);
+  const bad = item && !['reserved', 'withdrawn'].includes(item.status);
   return (
     <div className={`prod-lens ${bad ? 'bad' : ''}`}>
       <span>{item?.product_name || row.lens_name || '—'}</span>
@@ -71,7 +72,7 @@ export default function ProductionListPage() {
 
   return (
     <div>
-      <PageHead icon="wrench" title="Production" subtitle="งานตัดแว่นในร้าน" />
+      <PageHead icon="wrench" title="Production" subtitle="งานที่ขั้นเลนส์จองของและส่งเข้ามาแล้ว" />
 
       <div className="prod-cards">
         {CARDS.map(([code, label, key, icon, kind]) => (
@@ -147,7 +148,7 @@ export default function ProductionListPage() {
               label: 'เฟรม',
               render: (r) => {
                 const item = (r.items || []).find((i) => i.item_type === 'frame');
-                const bad = item && !['ready', 'withdrawn'].includes(item.status);
+                const bad = item && !['reserved', 'withdrawn'].includes(item.status);
                 return (
                   <div className={`prod-lens ${bad ? 'bad' : ''}`}>
                     <span>{item?.product_name || r.frame_name || '—'}</span>
