@@ -438,14 +438,6 @@ export function OrderFormView({
                   onChange={(e) => setP({ lens_od_price: e.target.value })}
                 />
               </Field>
-              <button
-                type="button"
-                className="btn btn-sm btn-light"
-                disabled={!picked.lensOd}
-                onClick={() => setPicked({ lensOs: picked.lensOd })}
-              >
-                ใช้เลนส์ตัวเดียวกันกับตาซ้าย
-              </button>
             </Fieldset>
             <Fieldset legend="เลนส์ซ้าย (OS)">
               <StockPicker
