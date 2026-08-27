@@ -4,6 +4,7 @@ import { readForm } from '../../../../lib/hooks.js';
 import { useToast } from '../../../../components/Toast.jsx';
 import { Badge, Empty, Field } from '../../../../components/ui.jsx';
 import { ACTION_LABEL } from '../../../../lib/constants.js';
+import { eventNote } from '../../../../lib/caseProcesses.js';
 import { fmtDateTime } from '../../../../lib/format.js';
 
 export function TimelinePanel({ c, reload, actorId }) {
@@ -50,7 +51,7 @@ export function TimelinePanel({ c, reload, actorId }) {
                     <span className="muted">{fmtDateTime(ev.created_at)}</span>
                     {ev.employee_name ? <span className="muted">{'· ' + ev.employee_name}</span> : null}
                   </div>
-                  {ev.note ? <div className="tl-note">{ev.note}</div> : null}
+                  {ev.note ? <div className="tl-note">{eventNote(ev)}</div> : null}
                 </div>
               </div>
             ))}

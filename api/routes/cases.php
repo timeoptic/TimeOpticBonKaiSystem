@@ -202,10 +202,11 @@ PUT('/api/cases/:id', function (array $req) {
     }
     Db::run(
         'UPDATE cases SET is_rush = ?, priority_note = ?, received_by = ?,
-           reception_note = ?, notes = ? WHERE id = ?',
+           referral_source = ?, reception_note = ?, notes = ? WHERE id = ?',
         boolInt($body['is_rush'] ?? null),
         nul($body['priority_note'] ?? null),
         int_or($body['received_by'] ?? null),
+        nul($body['referral_source'] ?? null),
         nul($body['reception_note'] ?? null),
         nul($body['notes'] ?? null),
         $id

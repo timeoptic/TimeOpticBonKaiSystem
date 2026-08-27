@@ -101,6 +101,14 @@ POST('/api/qc-checks', function (array $req) {
             'employee_id' => int_or($body['checked_by'] ?? null),
             'action'      => 'qc_' . $result,
         ]);
+        /* A failed check is the one place a process is put into "มีปัญหา"
+           without someone pressing a button for it, and it sends production
+           back to work. A pass is NOT auto-confirmed here — ✓ QC ผ่าน stays a
+           deliberate action (api/routes/processes.php). */
+        if ($result === 'fail') {
+            saveProcess($q, $caseId, 'qc', ['status' => 'problem', 'completed_at' => null]);
+            saveProcess($q, $caseId, 'production', ['status' => 'in_progress', 'completed_at' => null]);
+        }
         return $r['insertId'];
     });
 
@@ -162,6 +170,10 @@ POST('/api/production-jobs/:id/start', function (array $req) {
             'action' => 'production_started', 'entity' => 'production_job',
             'entity_id' => $id, 'employee_id' => $empId,
         ]);
+        /* the process is now under way — confirming it stays a button press */
+        saveProcess($q, (int) $job['case_id'], 'production', [
+            'status' => 'in_progress', 'started_at' => nowStamp(), 'completed_at' => null,
+        ]);
         setStatus($q, (int) $job['case_id'], 'edging', ['employee_id' => $empId, 'action' => 'production_started']);
     });
     return Db::get('SELECT * FROM production_jobs WHERE id = ?', $id);
@@ -221,6 +233,7 @@ POST('/api/production-jobs/:id/pause', function (array $req) {
             'action' => 'production_paused', 'entity' => 'production_job', 'entity_id' => $id,
             'employee_id' => $empId, 'note' => str_or($body['reason'] ?? null),
         ]);
+        saveProcess($q, (int) $job['case_id'], 'production', ['status' => 'waiting']);
         setStatus($q, (int) $job['case_id'], 'waiting_edging', ['employee_id' => $empId, 'action' => 'production_paused']);
     });
     return Db::get('SELECT * FROM production_jobs WHERE id = ?', $id);
@@ -241,6 +254,7 @@ POST('/api/production-jobs/:id/resume', function (array $req) {
             'action' => 'production_resumed', 'entity' => 'production_job', 'entity_id' => $id,
             'employee_id' => $empId,
         ]);
+        saveProcess($q, (int) $job['case_id'], 'production', ['status' => 'in_progress']);
         setStatus($q, (int) $job['case_id'], 'edging', ['employee_id' => $empId, 'action' => 'production_resumed']);
     });
     return Db::get('SELECT * FROM production_jobs WHERE id = ?', $id);
@@ -267,6 +281,9 @@ POST('/api/production-jobs/:id/deliver', function (array $req) {
         logEvent($q, (int) $job['case_id'], [
             'action' => 'delivered', 'entity' => 'production_job', 'entity_id' => $id,
             'employee_id' => $empId, 'note' => str_or($body['received_by_customer_name'] ?? null),
+        ]);
+        saveProcess($q, (int) $job['case_id'], 'delivery', [
+            'status' => 'in_progress', 'started_at' => nowStamp(),
         ]);
         setStatus($q, (int) $job['case_id'], 'pickup', ['employee_id' => $empId, 'action' => 'delivered']);
     });

@@ -430,14 +430,15 @@ legend{font-size:12.5px;font-weight:700;color:var(--navy);padding:0 6px}
 
 .tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
 
-.tabs a{
+.tabs a,.tabs button{
   padding:7px 14px;border-radius:999px;background:#fff;border:1px solid var(--line);
   color:var(--ink-soft);font-size:13.5px;font-weight:600;text-decoration:none;
+  font-family:inherit;cursor:pointer;
 }
 
-.tabs a:hover{text-decoration:none;border-color:var(--accent);color:var(--accent)}
+.tabs a:hover,.tabs button:hover{text-decoration:none;border-color:var(--accent);color:var(--accent)}
 
-.tabs a.active{background:var(--navy);border-color:var(--navy);color:#fff}
+.tabs a.active,.tabs button.active{background:var(--navy);border-color:var(--navy);color:#fff}
 
 .split{display:grid;grid-template-columns:minmax(340px,1fr) minmax(340px,1.15fr);gap:18px;align-items:start}
 
@@ -720,7 +721,7 @@ body.board-dragging .case-card{cursor:grabbing}
 
 .step:first-child .step-line{display:none}
 
-.step.done .step-line,.step.now .step-line{background:var(--stage)}
+.step.done .step-line,.step.viewing .step-line{background:var(--stage)}
 
 /* วงกลม = ปุ่มย้ายขั้น จึงเป็น <button> จริง ต้องล้างสไตล์ปุ่มของเบราว์เซอร์ทิ้งก่อน */
 .step-dot{
@@ -735,14 +736,18 @@ body.board-dragging .case-card{cursor:grabbing}
 
 .step.done .step-dot{background:var(--stage);border-color:var(--stage);color:#fff}
 
-.step.now .step-dot{
-  border-color:var(--stage);color:var(--stage);
-  box-shadow:0 0 0 5px color-mix(in srgb, var(--stage) 18%, transparent);
+/* วงแหวนรอบนอก = ขั้นที่กำลังเปิดดูอยู่ ไม่ได้แปลว่าขั้นนั้นกำลังทำ
+   สถานะของขั้นยังอ่านจากไอคอน/สีข้างในเหมือนเดิม */
+.step.viewing .step-dot{
+  box-shadow:0 0 0 5px color-mix(in srgb, var(--accent) 26%, transparent);
   transform:scale(1.1);
 }
 
-/* ขั้นปัจจุบันที่ข้อมูลครบแล้ว — วงเต็มสีเหมือน done แต่ยังมีวงแหวนบอกว่าอยู่ตรงนี้ */
-.step.now.done .step-dot{background:var(--stage);color:#fff}
+/* ขั้นที่เสร็จแล้วและกำลังเปิดดู — วงเต็มสีเหมือน done แต่มีวงแหวนครอบ */
+.step.viewing.done .step-dot{background:var(--stage);color:#fff}
+
+/* ขั้นที่ยังทำไม่ได้ (ติด business gate) — เปิดดูได้ แต่หน้าตาต้องบอกว่ายังไม่ถึงคิว */
+.step.locked .step-dot{background:var(--surface-alt);border-style:dashed;color:var(--ink-faint)}
 
 /* ชื่อขั้น = ปุ่มเปิดแท็บข้อมูล เป้ากดคนละจุดกับวงกลม
    padding เผื่อไว้ให้นิ้วกดโดนบนจอสัมผัส */
@@ -756,14 +761,14 @@ body.board-dragging .case-card{cursor:grabbing}
 
 .step.done .step-label{color:var(--ink-soft)}
 
-.step.now .step-label{color:var(--stage);font-weight:700}
+.step.viewing .step-label{color:var(--accent-deep);font-weight:700;background:var(--accent-soft)}
 
 .step-dot:hover,.step-dot:focus-visible{transform:scale(1.12);box-shadow:var(--shadow-lg)}
 
-.step.now .step-dot:hover{transform:scale(1.18)}
+.step.viewing .step-dot:hover{transform:scale(1.18)}
 
 @supports not (background:color-mix(in srgb, red 10%, transparent)){
-  .step.now .step-dot{box-shadow:0 0 0 5px var(--accent-soft)}
+  .step.viewing .step-dot{box-shadow:0 0 0 5px var(--accent-soft)}
 }
 
 @media (max-width:820px){
@@ -1165,3 +1170,50 @@ table.doc td.lbl{background:var(--surface-alt);font-weight:700;text-align:left;w
   .topbar{z-index:70}
   .sidebar-overlay{position:fixed;inset:0;z-index:55;background:rgba(0,0,0,.4)}
 }
+
+
+/* ---------------- กรอบของแต่ละขั้นตอน (ProcessShell) ---------------- */
+.process-foot{
+  display:flex;gap:12px;align-items:center;flex-wrap:wrap;
+  padding:13px 18px;background:var(--surface-alt);border-top:1px solid var(--line-soft);
+}
+
+.process-foot-info{display:flex;flex-direction:column;gap:2px;font-size:12.5px;min-width:0}
+
+.process-blockers{color:var(--warn);font-weight:600}
+
+.process-foot-actions{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+
+/* การ์ดในแผงย่อยไม่ต้องมีเงาซ้อนกับการ์ดใหญ่ */
+.process-body > .card,.process-body > .stack > .card{box-shadow:none;border:1px solid var(--line-soft)}
+
+/* ---------------- สรุปสถานะ 9 ขั้นบนหน้าภาพรวม ---------------- */
+.process-summary{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px}
+
+.process-chip{
+  display:flex;flex-direction:column;gap:2px;text-align:left;padding:9px 12px;
+  border-radius:var(--radius-sm);border:1px solid var(--line);background:#fff;
+  font-family:inherit;font-size:12px;color:var(--ink-faint);cursor:pointer;
+}
+
+.process-chip b{font-size:13px;color:var(--ink)}
+
+.process-chip:hover{border-color:var(--accent)}
+
+.process-chip.completed{border-color:var(--ok);background:var(--ok-soft)}
+
+.process-chip.in_progress,.process-chip.waiting{border-color:var(--warn);background:var(--warn-soft)}
+
+.process-chip.problem{border-color:var(--danger);background:var(--danger-soft)}
+
+.process-chip.locked{opacity:.7;border-style:dashed}
+
+/* ---------------- skeleton ตอนสลับ/โหลดขั้นตอน ---------------- */
+.sk{background:linear-gradient(90deg,var(--line-soft) 25%,#f7fbfa 50%,var(--line-soft) 75%);
+  background-size:400% 100%;animation:skwave 1.2s ease-in-out infinite;border-radius:8px}
+
+.sk-line{height:14px;margin-bottom:10px}
+
+.sk-block{height:160px;margin-top:14px}
+
+@keyframes skwave{0%{background-position:100% 0}100%{background-position:0 0}}

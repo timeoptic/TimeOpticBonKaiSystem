@@ -1,23 +1,18 @@
 /** Vocabulary that lives in the front-end rather than the database. */
+import { CASE_PROCESSES } from './caseProcesses.js';
 
-export const STAGE_META = {
-  reception: { label: 'รับลูกค้า', color: '#7a5cc4', icon: '🛎' },
-  exam: { label: 'วัดสายตา', color: '#2f6fd0', icon: '👁' },
-  sales: { label: 'ขาย/เลือกกรอบ', color: '#0f8f8f', icon: '🛍' },
-  centering: { label: 'วัด Center', color: '#8a6d00', icon: '🎯' },
-  payment: { label: 'ชำระเงิน', color: '#0a7a3d', icon: '💳' },
-  production: { label: 'ผลิต/เลนส์', color: '#c07000', icon: '🔧' },
-  qc: { label: 'ตรวจ QC', color: '#b32020', icon: '🔍' },
-  delivery: { label: 'ส่งมอบ', color: '#127a4a', icon: '📦' },
-  done: { label: 'จบงาน', color: '#6b7a90', icon: '✅' },
-};
+/* The 9 processes are configured in one place — lib/caseProcesses.js. These
+   two exports are the shape the board, StatusChip and the dashboard already
+   read, derived from that config so there is only ever one list to edit. */
+export const STAGE_META = Object.fromEntries(
+  CASE_PROCESSES.map((p) => [p.id, { label: p.label, color: p.color, icon: p.icon }])
+);
 
 export const stageInfo = (g) =>
   STAGE_META[g] || { label: g || '-', color: '#6b7a90', icon: '•' };
 
-/** the board's columns, in workflow order */
-export const STAGE_GROUPS = ['reception', 'exam', 'sales', 'centering', 'payment',
-  'production', 'qc', 'delivery'];
+/** the board's columns, in workflow order (จบงาน is added by the board itself) */
+export const STAGE_GROUPS = CASE_PROCESSES.filter((p) => p.id !== 'done').map((p) => p.id);
 
 export const ACTION_LABEL = {
   case_opened: 'เปิดเคส',
@@ -47,6 +42,10 @@ export const ACTION_LABEL = {
   delivered: 'ส่งมอบสินค้า',
   payment_cancelled: 'ยกเลิกรายการรับเงิน',
   photo_uploaded: 'แนบรูป/ไฟล์',
+  process_started: 'เริ่มขั้นตอน',
+  process_completed: 'ยืนยันขั้นตอนเสร็จ',
+  process_reopened: 'เปิดขั้นตอนกลับมาแก้ไข',
+  process_status: 'เปลี่ยนสถานะขั้นตอน',
   photo_deleted: 'ลบรูป/ไฟล์',
   /* rows written by the old Node app, still in case_events */
   advance: 'เลื่อนขั้นตอน',
