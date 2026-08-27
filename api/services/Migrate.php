@@ -232,6 +232,21 @@ final class Migrate
             Db::pdo()->exec($sql);
         }
 
+        /* ช่องทางรับเงินที่ร้านใช้จริง — ถุงเงิน (กรุงไทย) เป็นช่องทางหนึ่ง ไม่ใช่ "อื่น ๆ"
+           แถวเดิมที่ยังชื่อ Other ไม่มีใครใช้ จึงเปลี่ยนเป็นถุงเงินได้โดยไม่กระทบข้อมูลเก่า */
+        if (Db::get("SELECT COUNT(*) n FROM list_pay_type WHERE code = 'ThungNgern'")['n'] == 0) {
+            $usedOther = (int) Db::get("SELECT COUNT(*) n FROM payments WHERE method = 'Other'")['n'];
+            if ($usedOther === 0) {
+                Db::run("DELETE FROM list_pay_type WHERE code = 'Other'");
+            }
+            Db::run(
+                "INSERT INTO list_pay_type (code, label_th, sort_order) VALUES (?,?,?)",
+                'ThungNgern',
+                'ถุงเงิน',
+                5
+            );
+        }
+
         $added = array_merge(
             self::addColumns('custom_orders', [
                 'frame_price'    => 'decimal(10,2) NOT NULL DEFAULT 0',

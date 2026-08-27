@@ -29,7 +29,8 @@ const KIND_LABEL = Object.fromEntries(KINDS);
 const KIND_BADGE = { deposit: 'blue', partial: 'warn', final: 'ok', full: 'ok' };
 
 const METHOD_ICON = {
-  Cash: 'banknote', Transfer: 'coins', QR: 'chart', Credit: 'card', Other: 'moneyBag',
+  Cash: 'banknote', Transfer: 'coins', QR: 'chart', Credit: 'card',
+  ThungNgern: 'moneyBag', Other: 'tag',
 };
 
 const SLIP_KIND = 'payment_slip';
