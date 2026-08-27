@@ -1484,3 +1484,24 @@ table.doc td.lbl{background:var(--surface-alt);font-weight:700;text-align:left;w
 .suggest-chip b{font-size:11px;letter-spacing:.6px;color:var(--ink-faint);font-weight:700}
 
 .suggest .hint{margin:8px 0 0}
+
+
+/* ---------------- สลิปที่แนบกับรายการรับเงิน ---------------- */
+.slip-chip{position:relative;display:inline-flex;width:38px;height:38px;flex:0 0 38px}
+
+.slip-chip a{
+  display:flex;align-items:center;justify-content:center;width:100%;height:100%;
+  border:1px solid var(--line);border-radius:var(--radius-sm);overflow:hidden;background:#fff;
+}
+
+.slip-chip img{width:100%;height:100%;object-fit:cover}
+
+.slip-chip .ico{width:18px;height:18px;color:var(--ink-soft)}
+
+.slip-chip button{
+  position:absolute;top:-6px;right:-6px;width:18px;height:18px;padding:0;border:0;
+  border-radius:999px;background:var(--danger);color:#fff;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;line-height:0;
+}
+
+.slip-chip button .ico{width:11px;height:11px;color:#fff}
