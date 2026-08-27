@@ -442,15 +442,6 @@ export function OrderFormView({
                 onClear={() => setItems({ ...picked, lensOd: null })}
                 selectedId={picked.lensOd?.id ?? null}
               />
-              <Field label="ราคาเลนส์ขวา">
-                <input
-                  type="number"
-                  step="1"
-                  min="0"
-                  value={p.lens_od_price}
-                  onChange={(e) => setP({ lens_od_price: e.target.value })}
-                />
-              </Field>
             </Fieldset>
             <Fieldset legend="เลนส์ซ้าย (OS)">
               <StockPicker
@@ -460,15 +451,6 @@ export function OrderFormView({
                 onClear={() => setItems({ ...picked, lensOs: null })}
                 selectedId={picked.lensOs?.id ?? null}
               />
-              <Field label="ราคาเลนส์ซ้าย">
-                <input
-                  type="number"
-                  step="1"
-                  min="0"
-                  value={p.lens_os_price}
-                  onChange={(e) => setP({ lens_os_price: e.target.value })}
-                />
-              </Field>
             </Fieldset>
           </Split>
         </Card>
