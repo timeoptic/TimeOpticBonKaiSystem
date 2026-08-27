@@ -17,7 +17,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api } from '../../lib/apiClient.js';
 import { useAsync, useDebounced } from '../../lib/hooks.js';
-import { Badge, Card, Check, Field, Loading, PageHead, Toolbar } from '../../components/ui.jsx';
+import { Badge, Card, Field, Loading, PageHead } from '../../components/ui.jsx';
 import { QueryParamPage } from '../../components/QueryParamPage.jsx';
 import { useMeta } from '../../contexts/MetaContext.jsx';
 import { STAGE_GROUPS, stageInfo } from '../../lib/constants.js';
@@ -25,6 +25,15 @@ import { fmtDate, moneyShort } from '../../lib/format.js';
 import { Icon } from '../../components/Icon.jsx';
 
 const SIGHTFIRST = 'SIGHTFIRST';
+
+/* the four yes/no views of the board. Four bare checkboxes in a row read as a
+   settings dialog; the same four as chips read as "what am I looking at". */
+const TOGGLES = [
+  ['rush', 'ด่วนเท่านั้น', 'flame'],
+  ['unpaid', 'ค้างชำระ', 'coins'],
+  ['hideEmpty', 'ซ่อนขั้นที่ว่าง', null],
+  ['showDone', 'เคสที่จบแล้ว', 'checkCircle'],
+];
 
 /** the two books of work, plus everything at once */
 const CLIENTS = [
@@ -83,10 +92,11 @@ function CaseBoardInner() {
   const [term, setTerm] = useState(params.get('q') || '');
   const [client, setClient] = useState(params.get('client') || '');
   const [caseType, setCaseType] = useState('');
-  const [rushOnly, setRushOnly] = useState(false);
-  const [unpaidOnly, setUnpaidOnly] = useState(false);
-  const [showDone, setShowDone] = useState(false);
-  const [hideEmpty, setHideEmpty] = useState(true);
+  const [toggles, setToggles] = useState({
+    rush: false, unpaid: false, hideEmpty: true, showDone: false,
+  });
+  const setToggle = (k, v) => setToggles((t) => ({ ...t, [k]: v }));
+  const { rush: rushOnly, unpaid: unpaidOnly, hideEmpty, showDone } = toggles;
   const q = useDebounced(term, 250);
 
   const { data: rows, loading, error, reload } = useAsync(
@@ -145,30 +155,43 @@ function CaseBoardInner() {
         ))}
       </div>
 
-      <Toolbar>
-        <Field label="ค้นหา" className="grow">
-          <input
-            type="search"
-            placeholder="ค้นหา เคส / ลูกค้า / เบอร์ / Invoice"
-            value={term}
-            onChange={(e) => setTerm(e.target.value)}
-          />
-        </Field>
-        <Field label="ประเภทงาน">
-          <select value={caseType} onChange={(e) => setCaseType(e.target.value)}>
-            <option value="">ทั้งหมด</option>
-            {types.map((t) => {
-              const [v, label] = Array.isArray(t) ? t : [t, t];
-              return <option key={v} value={v}>{label}</option>;
-            })}
-          </select>
-        </Field>
-        <Check checked={rushOnly} onChange={(e) => setRushOnly(e.target.checked)}>ด่วนเท่านั้น <Icon name="flame" /></Check>
-        <Check checked={unpaidOnly} onChange={(e) => setUnpaidOnly(e.target.checked)}>ค้างชำระ</Check>
-        <Check checked={hideEmpty} onChange={(e) => setHideEmpty(e.target.checked)}>ซ่อนขั้นที่ว่าง</Check>
-        <Check checked={showDone} onChange={(e) => setShowDone(e.target.checked)}>แสดงเคสที่จบแล้ว</Check>
-        <button type="button" className="btn btn-light" onClick={reload}><Icon name="refresh" /> รีเฟรช</button>
-      </Toolbar>
+      <div className="board-filters">
+        <div className="bf-row">
+          <Field label="ค้นหา" className="grow">
+            <input
+              type="search"
+              placeholder="ค้นหา เคส / ลูกค้า / เบอร์ / Invoice"
+              value={term}
+              onChange={(e) => setTerm(e.target.value)}
+            />
+          </Field>
+          <Field label="ประเภทงาน">
+            <select value={caseType} onChange={(e) => setCaseType(e.target.value)}>
+              <option value="">ทั้งหมด</option>
+              {types.map((t) => {
+                const [v, label] = Array.isArray(t) ? t : [t, t];
+                return <option key={v} value={v}>{label}</option>;
+              })}
+            </select>
+          </Field>
+          <button type="button" className="btn btn-light bf-refresh" onClick={reload}>
+            <Icon name="refresh" /> รีเฟรช
+          </button>
+        </div>
+        <div className="bf-chips">
+          {TOGGLES.map(([key, label, icon]) => (
+            <button
+              type="button"
+              key={key}
+              className={`chip ${toggles[key] ? 'active' : ''}`}
+              aria-pressed={toggles[key]}
+              onClick={() => setToggle(key, !toggles[key])}
+            >
+              {icon ? <Icon name={icon} /> : null}{label}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {loading && <Loading />}
       {error && <Card><p className="muted">{error.message}</p></Card>}

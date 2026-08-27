@@ -1851,3 +1851,38 @@ table.doc td.lbl{background:var(--surface-alt);font-weight:700;text-align:left;w
 
 /* an unpaid balance is the one number on a card worth reading first */
 .cc-owed{color:var(--danger);font-weight:600}
+
+/* ── กระดานงาน: แถบตัวกรอง ────────────────────────────────────────────
+   Search and ประเภทงาน are things you fill in; the four yes/no views are
+   things you switch. Mixing them in one flex row left bare checkboxes
+   floating at the baseline of labelled inputs, so they get their own row
+   and read as chips instead. */
+.board-filters{
+  display:flex;flex-direction:column;gap:10px;margin-bottom:14px;
+  padding:12px 14px;background:var(--card);
+  border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);
+}
+
+.bf-row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+
+.bf-row .field{min-width:160px;margin:0}
+
+.bf-row .grow{flex:1;min-width:220px}
+
+.bf-refresh{flex:0 0 auto}
+
+.bf-chips{display:flex;gap:7px;flex-wrap:wrap}
+
+.chip{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:6px 13px;border-radius:999px;background:#fff;border:1px solid var(--line);
+  font:inherit;font-size:13px;font-weight:600;color:var(--ink-soft);cursor:pointer;
+}
+
+.chip:hover{border-color:var(--accent);color:var(--accent)}
+
+.chip .ico{width:15px;height:15px}
+
+.chip.active{
+  background:var(--accent-soft);border-color:var(--accent);color:var(--accent-deep);
+}
