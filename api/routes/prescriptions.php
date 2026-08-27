@@ -167,3 +167,87 @@ POST('/api/prescriptions/:id/confirm', function (array $req) {
     });
     return Db::get('SELECT * FROM prescriptions WHERE id = ?', $id);
 });
+
+/**
+ * One customer's eye-exam history, as rounds rather than loose rows.
+ *
+ * A round is a case: its three value sets live as three prescriptions rows
+ * (kind = old / measured / final) sharing that case_id, so nothing overwrites
+ * anything and a round can always be read back exactly as it was recorded.
+ *
+ * Rows written before that convention kept the old glasses in the measured
+ * row's own old_* columns; those are surfaced here as a synthesised "old" entry
+ * (legacy = 1) so history shows all three sets for them too.
+ */
+function examSessions(int $customerId): array
+{
+    $rows = Db::all(
+        'SELECT p.*, e.employee_name AS performed_by_name, cs.case_code
+           FROM prescriptions p
+           LEFT JOIN employees e ON e.id = p.performed_by
+           LEFT JOIN cases cs    ON cs.id = p.case_id
+          WHERE p.customer_id = ?
+          ORDER BY p.test_date DESC, p.id DESC',
+        $customerId
+    );
+
+    $slotOf = fn(?string $kind) => $kind === 'final' ? 'final' : ($kind === 'old' ? 'old' : 'measured');
+    $out = [];
+    foreach ($rows as $r) {
+        $key = $r['case_id'] ? 'case-' . $r['case_id'] : 'rx-' . $r['id'];
+        if (!isset($out[$key])) {
+            $out[$key] = [
+                'key'        => $key,
+                'case_id'    => $r['case_id'] ? (int) $r['case_id'] : null,
+                'case_code'  => $r['case_code'],
+                'exam_date'  => $r['test_date'],
+                'examiner'   => $r['performed_by_name'],
+                'old'        => null,
+                'measured'   => null,
+                'final'      => null,
+            ];
+        }
+        $slot = $slotOf($r['kind']);
+        if (!$out[$key][$slot]) {
+            $out[$key][$slot] = $r;
+        }
+        if (!$out[$key]['examiner'] && $r['performed_by_name']) {
+            $out[$key]['examiner'] = $r['performed_by_name'];
+        }
+    }
+
+    foreach ($out as &$s) {
+        $m = $s['measured'];
+        if ($s['old'] || !$m) {
+            continue;
+        }
+        $hasLegacyOld = false;
+        foreach (['old_r_sphere', 'old_l_sphere', 'old_r_add', 'old_l_add'] as $col) {
+            if (($m[$col] ?? null) !== null && $m[$col] !== '') {
+                $hasLegacyOld = true;
+                break;
+            }
+        }
+        if (!$hasLegacyOld) {
+            continue;
+        }
+        $s['old'] = [
+            'id' => null, 'legacy' => 1, 'kind' => 'old',
+            'source' => $m['source'], 'based_on_id' => $m['based_on_id'],
+            'old_glasses_type' => $m['old_glasses_type'],
+            'external_place' => $m['external_place'] ?? null,
+            'external_date' => $m['external_date'] ?? null,
+            'test_date' => $m['test_date'],
+        ];
+        foreach (['r', 'l'] as $eye) {
+            foreach (['sphere', 'cylinder', 'axis', 'add', 'va', 'pd'] as $f) {
+                $s['old']["{$eye}_{$f}"] = $m["old_{$eye}_{$f}"] ?? null;
+            }
+        }
+    }
+    unset($s);
+
+    return array_values($out);
+}
+
+GET('/api/customers/:id/exam-sessions', fn(array $r) => examSessions((int) int_or($r['params']['id'])));

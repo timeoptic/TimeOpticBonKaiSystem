@@ -1249,6 +1249,8 @@ table.doc td.lbl{background:var(--surface-alt);font-weight:700;text-align:left;w
 
 .ws-head h3{margin:0;font-size:15px;color:var(--accent-deep);letter-spacing:.2px}
 
+.ws-head h3 small{margin-left:8px;font-weight:500;font-size:12.5px;color:var(--ink-faint)}
+
 .ws-head > :last-child:not(h3){margin-left:auto}
 
 .ws-inset{background:var(--surface-alt);border:1px solid var(--line-soft);
@@ -1316,3 +1318,31 @@ table.doc td.lbl{background:var(--surface-alt);font-weight:700;text-align:left;w
   .ws-head h3{font-size:14px}
   .rx-grid input{min-width:56px}
 }
+
+
+/* ---------------- ประวัติสายตาแบบรายรอบ ---------------- */
+.exam-rounds{display:flex;flex-direction:column;gap:10px}
+
+.exam-round{border:1px solid var(--line);border-radius:var(--radius-sm);padding:11px 14px;background:#fff}
+
+.exam-round.open{border-color:var(--accent);box-shadow:var(--shadow)}
+
+.exam-round-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+
+.exam-round-head > div{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+
+.exam-round-head > div b{font-size:14px}
+
+.exam-round-head > .btn{margin-left:auto}
+
+.exam-round-summary{margin-top:6px;font-size:13px;color:var(--ink-soft);
+  font-variant-numeric:tabular-nums}
+
+.exam-round-detail{display:flex;flex-direction:column;gap:14px;margin-top:12px;
+  padding-top:12px;border-top:1px solid var(--line-soft)}
+
+.exam-set-head{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+
+.exam-set-head b{font-size:12px;letter-spacing:.8px;color:var(--accent-deep)}
+
+.exam-set-head .muted{font-size:12px}

@@ -6,12 +6,13 @@ import { useAsync } from '../../../lib/hooks.js';
 import { useToast } from '../../../components/Toast.jsx';
 import { useConfirm } from '../../../components/Confirm.jsx';
 import {
-  Badge, Card, FormActions, Kv, Loading, OrderStatusBadge, PageHead, Split,
+  Card, FormActions, Kv, Loading, OrderStatusBadge, PageHead, Split,
 } from '../../../components/ui.jsx';
 import { DataTable } from '../../../components/DataTable.jsx';
 import { StatusChip } from '../../../components/StatusChip.jsx';
+import { ExamHistory } from '../../../components/ExamHistory.jsx';
 import { QueryParamPage } from '../../../components/QueryParamPage.jsx';
-import { custName, fmtDate, fmtDateTime, money, power, rxNum } from '../../../lib/format.js';
+import { custName, fmtDate, fmtDateTime, money } from '../../../lib/format.js';
 
 function CustomerDetailInner() {
   const params = useSearchParams();
@@ -95,37 +96,11 @@ function CustomerDetailInner() {
         </Card>
       </Split>
 
-      <Card title="ประวัติค่าสายตา" tight>
-        <DataTable
-          columns={[
-            { label: 'วันที่', render: (t) => fmtDateTime(t.test_date), cls: 'nowrap' },
-            { label: 'ชนิด', render: (t) => <Badge kind={t.kind === 'final' ? 'ok' : 'gray'}>{t.kind}</Badge> },
-            {
-              label: 'R (Sph/Cyl/Axis/Add)',
-              cls: 'nowrap',
-              render: (t) => `${power(t.r_sphere)} / ${power(t.r_cylinder)} / ${rxNum(t.r_axis)} / ${power(t.r_add)}`,
-            },
-            {
-              label: 'L (Sph/Cyl/Axis/Add)',
-              cls: 'nowrap',
-              render: (t) => `${power(t.l_sphere)} / ${power(t.l_cylinder)} / ${rxNum(t.l_axis)} / ${power(t.l_add)}`,
-            },
-            { label: 'ใช้สำหรับ', key: 'test_for' },
-            { label: 'ผู้วัด', key: 'employee_name' },
-            {
-              label: '',
-              cls: 'nowrap',
-              render: (t) => (
-                <>
-                  <Link className="btn btn-sm btn-light" href={'/prescriptions/edit?id=' + t.id}>✎</Link>{' '}
-                  <Link className="btn btn-sm btn-light" href={'/print/prescription?id=' + t.id}>🖨</Link>
-                </>
-              ),
-            },
-          ]}
-          rows={c.prescriptions}
-          empty="ยังไม่มีประวัติการวัดสายตา"
-        />
+      <Card
+        title="ประวัติสายตา"
+        right={<span className="muted">{`${(c.exam_sessions || []).length} รอบการตรวจ`}</span>}
+      >
+        <ExamHistory sessions={c.exam_sessions} />
       </Card>
 
       <Card title="ประวัติการสั่งตัดแว่น" tight>

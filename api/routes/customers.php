@@ -35,6 +35,8 @@ GET('/api/customers/:id', function (array $req) {
           WHERE p.customer_id = ? ORDER BY p.test_date DESC, p.id DESC',
         $id
     );
+    /* ประวัติสายตาแบบรายรอบ — 1 รอบ = 1 เคส, ในรอบมี 3 ชุดค่า (เดิม/วัดได้/ใช้จริง) */
+    $c['exam_sessions'] = examSessions($id);
     $c['orders'] = Db::all(
         "SELECT $sel $from WHERE o.customer_id = ? ORDER BY o.order_date DESC",
         $id
