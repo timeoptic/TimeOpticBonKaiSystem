@@ -21,7 +21,7 @@ import { api } from '../../lib/apiClient.js';
 import { useAsync, onSubmit } from '../../lib/hooks.js';
 import { useToast } from '../../components/Toast.jsx';
 import {
-  Badge, Card, Field, Fieldset, FormActions, FormGrid, Kpi, Kpis, Loading, PageHead, Row, Split,
+  Badge, Card, Field, Fieldset, FormActions, FormGrid, Kpi, Kpis, Kv, Loading, PageHead, Row, Split,
 } from '../../components/ui.jsx';
 import { Picker } from '../../components/Picker.jsx';
 import { StockPicker, stockLabel } from '../../components/StockPicker.jsx';
@@ -37,20 +37,20 @@ const n = (v) => Number(v || 0);
 
 /** compact display line for a picked stock item, with a way to clear it */
 /**
- * The detail fields of an item that was picked from stock are already answered
- * by the pick — showing seven filled boxes under the chosen line is noise. They
- * collapse behind "แก้รายละเอียด", and stay open when nothing is picked, which
- * is when someone really does have to type (a customer's own frame).
+ * What an item from stock IS, is decided in the stock record, not here: the
+ * details of a picked item are shown to read, never to type over. Nothing is
+ * picked — a customer's own frame — is the one case where someone has to fill
+ * them in, and then the fields are the form.
  */
-function ItemDetails({ picked, children }) {
+function ItemDetails({ picked, rows, children }) {
   const [open, setOpen] = useState(false);
   if (!picked) return <div style={{ marginTop: 10 }}>{children}</div>;
   return (
     <div style={{ marginTop: 10 }}>
       <button type="button" className="btn btn-sm btn-light" onClick={() => setOpen((v) => !v)}>
-        <Icon name={open ? 'x' : 'pencil'} /> {open ? 'ซ่อนรายละเอียด' : 'แก้รายละเอียด / ราคา'}
+        <Icon name={open ? 'x' : 'search'} /> {open ? 'ซ่อนรายละเอียด' : 'ดูรายละเอียด'}
       </button>
-      {open ? <div style={{ marginTop: 10 }}>{children}</div> : null}
+      {open ? <div style={{ marginTop: 10 }}><Kv rows={rows} /></div> : null}
     </div>
   );
 }
@@ -380,7 +380,20 @@ export function OrderFormView({
             onClear={() => setItems({ ...picked, frame: null })}
             selectedId={picked.frame?.id ?? null}
           />
-          <ItemDetails picked={picked.frame}>
+          <ItemDetails
+            picked={picked.frame}
+            rows={[
+              ['ชื่อกรอบ', picked.frame ? stockLabel(picked.frame) : '—'],
+              ['ราคา', money(p.frame_price)],
+              ['ยี่ห้อ', picked.frame?.brand || '—'],
+              ['รุ่น', picked.frame?.model || '—'],
+              ['สี', picked.frame?.color || '—'],
+              ['ไซส์', picked.frame?.size || '—'],
+              ['SKU', picked.frame?.sku || '—'],
+              ['คงเหลือในคลัง', picked.frame?.remaining_qty != null ? `${picked.frame.remaining_qty} ชิ้น` : '—'],
+              picked.frame?.location ? ['ตำแหน่งเก็บ', picked.frame.location] : null,
+            ].filter(Boolean)}
+          >
             <FormGrid>
               <Field label="ชื่อกรอบ / Frame name">
                 <input
