@@ -55,6 +55,27 @@ final class Lookups
             $out['branch'] = ['Timeoptic', 'ส่วนตัว'];
         }
 
+        /* ช่องทางที่ลูกค้ารู้จักร้าน — เลือก other แล้วพิมพ์รายละเอียดที่ referral_note */
+        $out['referral_source'] = [
+            ['facebook', 'Facebook'],
+            ['tiktok', 'TikTok'],
+            ['google', 'Google'],
+            ['line', 'LINE'],
+            ['friend', 'ลูกค้าแนะนำ'],
+            ['walk_in', 'เดินผ่านหน้าร้าน'],
+            ['school', 'โรงเรียน / โครงการ'],
+            ['instagram', 'Instagram'],
+            ['old_customer', 'ลูกค้าเก่า'],
+            ['other', 'อื่น ๆ'],
+        ];
+        /* ประเภทงาน — ค่าตั้งต้นบวกกับทุกค่าที่เคยใช้จริง เพิ่มประเภทใหม่ได้
+           โดยไม่ต้องแก้โค้ด (พิมพ์ครั้งเดียวแล้วขึ้นเป็นตัวเลือกครั้งถัดไป) */
+        $out['case_type'] = array_values(array_unique(array_merge(
+            ['SIGHTFIRST', 'ลูกค้าใหม่', 'ตัดแว่นใหม่', 'เปลี่ยนเลนส์', 'ซ่อม/ปรับแว่น', 'ตรวจสายตา'],
+            $col(Db::all("SELECT DISTINCT case_type c FROM cases
+                           WHERE case_type IS NOT NULL AND case_type <> '' ORDER BY c"))
+        )));
+
         $out['test_for']     = ['Distance', 'Reading', 'Progressive', 'Bi-focal'];
         /* ค่าแว่นเดิมมาได้ 3 ทางเท่านั้น (ตรงกับแอปเดิม lib/migrate.js) */
         $out['rx_source_old'] = [

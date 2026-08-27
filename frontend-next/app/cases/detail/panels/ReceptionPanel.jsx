@@ -34,8 +34,14 @@ export function ReceptionPanel({ c, reload }) {
           <Field label="พนักงานผู้รับเรื่อง">
             <EmployeeSelect name="received_by" defaultValue={c.received_by || ''} />
           </Field>
+          <Field label="ประเภทงาน / Case type">
+            <ListSelect name="case_type" kind="case_type" defaultValue={c.case_type || ''} blank="— ไม่ระบุ —" />
+          </Field>
           <Field label="ช่องทางที่รู้จักร้าน">
-            <ListSelect name="referral_source" kind="marketing" defaultValue={c.referral_source || ''} blank="— ไม่ระบุ —" />
+            <ListSelect name="referral_source" kind="referral_source" defaultValue={c.referral_source || ''} blank="— ไม่ระบุ —" />
+          </Field>
+          <Field label="ระบุช่องทาง (ถ้าเลือกอื่น ๆ)">
+            <input name="referral_note" defaultValue={c.referral_note || ''} />
           </Field>
           <Field label="งานด่วน">
             <Check name="is_rush" defaultChecked={!!Number(c.is_rush)}>🔥 ทำเป็นงานด่วน</Check>
@@ -55,7 +61,7 @@ export function ReceptionPanel({ c, reload }) {
           ['โทร', c.phone || '—'],
           ['LINE', c.line_id || '—'],
           ['วันเกิด', fmtDate(c.birth_date) || '—'],
-          ['ลูกค้าใหม่', Number(c.is_new_customer) ? 'ใช่' : 'ไม่ใช่'],
+          ['ตอนเปิดเคส', Number(c.is_new_customer) ? 'ลูกค้าใหม่' : 'ลูกค้าเก่า'],
         ]}
       />
     </div>

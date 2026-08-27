@@ -216,6 +216,12 @@ final class Migrate
             ]),
             self::addColumns('cases', [
                 'closed_by' => 'int(10) unsigned DEFAULT NULL',
+                /* ประเภทงานของเคส — คนละเรื่องกับ "ลูกค้าเก่า/ใหม่" (is_new_customer)
+                   เก็บเป็น varchar เพื่อให้เพิ่มประเภทใหม่ได้โดยไม่ต้องแก้ schema:
+                   /api/meta สร้างตัวเลือกจากค่าที่เคยใช้จริงรวมกับค่าตั้งต้น */
+                'case_type'     => 'varchar(40) DEFAULT NULL',
+                /* ช่องทางที่รู้จักร้าน เลือก "อื่น ๆ" แล้วพิมพ์เองได้ */
+                'referral_note' => 'varchar(255) DEFAULT NULL',
             ]),
             /* แว่นเดิมบนใบกระดาษมีแค่ SPH/ADD/VA/PD มาแต่เดิม ของจริงต้องอ่าน
                CYL/AXIS จากเลนส์เก่าด้วย และใบจากภายนอกต้องรู้ว่ามาจากที่ไหนเมื่อไร */

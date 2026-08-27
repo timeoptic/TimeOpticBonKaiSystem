@@ -169,8 +169,9 @@ POST('/api/cases', function (array $req) {
     $id = Db::tx(function (Tx $q) use ($body, $cid, $code, $status) {
         $r = $q->run(
             'INSERT INTO cases (case_code, customer_id, status, is_new_customer, is_rush,
-               priority_note, received_by, recorded_by, reception_note, notes)
-             VALUES (?,?,?,?,?,?,?,?,?,?)',
+               priority_note, received_by, recorded_by, referral_source, referral_note,
+               case_type, reception_note, notes)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
             $code,
             $cid,
             $status,
@@ -179,6 +180,9 @@ POST('/api/cases', function (array $req) {
             nul($body['priority_note'] ?? null),
             int_or($body['received_by'] ?? null),
             int_or($body['recorded_by'] ?? null) ?? int_or($body['received_by'] ?? null),
+            nul($body['referral_source'] ?? null),
+            nul($body['referral_note'] ?? null),
+            nul($body['case_type'] ?? null),
             nul($body['reception_note'] ?? null),
             nul($body['notes'] ?? null)
         );
@@ -202,11 +206,14 @@ PUT('/api/cases/:id', function (array $req) {
     }
     Db::run(
         'UPDATE cases SET is_rush = ?, priority_note = ?, received_by = ?,
-           referral_source = ?, reception_note = ?, notes = ? WHERE id = ?',
+           referral_source = ?, referral_note = ?, case_type = ?,
+           reception_note = ?, notes = ? WHERE id = ?',
         boolInt($body['is_rush'] ?? null),
         nul($body['priority_note'] ?? null),
         int_or($body['received_by'] ?? null),
         nul($body['referral_source'] ?? null),
+        nul($body['referral_note'] ?? null),
+        nul($body['case_type'] ?? null),
         nul($body['reception_note'] ?? null),
         nul($body['notes'] ?? null),
         $id

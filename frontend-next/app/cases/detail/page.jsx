@@ -170,8 +170,10 @@ function OverviewTab({ c, showTab }) {
               ['เลขเคส', c.case_code],
               ['สถานะ', c.status_label_th || c.status],
               ['เปิดเมื่อ', fmtDateTime(c.opened_at)],
+              ['ประเภทงาน', c.case_type || '—'],
               ['ผู้รับเรื่อง', c.received_by_name || '—'],
-              ['ช่องทางที่รู้จัก', c.referral_source || '—'],
+              ['ตอนเปิดเคส', Number(c.is_new_customer) ? 'ลูกค้าใหม่' : 'ลูกค้าเก่า'],
+              ['ช่องทางที่รู้จัก', c.referral_note || c.referral_source || '—'],
               ['ปิดเคสเมื่อ', c.closed_at ? fmtDateTime(c.closed_at) : '—'],
             ]}
           />
