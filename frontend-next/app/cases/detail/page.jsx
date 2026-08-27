@@ -34,7 +34,7 @@ import {
 import { custName, fmtDate, fmtDateTime, money, moneyShort } from '../../../lib/format.js';
 
 import { ReceptionPanel } from './panels/ReceptionPanel.jsx';
-import { RxPanel } from './panels/RxPanel.jsx';
+import { ExamPanel } from './panels/ExamPanel.jsx';
 import { SalesPanel } from './panels/SalesPanel.jsx';
 import { CenteringPanel } from './panels/CenteringPanel.jsx';
 import { LensPanel } from './panels/LensPanel.jsx';
@@ -49,7 +49,7 @@ import { ClosePanel } from './panels/ClosePanel.jsx';
 /** one panel per process — ids come from lib/caseProcesses.js */
 const PROCESS_PANELS = {
   reception: ReceptionPanel,
-  exam: RxPanel,
+  exam: ExamPanel,
   sales: SalesPanel,
   centering: CenteringPanel,
   payment: PaymentPanel,
@@ -72,18 +72,6 @@ const isProcess = (step) => Object.prototype.hasOwnProperty.call(PROCESS_PANELS,
 const isKnownStep = (step) => isProcess(step)
   || Object.prototype.hasOwnProperty.call(EXTRA_PANELS, step)
   || step === 'overview';
-
-/** shown in the content area while the case reloads — header/stepper stay put */
-const ContentSkeleton = () => (
-  <div className="card">
-    <div className="card-body">
-      <div className="sk sk-line" style={{ width: '38%' }} />
-      <div className="sk sk-line" style={{ width: '82%' }} />
-      <div className="sk sk-line" style={{ width: '64%' }} />
-      <div className="sk sk-block" />
-    </div>
-  </div>
-);
 
 /** One picked item on the overview — frame / lens OD / lens OS. */
 function ItemCard({ title, name, sub, price, inStock }) {
@@ -266,6 +254,7 @@ function CaseDetailInner() {
   const dirtyForm = useRef(null);
   const [pending, setPending] = useState(null);   // the step waiting behind the guard
   const [savingNav, setSavingNav] = useState(false);
+  const panelActions = useRef({});                // what the open panel registered
 
   useEffect(() => { dirty.current = false; dirtyForm.current = null; }, [c]);
 
@@ -309,9 +298,18 @@ function CaseDetailInner() {
   const info = isProcess(step) ? processInfo(step) : null;
   const pay = paymentStatusOf(c);
 
-  const saveAndGo = () => {
+  const saveAndGo = async () => {
+    const next = pending;
+    /* a panel that registered its own save (the exam workspace has no <form>)
+       owns the save; otherwise submit the form the edit came from */
+    if (panelActions.current?.saveDraft) {
+      setPending(null);
+      try { await panelActions.current.saveDraft(); } catch { /* toast already shown */ }
+      go(next);
+      return;
+    }
     const form = dirtyForm.current;
-    if (!form) { const next = pending; setPending(null); go(next); return; }
+    if (!form) { setPending(null); go(next); return; }
     setSavingNav(true);
     form.requestSubmit();
   };
@@ -364,8 +362,11 @@ function CaseDetailInner() {
         ))}
       </div>
 
-      <div onInput={onEdit} onChange={onEdit}>
-        {loading ? <ContentSkeleton /> : step === 'overview' ? (
+      {/* A reload dims the content instead of replacing it: unmounting a panel
+          mid-reload would throw away whatever the user has typed but not saved. */}
+      <div className={loading ? 'content-busy' : ''} onInput={onEdit} onChange={onEdit}>
+        {loading && <div className="content-busy-note">กำลังโหลดข้อมูลล่าสุด…</div>}
+        {step === 'overview' ? (
           <OverviewTab c={c} showTab={requestStep} />
         ) : isProcess(step) ? (
           <ProcessShell
@@ -373,6 +374,7 @@ function CaseDetailInner() {
             state={processes[step]}
             caseId={c.id}
             reload={reload}
+            actionsRef={panelActions}
             right={step === 'payment' ? <Badge kind={pay.kind}>{pay.label}</Badge> : null}
           >
             <ProcessPanel {...panelProps} />

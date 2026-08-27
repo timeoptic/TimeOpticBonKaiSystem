@@ -56,6 +56,23 @@ final class Lookups
         }
 
         $out['test_for']     = ['Distance', 'Reading', 'Progressive', 'Bi-focal'];
+        /* ค่าแว่นเดิมมาได้ 3 ทางเท่านั้น (ตรงกับแอปเดิม lib/migrate.js) */
+        $out['rx_source_old'] = [
+            ['history', 'ดึงจากประวัติในระบบ'],
+            ['lensmeter', 'วัดจากแว่นเดิม (lensmeter)'],
+            ['external_rx', 'ใบ Prescription จากภายนอก'],
+        ];
+        $out['rx_source_measured'] = [
+            ['refraction', 'ตรวจวัดด้วยนักทัศนมาตร (refraction)'],
+            ['autorefractor', 'เครื่องวัดอัตโนมัติ (auto-refractor)'],
+            ['contact_lens', 'ค่าจากคอนแทคเลนส์เดิม'],
+            ['other', 'อื่น ๆ'],
+        ];
+        $out['old_glasses_type'] = [
+            ['single', 'Single Lens — ชั้นเดียว'],
+            ['bifocal', 'Bi-Focal — สองชั้น'],
+            ['progressive', 'Progressive — โปรเกรสซีฟ'],
+        ];
         $out['payment_kind'] = ['deposit', 'partial', 'final', 'full'];
         $out['lens_source']  = ['stock', 'order'];
         return $out;

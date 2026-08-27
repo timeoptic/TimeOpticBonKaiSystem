@@ -7,8 +7,13 @@
  * Saving inside a panel is a draft save: it stores data and leaves the status
  * alone. "✓ <completeLabel>" is what marks the process done, and the server
  * re-checks the requirements before it agrees (api/routes/processes.php).
+ *
+ * A panel that owns a form can put its own buttons in this bar instead of
+ * growing a second one at the bottom of its content: call useProcessActions()
+ * and register a saveDraft (adds "บันทึก Draft") and/or a beforeComplete hook
+ * (runs first when ✓ is pressed; return false to stop).
  */
-import { useState } from 'react';
+import { createContext, useCallback, useContext, useState } from 'react';
 import { api } from '../lib/apiClient.js';
 import { useToast } from './Toast.jsx';
 import { useConfirm } from './Confirm.jsx';
@@ -18,10 +23,23 @@ import { fmtDateTime } from '../lib/format.js';
 
 const BADGE_KIND = { done: 'ok', warn: 'warn', danger: 'danger', locked: 'gray', '': 'gray' };
 
-export function ProcessShell({ process, state = {}, caseId, reload, right = null, children }) {
+const ProcessActions = createContext(null);
+export const useProcessActions = () => useContext(ProcessActions);
+
+export function ProcessShell({ process, state = {}, caseId, reload, right = null, actionsRef = null, children }) {
   const { ok, err } = useToast();
   const confirm = useConfirm();
   const [busy, setBusy] = useState(false);
+  const [actions, setActions] = useState({});
+
+  /* stable so a panel's register effect runs once, not every render */
+  const register = useCallback((a) => {
+    setActions(a || {});
+    /* the page needs the panel's saveDraft too — its unsaved-changes guard
+       offers "บันทึกและไปต่อ", and a panel without a <form> has nothing else
+       to submit */
+    if (actionsRef) actionsRef.current = a || {};
+  }, [actionsRef]);
 
   const sm = stateMeta(state.status);
   const missing = state.missing || [];
@@ -47,14 +65,27 @@ export function ProcessShell({ process, state = {}, caseId, reload, right = null
     if (await post('start')) { ok('เริ่มขั้นตอนนี้แล้ว'); reload(); }
   };
 
+  const saveDraft = async () => {
+    setBusy(true);
+    try {
+      await actions.saveDraft();
+    } catch (ex) { err(ex); } finally { setBusy(false); }
+  };
+
   const complete = async () => {
+    if (actions.beforeComplete) {
+      setBusy(true);
+      let proceed = false;
+      try { proceed = await actions.beforeComplete() !== false; } catch (ex) { err(ex); } finally { setBusy(false); }
+      if (!proceed) return;
+    }
     if (await post('complete')) { ok(`${process.completeLabel} แล้ว`); reload(); }
   };
 
   const reopen = async () => {
     if (!await confirm(
       'เปิดขั้นตอนนี้เพื่อแก้ไข',
-      `${process.label} ยืนยันไปแล้ว การแก้ไขข้อมูลอาจมีผลต่อขั้นตอนอื่น ต้องการเปิดเพื่อแก้ไขหรือไม่?`,
+      `${process.label} ยืนยันไปแล้ว การแก้ไขข้อมูลอาจมีผลต่อขั้นตอนอื่น (รายการขาย, Center, สั่งเลนส์, ผลิต) ต้องการเปิดเพื่อแก้ไขหรือไม่?`,
       { confirmText: 'เปิดเพื่อแก้ไข' },
     )) return;
     if (await post('reopen')) { ok('เปิดให้แก้ไขแล้ว'); reload(); }
@@ -68,7 +99,11 @@ export function ProcessShell({ process, state = {}, caseId, reload, right = null
         {right ? <div className="right">{right}</div> : null}
       </div>
 
-      <div className="card-body process-body">{children}</div>
+      <div className="card-body process-body">
+        <ProcessActions.Provider value={{ register, state, process }}>
+          {children}
+        </ProcessActions.Provider>
+      </div>
 
       <div className="process-foot">
         <div className="process-foot-info">
@@ -79,6 +114,9 @@ export function ProcessShell({ process, state = {}, caseId, reload, right = null
               : state.started_at
                 ? <span className="muted">{`เริ่มเมื่อ ${fmtDateTime(state.started_at)}`}</span>
                 : <span className="muted">ยังไม่ได้เริ่มขั้นตอนนี้</span>}
+          {state.updated_at && state.started_at
+            ? <span className="muted">{`แก้ไขล่าสุด ${fmtDateTime(state.updated_at)}`}</span>
+            : null}
           {!completed && (blocking.length || missing.length) ? (
             <span className="process-blockers">
               {blocking.length ? `ติดที่: ${blocking.join(', ')}` : `ยังขาด: ${missing.join(', ')}`}
@@ -93,7 +131,12 @@ export function ProcessShell({ process, state = {}, caseId, reload, right = null
             </button>
           ) : (
             <>
-              {(state.status === 'not_started' || state.status === 'locked') && (
+              {actions.saveDraft && (
+                <button type="button" className="btn btn-light" onClick={saveDraft} disabled={busy}>
+                  💾 บันทึก Draft
+                </button>
+              )}
+              {!actions.saveDraft && (state.status === 'not_started' || state.status === 'locked') && (
                 <button
                   type="button"
                   className="btn btn-light"
@@ -108,7 +151,7 @@ export function ProcessShell({ process, state = {}, caseId, reload, right = null
                 type="button"
                 className="btn"
                 onClick={complete}
-                disabled={busy || !canComplete}
+                disabled={busy || (!canComplete && !actions.beforeComplete)}
                 title={canComplete ? undefined : `ยังยืนยันไม่ได้ — ${[...blocking, ...missing].join(', ')}`}
               >
                 {`✓ ${process.completeLabel}`}

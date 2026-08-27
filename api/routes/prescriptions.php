@@ -15,10 +15,16 @@ const RX_VALUE_COLS = [
     'bin_r_sphere', 'bin_r_add', 'bin_r_va', 'bin_r_pd',
     'bin_l_sphere', 'bin_l_add', 'bin_l_va', 'bin_l_pd',
     'dist_vertical_r', 'dist_vertical_l', 'dist_monitor_r', 'dist_monitor_l',
+    /* VA ตาเปล่า และค่าแว่นเดิม — คอลัมน์มีมาตั้งแต่แอปเดิม แต่ตอน port มา PHP
+       ตกหล่นไป ทำให้บันทึกไม่ลง */
+    'va_naked_r', 'va_naked_l',
+    'old_r_sphere', 'old_r_cylinder', 'old_r_axis', 'old_r_add', 'old_r_va', 'old_r_pd',
+    'old_l_sphere', 'old_l_cylinder', 'old_l_axis', 'old_l_add', 'old_l_va', 'old_l_pd',
 ];
 
 const RX_HEALTH = ['health_cataract', 'health_eye_surgery', 'health_diabetes',
-    'health_bp', 'health_heart'];
+    'health_bp', 'health_heart', 'health_eye_disease', 'health_drug_allergy',
+    'health_medication'];
 
 const RX_BASE = 'SELECT p.*, c.first_name, c.last_name, c.phone, e.employee_name
                    FROM prescriptions p
@@ -71,7 +77,7 @@ function rxColsValues(array $b): array
         ['case_id', 'customer_id', 'kind', 'source', 'based_on_id', 'adjust_reason',
             'test_date', 'test_for'],
         RX_VALUE_COLS,
-        ['old_glasses_type'],
+        ['old_glasses_type', 'external_place', 'external_date'],
         RX_HEALTH,
         ['health_note', 'known_from', 'exam_note', 'notes', 'performed_by', 'recorded_by']
     );

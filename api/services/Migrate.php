@@ -216,6 +216,19 @@ final class Migrate
             ]),
             self::addColumns('cases', [
                 'closed_by' => 'int(10) unsigned DEFAULT NULL',
+            ]),
+            /* แว่นเดิมบนใบกระดาษมีแค่ SPH/ADD/VA/PD มาแต่เดิม ของจริงต้องอ่าน
+               CYL/AXIS จากเลนส์เก่าด้วย และใบจากภายนอกต้องรู้ว่ามาจากที่ไหนเมื่อไร */
+            self::addColumns('prescriptions', [
+                'old_r_cylinder'       => 'varchar(20) DEFAULT NULL',
+                'old_r_axis'           => 'varchar(20) DEFAULT NULL',
+                'old_l_cylinder'       => 'varchar(20) DEFAULT NULL',
+                'old_l_axis'           => 'varchar(20) DEFAULT NULL',
+                'health_eye_disease'   => 'tinyint(1) NOT NULL DEFAULT 0',
+                'health_drug_allergy'  => 'tinyint(1) NOT NULL DEFAULT 0',
+                'health_medication'    => 'tinyint(1) NOT NULL DEFAULT 0',
+                'external_place'       => 'varchar(120) DEFAULT NULL',
+                'external_date'        => 'date DEFAULT NULL',
             ])
         );
         Db::run("UPDATE case_statuses SET stage_group = 'centering' WHERE code = 'centering'");
