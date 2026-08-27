@@ -1737,3 +1737,16 @@ table.doc td.lbl{background:var(--surface-alt);font-weight:700;text-align:left;w
 }
 
 .fold-caret.open{transform:rotate(-135deg) translate(-2px,-2px)}
+
+
+/* ---------------- ปุ่มสถานะบนหัวขั้นตอน ---------------- */
+.status-btn{
+  display:inline-flex;align-items:center;gap:6px;padding:2px 4px 2px 2px;border:0;
+  background:none;border-radius:999px;cursor:pointer;font-family:inherit;
+}
+
+.status-btn:hover{background:var(--surface-alt)}
+
+.status-btn .ico{width:13px;height:13px;color:var(--ink-faint)}
+
+.status-choices{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}

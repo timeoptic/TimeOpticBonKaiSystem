@@ -17,12 +17,16 @@ import { createContext, useCallback, useContext, useState } from 'react';
 import { api } from '../lib/apiClient.js';
 import { useToast } from './Toast.jsx';
 import { useConfirm } from './Confirm.jsx';
-import { Badge } from './ui.jsx';
-import { stateMeta } from '../lib/caseProcesses.js';
-import { fmtDateTime } from '../lib/format.js';
+import { Badge, Field } from './ui.jsx';
 import { Icon } from './Icon.jsx';
+import { PROCESS_STATE_META, stateMeta } from '../lib/caseProcesses.js';
+import { fmtDateTime } from '../lib/format.js';
 
 const BADGE_KIND = { done: 'ok', warn: 'warn', danger: 'danger', locked: 'gray', '': 'gray' };
+
+/* what a person can set by hand. "เสร็จแล้ว" is not here on purpose: finishing a
+   process goes through its own ✓ action so the requirements are checked. */
+const SETTABLE = ['not_started', 'in_progress', 'waiting', 'problem'];
 
 const ProcessActions = createContext(null);
 export const useProcessActions = () => useContext(ProcessActions);
@@ -32,6 +36,9 @@ export function ProcessShell({ process, state = {}, caseId, reload, right = null
   const confirm = useConfirm();
   const [busy, setBusy] = useState(false);
   const [actions, setActions] = useState({});
+  const [statusOpen, setStatusOpen] = useState(false);
+  const [pick, setPick] = useState(null);
+  const [note, setNote] = useState('');
 
   /* stable so a panel's register effect runs once, not every render */
   const register = useCallback((a) => {
@@ -83,6 +90,19 @@ export function ProcessShell({ process, state = {}, caseId, reload, right = null
     if (await post('complete')) { ok(`${process.completeLabel} แล้ว`); reload(); }
   };
 
+  /* Status by hand — for the things the data cannot know: waiting on a customer
+     to call back, a problem someone needs to see on the board. */
+  const setStatus = async () => {
+    if (!pick) return;
+    if (await post('state', { status: pick, note: note.trim() || null })) {
+      ok('อัปเดตสถานะแล้ว');
+      setStatusOpen(false);
+      setNote('');
+      setPick(null);
+      reload();
+    }
+  };
+
   const reopen = async () => {
     if (!await confirm(
       'เปิดขั้นตอนนี้เพื่อแก้ไข',
@@ -96,7 +116,16 @@ export function ProcessShell({ process, state = {}, caseId, reload, right = null
     <div className="card process-card">
       <div className="card-head">
         <h2><Icon name={process.icon} /> {process.label}</h2>
-        <Badge kind={BADGE_KIND[sm.cls] ?? 'gray'}><Icon name={sm.icon} /> {sm.label}</Badge>
+        <button
+          type="button"
+          className="status-btn"
+          title="เปลี่ยนสถานะขั้นตอนนี้"
+          onClick={() => { setPick(SETTABLE.includes(state.status) ? state.status : null); setStatusOpen(true); }}
+        >
+          <Badge kind={BADGE_KIND[sm.cls] ?? 'gray'}><Icon name={sm.icon} /> {sm.label}</Badge>
+          <Icon name="pencil" />
+        </button>
+        {state.note ? <span className="muted">{state.note}</span> : null}
         {right ? <div className="right">{right}</div> : null}
       </div>
 
@@ -161,6 +190,42 @@ export function ProcessShell({ process, state = {}, caseId, reload, right = null
           )}
         </div>
       </div>
+
+      {statusOpen && (
+        <div className="modal-back" onClick={(e) => { if (e.target === e.currentTarget) setStatusOpen(false); }}>
+          <div className="modal">
+            <h3>{`สถานะขั้น ${process.label}`}</h3>
+            <div className="m-body">
+              <p className="hint">
+                ใช้บอกสิ่งที่ข้อมูลบอกแทนไม่ได้ เช่น กำลังรอลูกค้าตอบกลับ หรือมีปัญหาที่ต้องให้คนอื่นเห็นบนกระดาน
+                — ส่วน “เสร็จแล้ว” ให้กดปุ่มยืนยันของขั้นตอนนั้นเพื่อให้ระบบตรวจเงื่อนไขก่อน
+              </p>
+              <div className="status-choices">
+                {SETTABLE.map((k) => {
+                  const m = PROCESS_STATE_META[k];
+                  return (
+                    <button
+                      type="button"
+                      key={k}
+                      className={`chip-btn ${pick === k ? 'active' : ''}`}
+                      onClick={() => setPick(k)}
+                    >
+                      <Icon name={m.icon} /> {m.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <Field label="หมายเหตุ (ไม่บังคับ)" className="full">
+                <textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
+              </Field>
+            </div>
+            <div className="m-foot">
+              <button type="button" className="btn btn-light" onClick={() => setStatusOpen(false)}>ยกเลิก</button>
+              <button type="button" className="btn" onClick={setStatus} disabled={busy || !pick}>บันทึกสถานะ</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
