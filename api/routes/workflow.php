@@ -229,7 +229,19 @@ POST('/api/production-jobs/:id/pause', function (array $req) {
     }
     $empId = int_or($body['employee_id'] ?? null);
     Db::tx(function (Tx $q) use ($id, $job, $empId, $body) {
-        $q->run("UPDATE production_jobs SET status='WAITING_FOR_ITEM' WHERE id=?", $id);
+        /* หยุดรอสินค้า: เก็บว่ารออะไร เพราะอะไร ใครสั่งหยุด เมื่อไหร่ —
+           กระดานผลิตจะได้บอกได้ว่าเคสนี้ค้างเพราะรอชิ้นไหน */
+        $q->run(
+            "UPDATE production_jobs
+                SET status='WAITING_FOR_ITEM', waiting_item=?, waiting_reason=?,
+                    paused_at=?, paused_by=?
+              WHERE id=?",
+            nul($body['waiting_item'] ?? null),
+            nul($body['reason'] ?? null),
+            nowStamp(),
+            $empId,
+            $id
+        );
         logEvent($q, (int) $job['case_id'], [
             'action' => 'production_paused', 'entity' => 'production_job', 'entity_id' => $id,
             'employee_id' => $empId, 'note' => str_or($body['reason'] ?? null),
@@ -250,7 +262,13 @@ POST('/api/production-jobs/:id/resume', function (array $req) {
     }
     $empId = int_or($body['employee_id'] ?? null);
     Db::tx(function (Tx $q) use ($id, $job, $empId) {
-        $q->run("UPDATE production_jobs SET status='IN_PRODUCTION' WHERE id=?", $id);
+        $q->run(
+            "UPDATE production_jobs
+                SET status='IN_PRODUCTION', waiting_item=NULL, waiting_reason=NULL,
+                    paused_at=NULL, paused_by=NULL
+              WHERE id=?",
+            $id
+        );
         logEvent($q, (int) $job['case_id'], [
             'action' => 'production_resumed', 'entity' => 'production_job', 'entity_id' => $id,
             'employee_id' => $empId,

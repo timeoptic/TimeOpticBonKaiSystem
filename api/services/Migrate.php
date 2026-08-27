@@ -259,6 +259,14 @@ final class Migrate
                 'started_at'                => 'datetime DEFAULT NULL',
                 'started_by'                => 'int(10) unsigned DEFAULT NULL',
                 'received_by_customer_name' => 'varchar(120) DEFAULT NULL',
+                /* ปิดงานผลิต — คนละเรื่องกับส่งมอบ (pickup_at) */
+                'completed_at'              => 'datetime DEFAULT NULL',
+                'completed_by'              => 'int(10) unsigned DEFAULT NULL',
+                /* หยุดรอสินค้า: รออะไร เพราะอะไร ใครสั่งหยุด เมื่อไหร่ */
+                'waiting_item'              => 'varchar(20) DEFAULT NULL',
+                'waiting_reason'            => 'varchar(255) DEFAULT NULL',
+                'paused_at'                 => 'datetime DEFAULT NULL',
+                'paused_by'                 => 'int(10) unsigned DEFAULT NULL',
             ]),
             self::addColumns('cases', [
                 'closed_by' => 'int(10) unsigned DEFAULT NULL',

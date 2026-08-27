@@ -1609,3 +1609,112 @@ table.doc td.lbl{background:var(--surface-alt);font-weight:700;text-align:left;w
   .pay-row{grid-template-columns:1fr}
   .pay-row-slips{grid-column:1;grid-row:auto}
 }
+
+
+/* ---------------- กระดานผลิต ---------------- */
+.prod-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-bottom:16px}
+
+.prod-card{
+  display:flex;align-items:center;gap:12px;padding:14px 16px;background:var(--card);
+  border:1px solid var(--line);border-left:4px solid var(--line);border-radius:var(--radius);
+  box-shadow:var(--shadow);cursor:pointer;font-family:inherit;text-align:left;
+  transition:transform .12s,box-shadow .12s,border-color .12s;
+}
+
+.prod-card:hover{transform:translateY(-2px);box-shadow:var(--shadow-lg)}
+
+.prod-card > div{display:flex;flex-direction:column;gap:1px;min-width:0}
+
+.prod-card span{font-size:12.5px;color:var(--ink-faint);font-weight:600}
+
+.prod-card b{font-size:28px;line-height:1.1;font-variant-numeric:tabular-nums;color:var(--ink)}
+
+.prod-card small{font-size:11.5px;color:var(--ink-faint)}
+
+.prod-card-icon{
+  margin-left:auto;width:40px;height:40px;border-radius:12px;display:flex;
+  align-items:center;justify-content:center;background:var(--surface-alt);
+}
+
+.prod-card-icon .ico{width:21px;height:21px}
+
+.prod-card.gray{border-left-color:var(--ink-faint)}
+.prod-card.gray b,.prod-card.gray .prod-card-icon{color:var(--ink-soft)}
+.prod-card.warn{border-left-color:var(--warn)}
+.prod-card.warn b,.prod-card.warn .prod-card-icon{color:var(--warn)}
+.prod-card.warn .prod-card-icon{background:var(--warn-soft)}
+.prod-card.blue{border-left-color:var(--accent)}
+.prod-card.blue b,.prod-card.blue .prod-card-icon{color:var(--accent)}
+.prod-card.blue .prod-card-icon{background:var(--accent-soft)}
+.prod-card.ok{border-left-color:var(--ok)}
+.prod-card.ok b,.prod-card.ok .prod-card-icon{color:var(--ok)}
+.prod-card.ok .prod-card-icon{background:var(--ok-soft)}
+
+.prod-card.active{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+
+/* ชื่อสินค้ากับค่าสายตาในคอลัมน์เดียว — ตัวที่ไม่พร้อมเป็นสีแดงทันที */
+.prod-lens{display:flex;flex-direction:column;gap:1px;min-width:0}
+
+.prod-lens span{font-size:13px;color:var(--ink)}
+
+.prod-lens small{font-size:11.5px;color:var(--ink-faint);font-variant-numeric:tabular-nums}
+
+.prod-lens.bad span{color:var(--danger);font-weight:600}
+
+
+/* ---------------- ขั้นผลิต: หัวงาน / สินค้า / ไทม์ไลน์ ---------------- */
+.prod-head{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+
+.prod-head > div:first-child{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12.5px}
+
+.prod-head > .row{margin-left:auto}
+
+.prod-block{
+  display:flex;gap:10px;align-items:flex-start;margin-top:12px;padding:11px 13px;
+  border-radius:var(--radius-sm);background:var(--danger-soft);color:var(--danger);
+}
+
+.prod-block .ico{width:20px;height:20px;flex:0 0 20px;margin-top:1px}
+
+.prod-block div{display:flex;flex-direction:column;gap:2px}
+
+.prod-block b{font-size:13.5px}
+
+.prod-block span{font-size:12.5px;color:var(--ink-soft)}
+
+.prod-items{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+
+.prod-item{border:1px solid var(--line);border-radius:var(--radius-sm);padding:12px 14px;background:#fff}
+
+.prod-item.out_of_stock,.prod-item.not_chosen{border-color:var(--danger);background:#fffafb}
+
+.prod-item.ordered{border-color:var(--warn);background:#fffdf5}
+
+.prod-item.withdrawn{border-color:var(--accent)}
+
+.prod-item-head{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+
+.prod-item-head b{font-size:13px;color:var(--accent-deep)}
+
+.prod-item-head .badge{margin-left:auto}
+
+.prod-item-name{font-size:14px;font-weight:600;color:var(--ink);margin-bottom:8px}
+
+.withdraw-item{border:1px solid var(--line);border-radius:var(--radius-sm);padding:10px 12px}
+
+.withdraw-item-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px}
+
+.withdraw-item-head b{font-size:13px}
+
+.withdraw-item-head .btn,.withdraw-item-head .badge{margin-left:auto}
+
+.prod-log{display:flex;flex-direction:column;gap:7px}
+
+.prod-log-row{
+  display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;font-size:13px;
+  padding-bottom:7px;border-bottom:1px solid var(--line-soft);
+}
+
+.prod-log-row:last-child{border-bottom:0;padding-bottom:0}
+
+.prod-log-row .muted{font-size:12px;font-variant-numeric:tabular-nums}

@@ -39,6 +39,7 @@ export const ACTION_LABEL = {
   production_withdraw_extra: 'เบิกสินค้าเพิ่ม',
   production_paused: 'หยุดผลิต / รอสินค้า',
   production_resumed: 'กลับมาผลิตต่อ',
+  production_completed: 'ปิดงานผลิต',
   delivered: 'ส่งมอบสินค้า',
   payment_cancelled: 'ยกเลิกรายการรับเงิน',
   photo_uploaded: 'แนบรูป/ไฟล์',
