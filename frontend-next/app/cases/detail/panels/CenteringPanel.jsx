@@ -78,6 +78,7 @@ export function CenteringPanel({ c, reload }) {
       r_pd: ce.r_pd || '', l_pd: ce.l_pd || '', pd_total: ce.pd_total || '',
       r_height: ce.r_height || '', l_height: ce.l_height || '',
       vertex_distance: ce.vertex_distance || '', pantoscopic_tilt: ce.pantoscopic_tilt || '',
+      /* wrap ไม่ได้อยู่ในชุดที่ร้านวัด แต่ค่าที่เคยบันทึกไว้ต้องไม่หายตอนบันทึกทับ */
       wrap_angle: ce.wrap_angle || '', center_point_note: ce.center_point_note || '',
       performed_by: ce.performed_by || '', recorded_by: ce.recorded_by || '',
       measured_at: dtLocal(ce.measured_at) || nowLocal(),
@@ -140,7 +141,7 @@ export function CenteringPanel({ c, reload }) {
     <Split>
       <Stack>
         <Card title="ค่าการวัด Center Point">
-          <p className="hint">กรอกตามที่วัดจริง — มิลลิเมตร (Panto / Wrap เป็นองศา)</p>
+          <p className="hint">กรอกตามที่วัดจริง — มิลลิเมตร (Panto เป็นองศา)</p>
 
           <Group title="ระยะรูม่านตา — PD">
             <Measure label="PD ขวา (OD)" unit="mm" value={form.r_pd} onChange={set('r_pd')} placeholder="31.0" />
@@ -163,7 +164,6 @@ export function CenteringPanel({ c, reload }) {
           <Group title="มุมและระยะสวมใส่">
             <Measure label="CVD · ระยะกระจกตา" unit="mm" value={form.vertex_distance} onChange={set('vertex_distance')} placeholder="12.0" />
             <Measure label="Panto · มุมเท" unit="°" value={form.pantoscopic_tilt} onChange={set('pantoscopic_tilt')} placeholder="8.0" />
-            <Measure label="Wrap · มุมโค้ง" unit="°" value={form.wrap_angle} onChange={set('wrap_angle')} placeholder="5.0" />
           </Group>
         </Card>
 
