@@ -271,14 +271,25 @@ function entryStatusOfGroup(string $group): ?string
  */
 function advanceCaseStatus(Tx $q, array $c, array $states): void
 {
-    $next = null;
-    foreach (CASE_PROCESSES as $p) {
-        if ($p === 'done') {
-            continue;
+    /* same reading as the board: the case is at the furthest step anything has
+       happened on — not the first gap, which would drag a case back to ชำระเงิน
+       the moment it takes a deposit instead of the full amount */
+    $order = array_values(array_filter(CASE_PROCESSES, fn($p) => $p !== 'done'));
+    $furthest = 0;
+    foreach ($order as $idx => $p) {
+        if (($states[$p]['status'] ?? 'not_started') !== 'not_started') {
+            $furthest = $idx;
         }
-        if (($states[$p]['status'] ?? '') !== 'completed') {
-            $next = $p;
-            break;
+    }
+    $next = null;
+    if (($states[$order[$furthest]]['status'] ?? '') !== 'completed') {
+        $next = $order[$furthest];
+    } else {
+        for ($i = $furthest + 1; $i < count($order); $i++) {
+            if (($states[$order[$i]]['status'] ?? '') !== 'completed') {
+                $next = $order[$i];
+                break;
+            }
         }
     }
     $code = $next === null ? 'completed' : entryStatusOfGroup($next);
@@ -453,7 +464,8 @@ function caseStageMap(array $caseIds): array
         "SELECT case_id,
                 MAX(status = 'COMPLETED' OR edging_finished_at IS NOT NULL) AS done,
                 MAX(pickup_at IS NOT NULL) AS delivered,
-                MAX(status = 'IN_PRODUCTION' OR status = 'WAITING_FOR_ITEM') AS working
+                MAX(status = 'IN_PRODUCTION' OR status = 'WAITING_FOR_ITEM') AS working,
+                MAX(started_at IS NOT NULL) AS started
            FROM production_jobs WHERE case_id IN ($in) GROUP BY case_id",
         ...$ids
     ));
@@ -487,21 +499,51 @@ function caseStageMap(array $caseIds): array
             'qc'         => !empty($qc[$id]['passed']),
             'delivery'   => !empty($prod[$id]['delivered']),
         ];
+        /* Work that has visibly begun, whether or not it is finished. The shop
+           does not queue: a customer can pay a deposit and the bench starts
+           cutting, so payment sits half-done while production is where the job
+           actually is. */
+        $active = [
+            'reception'  => true,
+            'exam'       => !empty($rx[$id]['n']),
+            'sales'      => !empty($orders[$id]['n']),
+            'centering'  => !empty($centering[$id]['n']),
+            'payment'    => !empty($pay[$id]['n']),
+            'production' => !empty($prod[$id]['working']) || !empty($prod[$id]['done'])
+                || !empty($prod[$id]['started']),
+            'qc'         => !empty($qc[$id]['n']),
+            'delivery'   => !empty($prod[$id]['delivered']),
+        ];
+
         /* an explicit ✓ on a process outranks what the data alone implies */
         foreach ($stored[$id] ?? [] as $process => $status) {
             if (isset($done[$process])) {
                 $done[$process] = $status === 'completed';
+                $active[$process] = $active[$process] || $status !== 'not_started';
             }
         }
 
-        $stage = 'done';
-        foreach (CASE_PROCESSES as $p) {
-            if ($p === 'done') {
-                continue;
+        /* Where the job IS = the furthest step anything has happened on. If that
+           step is unfinished, that is the answer; if it is finished, the answer
+           is the next step still open. Reading "first unfinished step" instead
+           would park a case in ชำระเงิน forever on a deposit, while the glasses
+           are being cut. */
+        $order = array_values(array_filter(CASE_PROCESSES, fn($p) => $p !== 'done'));
+        $furthest = 0;
+        foreach ($order as $idx => $p) {
+            if (!empty($done[$p]) || !empty($active[$p])) {
+                $furthest = $idx;
             }
-            if (!$done[$p]) {
-                $stage = $p;
-                break;
+        }
+        $stage = 'done';
+        if (empty($done[$order[$furthest]])) {
+            $stage = $order[$furthest];
+        } else {
+            for ($i = $furthest + 1; $i < count($order); $i++) {
+                if (empty($done[$order[$i]])) {
+                    $stage = $order[$i];
+                    break;
+                }
             }
         }
         if ((int) ($terminal[$id]['is_terminal'] ?? 0) === 1) {

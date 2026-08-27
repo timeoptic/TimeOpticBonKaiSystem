@@ -253,6 +253,12 @@ POST('/api/production-jobs/:id/complete', function (array $req) {
             'action' => 'production_completed', 'entity' => 'production_job',
             'entity_id' => $id, 'employee_id' => $empId,
         ]);
+        /* closing the job IS finishing the process — without this the stored row
+           would still read "กำลังดำเนินการ" and the board would keep the case on
+           production after the glasses were made */
+        saveProcess($q, (int) $job['case_id'], 'production', [
+            'status' => 'completed', 'completed_at' => nowStamp(),
+        ]);
         setStatus($q, (int) $job['case_id'], 'waiting_qc', ['employee_id' => $empId]);
     });
     return Db::get('SELECT * FROM production_jobs WHERE id = ?', $id);
