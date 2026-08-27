@@ -20,8 +20,18 @@ final class Lookups
     {
         $out = [];
         foreach (self::LIST_TABLES as $kind => $table) {
+            $hasActive = Db::get(
+                'SELECT COUNT(*) n FROM information_schema.columns
+                  WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?',
+                $table,
+                'is_active'
+            );
+            $active = (int) ($hasActive['n'] ?? 0) ? ' AND is_active = 1' : '';
             $rows = Db::all("SELECT code, label_th FROM `$table` ORDER BY sort_order, code");
-            $out[$kind] = array_map(fn($r) => $r['code'], $rows);
+            /* ตัวเลือกที่ยังให้เลือกได้ กับป้ายชื่อของทุกค่าที่เคยมี — คนละชุดกัน
+               รายการเก่าที่ใช้ช่องทางที่เลิกใช้แล้วจึงยังอ่านออก */
+            $offered = Db::all("SELECT code FROM `$table` WHERE 1=1$active ORDER BY sort_order, code");
+            $out[$kind] = array_map(fn($r) => $r['code'], $offered);
             $labels = [];
             foreach ($rows as $r) {
                 $labels[$r['code']] = $r['label_th'];

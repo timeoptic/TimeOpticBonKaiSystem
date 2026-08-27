@@ -234,19 +234,6 @@ final class Migrate
 
         /* ช่องทางรับเงินที่ร้านใช้จริง — ถุงเงิน (กรุงไทย) เป็นช่องทางหนึ่ง ไม่ใช่ "อื่น ๆ"
            แถวเดิมที่ยังชื่อ Other ไม่มีใครใช้ จึงเปลี่ยนเป็นถุงเงินได้โดยไม่กระทบข้อมูลเก่า */
-        if (Db::get("SELECT COUNT(*) n FROM list_pay_type WHERE code = 'ThungNgern'")['n'] == 0) {
-            $usedOther = (int) Db::get("SELECT COUNT(*) n FROM payments WHERE method = 'Other'")['n'];
-            if ($usedOther === 0) {
-                Db::run("DELETE FROM list_pay_type WHERE code = 'Other'");
-            }
-            Db::run(
-                "INSERT INTO list_pay_type (code, label_th, sort_order) VALUES (?,?,?)",
-                'ThungNgern',
-                'ถุงเงิน',
-                5
-            );
-        }
-
         $added = array_merge(
             self::addColumns('custom_orders', [
                 'frame_price'    => 'decimal(10,2) NOT NULL DEFAULT 0',
@@ -283,6 +270,11 @@ final class Migrate
                 'referral_note' => 'varchar(255) DEFAULT NULL',
             ]),
             /* ขั้นวัด Center บันทึกว่าเมื่อไหร่ และใครเป็นคนกรอก แยกจากใครเป็นคนวัด */
+            /* ช่องทางที่เลิกใช้แล้วต้องหายจากตัวเลือก แต่ป้ายชื่อยังต้องอยู่
+               ไม่งั้นรายการเก่าจะโชว์เป็นรหัสดิบ */
+            self::addColumns('list_pay_type', [
+                'is_active' => 'tinyint(1) NOT NULL DEFAULT 1',
+            ]),
             self::addColumns('centerings', [
                 'measured_at' => 'datetime DEFAULT NULL',
             ]),
@@ -302,6 +294,22 @@ final class Migrate
         );
         Db::run("UPDATE case_statuses SET stage_group = 'centering' WHERE code = 'centering'");
         Db::run("UPDATE case_statuses SET stage_group = 'payment' WHERE code = 'payment'");
+        /* พร้อมเพย์ / QR ไม่ได้ใช้แล้ว — ซ่อนจากตัวเลือก แต่แถวยังอยู่ให้ประวัติอ่านออก */
+        Db::run("UPDATE list_pay_type SET is_active = 0 WHERE code = 'QR'");
+
+        if (Db::get("SELECT COUNT(*) n FROM list_pay_type WHERE code = 'ThungNgern'")['n'] == 0) {
+            $usedOther = (int) Db::get("SELECT COUNT(*) n FROM payments WHERE method = 'Other'")['n'];
+            if ($usedOther === 0) {
+                Db::run("DELETE FROM list_pay_type WHERE code = 'Other'");
+            }
+            Db::run(
+                "INSERT INTO list_pay_type (code, label_th, sort_order) VALUES (?,?,?)",
+                'ThungNgern',
+                'ถุงเงิน',
+                5
+            );
+        }
+
         $created = array_merge($created, $added);
         foreach (self::DEFAULT_SETTINGS as $key => $value) {
             Db::run('INSERT IGNORE INTO app_settings (`key`, `value`) VALUES (?, ?)', $key, $value);
