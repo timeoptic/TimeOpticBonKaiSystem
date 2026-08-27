@@ -28,7 +28,7 @@ import { Icon } from '../../../../components/Icon.jsx';
 import { useProcessActions } from '../../../../components/ProcessShell.jsx';
 import { RxSetBlock } from '../../../../components/RxSets.jsx';
 import { ACTION_LABEL } from '../../../../lib/constants.js';
-import { dtLocal, fmtDateTime, power } from '../../../../lib/format.js';
+import { fmtDateTime, power } from '../../../../lib/format.js';
 
 const STATUS = {
   WAITING_FOR_ITEMS: { label: 'รอสินค้า', kind: 'gray' },
@@ -303,8 +303,8 @@ export function ProductionPanel({ c, reload }) {
         <div className="prod-head">
           <div>
             <Badge kind={meta.kind}>{meta.label}</Badge>
-            {p.started_at ? <span className="muted">{`เริ่ม ${fmtDateTime(p.started_at)}`}</span> : null}
-            {p.completed_at ? <span className="muted">{`เสร็จ ${fmtDateTime(p.completed_at)}`}</span> : null}
+            {p.started_at ? <span className="muted">{`เริ่มฝน ${fmtDateTime(p.started_at)}`}</span> : null}
+            {p.completed_at ? <span className="muted">{`ฝนเสร็จ ${fmtDateTime(p.completed_at)}`}</span> : null}
             {paused && p.waiting_reason ? <span className="pay-after over">{`หยุดเพราะ: ${p.waiting_reason}`}</span> : null}
           </div>
           <Row style={{ gap: 8 }}>
@@ -437,12 +437,6 @@ export function ProductionPanel({ c, reload }) {
           <FormGrid>
             <Field label="ช่างที่รับงาน">
               <EmployeeSelect name="assigned_technician" defaultValue={p.assigned_technician || ''} />
-            </Field>
-            <Field label="เริ่มฝน">
-              <input name="edging_started_at" type="datetime-local" defaultValue={dtLocal(p.edging_started_at)} />
-            </Field>
-            <Field label="ฝนเสร็จ">
-              <input name="edging_finished_at" type="datetime-local" defaultValue={dtLocal(p.edging_finished_at)} />
             </Field>
             <Field label="ผู้ฝน"><EmployeeSelect name="edged_by" defaultValue={p.edged_by || ''} /></Field>
             <Field label="ตรวจจับคู่">

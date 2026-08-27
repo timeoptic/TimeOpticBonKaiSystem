@@ -46,7 +46,7 @@ POST('/api/production-jobs', upsertFactory([
        form, so they are not listed here either — an upsert writes every column it
        names, and naming a field nobody sends is how saved values get wiped */
     'cols'   => ['order_id', 'matched_at', 'matched_by', 'match_customer_ok', 'match_rx_ok',
-        'match_note', 'assigned_technician', 'edging_started_at', 'edging_finished_at',
+        'match_note', 'assigned_technician',
         'edged_by', 'edging_remark', 'packed_at', 'packing_note', 'pickup_at',
         'handed_over_by', 'adjustment_by', 'adjustment_remark'],
     'intCols' => ['order_id', 'matched_by', 'assigned_technician', 'edged_by',
@@ -172,9 +172,13 @@ POST('/api/production-jobs/:id/start', function (array $req) {
                 nowStamp(), (int) $job['case_id'], $type
             );
         }
+        /* เริ่มฝน is this moment — the bench should not have to type back a time
+           it is standing in front of */
         $q->run(
-            "UPDATE production_jobs SET status='IN_PRODUCTION', started_at=?, started_by=? WHERE id=?",
-            nowStamp(), $empId, $id
+            "UPDATE production_jobs
+                SET status='IN_PRODUCTION', started_at=?, started_by=?, edging_started_at=?
+              WHERE id=?",
+            nowStamp(), $empId, nowStamp(), $id
         );
         logEvent($q, (int) $job['case_id'], [
             'action' => 'production_started', 'entity' => 'production_job',

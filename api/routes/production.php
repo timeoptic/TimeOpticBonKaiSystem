@@ -301,11 +301,12 @@ POST('/api/production-jobs/:id/complete', function (array $req) {
     Db::tx(function (Tx $q) use ($id, $job, $empId) {
         $q->run(
             "UPDATE production_jobs
-                SET status='COMPLETED', completed_at=?, completed_by=?,
+                SET status='COMPLETED', completed_at=?, completed_by=?, edging_finished_at=?,
                     waiting_item=NULL, waiting_reason=NULL
               WHERE id=?",
             nowStamp(),
             $empId,
+            nowStamp(),
             $id
         );
         logEvent($q, (int) $job['case_id'], [
