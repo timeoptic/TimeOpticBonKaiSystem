@@ -21,10 +21,11 @@ import { api } from '../../lib/apiClient.js';
 import { useAsync, onSubmit } from '../../lib/hooks.js';
 import { useToast } from '../../components/Toast.jsx';
 import {
-  Card, Field, Fieldset, FormActions, FormGrid, Kpi, Kpis, Loading, PageHead, Row, Split,
+  Badge, Card, Field, Fieldset, FormActions, FormGrid, Kpi, Kpis, Loading, PageHead, Row, Split,
 } from '../../components/ui.jsx';
 import { Picker } from '../../components/Picker.jsx';
 import { StockPicker, stockLabel } from '../../components/StockPicker.jsx';
+import { RxSets } from '../../components/RxSets.jsx';
 import { EmployeeSelect, ListSelect } from '../../components/Selects.jsx';
 import { RX_KIND_LABEL } from '../../lib/constants.js';
 import {
@@ -125,7 +126,24 @@ export function OrderFormView({
   const customerId = customerOverride?.id ?? data.customerId ?? null;
   const rxList = contextCustomer?.prescriptions || [];
 
-  const defaultRxId = editing ? (o.final_prescription_id ?? null) : (rxList[0]?.id ?? null);
+  /* With a case in hand there is nothing to choose: the case's own round holds
+     ค่าเดิม / ค่าที่วัด / ค่าที่ใช้จริง, and an order is always built from the
+     ค่าที่ใช้จริง — showing a list of rows to pick from invited picking the wrong
+     one. Without a case (a bare order for a walk-in) the list stays. */
+  const caseRx = caseId
+    ? rxList.filter((r) => Number(r.case_id) === Number(caseId))
+    : [];
+  const caseSets = {
+    old: caseRx.find((r) => r.kind === 'old') || null,
+    measured: caseRx.find((r) => r.kind === 'measured') || null,
+    final: caseRx.find((r) => r.kind === 'final') || null,
+  };
+
+  const defaultRxId = editing
+    ? (o.final_prescription_id ?? null)
+    : (caseId
+      ? (caseSets.final?.id ?? caseSets.measured?.id ?? null)
+      : (rxList[0]?.id ?? null));
   const rxId = rxIdState === undefined ? defaultRxId : rxIdState;
 
   const picked = items ?? {
@@ -266,9 +284,33 @@ export function OrderFormView({
           )}
         </Card>
 
-        <Card title="เลือกผลวัดสายตา">
-          {!contextCustomer && <span className="muted">เลือกลูกค้าก่อน</span>}
-          {contextCustomer && rxList.length === 0 && (
+        <Card
+          title={caseId ? 'ค่าสายตาของเคส' : 'เลือกผลวัดสายตา'}
+          badge={caseId && caseSets.final ? <Badge kind="ok">ใช้ค่าที่ยืนยันแล้ว</Badge> : null}
+        >
+          {caseId ? (
+            <>
+              {caseRx.length ? (
+                <RxSets old={caseSets.old} measured={caseSets.measured} final={caseSets.final} />
+              ) : (
+                <p className="muted">ยังไม่มีการวัดสายตาในเคสนี้</p>
+              )}
+              {!caseSets.final && (
+                <p className="hint">
+                  {caseSets.measured
+                    ? 'ยังไม่ได้กดยืนยันผลวัดสายตา — ออเดอร์นี้จะอ้างอิงค่าที่วัดได้ไปก่อน'
+                    : 'ยังไม่มีค่าสายตาให้ใช้กับออเดอร์นี้'}
+                </p>
+              )}
+              <Row style={{ marginTop: 10 }}>
+                <Link className="btn btn-sm btn-light" href={`/cases/detail?id=${caseId}&step=exam`}>
+                  <Icon name="eye" /> เปิดขั้นวัดสายตา
+                </Link>
+              </Row>
+            </>
+          ) : null}
+          {!caseId && !contextCustomer && <span className="muted">เลือกลูกค้าก่อน</span>}
+          {!caseId && contextCustomer && rxList.length === 0 && (
             <div className="stack">
               <span className="muted">ยังไม่มีผลวัดสายตาให้เลือก</span>
               <Link
@@ -279,7 +321,7 @@ export function OrderFormView({
               </Link>
             </div>
           )}
-          {contextCustomer && rxList.length > 0 && (
+          {!caseId && contextCustomer && rxList.length > 0 && (
             <div className="picker">
               {rxList.map((rx) => (
                 <div
