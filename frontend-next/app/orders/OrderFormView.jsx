@@ -157,7 +157,6 @@ export function OrderFormView({
   const total = n(p.frame_price) + n(p.lens_od_price) + n(p.lens_os_price) + n(p.options_price);
   const netTotal = total - n(p.discount);
   const discountTooHigh = n(p.discount) > total;
-  const balance = netTotal - n(p.deposit);
 
   const chooseCustomer = async (r) => {
     try {
@@ -450,54 +449,34 @@ export function OrderFormView({
           <input type="hidden" name="frame_price" value={p.frame_price} readOnly />
           <input type="hidden" name="lens_od_price" value={p.lens_od_price} readOnly />
           <input type="hidden" name="lens_os_price" value={p.lens_os_price} readOnly />
+          {/* ค่าออพชั่นเสริม กับ มัดจำ/ช่องทางจ่ายมัดจำ ไม่ได้อยู่ขั้นนี้ — เงินทุกก้อนรับที่ขั้น
+              "ชำระเงิน" ที่เดียว ค่าที่เคยบันทึกไว้ยังส่งไปกับฟอร์มเพื่อไม่ให้การแก้ออเดอร์ล้างทิ้ง */}
+          <input type="hidden" name="options_price" value={p.options_price} readOnly />
+          <input type="hidden" name="deposit" value={p.deposit} readOnly />
+          <input type="hidden" name="deposit_pay_type" value={o.deposit_pay_type || 'Cash'} readOnly />
+
           <FormGrid>
-            <Field label="ค่าออพชั่นเสริม / OptionsPrice">
+            <Field
+              label="ส่วนลด / Discount"
+              hint={discountTooHigh ? 'ส่วนลดห้ามมากกว่ายอดรวม' : ''}
+            >
               <input
-                name="options_price" type="number" step="1" min="0"
-                value={p.options_price} onChange={(e) => setP({ options_price: e.target.value })}
+                name="discount" type="number" step="1" min="0"
+                value={p.discount} onChange={(e) => setP({ discount: e.target.value })}
+                aria-invalid={discountTooHigh}
               />
             </Field>
           </FormGrid>
 
           <div style={{ marginTop: 10 }}>
             <Kpis>
-              <Kpi label="ราคารวม (Total)" value={money(total)} sub="กรอบ + เลนส์ขวา + เลนส์ซ้าย + ออพชั่น" />
-            </Kpis>
-          </div>
-
-          <div style={{ marginTop: 10 }}>
-            <FormGrid>
-              <Field
-                label="ส่วนลด / Discount"
-                hint={discountTooHigh ? 'ส่วนลดห้ามมากกว่ายอดรวม' : ''}
-              >
-                <input
-                  name="discount" type="number" step="1" min="0"
-                  value={p.discount} onChange={(e) => setP({ discount: e.target.value })}
-                  aria-invalid={discountTooHigh}
-                />
-              </Field>
-              <Field label="มัดจำ / Deposit">
-                <input
-                  name="deposit" type="number" step="1" min="0"
-                  value={p.deposit} onChange={(e) => setP({ deposit: e.target.value })}
-                />
-              </Field>
-              <Field label="ชำระมัดจำด้วย / DepositPayType">
-                <ListSelect name="deposit_pay_type" kind="pay_type" defaultValue={o.deposit_pay_type || 'Cash'} />
-              </Field>
-            </FormGrid>
-          </div>
-
-          <div style={{ marginTop: 10 }}>
-            <Kpis>
+              <Kpi label="ราคารวม (Total)" value={money(total)} sub="กรอบ + เลนส์ขวา + เลนส์ซ้าย" />
               <Kpi
                 label="ยอดสุทธิ (Net Total)"
                 value={money(netTotal)}
                 kind={discountTooHigh ? 'danger' : 'accent'}
                 sub={discountTooHigh ? 'ห้ามติดลบ — แก้ส่วนลดก่อนบันทึก' : 'ราคารวม − ส่วนลด'}
               />
-              <Kpi label="คงเหลือรับตอนรับของ" value={money(balance)} sub="ยอดสุทธิ − มัดจำ" />
             </Kpis>
           </div>
         </Card>
