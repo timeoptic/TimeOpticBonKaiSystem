@@ -18,7 +18,7 @@ import { readForm, useAsync } from '../../../../lib/hooks.js';
 import { useToast } from '../../../../components/Toast.jsx';
 import { useConfirm } from '../../../../components/Confirm.jsx';
 import {
-  Badge, Card, Check, Field, FormActions, FormGrid, Kv, Row, Stack,
+  Badge, Card, CardFold, Check, Field, FormActions, FormGrid, Kv, Row, Stack,
 } from '../../../../components/ui.jsx';
 import { DataTable } from '../../../../components/DataTable.jsx';
 import { EmployeeSelect, Select } from '../../../../components/Selects.jsx';
@@ -399,9 +399,10 @@ export function ProductionPanel({ c, reload }) {
       </Card>
 
       {/* what has actually left the shelf for this job */}
-      <Card
+      <CardFold
         title="ประวัติการเบิกสินค้า"
-        right={<span className="muted">{`${(c.production_withdrawals || []).length} รายการ`}</span>}
+        count={`${(c.production_withdrawals || []).length} รายการ`}
+        defaultOpen={(c.production_withdrawals || []).length > 0 && (c.production_withdrawals || []).length <= 6}
         tight
       >
         <DataTable
@@ -418,7 +419,7 @@ export function ProductionPanel({ c, reload }) {
           rows={c.production_withdrawals || []}
           empty="ยังไม่มีการเบิกสินค้า"
         />
-      </Card>
+      </CardFold>
 
       {/* the bench's own record */}
       <Card title="บันทึกงานผลิต">
@@ -461,7 +462,7 @@ export function ProductionPanel({ c, reload }) {
         </form>
       </Card>
 
-      <Card title="ไทม์ไลน์การผลิต" right={<span className="muted">{`${log.length} เหตุการณ์`}</span>}>
+      <CardFold title="ไทม์ไลน์การผลิต" count={`${log.length} เหตุการณ์`}>
         {log.length === 0 ? <p className="muted">ยังไม่มีความเคลื่อนไหวของงานผลิต</p> : (
           <div className="prod-log">
             {log.map((ev) => (
@@ -474,7 +475,7 @@ export function ProductionPanel({ c, reload }) {
             ))}
           </div>
         )}
-      </Card>
+      </CardFold>
 
       {withdrawOpen && (
         <WithdrawPopup job={p} items={items} onClose={() => setWithdrawOpen(false)} onDone={refresh} />

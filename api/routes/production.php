@@ -253,9 +253,7 @@ POST('/api/production-jobs/:id/complete', function (array $req) {
             'action' => 'production_completed', 'entity' => 'production_job',
             'entity_id' => $id, 'employee_id' => $empId,
         ]);
-        setStatus($q, (int) $job['case_id'], 'waiting_qc', [
-            'employee_id' => $empId, 'action' => 'production_completed',
-        ]);
+        setStatus($q, (int) $job['case_id'], 'waiting_qc', ['employee_id' => $empId]);
     });
     return Db::get('SELECT * FROM production_jobs WHERE id = ?', $id);
 });

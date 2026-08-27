@@ -175,7 +175,9 @@ POST('/api/production-jobs/:id/start', function (array $req) {
         saveProcess($q, (int) $job['case_id'], 'production', [
             'status' => 'in_progress', 'started_at' => nowStamp(), 'completed_at' => null,
         ]);
-        setStatus($q, (int) $job['case_id'], 'edging', ['employee_id' => $empId, 'action' => 'production_started']);
+        /* the move itself logs as a status change — the action above already named it,
+           and two rows saying the same thing made the production timeline read double */
+        setStatus($q, (int) $job['case_id'], 'edging', ['employee_id' => $empId]);
     });
     return Db::get('SELECT * FROM production_jobs WHERE id = ?', $id);
 });
@@ -247,7 +249,7 @@ POST('/api/production-jobs/:id/pause', function (array $req) {
             'employee_id' => $empId, 'note' => str_or($body['reason'] ?? null),
         ]);
         saveProcess($q, (int) $job['case_id'], 'production', ['status' => 'waiting']);
-        setStatus($q, (int) $job['case_id'], 'waiting_edging', ['employee_id' => $empId, 'action' => 'production_paused']);
+        setStatus($q, (int) $job['case_id'], 'waiting_edging', ['employee_id' => $empId]);
     });
     return Db::get('SELECT * FROM production_jobs WHERE id = ?', $id);
 });
@@ -274,7 +276,7 @@ POST('/api/production-jobs/:id/resume', function (array $req) {
             'employee_id' => $empId,
         ]);
         saveProcess($q, (int) $job['case_id'], 'production', ['status' => 'in_progress']);
-        setStatus($q, (int) $job['case_id'], 'edging', ['employee_id' => $empId, 'action' => 'production_resumed']);
+        setStatus($q, (int) $job['case_id'], 'edging', ['employee_id' => $empId]);
     });
     return Db::get('SELECT * FROM production_jobs WHERE id = ?', $id);
 });
@@ -304,7 +306,7 @@ POST('/api/production-jobs/:id/deliver', function (array $req) {
         saveProcess($q, (int) $job['case_id'], 'delivery', [
             'status' => 'in_progress', 'started_at' => nowStamp(),
         ]);
-        setStatus($q, (int) $job['case_id'], 'pickup', ['employee_id' => $empId, 'action' => 'delivered']);
+        setStatus($q, (int) $job['case_id'], 'pickup', ['employee_id' => $empId]);
     });
     return Db::get('SELECT * FROM production_jobs WHERE id = ?', $id);
 });

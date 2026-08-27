@@ -1718,3 +1718,22 @@ table.doc td.lbl{background:var(--surface-alt);font-weight:700;text-align:left;w
 .prod-log-row:last-child{border-bottom:0;padding-bottom:0}
 
 .prod-log-row .muted{font-size:12px;font-variant-numeric:tabular-nums}
+
+
+/* ---------------- การ์ดที่หุบได้ ---------------- */
+.card-head.fold-head{
+  width:100%;background:none;border:0;border-bottom:1px solid var(--line-soft);
+  font-family:inherit;text-align:left;cursor:pointer;
+}
+
+.card-head.fold-head:hover h2{color:var(--accent-deep)}
+
+.fold-right{margin-left:auto;display:flex;align-items:center;gap:10px;font-size:12.5px}
+
+/* ลูกศรวาดด้วย border ไม่ต้องพึ่งไอคอน จะได้หมุนได้ลื่น */
+.fold-caret{
+  width:9px;height:9px;border-right:2px solid var(--ink-faint);border-bottom:2px solid var(--ink-faint);
+  transform:rotate(45deg) translate(-2px,-2px);transition:transform .15s;
+}
+
+.fold-caret.open{transform:rotate(-135deg) translate(-2px,-2px)}

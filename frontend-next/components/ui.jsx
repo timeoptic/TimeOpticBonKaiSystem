@@ -1,6 +1,6 @@
 'use client';
 /** The small presentational pieces the pages are built from. Port of frontend/src/components/ui.jsx. */
-import { Fragment } from 'react';
+import { Fragment, useState } from 'react';
 import Link from 'next/link';
 import { Icon } from './Icon.jsx';
 
@@ -10,6 +10,29 @@ export function PageHead({ icon, title, subtitle, actions = null }) {
       <div className="ph-icon"><Icon name={icon} /></div>
       <h1>{title}{subtitle ? <span>{subtitle}</span> : null}</h1>
       {actions ? <div className="ph-actions">{actions}</div> : null}
+    </div>
+  );
+}
+
+/**
+ * A card that starts folded. For the long tails of a screen — a timeline, a
+ * withdrawal history — that matter when you go looking and are noise when you
+ * do not: the header still says how much is in there.
+ */
+export function CardFold({ title, badge, right, count, defaultOpen = false, tight, children }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="card">
+      <button type="button" className="card-head fold-head" onClick={() => setOpen((v) => !v)}>
+        <h2>{title}</h2>
+        {badge}
+        <span className="fold-right">
+          {count !== undefined ? <span className="muted">{count}</span> : null}
+          {right}
+          <span className={`fold-caret ${open ? 'open' : ''}`} aria-hidden="true" />
+        </span>
+      </button>
+      {open ? <div className={`card-body ${tight ? 'tight' : ''}`}>{children}</div> : null}
     </div>
   );
 }
