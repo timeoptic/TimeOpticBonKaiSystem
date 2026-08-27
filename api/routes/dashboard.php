@@ -38,9 +38,17 @@ GET('/api/dashboard', function () {
           ORDER BY o.appointment_date IS NULL, o.appointment_date, o.order_date DESC
           LIMIT 200"
     );
-    $board = Db::all(
-        'SELECT stage_group, COUNT(*) n FROM v_case_board WHERE is_terminal = 0 GROUP BY stage_group'
-    );
+    /* งานค้างแต่ละขั้น — นับจากขั้นที่เคสทำถึงจริง ให้ตรงกับกระดานงาน
+       (cases.status ตั้งด้วยมือและเพี้ยนได้ ดู api/routes/processes.php) */
+    $openCases = array_column(Db::all('SELECT id FROM v_case_board WHERE is_terminal = 0'), 'id');
+    $stageCount = [];
+    foreach (caseStageMap($openCases) as $s) {
+        $stageCount[$s['process_stage']] = ($stageCount[$s['process_stage']] ?? 0) + 1;
+    }
+    $board = [];
+    foreach ($stageCount as $group => $n) {
+        $board[] = ['stage_group' => $group, 'n' => $n];
+    }
     $lens = Db::all('SELECT risk_level, COUNT(*) n FROM v_lens_tracker GROUP BY risk_level');
 
     $one = fn(string $sql, mixed ...$p) => Db::get($sql, ...$p) ?? [];

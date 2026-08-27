@@ -154,6 +154,46 @@ final class Migrate
         ];
     }
 
+    /**
+     * Views that must be kept in step with the code. Re-created on every run —
+     * CREATE OR REPLACE is idempotent and the definitions live here rather than
+     * in a dump nobody reads.
+     */
+    private static function views(): array
+    {
+        return [
+            /* One row per case. The original joined custom_orders and lens_jobs
+               on case_id, so a case with two orders came back twice and the
+               board drew it twice — pick the latest of each instead. */
+            'v_case_board' => "CREATE OR REPLACE VIEW v_case_board AS
+                SELECT c.id, c.case_code, c.status, c.is_rush, c.opened_at, c.closed_at,
+                       c.customer_id, c.notes,
+                       s.stage_no, s.label_th AS status_label_th, s.label_en AS status_label_en,
+                       s.stage_group, s.sort_order AS status_order, s.is_waiting, s.is_terminal,
+                       cu.first_name, cu.last_name, cu.phone, cu.line_id,
+                       e.employee_name AS received_by_name,
+                       o.id AS order_id, o.invoice_code, o.lens_type, o.frame_name, o.lens_name,
+                       o.appointment_date, o.appointment_time, o.total_price, o.discount,
+                       o.total_price - o.discount AS net_price,
+                       COALESCE(p.paid, 0) AS paid,
+                       o.total_price - o.discount - COALESCE(p.paid, 0) AS balance,
+                       lj.source AS lens_source, lj.status AS lens_status,
+                       lj.expected_arrival, lj.follow_up_count,
+                       TIMESTAMPDIFF(DAY, c.opened_at, CURRENT_TIMESTAMP()) AS age_days
+                  FROM cases c
+                  JOIN case_statuses s ON s.code = c.status
+                  JOIN customers cu    ON cu.id = c.customer_id
+                  LEFT JOIN employees e ON e.id = c.received_by
+                  LEFT JOIN custom_orders o
+                         ON o.id = (SELECT MAX(o2.id) FROM custom_orders o2 WHERE o2.case_id = c.id)
+                  LEFT JOIN lens_jobs lj
+                         ON lj.id = (SELECT MAX(l2.id) FROM lens_jobs l2 WHERE l2.case_id = c.id)
+                  LEFT JOIN (SELECT order_id, SUM(amount) paid FROM payments
+                              WHERE order_id IS NOT NULL AND cancelled_at IS NULL
+                              GROUP BY order_id) p ON p.order_id = o.id",
+        ];
+    }
+
     /** @return string[] "table.column" names actually added this run */
     private static function addColumns(string $table, array $columns): array
     {
@@ -188,6 +228,10 @@ final class Migrate
                 $created[] = $name;
             }
         }
+        foreach (self::views() as $sql) {
+            Db::pdo()->exec($sql);
+        }
+
         $added = array_merge(
             self::addColumns('custom_orders', [
                 'frame_price'    => 'decimal(10,2) NOT NULL DEFAULT 0',

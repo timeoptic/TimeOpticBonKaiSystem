@@ -31,11 +31,21 @@ GET('/api/cases', function (array $req) {
     $sqlWhere = $where ? 'WHERE ' . implode(' AND ', $where) : '';
     $args[] = min(int_or($q['limit'] ?? null, 300), 1000);
 
-    return Db::all(
+    $rows = Db::all(
         "SELECT * FROM v_case_board $sqlWhere
           ORDER BY is_rush DESC, status_order, opened_at LIMIT ?",
         ...$args
     );
+
+    /* Which process the case is really on — cases.status is set by hand and
+       nothing checks it against the work, so the board reads this instead
+       (api/routes/processes.php) */
+    $stages = caseStageMap(array_column($rows, 'id'));
+    foreach ($rows as &$r) {
+        $r += $stages[(int) $r['id']] ?? ['process_stage' => null, 'process_done' => 0];
+    }
+    unset($r);
+    return $rows;
 });
 
 function caseDetail(?int $id): array

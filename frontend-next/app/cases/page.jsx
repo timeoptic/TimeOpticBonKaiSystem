@@ -22,7 +22,12 @@ function CaseCard({ c, onOpen }) {
         {Number(c.is_rush) ? <Badge kind="danger"><Icon name="flame" /> ด่วน</Badge> : null}
       </div>
       <div className="cc-code">{`${c.case_code}${c.invoice_code ? ' · ' + c.invoice_code : ''}`}</div>
-      <div className="cc-status">{`${c.stage_no} ${c.status_label_th}`}</div>
+      <div className="cc-status">
+        <Icon name={stageInfo(c.process_stage || c.stage_group).icon} />
+        {' '}{stageInfo(c.process_stage || c.stage_group).label}
+        <span className="muted">{` · ${c.process_done ?? 0}/8 ขั้น`}</span>
+      </div>
+      <div className="cc-sub muted">{`สถานะ: ${c.status_label_th}`}</div>
       {(c.lens_name || c.frame_name) && (
         <div className="cc-item">{[c.lens_name, c.frame_name].filter(Boolean).join(' / ')}</div>
       )}
@@ -62,8 +67,11 @@ function CaseBoardInner() {
     [q, rushOnly, showDone]
   );
 
+  /* Columns come from what the case has actually finished (process_stage,
+     computed by the API), not from cases.status — that one is set by hand and
+     drifts: a case could sit in "ผลิต" with no order and no production job. */
   const byGroup = {};
-  for (const r of rows || []) (byGroup[r.stage_group] ||= []).push(r);
+  for (const r of rows || []) (byGroup[r.process_stage || r.stage_group] ||= []).push(r);
   const groups = showDone ? [...STAGE_GROUPS, 'done'] : STAGE_GROUPS;
 
   return (

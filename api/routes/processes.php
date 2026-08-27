@@ -390,3 +390,127 @@ POST('/api/cases/:id/processes/:process/state', function (array $req) {
 });
 
 GET('/api/cases/:id/processes', fn(array $r) => caseDetail(int_or($r['params']['id']))['processes']);
+
+/**
+ * Where each case actually is, for a whole list at once.
+ *
+ * The board used to read cases.status, which is a value somebody sets by hand
+ * and nothing ever checks against the work: a case could sit in "ผลิต" with no
+ * order, no centering and no production job. This computes the same answer the
+ * case page shows — the first of the 9 processes that is not finished — for
+ * every case in one pass, so the board and the case agree.
+ *
+ * Six aggregate queries, not one caseDetail() per row.
+ */
+function caseStageMap(array $caseIds): array
+{
+    $ids = array_values(array_unique(array_map('intval', array_filter($caseIds))));
+    if (!$ids) {
+        return [];
+    }
+    $in = implode(',', array_fill(0, count($ids), '?'));
+
+    $flat = function (array $rows, string $key = 'case_id') {
+        $out = [];
+        foreach ($rows as $r) {
+            $out[(int) $r[$key]] = $r;
+        }
+        return $out;
+    };
+
+    $rx = $flat(Db::all(
+        "SELECT case_id,
+                MAX(kind = 'final' OR confirmed_at IS NOT NULL) AS has_final,
+                COUNT(*) AS n
+           FROM prescriptions WHERE case_id IN ($in) GROUP BY case_id",
+        ...$ids
+    ));
+    $orders = $flat(Db::all(
+        "SELECT o.case_id,
+                MAX(o.frame_name IS NOT NULL AND o.frame_name <> ''
+                    AND o.lens_name IS NOT NULL AND o.lens_name <> ''
+                    AND o.total_price > 0) AS filled,
+                SUM(o.total_price - o.discount) AS net,
+                COUNT(*) AS n
+           FROM custom_orders o WHERE o.case_id IN ($in) GROUP BY o.case_id",
+        ...$ids
+    ));
+    $centering = $flat(Db::all(
+        "SELECT case_id,
+                MAX(pd_total IS NOT NULL AND pd_total <> ''
+                    AND r_height IS NOT NULL AND r_height <> ''
+                    AND l_height IS NOT NULL AND l_height <> '') AS done,
+                COUNT(*) AS n
+           FROM centerings WHERE case_id IN ($in) GROUP BY case_id",
+        ...$ids
+    ));
+    $pay = $flat(Db::all(
+        "SELECT case_id, SUM(amount) AS paid, COUNT(*) AS n
+           FROM payments WHERE case_id IN ($in) AND cancelled_at IS NULL GROUP BY case_id",
+        ...$ids
+    ));
+    $prod = $flat(Db::all(
+        "SELECT case_id,
+                MAX(status = 'COMPLETED' OR edging_finished_at IS NOT NULL) AS done,
+                MAX(pickup_at IS NOT NULL) AS delivered,
+                MAX(status = 'IN_PRODUCTION' OR status = 'WAITING_FOR_ITEM') AS working
+           FROM production_jobs WHERE case_id IN ($in) GROUP BY case_id",
+        ...$ids
+    ));
+    $qc = $flat(Db::all(
+        "SELECT case_id, MAX(result = 'pass') AS passed, COUNT(*) AS n
+           FROM qc_checks WHERE case_id IN ($in) GROUP BY case_id",
+        ...$ids
+    ));
+    $stored = [];
+    foreach (Db::all("SELECT case_id, process, status FROM case_processes WHERE case_id IN ($in)", ...$ids) as $r) {
+        $stored[(int) $r['case_id']][$r['process']] = $r['status'];
+    }
+    $terminal = $flat(Db::all(
+        "SELECT c.id AS case_id, s.is_terminal
+           FROM cases c JOIN case_statuses s ON s.code = c.status
+          WHERE c.id IN ($in)",
+        ...$ids
+    ));
+
+    $out = [];
+    foreach ($ids as $id) {
+        $paid = (float) ($pay[$id]['paid'] ?? 0);
+        $net  = (float) ($orders[$id]['net'] ?? 0);
+        $done = [
+            'reception'  => true,                                     // the case exists
+            'exam'       => !empty($rx[$id]['has_final']),
+            'sales'      => !empty($orders[$id]['filled']),
+            'centering'  => !empty($centering[$id]['done']),
+            'payment'    => !empty($pay[$id]['n']) && $net > 0 && $paid >= $net - 0.001,
+            'production' => !empty($prod[$id]['done']),
+            'qc'         => !empty($qc[$id]['passed']),
+            'delivery'   => !empty($prod[$id]['delivered']),
+        ];
+        /* an explicit ✓ on a process outranks what the data alone implies */
+        foreach ($stored[$id] ?? [] as $process => $status) {
+            if (isset($done[$process])) {
+                $done[$process] = $status === 'completed';
+            }
+        }
+
+        $stage = 'done';
+        foreach (CASE_PROCESSES as $p) {
+            if ($p === 'done') {
+                continue;
+            }
+            if (!$done[$p]) {
+                $stage = $p;
+                break;
+            }
+        }
+        if ((int) ($terminal[$id]['is_terminal'] ?? 0) === 1) {
+            $stage = 'done';
+        }
+        $out[$id] = [
+            'process_stage' => $stage,
+            'process_done'  => count(array_filter($done)),
+        ];
+    }
+    return $out;
+}
