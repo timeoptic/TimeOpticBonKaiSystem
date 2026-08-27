@@ -210,14 +210,27 @@ export function OrderFormView({
       fill('frame_size', picked.frame.size);
       fill('frame_sku', picked.frame.sku);
     }
+    /* The lens card has no detail fields at all — what the lens is, is what was
+       picked. Everything the order records about it comes from the item itself;
+       a lens still to be ordered from a supplier is described at the งานเลนส์
+       step, not here. */
     const lens = picked.lensOd || picked.lensOs;
     if (lens) {
-      fill('lens_name', stockLabel(lens));
-      fill('lens_brand', lens.brand);
-      fill('lens_design', lens.lens_design);
-      fill('lens_index', lens.lens_index);
-      fill('lens_coating', lens.coating);
-      fill('lens_tint', lens.tint);
+      body.lens_name = stockLabel(lens);
+      body.lens_brand = lens.brand || '';
+      body.lens_design = lens.lens_design || '';
+      body.lens_index = lens.lens_index || '';
+      body.lens_coating = lens.coating || '';
+      body.lens_tint = lens.tint || '';
+      body.lens_addons = o.lens_addons || '';
+    } else if (editing) {
+      body.lens_name = o.lens_name || '';
+      body.lens_brand = o.lens_brand || '';
+      body.lens_design = o.lens_design || '';
+      body.lens_index = o.lens_index || '';
+      body.lens_coating = o.lens_coating || '';
+      body.lens_tint = o.lens_tint || '';
+      body.lens_addons = o.lens_addons || '';
     }
 
     try {
@@ -453,36 +466,6 @@ export function OrderFormView({
               </Field>
             </Fieldset>
           </Split>
-          <ItemDetails picked={picked.lensOd || picked.lensOs}>
-            <FormGrid>
-              <Field label="ชื่อเลนส์ / Lens name">
-                <input
-                  key={'ln' + (picked.lensOd?.id ?? '0')}
-                  name="lens_name"
-                  defaultValue={picked.lensOd ? stockLabel(picked.lensOd) : (o.lens_name || '')}
-                  placeholder="เช่น Hoya Blue 1.5 -+0.50"
-                />
-              </Field>
-              <Field label="ยี่ห้อ / Brand">
-                <input key={'lb' + (picked.lensOd?.id ?? '0')} name="lens_brand" defaultValue={picked.lensOd?.brand || o.lens_brand || ''} />
-              </Field>
-              <Field label="ดีไซน์ / Design">
-                <input key={'ld' + (picked.lensOd?.id ?? '0')} name="lens_design" defaultValue={picked.lensOd?.lens_design || o.lens_design || ''} />
-              </Field>
-              <Field label="ค่าดัชนี / Index">
-                <input key={'li' + (picked.lensOd?.id ?? '0')} name="lens_index" defaultValue={picked.lensOd?.lens_index || o.lens_index || ''} />
-              </Field>
-              <Field label="โค้ตติ้ง / Coating">
-                <input key={'lc' + (picked.lensOd?.id ?? '0')} name="lens_coating" defaultValue={picked.lensOd?.coating || o.lens_coating || ''} />
-              </Field>
-              <Field label="สี / Tint">
-                <input key={'lt' + (picked.lensOd?.id ?? '0')} name="lens_tint" defaultValue={picked.lensOd?.tint || o.lens_tint || ''} />
-              </Field>
-              <Field label="ออพชั่นเสริม / Add-ons" className="full">
-                <input name="lens_addons" defaultValue={o.lens_addons || ''} />
-              </Field>
-            </FormGrid>
-          </ItemDetails>
         </Card>
 
         <Card title="ราคา & ส่วนลด">
