@@ -1827,3 +1827,27 @@ table.doc td.lbl{background:var(--surface-alt);font-weight:700;text-align:left;w
 .lens-cell.bad span{color:var(--danger);font-weight:600}
 
 .lens-cell.off span{color:var(--ink-faint);text-decoration:line-through}
+
+/* ── กระดานงาน: สลับสมุดงาน SightFirst / ลูกค้าร้าน ────────────────────
+   The first question the shop asks of the board, so it sits above the
+   toolbar as a switch rather than inside it as one filter among many. */
+.seg{
+  display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px;padding:4px;
+  background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  box-shadow:var(--shadow);width:fit-content;max-width:100%;
+}
+
+.seg button{
+  display:inline-flex;align-items:center;gap:8px;
+  padding:8px 16px;border:0;border-radius:var(--radius-sm);background:transparent;
+  font:inherit;font-size:13.5px;font-weight:600;color:var(--ink-soft);cursor:pointer;
+}
+
+.seg button:hover{background:var(--surface-alt);color:var(--ink)}
+
+.seg button.active{background:var(--accent);color:#fff}
+
+.seg button.active .badge{background:rgba(255,255,255,.22);color:#fff}
+
+/* an unpaid balance is the one number on a card worth reading first */
+.cc-owed{color:var(--danger);font-weight:600}

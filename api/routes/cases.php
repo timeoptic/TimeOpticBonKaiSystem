@@ -21,6 +21,22 @@ GET('/api/cases', function (array $req) {
     if (($q['rush'] ?? null) === '1') {
         $where[] = 'is_rush = 1';
     }
+    /* The shop thinks in two books of work before it thinks in anything else:
+       งาน SIGHTFIRST and งานลูกค้าร้าน. Everything without a type is the shop's
+       own — a case nobody labelled came in through the door. */
+    $client = str_or($q['client'] ?? null);
+    if ($client === 'sightfirst') {
+        $where[] = "case_type = 'SIGHTFIRST'";
+    } elseif ($client === 'shop') {
+        $where[] = "(case_type IS NULL OR case_type <> 'SIGHTFIRST')";
+    }
+    if ($caseType = str_or($q['case_type'] ?? null)) {
+        $where[] = 'case_type = ?';
+        $args[]  = $caseType;
+    }
+    if (($q['unpaid'] ?? null) === '1') {
+        $where[] = 'balance > 0';
+    }
     if ($term = str_or($q['q'] ?? null)) {
         $p = like($term);
         $where[] = '(case_code LIKE ? OR first_name LIKE ? OR last_name LIKE ?

@@ -224,7 +224,7 @@ final class Migrate
                board drew it twice — pick the latest of each instead. */
             'v_case_board' => "CREATE OR REPLACE VIEW v_case_board AS
                 SELECT c.id, c.case_code, c.status, c.is_rush, c.opened_at, c.closed_at,
-                       c.customer_id, c.notes,
+                       c.customer_id, c.notes, c.case_type, c.referral_source,
                        s.stage_no, s.label_th AS status_label_th, s.label_en AS status_label_en,
                        s.stage_group, s.sort_order AS status_order, s.is_waiting, s.is_terminal,
                        cu.first_name, cu.last_name, cu.phone, cu.line_id,
