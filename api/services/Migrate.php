@@ -267,6 +267,10 @@ final class Migrate
                 /* ช่องทางที่รู้จักร้าน เลือก "อื่น ๆ" แล้วพิมพ์เองได้ */
                 'referral_note' => 'varchar(255) DEFAULT NULL',
             ]),
+            /* ขั้นวัด Center บันทึกว่าเมื่อไหร่ และใครเป็นคนกรอก แยกจากใครเป็นคนวัด */
+            self::addColumns('centerings', [
+                'measured_at' => 'datetime DEFAULT NULL',
+            ]),
             /* แว่นเดิมบนใบกระดาษมีแค่ SPH/ADD/VA/PD มาแต่เดิม ของจริงต้องอ่าน
                CYL/AXIS จากเลนส์เก่าด้วย และใบจากภายนอกต้องรู้ว่ามาจากที่ไหนเมื่อไร */
             self::addColumns('prescriptions', [

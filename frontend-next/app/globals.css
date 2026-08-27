@@ -1364,3 +1364,70 @@ table.doc td.lbl{background:var(--surface-alt);font-weight:700;text-align:left;w
 .picked-item .p-id{margin-left:auto;font-size:11.5px;color:var(--ink-faint)}
 
 .picked-item .btn{padding:4px 10px}
+
+
+/* ---------------- ขั้นวัด Center: ช่องค่าการวัด ---------------- */
+.measure-group + .measure-group{margin-top:16px}
+
+.measure-group h4{
+  margin:0 0 8px;font-size:12px;letter-spacing:.7px;text-transform:uppercase;
+  color:var(--ink-faint);font-weight:700;
+}
+
+.measure-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+
+.measure{display:flex;flex-direction:column;gap:4px;min-width:0}
+
+.measure > label{font-size:12.5px;color:var(--ink-soft);font-weight:600}
+
+/* หน่วยอยู่ในกรอบเดียวกับตัวเลข ตาจึงอ่าน "18.5 mm" เป็นก้อนเดียว */
+.measure-input{position:relative;display:flex;align-items:center}
+
+.measure-input input{
+  width:100%;padding-right:38px;font-size:16px;font-weight:600;
+  font-variant-numeric:tabular-nums;text-align:right;
+}
+
+.measure-input input::-webkit-outer-spin-button,
+.measure-input input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+
+.measure-input input[type=number]{-moz-appearance:textfield}
+
+.measure-unit{
+  position:absolute;right:12px;font-size:12px;color:var(--ink-faint);
+  pointer-events:none;font-weight:600;
+}
+
+.measure-hint{font-size:11.5px;color:var(--ink-faint)}
+
+.measure.readonly .measure-input input{
+  background:var(--surface-alt);color:var(--ink-soft);border-style:dashed;cursor:default;
+}
+
+/* ---------------- ค่าที่ระบบแนะนำจากข้อมูลสินค้า ---------------- */
+.suggest{
+  margin-top:12px;padding:11px 13px;border-radius:var(--radius-sm);
+  background:var(--accent-soft);border:1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+@supports not (border-color:color-mix(in srgb, red 10%, transparent)){
+  .suggest{border-color:var(--accent)}
+}
+
+.suggest-head{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+
+.suggest-head b{font-size:13px;color:var(--accent-deep)}
+
+.suggest-head .btn{margin-left:auto}
+
+.suggest-chips{display:flex;gap:8px;flex-wrap:wrap}
+
+.suggest-chip{
+  display:inline-flex;align-items:baseline;gap:6px;padding:6px 12px;border-radius:var(--radius-sm);
+  background:#fff;border:1px solid var(--line);font-size:15px;font-weight:700;
+  font-variant-numeric:tabular-nums;color:var(--ink);
+}
+
+.suggest-chip b{font-size:11px;letter-spacing:.6px;color:var(--ink-faint);font-weight:700}
+
+.suggest .hint{margin:8px 0 0}
