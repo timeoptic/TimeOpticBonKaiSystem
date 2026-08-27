@@ -35,6 +35,25 @@ import { Icon } from '../../components/Icon.jsx';
 const n = (v) => Number(v || 0);
 
 /** compact display line for a picked stock item, with a way to clear it */
+/**
+ * The detail fields of an item that was picked from stock are already answered
+ * by the pick — showing seven filled boxes under the chosen line is noise. They
+ * collapse behind "แก้รายละเอียด", and stay open when nothing is picked, which
+ * is when someone really does have to type (a customer's own frame).
+ */
+function ItemDetails({ picked, children }) {
+  const [open, setOpen] = useState(false);
+  if (!picked) return <div style={{ marginTop: 10 }}>{children}</div>;
+  return (
+    <div style={{ marginTop: 10 }}>
+      <button type="button" className="btn btn-sm btn-light" onClick={() => setOpen((v) => !v)}>
+        <Icon name={open ? 'x' : 'pencil'} /> {open ? 'ซ่อนรายละเอียด' : 'แก้รายละเอียด / ราคา'}
+      </button>
+      {open ? <div style={{ marginTop: 10 }}>{children}</div> : null}
+    </div>
+  );
+}
+
 // editing must always be passed explicitly by the caller (true or false) — if a future
 // page forgets it, editing becomes undefined (falsy), silently serving a *create* form
 // on what was meant to be an *edit* route.
@@ -161,6 +180,29 @@ export function OrderFormView({
     body.lens_product_id = picked.lensOd?.id ?? null;
     body.right_lens_product_id = picked.lensOs?.id ?? null;
 
+    /* The detail fields are collapsed while an item is picked, so they may not
+       be in the form at all — the order still has to carry what was chosen. */
+    const fill = (field, value) => {
+      if (!body[field] && value) body[field] = value;
+    };
+    if (picked.frame) {
+      fill('frame_name', stockLabel(picked.frame));
+      fill('frame_brand', picked.frame.brand);
+      fill('frame_model', picked.frame.model);
+      fill('frame_color', picked.frame.color);
+      fill('frame_size', picked.frame.size);
+      fill('frame_sku', picked.frame.sku);
+    }
+    const lens = picked.lensOd || picked.lensOs;
+    if (lens) {
+      fill('lens_name', stockLabel(lens));
+      fill('lens_brand', lens.brand);
+      fill('lens_design', lens.lens_design);
+      fill('lens_index', lens.lens_index);
+      fill('lens_coating', lens.coating);
+      fill('lens_tint', lens.tint);
+    }
+
     try {
       const saved = editing
         ? await api.put('/api/orders/' + id, body)
@@ -284,7 +326,7 @@ export function OrderFormView({
             onClear={() => setItems({ ...picked, frame: null })}
             selectedId={picked.frame?.id ?? null}
           />
-          <div style={{ marginTop: 10 }}>
+          <ItemDetails picked={picked.frame}>
             <FormGrid>
               <Field label="ชื่อกรอบ / Frame name">
                 <input
@@ -319,7 +361,7 @@ export function OrderFormView({
                 <input key={'fk' + (picked.frame?.id ?? '0')} name="frame_sku" defaultValue={picked.frame?.sku || o.frame_sku || ''} />
               </Field>
             </FormGrid>
-          </div>
+          </ItemDetails>
         </Card>
 
         <Card title="เลนส์ — Lens">
@@ -370,7 +412,7 @@ export function OrderFormView({
               </Field>
             </Fieldset>
           </Split>
-          <div style={{ marginTop: 10 }}>
+          <ItemDetails picked={picked.lensOd || picked.lensOs}>
             <FormGrid>
               <Field label="ชื่อเลนส์ / Lens name">
                 <input
@@ -399,7 +441,7 @@ export function OrderFormView({
                 <input name="lens_addons" defaultValue={o.lens_addons || ''} />
               </Field>
             </FormGrid>
-          </div>
+          </ItemDetails>
         </Card>
 
         <Card title="ราคา & ส่วนลด">
