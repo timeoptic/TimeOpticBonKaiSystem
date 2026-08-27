@@ -16,7 +16,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../../../../lib/apiClient.js';
 import { useToast } from '../../../../components/Toast.jsx';
 import {
-  Badge, Card, Field, Kv, Split, Stack,
+  Badge, Card, Field, Kv, Stack,
 } from '../../../../components/ui.jsx';
 import { EmployeeSelect } from '../../../../components/Selects.jsx';
 import { PhotoUpload } from '../../../../components/PhotoUpload.jsx';
@@ -56,11 +56,11 @@ function Measure({ label, unit, value, onChange, placeholder, hint, readOnly = f
   );
 }
 
-const Group = ({ title, children }) => (
-  <div className="measure-group">
-    <h4>{title}</h4>
-    <div className="measure-grid">{children}</div>
-  </div>
+const Group = ({ icon, title, cols = 0, children }) => (
+  <section className="measure-panel">
+    <h4><Icon name={icon} /> {title}</h4>
+    <div className={`measure-grid${cols ? ` cols-${cols}` : ''}`}>{children}</div>
+  </section>
 );
 
 export function CenteringPanel({ c, reload }) {
@@ -138,32 +138,38 @@ export function CenteringPanel({ c, reload }) {
   const note = form.center_point_note || '';
 
   return (
-    <Split>
+    <div className="split center-split">
       <Stack>
-        <Card title="ค่าการวัด Center Point">
-          <p className="hint">กรอกตามที่วัดจริง — มิลลิเมตร (Panto เป็นองศา)</p>
+        <Card>
+          <div className="ws-hero">
+            <span className="ws-hero-icon"><Icon name="target" /></span>
+            <div>
+              <h2>ค่าการวัด Center Point</h2>
+              <p>กรอกค่าการวัดจริง — มิลลิเมตร (Panto เป็นองศา)</p>
+            </div>
+          </div>
 
-          <Group title="ระยะรูม่านตา — PD">
+          <Group icon="users" title="PD" cols={3}>
             <Measure label="PD ขวา (OD)" unit="mm" value={form.r_pd} onChange={set('r_pd')} placeholder="31.0" />
             <Measure label="PD ซ้าย (OS)" unit="mm" value={form.l_pd} onChange={set('l_pd')} placeholder="31.0" />
             <Measure label="PD รวม" unit="mm" value={pdTotal} readOnly hint="ขวา + ซ้าย" />
           </Group>
 
-          <Group title="ความสูงจุดศูนย์ — Fitting Height">
+          <Group icon="eye" title="FH" cols={2}>
             <Measure label="FH ขวา (OD)" unit="mm" value={form.r_height} onChange={set('r_height')} placeholder="18.5" />
             <Measure label="FH ซ้าย (OS)" unit="mm" value={form.l_height} onChange={set('l_height')} placeholder="18.5" />
           </Group>
 
-          <Group title="ค่ากรอบ — Frame box">
-            <Measure label="A · กว้างเลนส์" unit="mm" value={fit.frame_box_a} onChange={setF('frame_box_a')} placeholder="52.0" />
-            <Measure label="B · สูงเลนส์" unit="mm" value={fit.frame_box_b} onChange={setF('frame_box_b')} placeholder="18.0" />
-            <Measure label="DBL · สะพานจมูก" unit="mm" value={fit.dbl} onChange={setF('dbl')} placeholder="18.0" />
-            <Measure label="ED · เส้นทแยงยาวสุด" unit="mm" value={fit.ed} onChange={setF('ed')} placeholder="60.0" />
+          <Group icon="glasses" title="FRAME BOX" cols={4}>
+            <Measure label="A" unit="mm" value={fit.frame_box_a} onChange={setF('frame_box_a')} placeholder="52.0" />
+            <Measure label="B" unit="mm" value={fit.frame_box_b} onChange={setF('frame_box_b')} placeholder="18.0" />
+            <Measure label="DBL" unit="mm" value={fit.dbl} onChange={setF('dbl')} placeholder="18.0" />
+            <Measure label="ED" unit="mm" value={fit.ed} onChange={setF('ed')} placeholder="60.0" />
           </Group>
 
-          <Group title="มุมและระยะสวมใส่">
-            <Measure label="CVD · ระยะกระจกตา" unit="mm" value={form.vertex_distance} onChange={set('vertex_distance')} placeholder="12.0" />
-            <Measure label="Panto · มุมเท" unit="°" value={form.pantoscopic_tilt} onChange={set('pantoscopic_tilt')} placeholder="8.0" />
+          <Group icon="tag" title="มุมและระยะสวมใส่" cols={2}>
+            <Measure label="CVD" unit="mm" value={form.vertex_distance} onChange={set('vertex_distance')} placeholder="12.0" />
+            <Measure label="Panto" unit="°" value={form.pantoscopic_tilt} onChange={set('pantoscopic_tilt')} placeholder="8.0" />
           </Group>
         </Card>
 
@@ -248,6 +254,6 @@ export function CenteringPanel({ c, reload }) {
           />
         </Card>
       </Stack>
-    </Split>
+    </div>
   );
 }

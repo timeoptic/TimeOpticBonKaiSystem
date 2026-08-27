@@ -1366,27 +1366,79 @@ table.doc td.lbl{background:var(--surface-alt);font-weight:700;text-align:left;w
 .picked-item .btn{padding:4px 10px}
 
 
-/* ---------------- ขั้นวัด Center: ช่องค่าการวัด ---------------- */
-.measure-group + .measure-group{margin-top:16px}
+/* ---------------- ขั้นวัด Center: ช่องค่าการวัด ----------------
+   ตัวเลขคือพระเอกของหน้านี้ ช่องกรอกจึงตัวใหญ่ พื้นอ่อน และมีหน่วยคั่นด้วยเส้น
+   อยู่ในกรอบเดียวกัน ตาอ่าน "18.5 | mm" เป็นก้อนเดียว */
+.ws-hero{display:flex;align-items:center;gap:14px;margin-bottom:16px}
 
-.measure-group h4{
-  margin:0 0 8px;font-size:12px;letter-spacing:.7px;text-transform:uppercase;
-  color:var(--ink-faint);font-weight:700;
+.ws-hero-icon{
+  width:52px;height:52px;flex:0 0 52px;border-radius:999px;display:flex;
+  align-items:center;justify-content:center;background:var(--accent);color:#fff;
+  box-shadow:0 6px 16px color-mix(in srgb, var(--accent) 35%, transparent);
 }
 
-.measure-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+@supports not (box-shadow:0 0 0 color-mix(in srgb, red 10%, transparent)){
+  .ws-hero-icon{box-shadow:var(--shadow)}
+}
 
-.measure{display:flex;flex-direction:column;gap:4px;min-width:0}
+.ws-hero-icon .ico{width:26px;height:26px}
 
-.measure > label{font-size:12.5px;color:var(--ink-soft);font-weight:600}
+.ws-hero h2{margin:0;font-size:20px;letter-spacing:.2px;color:var(--navy)}
 
-/* หน่วยอยู่ในกรอบเดียวกับตัวเลข ตาจึงอ่าน "18.5 mm" เป็นก้อนเดียว */
-.measure-input{position:relative;display:flex;align-items:center}
+.ws-hero p{margin:2px 0 0;font-size:13px;color:var(--ink-faint)}
+
+.measure-panel{
+  border:1px solid var(--line-soft);border-radius:var(--radius);
+  padding:14px 16px 16px;background:#fff;
+}
+
+.measure-panel + .measure-panel{margin-top:12px}
+
+.measure-panel h4{
+  margin:0 0 10px;display:flex;align-items:center;gap:8px;
+  font-size:14px;letter-spacing:.4px;color:var(--accent-deep);font-weight:700;
+}
+
+.measure-panel h4 .ico{width:20px;height:20px;color:var(--accent)}
+
+.measure-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(128px,1fr));gap:12px}
+
+/* หนึ่งกลุ่ม = หนึ่งแถวเหมือนใบวัดจริง จอแคบค่อยหักลงมาสองช่อง */
+.measure-grid.cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.measure-grid.cols-3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.measure-grid.cols-4{grid-template-columns:repeat(4,minmax(0,1fr))}
+
+@media (max-width:1180px){
+  .measure-grid.cols-3,.measure-grid.cols-4{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+
+/* ขั้นวัด Center: ฝั่งซ้ายเป็นตัวเลขล้วน ให้กว้างกว่าฝั่งขวาที่เป็นข้อมูลอ่าน
+   PD จึงเรียงได้ 3 ช่อง และ FRAME BOX ได้ 4 ช่องในแถวเดียวเหมือนใบวัดจริง */
+.split.center-split{grid-template-columns:minmax(340px,1.35fr) minmax(300px,1fr)}
+
+.measure{display:flex;flex-direction:column;gap:5px;min-width:0}
+
+.measure > label{font-size:13px;color:var(--ink-soft);font-weight:600}
+
+.measure-input{
+  display:flex;align-items:stretch;background:var(--surface-alt);
+  border:1px solid var(--line);border-radius:var(--radius-sm);overflow:hidden;
+  transition:border-color .12s,box-shadow .12s;
+}
+
+.measure-input:focus-within{
+  border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);background:#fff;
+}
 
 .measure-input input{
-  width:100%;padding-right:38px;font-size:16px;font-weight:600;
-  font-variant-numeric:tabular-nums;text-align:right;
+  flex:1;min-width:0;border:0;background:transparent;padding:10px 10px;
+  font-size:20px;font-weight:700;font-variant-numeric:tabular-nums;text-align:right;
+  color:var(--navy);
 }
+
+.measure-input input:focus{outline:none;box-shadow:none}
+
+.measure-input input::placeholder{font-weight:600;color:var(--ink-faint);opacity:.55}
 
 .measure-input input::-webkit-outer-spin-button,
 .measure-input input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
@@ -1394,15 +1446,15 @@ table.doc td.lbl{background:var(--surface-alt);font-weight:700;text-align:left;w
 .measure-input input[type=number]{-moz-appearance:textfield}
 
 .measure-unit{
-  position:absolute;right:12px;font-size:12px;color:var(--ink-faint);
-  pointer-events:none;font-weight:600;
+  display:flex;align-items:center;padding:0 11px;border-left:1px solid var(--line);
+  font-size:12.5px;color:var(--ink-faint);font-weight:600;pointer-events:none;
 }
 
 .measure-hint{font-size:11.5px;color:var(--ink-faint)}
 
-.measure.readonly .measure-input input{
-  background:var(--surface-alt);color:var(--ink-soft);border-style:dashed;cursor:default;
-}
+.measure.readonly .measure-input{border-style:dashed}
+
+.measure.readonly .measure-input input{color:var(--ink-soft);cursor:default}
 
 /* ---------------- ค่าที่ระบบแนะนำจากข้อมูลสินค้า ---------------- */
 .suggest{
