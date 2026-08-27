@@ -4,6 +4,8 @@ export const STAGE_META = {
   reception: { label: 'รับลูกค้า', color: '#7a5cc4', icon: '🛎' },
   exam: { label: 'วัดสายตา', color: '#2f6fd0', icon: '👁' },
   sales: { label: 'ขาย/เลือกกรอบ', color: '#0f8f8f', icon: '🛍' },
+  centering: { label: 'วัด Center', color: '#8a6d00', icon: '🎯' },
+  payment: { label: 'ชำระเงิน', color: '#0a7a3d', icon: '💳' },
   production: { label: 'ผลิต/เลนส์', color: '#c07000', icon: '🔧' },
   qc: { label: 'ตรวจ QC', color: '#b32020', icon: '🔍' },
   delivery: { label: 'ส่งมอบ', color: '#127a4a', icon: '📦' },
@@ -14,7 +16,8 @@ export const stageInfo = (g) =>
   STAGE_META[g] || { label: g || '-', color: '#6b7a90', icon: '•' };
 
 /** the board's columns, in workflow order */
-export const STAGE_GROUPS = ['reception', 'exam', 'sales', 'production', 'qc', 'delivery'];
+export const STAGE_GROUPS = ['reception', 'exam', 'sales', 'centering', 'payment',
+  'production', 'qc', 'delivery'];
 
 export const ACTION_LABEL = {
   case_opened: 'เปิดเคส',
@@ -37,6 +40,18 @@ export const ACTION_LABEL = {
   qc_pass: 'QC ผ่าน',
   qc_fail: 'QC ไม่ผ่าน',
   customer_notified: 'ติดต่อลูกค้า',
+  production_started: 'เริ่มผลิต',
+  production_withdraw_extra: 'เบิกสินค้าเพิ่ม',
+  production_paused: 'หยุดผลิต / รอสินค้า',
+  production_resumed: 'กลับมาผลิตต่อ',
+  delivered: 'ส่งมอบสินค้า',
+  payment_cancelled: 'ยกเลิกรายการรับเงิน',
+  photo_uploaded: 'แนบรูป/ไฟล์',
+  photo_deleted: 'ลบรูป/ไฟล์',
+  /* rows written by the old Node app, still in case_events */
+  advance: 'เลื่อนขั้นตอน',
+  edit: 'แก้ไขข้อมูลเคส',
+  open: 'เปิดเคส',
 };
 
 export const RX_KIND_LABEL = { old: 'ค่าเดิม', measured: 'ที่วัดได้', final: 'ที่ใช้จริง' };
