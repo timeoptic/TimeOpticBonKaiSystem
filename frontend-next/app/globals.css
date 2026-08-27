@@ -1552,6 +1552,17 @@ table.doc td.lbl{background:var(--surface-alt);font-weight:700;text-align:left;w
 
 .pay-choices{display:flex;flex-direction:column;gap:12px;min-width:0}
 
+/* จ่ายเท่านี้แล้วเหลือเท่าไหร่ — ตอบตรงใต้ช่องจำนวนเงิน ไม่ต้องคิดในใจ */
+.pay-after{margin-top:8px;font-size:12.5px;color:var(--ink-soft)}
+
+.pay-after b{color:var(--warn);font-variant-numeric:tabular-nums}
+
+.pay-after.clear b{color:var(--ok)}
+
+.pay-after.over{color:var(--danger)}
+
+.pay-after.over b{color:var(--danger)}
+
 .pay-actions{display:flex;justify-content:flex-end;margin-top:14px}
 
 /* กล่องแนบสลิป */

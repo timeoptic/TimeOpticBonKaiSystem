@@ -29,7 +29,7 @@ const KIND_LABEL = Object.fromEntries(KINDS);
 const KIND_BADGE = { deposit: 'blue', partial: 'warn', final: 'ok', full: 'ok' };
 
 const METHOD_ICON = {
-  Cash: 'banknote', Transfer: 'coins', QR: 'chart', Credit: 'card', Other: 'tag',
+  Cash: 'banknote', Transfer: 'coins', QR: 'chart', Credit: 'card', Other: 'moneyBag',
 };
 
 const SLIP_KIND = 'payment_slip';
@@ -70,6 +70,21 @@ export function PaymentPanel({ c, reload }) {
     form.append('payment_id', paymentId);
     form.append('kind', SLIP_KIND);
     await api.upload('/api/uploads', form);
+  };
+
+  /* "จ่ายบางส่วน" is only a useful word if the shop can see how much is left
+     after it — so the amount and what it leaves behind are shown together, and
+     the types that mean "all of it" fill the amount in themselves. */
+  const enteredAmount = Number(amount) || 0;
+  const afterThis = Math.max(0, left - enteredAmount);
+  const overpay = enteredAmount > left && left > 0;
+
+  const chooseKind = (v) => {
+    setKind(v);
+    if ((v === 'full' || v === 'final') && left > 0) setAmount(String(left));
+    if (v === 'deposit' || v === 'partial') {
+      if (!enteredAmount || enteredAmount === left) setAmount('');
+    }
   };
 
   const add = async (e) => {
@@ -177,6 +192,15 @@ export function PaymentPanel({ c, reload }) {
                   </button>
                 </Row>
               )}
+              <div className={`pay-after ${overpay ? 'over' : afterThis === 0 && enteredAmount > 0 ? 'clear' : ''}`}>
+                {enteredAmount > 0 ? (
+                  overpay
+                    ? <>รับ {money(enteredAmount)} — <b>เกินยอดคงเหลือ {money(enteredAmount - left)}</b></>
+                    : afterThis === 0
+                      ? <>รับ {money(enteredAmount)} — <b>ครบยอดพอดี</b></>
+                      : <>รับ {money(enteredAmount)} — เหลืออีก <b>{money(afterThis)}</b></>
+                ) : <>ยังไม่ได้ใส่จำนวน — คงเหลือ <b>{money(left)}</b></>}
+              </div>
             </div>
 
             <div className="pay-choices">
@@ -188,7 +212,7 @@ export function PaymentPanel({ c, reload }) {
                       type="button"
                       key={v}
                       className={`chip-btn ${kind === v ? 'active' : ''}`}
-                      onClick={() => setKind(v)}
+                      onClick={() => chooseKind(v)}
                     >
                       {label}
                     </button>
