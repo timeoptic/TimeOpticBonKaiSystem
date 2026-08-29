@@ -70,7 +70,7 @@ export function ReceptionPanel({ c, reload }) {
         rows={[
           ['ลูกค้า', <Link key="cust" href={'/customers/detail?id=' + c.customer_id}>{custName(c)}</Link>],
           ['โทร', c.phone || '—'],
-          ['LINE', c.line_id || '—'],
+          ['LINE / WhatsApp', c.line_id || '—'],
           ['วันเกิด', fmtDate(c.birth_date) || '—'],
           ['ตอนเปิดเคส', Number(c.is_new_customer) ? 'ลูกค้าใหม่' : 'ลูกค้าเก่า'],
         ]}

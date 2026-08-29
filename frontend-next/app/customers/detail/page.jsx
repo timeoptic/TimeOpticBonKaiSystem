@@ -70,7 +70,7 @@ function CustomerDetailInner() {
             ['สัญชาติ', c.nationality || '-'],
             ['วันเกิด', fmtDate(c.birth_date) || '-'],
             ['เบอร์โทร', c.phone || '-'],
-            ['LINE', c.line_id || '-'],
+            ['LINE / WhatsApp', c.line_id || '-'],
             ['อีเมล', c.email || '-'],
             ['หมายเหตุ', c.notes || '-'],
             ['ลูกค้าตั้งแต่', fmtDate(c.created_at)],

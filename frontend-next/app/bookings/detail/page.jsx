@@ -130,7 +130,7 @@ function BookingDetailInner() {
               ? <Link href={'/customers/detail?id=' + b.customer_id}>{bookingName(b)}</Link>
               : bookingName(b) + ' (ลูกค้าใหม่)'],
             ['เบอร์โทร', b.phone || '-'],
-            ['LINE', b.line_id || '-'],
+            ['LINE / WhatsApp', b.line_id || '-'],
             ['ผู้ดูแล', b.assigned_name || '-'],
             ['ผู้รับจอง', b.created_by_name || '-'],
             ['ยืนยันเมื่อ', fmtDateTime(b.confirmed_at) || '-'],

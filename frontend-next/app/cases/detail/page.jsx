@@ -150,7 +150,7 @@ function OverviewTab({ c, showTab }) {
             rows={[
               ['ชื่อ', custName(c)],
               ['โทร', c.phone || '—'],
-              ['LINE', c.line_id || '—'],
+              ['LINE / WhatsApp', c.line_id || '—'],
               ['อีเมล', c.email || '—'],
               ['วันเกิด', fmtDate(c.birth_date) || '—'],
             ]}

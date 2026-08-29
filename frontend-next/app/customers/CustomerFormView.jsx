@@ -87,8 +87,8 @@ export function CustomerFormView({ editing }) {
             <Field label="เบอร์โทร / Phone">
               <input name="phone" defaultValue={c.phone || ''} />
             </Field>
-            <Field label="LINE ID">
-              <input name="line_id" defaultValue={c.line_id || ''} />
+            <Field label="LINE ID / WhatsApp">
+              <input name="line_id" defaultValue={c.line_id || ''} placeholder="LINE ID หรือเบอร์ WhatsApp" />
             </Field>
             <Field label="อีเมล / Email">
               <input name="email" type="email" defaultValue={c.email || ''} />

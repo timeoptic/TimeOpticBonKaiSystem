@@ -57,7 +57,11 @@ function NewCustomerForm({ onCreated }) {
         <Field label="ชื่อ / First name"><input name="first_name" required /></Field>
         <Field label="นามสกุล / Last name"><input name="last_name" /></Field>
         <Field label="เบอร์โทร / Phone"><input name="phone" /></Field>
-        <Field label="LINE ID"><input name="line_id" /></Field>
+        {/* ช่องเดียวรับทั้งสองอย่าง — ลูกค้าต่างชาติทักมาทาง WhatsApp คนไทยทาง LINE
+            แต่ร้านติดต่อกลับช่องทางไหนก็ช่องทางเดียวต่อคน จึงไม่ต้องแยกคอลัมน์ */}
+        <Field label="LINE ID / WhatsApp">
+          <input name="line_id" placeholder="LINE ID หรือเบอร์ WhatsApp" />
+        </Field>
         <Field label="เพศ / Sex"><ListSelect name="sex" kind="sex" defaultValue="" blank="—" /></Field>
         <Field label="วันเกิด / Birth date"><input name="birth_date" type="date" /></Field>
         <Field label="สัญชาติ / Nationality"><input name="nationality" list="nat-list" /></Field>
@@ -177,7 +181,7 @@ function CaseFormInner() {
             <Kv
               rows={[
                 ['เบอร์โทร', customer.phone || '—'],
-                ['LINE', customer.line_id || '—'],
+                ['LINE / WhatsApp', customer.line_id || '—'],
                 ['วันเกิด', fmtDate(customer.birth_date) || '—'],
                 ['อีเมล', customer.email || '—'],
                 customer.notes ? ['หมายเหตุลูกค้า', customer.notes] : null,

@@ -34,7 +34,7 @@ function CustomerListInner() {
           <input
             type="search"
             autoFocus
-            placeholder="ค้นหา ชื่อ / นามสกุล / เบอร์โทร / LINE / อีเมล / รหัสลูกค้า"
+            placeholder="ค้นหา ชื่อ / นามสกุล / เบอร์โทร / LINE / WhatsApp / อีเมล / รหัสลูกค้า"
             value={term}
             onChange={(e) => setTerm(e.target.value)}
           />
@@ -53,7 +53,7 @@ function CustomerListInner() {
               { label: 'เพศ', key: 'sex' },
               { label: 'สัญชาติ', key: 'nationality' },
               { label: 'เบอร์โทร', key: 'phone', cls: 'nowrap' },
-              { label: 'LINE', key: 'line_id' },
+              { label: 'LINE / WhatsApp', key: 'line_id', cls: 'nowrap' },
               { label: 'อีเมล', key: 'email' },
               {
                 label: '',

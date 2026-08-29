@@ -128,7 +128,7 @@ export function BookingFormView({ editing }) {
               {freeText('first_name', 'ชื่อ')}
               {freeText('last_name', 'นามสกุล')}
               {freeText('phone', 'เบอร์โทร')}
-              {freeText('line_id', 'LINE ID')}
+              {freeText('line_id', 'LINE ID / WhatsApp')}
             </FormGrid>
           </div>
         </Card>
