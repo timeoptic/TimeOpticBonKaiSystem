@@ -405,10 +405,20 @@ final class Migrate
            แถวเดิมที่ยังชื่อ Other ไม่มีใครใช้ จึงเปลี่ยนเป็นถุงเงินได้โดยไม่กระทบข้อมูลเก่า */
         $added = array_merge(
             self::addColumns('custom_orders', [
+                /* ราคาขายของออเดอร์นี้ ไม่ใช่ราคาใน products — ตั้งแยกได้ทีละชิ้น
+                   lens_od_price = เลนส์ขวา (R) · lens_os_price = เลนส์ซ้าย (L)
+                   ชื่อคอลัมน์ยัง od/os ตาม schema เดิม ส่วนที่ผู้ใช้เห็นเป็น R/L */
                 'frame_price'    => 'decimal(10,2) NOT NULL DEFAULT 0',
                 'lens_od_price'  => 'decimal(10,2) NOT NULL DEFAULT 0',
                 'lens_os_price'  => 'decimal(10,2) NOT NULL DEFAULT 0',
                 'options_price'  => 'decimal(10,2) NOT NULL DEFAULT 0',
+                /* ชื่อกับ SKU ของเลนส์แยกข้าง — เดิมมี lens_name ใบเดียวใช้ร่วมกันทั้งสอง
+                   ตา ซึ่งบอกไม่ได้ว่าข้างไหนเป็นรุ่นอะไรเมื่อสั่งคนละรุ่น เก็บเป็น snapshot
+                   ตอนขาย ไม่ใช่ join ทีหลัง เพราะสินค้าใน master เปลี่ยนชื่อได้ */
+                'lens_r_name'    => 'varchar(200) DEFAULT NULL',
+                'lens_r_sku'     => 'varchar(80) DEFAULT NULL',
+                'lens_l_name'    => 'varchar(200) DEFAULT NULL',
+                'lens_l_sku'     => 'varchar(80) DEFAULT NULL',
             ]),
             self::addColumns('frame_fittings', [
                 'frame_box_a' => 'decimal(6,2) DEFAULT NULL',

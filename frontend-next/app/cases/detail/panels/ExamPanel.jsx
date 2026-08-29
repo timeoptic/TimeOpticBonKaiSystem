@@ -414,12 +414,14 @@ export function ExamPanel({ c, reload }) {
     return () => register({});
   }, [register]);
 
-  const compare = [
+  // คอลัมน์ = ค่าสายตาแต่ละช่อง, แถว = ที่มาของค่า อ่านเทียบ เก่า -> วัดได้ -> ที่ใช้จริง ได้ทีละบรรทัด
+  const compareCols = [
     ['R SPH', oldForm.r_sphere, form.r_sphere, shownFinal.r.sphere],
     ['R CYL', oldForm.r_cylinder, form.r_cylinder, shownFinal.r.cylinder],
     ['L SPH', oldForm.l_sphere, form.l_sphere, shownFinal.l.sphere],
     ['L CYL', oldForm.l_cylinder, form.l_cylinder, shownFinal.l.cylinder],
   ];
+  const compareRows = [['OLD GLASSES', 1], ['MEASURED', 2], ['FINAL', 3]];
 
   return (
     <fieldset className="exam-ws" disabled={confirmed}>
@@ -678,15 +680,20 @@ export function ExamPanel({ c, reload }) {
         <div className="rx-grid-wrap" style={{ marginTop: 12 }}>
           <table className="rx-grid compare">
             <thead>
-              <tr><th /><th>OLD GLASSES</th><th>MEASURED</th><th>FINAL</th></tr>
+              <tr>
+                <th />
+                {compareCols.map(([label]) => <th key={label}>{label}</th>)}
+              </tr>
             </thead>
             <tbody>
-              {compare.map(([label, o, m, f]) => (
+              {compareRows.map(([label, i]) => (
                 <tr key={label}>
                   <th scope="row">{label}</th>
-                  <td>{o || '—'}</td>
-                  <td>{m || '—'}</td>
-                  <td><b>{f || '—'}</b></td>
+                  {compareCols.map((col) => (
+                    <td key={col[0]}>
+                      {i === 3 ? <b>{col[i] || '—'}</b> : (col[i] || '—')}
+                    </td>
+                  ))}
                 </tr>
               ))}
             </tbody>

@@ -12,7 +12,8 @@ const ORDER_COLS = ['case_id', 'customer_id', 'employee_id', 'recorded_by',
     'lens_type', 'frame_product_id', 'frame_name', 'frame_brand', 'frame_model',
     'frame_color', 'frame_size', 'frame_sku', 'lens_product_id', 'right_lens_product_id',
     'lens_name', 'lens_brand', 'lens_design', 'lens_index', 'lens_coating', 'lens_tint',
-    'lens_addons', 'frame_price', 'lens_od_price', 'lens_os_price', 'options_price',
+    'lens_addons', 'lens_r_name', 'lens_r_sku', 'lens_l_name', 'lens_l_sku',
+    'frame_price', 'lens_od_price', 'lens_os_price', 'options_price',
     'total_price', 'discount', 'deposit', 'deposit_pay_type',
     'marketing', 'notes'];
 

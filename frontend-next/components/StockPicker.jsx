@@ -14,6 +14,7 @@
 import { useState } from 'react';
 import { Picker } from './Picker.jsx';
 import { Icon } from './Icon.jsx';
+import { NewProductModal } from './NewProductModal.jsx';
 import { api } from '../lib/apiClient.js';
 
 /** product_name usually already starts with the brand — don't say it twice */
@@ -38,6 +39,16 @@ const stockSub = (r) => [
 
 export function StockPicker({ type, onPick, selectedId = null, picked = null, onClear = null }) {
   const [open, setOpen] = useState(false);
+  const [adding, setAdding] = useState(false);
+  /* บังคับให้ Picker โหลดรายการใหม่หลังเพิ่มสินค้า ไม่งั้นของที่เพิ่งลงคลังจะไม่โผล่
+     จนกว่าจะพิมพ์ค้นหาใหม่ */
+  const [listNonce, setListNonce] = useState(0);
+
+  const afterCreate = (row) => {
+    setAdding(false);
+    setListNonce((v) => v + 1);
+    if (row) { setOpen(false); onPick(row); }
+  };
 
   if (picked && !open) {
     return (
@@ -57,6 +68,7 @@ export function StockPicker({ type, onPick, selectedId = null, picked = null, on
   return (
     <>
       <Picker
+        key={listNonce}
         placeholder={`ค้นหาสินค้า${type ? ' (' + type + ')' : ''} — ชื่อ / ยี่ห้อ / SKU`}
         fetcher={(term) => api.get('/api/stock', {
           q: term, type: type || undefined, sold: 0, group: 'product', limit: 30,
@@ -66,10 +78,25 @@ export function StockPicker({ type, onPick, selectedId = null, picked = null, on
         onPick={(r) => { setOpen(false); onPick(r); }}
         selectedId={selectedId}
       />
-      {picked && (
-        <button type="button" className="btn btn-sm btn-light" onClick={() => setOpen(false)}>
-          ยกเลิกการเปลี่ยน
+      <div className="pick-actions">
+        {/* ของที่เพิ่งมาถึงร้านยังไม่มีใครลงคลัง แต่ลูกค้ายืนรออยู่ — ลงตรงนี้ได้เลย
+            ไม่ต้องทิ้งออเดอร์ที่กรอกค้างไว้ไปเปิดหน้าสต็อก */}
+        <button type="button" className="btn btn-sm btn-light" onClick={() => setAdding(true)}>
+          <Icon name="sparkle" /> ไม่พบสินค้า? เพิ่มใหม่
         </button>
+        {picked && (
+          <button type="button" className="btn btn-sm btn-light" onClick={() => setOpen(false)}>
+            ยกเลิกการเปลี่ยน
+          </button>
+        )}
+      </div>
+
+      {adding && (
+        <NewProductModal
+          type={type || 'Frame'}
+          onClose={() => setAdding(false)}
+          onCreated={afterCreate}
+        />
       )}
     </>
   );

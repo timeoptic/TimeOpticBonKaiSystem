@@ -1317,6 +1317,29 @@ table.doc td.lbl{background:var(--surface-alt);font-weight:700;text-align:left;w
 .ws-inset{background:var(--surface-alt);border:1px solid var(--line-soft);
   border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:12px}
 
+/* ปุ่มใต้ช่องค้นหาสินค้า — "เพิ่มใหม่" กับ "ยกเลิกการเปลี่ยน" อยู่แถวเดียวกัน
+   และตกบรรทัดได้เองเมื่อคอลัมน์เลนส์แคบลง */
+.pick-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+
+/* ราคาขายของชิ้นที่เลือก — เด่นกว่าช่องอื่นเพราะเป็นช่องเดียวที่ต้องแตะทุกใบ
+   พื้นสีแบรนด์จาง ๆ บอกว่านี่คือตัวเลขของออเดอร์ ไม่ใช่ข้อมูลสินค้าที่ลอกมา */
+.sell-price{
+  display:grid;grid-template-columns:1fr auto;gap:4px 12px;align-items:center;
+  margin-top:10px;padding:10px 12px;border-radius:var(--radius-sm);
+  background:var(--accent-soft);
+}
+
+.sell-price label{font-size:13px;font-weight:700;color:var(--accent-deep)}
+
+.sell-price input{width:150px;text-align:right;font-size:15px;font-weight:600;background:#fff}
+
+.sell-price small{grid-column:1/-1;font-size:11.5px;color:var(--ink-soft)}
+
+@media (max-width:520px){
+  .sell-price{grid-template-columns:1fr}
+  .sell-price input{width:100%;text-align:left}
+}
+
 /* ---------------- ประวัติแว่นเดิม (หน้าขาย) ---------------- */
 .eh-list{display:flex;flex-direction:column;gap:16px}
 
@@ -1417,6 +1440,18 @@ table.doc td.lbl{background:var(--surface-alt);font-weight:700;text-align:left;w
 .rx-grid td span{font-variant-numeric:tabular-nums}
 
 .rx-grid.compare tbody th{background:none;font-weight:600}
+
+/* ตารางเทียบมีแต่ตัวเลข ไม่มีช่องกรอก จึงบีบให้พอดีจอโทรศัพท์ได้โดยไม่ต้องเลื่อนแนวนอน
+   หัวแถวเป็นชื่อชุดค่า สั้นกว่าหัวตารางกรอก ไม่ต้องกันที่ไว้ถึง 200px */
+.rx-grid.compare{min-width:0}
+.rx-grid.compare thead th:first-child{width:120px}
+
+@media (max-width:560px){
+  .rx-grid.compare thead th:first-child{width:96px}
+  .rx-grid.compare th,.rx-grid.compare td{padding:6px 4px}
+  .rx-grid.compare tbody th{font-size:12px;padding-left:6px}
+  .rx-grid.compare thead th{font-size:10.5px;letter-spacing:.3px}
+}
 
 .rx-grid.compare td{border-left:1px solid var(--line-soft)}
 

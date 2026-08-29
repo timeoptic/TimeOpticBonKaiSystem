@@ -43,6 +43,23 @@ const n = (v) => Number(v || 0);
  * picked — a customer's own frame — is the one case where someone has to fill
  * them in, and then the fields are the form.
  */
+/**
+ * ราคาขายของชิ้นนี้ในออเดอร์นี้ — อยู่นอก ItemDetails เสมอ
+ *
+ * ItemDetails พับรายละเอียดสินค้าเก็บไว้หลังปุ่ม "ดูรายละเอียด" ซึ่งถูกสำหรับ ยี่ห้อ/รุ่น/สี
+ * ที่อ่านทีเดียวก็พอ แต่ราคาขายคือสิ่งที่คนขายต้องแตะทุกใบ ซ่อนไว้แปลว่าต้องกดเปิดก่อน
+ * ทุกครั้ง หรือแย่กว่านั้นคือไม่รู้ว่ามีให้แก้แล้วปล่อยราคาตั้งต้นไป
+ */
+function SellingPrice({ label, value, onChange }) {
+  return (
+    <div className="sell-price">
+      <label>{label}</label>
+      <input type="number" step="1" min="0" value={value} onChange={onChange} />
+      <small>ราคาของออเดอร์นี้ ไม่กระทบราคาสินค้าในคลัง</small>
+    </div>
+  );
+}
+
 function ItemDetails({ picked, rows, children }) {
   const [open, setOpen] = useState(false);
   if (!picked) return <div style={{ marginTop: 10 }}>{children}</div>;
@@ -224,10 +241,15 @@ export function OrderFormView({
       fill('frame_size', picked.frame.size);
       fill('frame_sku', picked.frame.sku);
     }
-    /* The lens card has no detail fields at all — what the lens is, is what was
-       picked. Everything the order records about it comes from the item itself;
-       a lens still to be ordered from a supplier is described at the งานเลนส์
-       step, not here. */
+    /* ชื่อกับ SKU แยกข้าง — ออเดอร์ที่สองตาคนละรุ่นเคยเก็บได้แค่ชื่อเดียว
+       ช่องในฟอร์มชนะเสมอ (คนขายพิมพ์ทับได้) ถ้าไม่มีค่อยเอาชื่อของชิ้นที่เลือก */
+    fill('lens_r_name', picked.lensOd ? stockLabel(picked.lensOd) : '');
+    fill('lens_r_sku', picked.lensOd?.sku);
+    fill('lens_l_name', picked.lensOs ? stockLabel(picked.lensOs) : '');
+    fill('lens_l_sku', picked.lensOs?.sku);
+
+    /* lens_* ชุดเดิม (ชื่อรวม ยี่ห้อ index coating) ยังเขียนอยู่เพื่อไม่ให้หน้าอื่น
+       ที่อ่านฟิลด์เหล่านี้พังไป — ยึดข้างขวาเป็นตัวแทนเมื่อมีทั้งสองข้าง */
     const lens = picked.lensOd || picked.lensOs;
     if (lens) {
       body.lens_name = stockLabel(lens);
@@ -403,6 +425,11 @@ export function OrderFormView({
             onClear={() => setItems({ ...picked, frame: null })}
             selectedId={picked.frame?.id ?? null}
           />
+          <SellingPrice
+            label="ราคาขายกรอบ / Selling Price"
+            value={p.frame_price}
+            onChange={(e) => setP({ frame_price: e.target.value })}
+          />
           <ItemDetails
             picked={picked.frame}
             rows={[
@@ -426,15 +453,6 @@ export function OrderFormView({
                   placeholder="เช่น Coach 5191 / กรอบลูกค้า"
                 />
               </Field>
-              <Field label="ราคากรอบ">
-                <input
-                  type="number"
-                  step="1"
-                  min="0"
-                  value={p.frame_price}
-                  onChange={(e) => setP({ frame_price: e.target.value })}
-                />
-              </Field>
               <Field label="ยี่ห้อ / Brand">
                 <input key={'fb' + (picked.frame?.id ?? '0')} name="frame_brand" defaultValue={picked.frame?.brand || o.frame_brand || ''} />
               </Field>
@@ -455,26 +473,63 @@ export function OrderFormView({
         </Card>
 
         <Card title="เลนส์ — Lens">
-          <p className="hint">ถ้ายังต้องสั่งเลนส์จากซัพพลายเออร์ ให้ข้ามการเลือกสต็อกไปก่อน</p>
+          <p className="hint">
+            ถ้ายังต้องสั่งเลนส์จากซัพพลายเออร์ ให้ข้ามการเลือกสต็อกไปก่อน —
+            ราคาขายสองข้างตั้งแยกกันได้ ไม่บังคับให้เท่ากัน
+          </p>
           <Split>
-            <Fieldset legend="เลนส์ขวา (R)">
-              <StockPicker
-                type="Lens"
-                picked={picked.lensOd}
-                onPick={(r) => setPicked({ lensOd: r })}
-                onClear={() => setItems({ ...picked, lensOd: null })}
-                selectedId={picked.lensOd?.id ?? null}
-              />
-            </Fieldset>
-            <Fieldset legend="เลนส์ซ้าย (L)">
-              <StockPicker
-                type="Lens"
-                picked={picked.lensOs}
-                onPick={(r) => setPicked({ lensOs: r })}
-                onClear={() => setItems({ ...picked, lensOs: null })}
-                selectedId={picked.lensOs?.id ?? null}
-              />
-            </Fieldset>
+            {[
+              ['lensOd', 'r', 'เลนส์ขวา (R)', 'lens_od_price', 'lens_r_name', 'lens_r_sku', o.lens_r_name, o.lens_r_sku],
+              ['lensOs', 'l', 'เลนส์ซ้าย (L)', 'lens_os_price', 'lens_l_name', 'lens_l_sku', o.lens_l_name, o.lens_l_sku],
+            ].map(([slot, side, legend, priceKey, nameKey, skuKey, savedName, savedSku]) => {
+              const item = picked[slot];
+              return (
+                <Fieldset key={slot} legend={legend}>
+                  <StockPicker
+                    type="Lens"
+                    picked={item}
+                    onPick={(r) => setPicked({ [slot]: r })}
+                    onClear={() => setItems({ ...picked, [slot]: null })}
+                    selectedId={item?.id ?? null}
+                  />
+                  <SellingPrice
+                    label={`ราคาขาย${legend.replace(/ \(.\)$/, '')} / Selling Price (${side.toUpperCase()})`}
+                    value={p[priceKey]}
+                    onChange={(e) => setP({ [priceKey]: e.target.value })}
+                  />
+                  <ItemDetails
+                    picked={item}
+                    rows={[
+                      ['ชื่อเลนส์', item ? stockLabel(item) : '—'],
+                      ['ยี่ห้อ', item?.brand || '—'],
+                      ['ชนิด', item?.lens_design || '—'],
+                      ['Index', item?.lens_index || '—'],
+                      ['Coating', item?.coating || '—'],
+                      ['SKU', item?.sku || '—'],
+                      ['คงเหลือในคลัง', item?.remaining_qty != null ? `${item.remaining_qty} ชิ้น` : '—'],
+                    ]}
+                  >
+                    <FormGrid>
+                      <Field label={`ชื่อเลนส์ (${side.toUpperCase()})`}>
+                        <input
+                          key={`ln${side}${item?.id ?? '0'}`}
+                          name={nameKey}
+                          defaultValue={item ? stockLabel(item) : (savedName || '')}
+                          placeholder="เช่น Crizal Easy Pro 1.56"
+                        />
+                      </Field>
+                      <Field label={`SKU (${side.toUpperCase()})`}>
+                        <input
+                          key={`lk${side}${item?.id ?? '0'}`}
+                          name={skuKey}
+                          defaultValue={item?.sku || savedSku || ''}
+                        />
+                      </Field>
+                    </FormGrid>
+                  </ItemDetails>
+                </Fieldset>
+              );
+            })}
           </Split>
         </Card>
 
