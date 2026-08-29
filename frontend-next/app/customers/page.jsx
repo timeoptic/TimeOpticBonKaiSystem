@@ -59,11 +59,7 @@ function CustomerListInner() {
                 label: '',
                 cls: 'nowrap',
                 render: (r) => (
-                  <>
-                    <Link className="btn btn-sm btn-accent" href={`/cases/new?customer=${r.id}`}><Icon name="board" /> เปิดเคส</Link>
-                    {' '}
-                    <Link className="btn btn-sm btn-light" href={`/prescriptions/new?customer=${r.id}`}><Icon name="eye" /></Link>
-                  </>
+                  <Link className="btn btn-sm btn-accent" href={`/cases/new?customer=${r.id}`}><Icon name="board" /> เปิดเคส</Link>
                 ),
               },
             ]}

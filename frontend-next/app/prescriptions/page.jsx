@@ -22,11 +22,13 @@ function PrescriptionListInner() {
 
   return (
     <div>
+      {/* หน้านี้อ่านอย่างเดียว — ค่าสายตาเกิดและถูกแก้ในเคสของมันเอง ที่นี่ไว้ค้นย้อนหลัง
+          กดแถวแล้วไปที่เคสที่วัดใบนั้น ไม่ใช่ฟอร์มแก้ใบเดี่ยว ๆ */}
       <PageHead
         icon="👁"
         title="Prescriptions"
-        subtitle="ประวัติการวัดสายตา"
-        actions={<Link className="btn btn-ghost" href="/prescriptions/new">+ วัดสายตาใหม่</Link>}
+        subtitle="ประวัติการวัดสายตา — กดแถวเพื่อเปิดเคสที่วัดใบนั้น"
+        actions={<Link className="btn btn-ghost" href="/exam"><Icon name="eye" /> ขั้นวัดสายตา</Link>}
       />
 
       <Toolbar>
@@ -66,7 +68,10 @@ function PrescriptionListInner() {
               },
             ]}
             rows={rows}
-            onRowClick={(t) => router.push('/prescriptions/edit?id=' + t.id)}
+            /* ใบเก่าจากระบบเดิมบางใบไม่ผูกเคส — พาไปที่ลูกค้าแทน ดีกว่าคลิกแล้วไม่มีอะไรเกิด */
+            onRowClick={(t) => router.push(t.case_id
+              ? `/cases/detail?id=${t.case_id}&step=exam`
+              : `/customers/detail?id=${t.customer_id}`)}
             empty="ไม่พบข้อมูล"
           />
         </Card>

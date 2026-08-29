@@ -326,11 +326,9 @@ export function OrderFormView({
           {!caseId && contextCustomer && rxList.length === 0 && (
             <div className="stack">
               <span className="muted">ยังไม่มีผลวัดสายตาให้เลือก</span>
-              <Link
-                className="btn btn-sm btn-accent"
-                href={`/prescriptions/new?customer=${customerId}${caseId ? '&case=' + caseId : ''}`}
-              >
-                <Icon name="eye" /> วัดสายตาเลย
+              {/* วัดสายตาทำในเคส ไม่ใช่ใบลอย ๆ — ออเดอร์ที่ยังไม่มีเคสจึงต้องเปิดเคสก่อน */}
+              <Link className="btn btn-sm btn-accent" href={`/cases/new?customer=${customerId}`}>
+                <Icon name="board" /> เปิดเคสเพื่อวัดสายตา
               </Link>
             </div>
           )}

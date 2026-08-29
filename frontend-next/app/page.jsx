@@ -15,7 +15,7 @@ const TILES = [
   ['🗂', 'กระดานงาน', 'Case Board', '/cases'],
   ['➕', 'เปิดเคสใหม่', 'New Case', '/cases/new'],
   ['👥', 'ลูกค้าใหม่', 'New Customer', '/customers/new'],
-  ['👁', 'วัดสายตา', 'Prescription', '/prescriptions/new'],
+  ['👁', 'วัดสายตา', 'Eye Exam', '/exam'],
   ['👓', 'เปิดออเดอร์ตัดแว่น', 'Custom Order', '/orders/new'],
   ['📦', 'ส่งมอบ', 'Delivery', '/delivery'],
   ['🛍', 'ขายสินค้าทั่วไป', 'Product Sale', '/sales/new'],

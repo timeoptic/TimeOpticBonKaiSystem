@@ -54,8 +54,9 @@ function CustomerDetailInner() {
         subtitle={`รหัสลูกค้า #${c.id}`}
         actions={(
           <>
+            {/* ไม่มีปุ่ม "วัดสายตา" แยกแล้ว — การวัดสายตาเกิดในเคส (ขั้นที่ 2)
+                ไม่ใช่ใบลอย ๆ ที่ไม่ผูกกับงานไหน */}
             <Link className="btn btn-ghost" href={`/cases/new?customer=${c.id}`}><Icon name="board" /> เปิดเคส</Link>
-            <Link className="btn btn-ghost" href={`/prescriptions/new?customer=${c.id}`}><Icon name="eye" /> วัดสายตา</Link>
             <Link className="btn btn-ghost" href={`/orders/new?customer=${c.id}`}><Icon name="glasses" /> เปิดออเดอร์</Link>
             <Link className="btn btn-ghost" href={`/customers/edit?id=${c.id}`}><Icon name="pencil" /> แก้ไข</Link>
           </>

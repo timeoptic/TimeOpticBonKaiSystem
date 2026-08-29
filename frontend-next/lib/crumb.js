@@ -14,8 +14,6 @@ export const TITLES = [
   ['/customers/detail', 'รายละเอียดลูกค้า'],
   ['/customers/edit', 'แก้ไขลูกค้า'],
   ['/customers', 'ลูกค้า'],
-  ['/prescriptions/new', 'บันทึกการวัดสายตา'],
-  ['/prescriptions/edit', 'แก้ไขผลวัดสายตา'],
   ['/prescriptions', 'วัดสายตา'],
   ['/bookings/edit', 'แก้ไขการจองคิว'],
   ['/bookings/new', 'จองคิวใหม่'],

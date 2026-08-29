@@ -703,17 +703,18 @@ export function ExamPanel({ c, reload }) {
         )}
       </Section>
 
+      {/* ช่องเดียว — "บันทึกการตรวจ" กับ "หมายเหตุอื่น ๆ" เป็นคำถามเดียวกันถามสองครั้ง
+          คนกรอกต้องเดาทุกครั้งว่าอันไหนควรลงช่องไหน คอลัมน์ notes ยังอยู่และของเก่า
+          ยังอ่านออกที่ประวัติการตรวจ แค่ไม่มีที่พิมพ์ใหม่แล้ว */}
       <Section n="6" title="หมายเหตุ / Note">
-        <FormGrid two>
-          <Field label="บันทึกการตรวจ">
-            <textarea value={form.exam_note ?? ''} onChange={(e) => set('exam_note', e.target.value)} />
-          </Field>
-          <Field label="หมายเหตุอื่น ๆ">
-            <textarea value={form.notes ?? ''} onChange={(e) => set('notes', e.target.value)} />
-          </Field>
-        </FormGrid>
+        <Field label="บันทึกการตรวจ" className="full">
+          <textarea value={form.exam_note ?? ''} onChange={(e) => set('exam_note', e.target.value)} />
+        </Field>
       </Section>
 
+      {/* อ่านอย่างเดียว — แก้ค่าสายตาทำที่ข้างบนนี้เท่านั้น เคยมีปุ่ม "แก้ไขทั้งใบ" ที่พา
+          ไปฟอร์มแยกซึ่งเขียนทับทุกคอลัมน์ด้วยช่องที่มีไม่ครบ กดบันทึกเฉย ๆ ก็ล้าง
+          ค่าตาเปล่า ค่าแว่นเดิม และเหตุผลที่ปรับค่าทิ้งไป 25 คอลัมน์ */}
       {rows.length > 0 && (
         <Section n="7" title="ค่าสายตาที่บันทึกไว้ในรอบนี้">
           <div className="rx-history">
@@ -725,7 +726,6 @@ export function ExamPanel({ c, reload }) {
                 </b>
                 <span>{`R ${power(r.r_sphere)} / ${power(r.r_cylinder)} x ${r.r_axis || '—'}`}</span>
                 <span>{`L ${power(r.l_sphere)} / ${power(r.l_cylinder)} x ${r.l_axis || '—'}`}</span>
-                <Link className="btn btn-sm btn-light" href={'/prescriptions/edit?id=' + r.id}><Icon name="pencil" /> แก้ไขทั้งใบ</Link>
               </div>
             ))}
           </div>
