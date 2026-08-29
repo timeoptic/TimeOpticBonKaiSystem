@@ -5,6 +5,10 @@
  * columns: [{ label, key?, render?(row, i), cls?, }]
  * A row click is ignored when it lands on a control, so buttons inside cells
  * keep working.
+ *
+ * `className` and `rowClass` exist for screens that colour rows by state (the
+ * production board's left status stripe). Both are optional — leaving them out
+ * renders exactly the table every other screen already gets.
  */
 import { Empty } from './ui.jsx';
 
@@ -15,12 +19,14 @@ export function DataTable({
   empty = 'ไม่มีข้อมูล',
   footer = null,
   rowKey = (row, i) => row?.id ?? i,
+  className = '',
+  rowClass = null,
 }) {
   if (!rows || !rows.length) return <Empty>{empty}</Empty>;
 
   return (
     <div className="table-wrap">
-      <table className="grid">
+      <table className={`grid ${className}`.trim()}>
         <thead>
           <tr>
             {columns.map((c, i) => (
@@ -32,7 +38,7 @@ export function DataTable({
           {rows.map((row, i) => (
             <tr
               key={rowKey(row, i)}
-              className={onRowClick ? 'clickable' : ''}
+              className={`${onRowClick ? 'clickable' : ''} ${rowClass ? rowClass(row, i) : ''}`.trim()}
               onClick={(e) => {
                 if (!onRowClick) return;
                 if (e.target.closest('a,button,input,select,textarea')) return;

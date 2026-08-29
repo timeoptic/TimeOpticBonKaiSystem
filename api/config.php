@@ -46,13 +46,18 @@ return [
         'bot_token' => env('TELEGRAM_BOT_TOKEN'),
         'chat_id'   => env('TELEGRAM_CHAT_ID'),
     ],
-    // origins allowed to call the API (the Vite and Next.js dev servers)
-    'cors_origins' => [
+    // origins allowed to call the API (Next.js dev server)
+    // เครื่องอื่นในวง LAN (iPad/มือถือ) เข้ามาด้วย origin เป็นเลข IP ของเครื่องนี้
+    // ซึ่งเปลี่ยนได้ตาม DHCP จึงเติมเพิ่มจาก .env ได้ที่ CORS_ORIGINS (คั่นด้วย ,)
+    'cors_origins' => array_values(array_filter(array_merge(
+        array_map('trim', explode(',', (string) env('CORS_ORIGINS', ''))),
+        [
         'http://localhost:5173',
         'http://127.0.0.1:5173',
         'http://localhost:3000',
         'http://127.0.0.1:3000',
         'http://localhost:3005',
         'http://127.0.0.1:3005',
-    ],
+        ]
+    ))),
 ];

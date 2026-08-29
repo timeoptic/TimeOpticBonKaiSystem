@@ -4,9 +4,9 @@ import { Fragment, useState } from 'react';
 import Link from 'next/link';
 import { Icon } from './Icon.jsx';
 
-export function PageHead({ icon, title, subtitle, actions = null }) {
+export function PageHead({ icon, title, subtitle, actions = null, className = '' }) {
   return (
-    <div className="page-head">
+    <div className={`page-head ${className}`.trim()}>
       <div className="ph-icon"><Icon name={icon} /></div>
       <h1>{title}{subtitle ? <span>{subtitle}</span> : null}</h1>
       {actions ? <div className="ph-actions">{actions}</div> : null}

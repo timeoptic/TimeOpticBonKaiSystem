@@ -8,9 +8,20 @@ export const metadata = {
   },
 };
 
+// จอโทรศัพท์ที่มีติ่ง/ขอบโค้ง: ให้หน้าเว็บกินเต็มจอ แล้วค่อยเว้นระยะปลอดภัย
+// ด้วย env(safe-area-inset-*) ใน globals.css เอง
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+};
+
 export default function RootLayout({ children }) {
   return (
-    <html lang="th">
+    // ส่วนขยายเบราว์เซอร์ (เช่น Scribe recorder) แปะ attribute ของตัวเองลงบน <html>
+    // ก่อน React hydrate — ทำให้ dev overlay ขึ้น hydration mismatch ทั้งที่โค้ดเราไม่ได้ผิด
+    // suppressHydrationWarning ที่นี่กันแค่ attribute ของแท็กนี้แท็กเดียว ไม่ได้ปิดทั้งหน้า
+    <html lang="th" suppressHydrationWarning>
       <body>
         <Providers>{children}</Providers>
       </body>

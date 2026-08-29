@@ -5,6 +5,11 @@
  * from whether a path param was present (react-router's `!!useParams().id`). The two
  * callers — app/bookings/new/page.jsx and app/bookings/edit/page.jsx — each pass the
  * right value; this component itself reads `id` from the query string only when editing.
+ *
+ * 28/08/2026 ตัดช่องที่หน้าร้านไม่ได้กรอกจริงออก: ใช้เวลาประมาณ, ผู้รับจอง,
+ * บันทึกเบื้องต้น และการ์ดคำถามเบื้องต้น ส่วน "แจ้งเตือนล่วงหน้า" ย้ายไปตั้งครั้งเดียว
+ * ที่หน้า ตั้งค่า/แจ้งเตือน (reminder_default_minutes) แล้วฝั่ง API หยิบไปใช้เอง
+ * — ค่าเดิมของคิวที่บันทึกไว้แล้วไม่ถูกแตะ เพราะ PUT ส่งเฉพาะช่องที่ยังอยู่ในฟอร์ม
  */
 import { useState } from 'react';
 import Link from 'next/link';
@@ -14,7 +19,7 @@ import { useAsync, readForm } from '../../lib/hooks.js';
 import { useBookingLabels } from '../../contexts/MetaContext.jsx';
 import { useToast } from '../../components/Toast.jsx';
 import {
-  Card, Field, FormActions, FormGrid, Loading, PageHead, Row, Split, Stack,
+  Card, Field, FormActions, FormGrid, Loading, PageHead, Row, Split,
 } from '../../components/ui.jsx';
 import { Picker } from '../../components/Picker.jsx';
 import { EmployeeSelect, Select } from '../../components/Selects.jsx';
@@ -28,7 +33,7 @@ export function BookingFormView({ editing }) {
   const router = useRouter();
   const params = useSearchParams();
   const { ok, err } = useToast();
-  const { serviceTypes, channels, intakeQuestions } = useBookingLabels();
+  const { serviceTypes, channels } = useBookingLabels();
 
   const id = editing ? params.get('id') : null;
   const queryCustomer = params.get('customer');
@@ -47,7 +52,6 @@ export function BookingFormView({ editing }) {
 
   /* undefined = untouched, null = explicitly cleared */
   const [override, setOverride] = useState(undefined);
-  const [answers, setAnswers] = useState({});
 
   if (editing && !id) {
     return <Card><h2>ไม่พบรหัสการจอง</h2><p className="muted">ไม่มี id ของการจองที่จะแก้ไข</p></Card>;
@@ -61,7 +65,6 @@ export function BookingFormView({ editing }) {
   const save = async (e) => {
     e.preventDefault();
     const body = { ...readForm(e.currentTarget), customer_id: customer ? customer.id : null };
-    for (const k of Object.keys(body)) if (k.startsWith('q_')) delete body[k];
 
     // a linked customer owns the name fields; don't duplicate them on the booking
     if (customer) {
@@ -70,13 +73,6 @@ export function BookingFormView({ editing }) {
       body.phone = null;
       body.line_id = null;
     }
-    if (!editing) {
-      body.step_notes = intakeQuestions
-        .map((q, i) => ({ question: q, note: (answers[i] || '').trim() }))
-        .filter((x) => x.note)
-        .map((x) => ({ step: 'intake', question: x.question, note: x.note }));
-    }
-
     try {
       const saved = editing
         ? await api.put('/api/bookings/' + b.id, body)
@@ -152,9 +148,6 @@ export function BookingFormView({ editing }) {
             <Field label="เวลา *">
               <input name="booking_time" type="time" required defaultValue={hhmm(b.booking_time) || '10:00'} />
             </Field>
-            <Field label="ใช้เวลาประมาณ (นาที)">
-              <input name="duration_min" type="number" min="5" step="5" defaultValue={b.duration_min ?? 30} />
-            </Field>
             <Field label="บริการที่ต้องการ">
               <Select name="service_type" options={serviceTypes} defaultValue={b.service_type || 'eye_exam'} />
             </Field>
@@ -164,53 +157,12 @@ export function BookingFormView({ editing }) {
             <Field label="พนักงานผู้ดูแล">
               <EmployeeSelect name="assigned_to" defaultValue={b.assigned_to || ''} />
             </Field>
-            <Field
-              label="แจ้งเตือนล่วงหน้า (นาที)"
-              hint="ส่งเข้า Telegram ก่อนถึงคิว · ใส่ 0 = ไม่แจ้ง"
-            >
-              <input
-                name="reminder_minutes"
-                type="number"
-                min="0"
-                max="1440"
-                defaultValue={b.reminder_minutes ?? 10}
-              />
-            </Field>
-            <Field label="ผู้รับจอง">
-              <EmployeeSelect name="created_by" defaultValue={b.created_by || ''} />
-            </Field>
           </FormGrid>
 
-          <Field label="บันทึกเบื้องต้น / Intake note" className="full">
-            <textarea
-              name="intake_note"
-              defaultValue={b.intake_note || ''}
-              placeholder="ลูกค้าโทรมาเรื่องอะไร มีอาการอย่างไร ต้องการอะไรเป็นพิเศษ"
-            />
-          </Field>
           <Field label="หมายเหตุอื่น ๆ" className="full">
             <textarea name="notes" defaultValue={b.notes || ''} />
           </Field>
         </Card>
-
-        {!editing && (
-          <Card title="คำถามเบื้องต้นตอนรับจอง (กรอกเท่าที่ถามได้)">
-            <Stack>
-              {intakeQuestions.map((q, i) => (
-                <Field key={q} label={q}>
-                  <input
-                    placeholder="คำตอบ…"
-                    value={answers[i] || ''}
-                    onChange={(e) => setAnswers({ ...answers, [i]: e.target.value })}
-                  />
-                </Field>
-              ))}
-            </Stack>
-            <p className="hint">
-              ข้อมูลนี้จะถูกส่งไปกับการแจ้งเตือน Telegram และคัดลอกเข้าเคสอัตโนมัติเมื่อลูกค้ามาถึง
-            </p>
-          </Card>
-        )}
 
         <FormActions>
           <button className="btn btn-lg" type="submit">

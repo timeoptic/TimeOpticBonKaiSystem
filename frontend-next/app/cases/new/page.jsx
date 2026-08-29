@@ -22,11 +22,11 @@ import { api } from '../../../lib/apiClient.js';
 import { useAsync, readForm } from '../../../lib/hooks.js';
 import { useToast } from '../../../components/Toast.jsx';
 import {
-  Badge, Card, Check, Field, FormActions, FormGrid, Kv, Loading, PageHead, Row,
+  Badge, Card, Field, FormActions, FormGrid, Kv, Loading, PageHead, Row,
 } from '../../../components/ui.jsx';
 import { QueryParamPage } from '../../../components/QueryParamPage.jsx';
 import { Picker } from '../../../components/Picker.jsx';
-import { EmployeeSelect, ListSelect, StatusSelect } from '../../../components/Selects.jsx';
+import { EmployeeSelect, ListSelect } from '../../../components/Selects.jsx';
 import { NATIONALITIES } from '../../../lib/constants.js';
 import { custName, fmtDate } from '../../../lib/format.js';
 import { Icon } from '../../../components/Icon.jsx';
@@ -205,13 +205,12 @@ function CaseFormInner() {
                 <input name="referral_note" placeholder="เช่น ป้ายหน้าห้าง, งานอีเวนต์" />
               </Field>
             )}
-            <Field label="สถานะเริ่มต้น">
-              <StatusSelect name="status" openOnly defaultValue="reception" />
-            </Field>
-            <Field label="ความเร่งด่วน">
-              <Check name="is_rush"><Icon name="flame" /> งานด่วน</Check>
-            </Field>
-            <Field label="หมายเหตุความเร่งด่วน"><input name="priority_note" /></Field>
+            {/* เคสใหม่เริ่มที่ "02 รับลูกค้า / ลงข้อมูล" เสมอ (ค่า default ของ POST /api/cases)
+                ของเดิมให้เลือกได้ 30 สถานะ แต่ในทางปฏิบัติไม่มีใครเลือกอย่างอื่น
+                จะข้ามขั้นก็กดเลื่อนที่แถบขั้นตอนของเคสนั้นได้อยู่แล้ว
+
+                ความเร่งด่วนก็ไม่ต้องถามตอนเปิดเคส — ติ๊ก "งานด่วน" ได้ทีหลัง
+                ที่ขั้น รับลูกค้า ของเคสนั้น (ReceptionPanel) ซึ่งเขียนลง is_rush ตัวเดียวกัน */}
           </FormGrid>
 
           <Field label="หมายเหตุ / Note" className="full" hint="ความต้องการของลูกค้า อาการที่แจ้ง รายละเอียดนัดหมายหรือโครงการ ข้อมูลที่ต้องส่งต่อขั้นถัดไป">

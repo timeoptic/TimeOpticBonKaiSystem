@@ -26,7 +26,10 @@ function bookingVals(array $b): array
         } elseif ($c === 'duration_min') {
             $out[] = max(5, int_or($b['duration_min'] ?? null, 30) ?? 30);
         } elseif ($c === 'reminder_minutes') {
-            $n = int_or($b['reminder_minutes'] ?? null, 10) ?? 10;
+            /* หน้าจองคิวไม่ถามทีละใบแล้ว — ไม่ส่งมาก็ใช้ค่าที่ตั้งไว้ในหน้า ตั้งค่า
+               (reminder_default_minutes) ปรับที่เดียวมีผลกับคิวที่จองหลังจากนั้นทั้งหมด */
+            $fallback = int_or(Telegram::settings()['reminder_default_minutes'] ?? null, 10) ?? 10;
+            $n = int_or($b['reminder_minutes'] ?? null, $fallback) ?? $fallback;
             $out[] = $n < 0 ? 0 : min($n, 1440);
         } elseif ($c === 'booking_time') {
             $t = str_or($b['booking_time'] ?? null);
@@ -227,9 +230,12 @@ PUT('/api/bookings/:id', function (array $req) {
     $set   = implode(',', array_map(fn($c) => "$c=?", BOOKING_COLS));
     $extra = $moved ? ', reminder_sent_at = NULL' : '';
 
+    /* แก้ไขคิว = อัปเดตเฉพาะช่องที่ฟอร์มส่งมา ช่องที่ไม่ได้ส่ง (เช่น บันทึกเบื้องต้น
+       ที่ตัดออกจากฟอร์มไปแล้ว) ต้องคงค่าเดิมไว้ ไม่ใช่ถูกเขียนทับด้วยค่า default
+       — union ฝั่งซ้ายชนะ: คีย์ที่มีใน $body ใช้ของ $body ที่เหลือหยิบจากแถวเดิม */
     Db::run(
         "UPDATE bookings SET $set $extra WHERE id = ?",
-        ...[...bookingVals($body), $id]
+        ...[...bookingVals($body + $cur), $id]
     );
     return bookingDetail($id);
 });
