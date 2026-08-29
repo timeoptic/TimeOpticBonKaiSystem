@@ -360,9 +360,13 @@ textarea{resize:vertical;min-height:74px}
 
 /* กลุ่มย่อยในฟอร์มเป็นพื้นเทาอ่อนเป็นก้อน ไม่ใช่กล่องตีเส้น — เส้นขอบทุกชั้น
    ทำให้ฟอร์มที่ซ้อนสองชั้นดูเหมือนตาราง มากกว่าดูเหมือนของที่จัดกลุ่มไว้ */
+/* min-width:0 ไม่ใช่ของประดับ — เบราว์เซอร์ตั้ง min-inline-size:min-content ให้
+   fieldset จาก UA stylesheet ซึ่ง min-width:auto ตามปกติ override ไม่ได้ ผลคือ
+   fieldset ที่เป็นลูกของ grid หดต่ำกว่าความกว้างเนื้อหาไม่ได้เลย แล้วล้นออกไป
+   ทับคอลัมน์ข้าง ๆ (หน้าออเดอร์: กรอบเลนส์ขวา/ซ้ายทับกัน 221px ที่จอ iPad) */
 fieldset{
   border:1px solid transparent;border-radius:var(--radius);background:var(--panel);
-  padding:14px 16px 16px;margin:0 0 16px;
+  padding:14px 16px 16px;margin:0 0 16px;min-width:0;
 }
 
 legend{font-size:12px;font-weight:700;color:var(--accent-deep);letter-spacing:.3px;padding:0 6px}
