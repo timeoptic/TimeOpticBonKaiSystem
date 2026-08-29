@@ -15,7 +15,6 @@ import { useState } from 'react';
 import { Picker } from './Picker.jsx';
 import { Icon } from './Icon.jsx';
 import { api } from '../lib/apiClient.js';
-import { money } from '../lib/format.js';
 
 /** product_name usually already starts with the brand — don't say it twice */
 export const stockLabel = (r) => {
@@ -24,8 +23,13 @@ export const stockLabel = (r) => {
   return brand && !name.toLowerCase().startsWith(brand.toLowerCase()) ? `${brand} ${name}` : name;
 };
 
+/**
+ * ตอนเลือกสินค้า คำถามคือ "ชิ้นนี้ใช่ไหม และยังมีของไหม" ไม่ใช่ "ชิ้นนี้เท่าไหร่" —
+ * ราคาที่ลูกค้าจ่ายจริงคนขายเป็นคนตั้งในออเดอร์ ราคาต้นทางเป็นแค่ค่าตั้งต้นที่
+ * OrderFormView เติมให้ในช่องราคาเมื่อเลือกแล้ว (ดู setP ที่ pickInto)
+ * เอาตัวเลขราคาออกจากบรรทัดนี้ยังทำให้ชื่อสินค้ากับ SKU ไม่โดนตัดทิ้งบนจอแคบด้วย
+ */
 const stockSub = (r) => [
-  money(r.product_price),
   Number(r.remaining_qty) ? `เหลือ ${r.remaining_qty} ชิ้น` : 'หมดสต็อก',
   Number(r.lot_count) > 1 ? `${r.lot_count} ล็อต` : null,
   r.sku ? 'SKU ' + r.sku : null,
