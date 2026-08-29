@@ -107,11 +107,11 @@ final class Lookups
             ['contact_lens', 'ค่าจากคอนแทคเลนส์เดิม'],
             ['other', 'อื่น ๆ'],
         ];
-        $out['old_glasses_type'] = [
-            ['single', 'Single Lens — ชั้นเดียว'],
-            ['bifocal', 'Bi-Focal — สองชั้น'],
-            ['progressive', 'Progressive — โปรเกรสซีฟ'],
-        ];
+        /* แว่นเดิมเป็นแบบไหน ใช้รายการเดียวกับ "ใช้สำหรับ / Test For" — มันคือคำถาม
+           เดียวกันคนละเวลา (คู่เก่าถูกสั่งไว้ใช้ทำอะไร กับคู่ใหม่จะสั่งไว้ใช้ทำอะไร)
+           สองรายการที่ต่างกันทำให้เทียบคู่เก่ากับคู่ใหม่ไม่ได้ ทั้งที่นั่นคือเหตุผล
+           เดียวที่บันทึกของเดิมไว้ */
+        $out['old_glasses_type'] = $out['test_for'];
         $out['payment_kind'] = ['deposit', 'partial', 'final', 'full'];
         $out['lens_source']  = ['stock', 'order'];
         return $out;

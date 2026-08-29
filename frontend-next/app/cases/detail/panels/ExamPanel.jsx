@@ -555,7 +555,7 @@ export function ExamPanel({ c, reload }) {
                   kind="old_glasses_type"
                   value={oldForm.old_glasses_type ?? ''}
                   onChange={(e) => setOld('old_glasses_type', e.target.value)}
-                  blank="—"
+                  blank="— เลือกแบบแว่นเดิม —"
                 />
               </Field>
             </FormGrid>
