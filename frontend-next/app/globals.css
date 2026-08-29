@@ -306,6 +306,13 @@ table.grid tfoot td{font-weight:700;background:var(--surface-alt);border-top:2px
 
 .form-grid.two{grid-template-columns:repeat(auto-fill,minmax(320px,1fr))}
 
+/* สี่ช่องบนของ "ข้อมูลการเปิดเคส" — จำนวนช่องรู้แน่ว่าสี่ จึงล็อกคอลัมน์ไว้
+   4 / 2 / 1 ให้เต็มแถวพอดีทุกขนาด แทนที่จะให้ auto-fill คิดจากความกว้าง
+   ซึ่งได้ 3 คอลัมน์แล้วเหลือช่องว่างค้างไว้หนึ่งช่อง */
+.form-grid.intake{grid-template-columns:repeat(4,minmax(0,1fr))}
+@media (max-width:1200px){.form-grid.intake{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:640px){.form-grid.intake{grid-template-columns:1fr}}
+
 .field{display:flex;flex-direction:column;gap:5px;min-width:0}
 
 .field.span2{grid-column:span 2}

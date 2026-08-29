@@ -68,8 +68,8 @@ export const Row = ({ children, style }) => <div className="row" style={style}>{
 export const Toolbar = ({ children, className = '' }) => (
   <div className={`toolbar ${className}`}>{children}</div>
 );
-export const FormGrid = ({ children, two = false }) => (
-  <div className={`form-grid ${two ? 'two' : ''}`}>{children}</div>
+export const FormGrid = ({ children, two = false, className = '' }) => (
+  <div className={`form-grid ${two ? 'two' : ''} ${className}`}>{children}</div>
 );
 export const FormActions = ({ children, style }) => (
   <div className="form-actions" style={style}>{children}</div>

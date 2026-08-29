@@ -10,7 +10,8 @@
  *                          ซ่อม / ตรวจสายตา. About the work, not the person.
  *   ประเภทลูกค้า             which book of work this belongs to: Sight First or the
  *                          shop's own customers. This is what splits the board.
- *   รู้จักเราจากช่องทางไหน   how they found the shop, plus a free-text detail.
+ *   รู้จักเราจากช่องทางไหน   how they found the shop. One pick, no follow-up box:
+ *                          เลือก "อื่นๆ" แล้วจบ ไม่ต้องอธิบายต่อ
  *
  * ประเภทงาน กับ ประเภทลูกค้า เคยเป็นช่องเดียวกัน ซึ่งแปลว่าเคส SIGHTFIRST หนึ่งใบ
  * บอกไม่ได้เลยว่าเป็นงานตัดแว่นใหม่หรือเปลี่ยนเลนส์ เพราะช่องถูกใช้ไปตอบอีกคำถามแล้ว
@@ -31,7 +32,7 @@ import {
 import { QueryParamPage } from '../../../components/QueryParamPage.jsx';
 import { Picker } from '../../../components/Picker.jsx';
 import { EmployeeSelect, ListSelect } from '../../../components/Selects.jsx';
-import { NATIONALITIES, SOURCE_DETAIL_HINT } from '../../../lib/constants.js';
+import { NATIONALITIES } from '../../../lib/constants.js';
 import { custName, fmtDate } from '../../../lib/format.js';
 import { Icon } from '../../../components/Icon.jsx';
 
@@ -89,7 +90,6 @@ function CaseFormInner() {
   const [mode, setMode] = useState(queryCustomer ? 'existing' : null);
   const [picked, setPicked] = useState(null);
   const [created, setCreated] = useState(null);
-  const [channel, setChannel] = useState('');
   const [busy, setBusy] = useState(false);
 
   if (loading) return <Loading />;
@@ -110,8 +110,8 @@ function CaseFormInner() {
     setBusy(true);
     try {
       const body = readForm(e.currentTarget);
-      /* รายละเอียดช่องทางเก็บเสมอไม่ว่าจะเลือกช่องทางไหน — ของเดิมทิ้งทุกอย่างที่ไม่ใช่
-         "อื่น ๆ" ซึ่งแปลว่า "Facebook Ads" ที่พนักงานพิมพ์ไว้หายไปเงียบ ๆ */
+      /* ฟอร์มนี้ไม่ส่ง referral_note มาแล้ว เคสใหม่จึงเปิดมาโดยช่องนั้นว่าง
+         ตั้งใจให้เป็นแบบนั้น — จะกรอกก็ไปกรอกที่ขั้นรับลูกค้าของเคส */
       const saved = await api.post('/api/cases', {
         ...body,
         customer_id: customer.id,
@@ -189,11 +189,9 @@ function CaseFormInner() {
 
       <form onSubmit={save}>
         <Card title="2. ข้อมูลการเปิดเคส">
-          {/* กริดเดียวไหลเอง ไม่ใช้ span — `.field.span2` ไม่มี override ที่จอแคบ
-              พอคอลัมน์เหลือ 2 หรือ 1 มันจะไปสร้างคอลัมน์ที่สามขึ้นมาแล้วล้นจอ
-              ที่ 1440 ได้ 3 คอลัมน์: ผู้รับ · ประเภทงาน · ประเภทลูกค้า แล้วขึ้นบรรทัดใหม่
-              เป็น ช่องทาง · รายละเอียด ซึ่งเป็นการจับกลุ่มที่ต้องการพอดี */}
-          <FormGrid two>
+          {/* สี่ช่องพอดีสี่คอลัมน์ — ล็อกไว้ที่ 4 / 2 / 1 แทนที่จะปล่อย auto-fill คิดเอง
+              เพราะความกว้างจริงของการ์ดให้ 3 คอลัมน์ ซึ่งทิ้งช่องว่างค้างไว้หนึ่งช่อง */}
+          <FormGrid className="intake">
             <Field label="พนักงานผู้รับเรื่อง" hint="ผู้รับลูกค้าในเคสนี้ ตรวจย้อนหลังได้จากไทม์ไลน์">
               <EmployeeSelect name="received_by" defaultValue="" />
             </Field>
@@ -208,19 +206,15 @@ function CaseFormInner() {
                 blank="— เลือกประเภทลูกค้า —"
               />
             </Field>
-            <Field label="รู้จักเราจากช่องทางไหน / Customer Source" hint="ช่องทางหลัก">
+            {/* เลือก "อื่นๆ" แล้วจบตรงนั้น ไม่มีช่องให้กรอกต่อ — ค่า other บันทึกได้เลย
+                คอลัมน์ referral_note ยังอยู่และยังแก้ได้ที่ขั้นรับลูกค้าของเคส
+                (ReceptionPanel) รายการเก่าที่เคยกรอกไว้จึงยังอ่านออกเหมือนเดิม */}
+            <Field label="รู้จักเราจากช่องทางไหน / Customer Source" hint="ช่องทางที่ลูกค้ารู้จักร้าน">
               <ListSelect
                 name="referral_source"
                 kind="referral_source"
-                value={channel}
-                onChange={(e) => setChannel(e.target.value)}
+                defaultValue=""
                 blank="— ไม่ระบุ —"
-              />
-            </Field>
-            <Field label="รายละเอียดช่องทาง / Source Detail" hint="ไม่กรอกก็บันทึกได้">
-              <input
-                name="referral_note"
-                placeholder={SOURCE_DETAIL_HINT[channel] || 'เช่น Facebook Ads, LINE OA, ค้นหาจาก Google'}
               />
             </Field>
             {/* เคสใหม่เริ่มที่ "รับลูกค้า / ลงข้อมูล" เสมอ (ค่า default ของ POST /api/cases)
