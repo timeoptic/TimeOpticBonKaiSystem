@@ -555,6 +555,14 @@ dl.kv dd{margin:0;font-weight:600}
 
 @media (max-width:960px){
   .split{grid-template-columns:1fr}
+
+  /* หน้าขายพอเหลือคอลัมน์เดียว ค่าสายตาของเคสปัจจุบันต้องมาก่อนประวัติแว่นเดิม —
+     คนขายกำลังจะสั่งตัดจากค่าปัจจุบัน ประวัติเป็นข้อมูลประกอบ ไม่ใช่สิ่งที่ต้องเลื่อนผ่าน
+     display:contents ปล่อยลูกทั้งสองใบออกมาเป็นแถวของกริดเอง แล้วค่อยสั่งลำดับ */
+  .sales-left{display:contents}
+  .sales-left > .card:first-child{order:1}
+  .sales-left ~ .card{order:2}
+  .sales-left > .card:last-child{order:3}
 }
 
 /* ---------------- timeline ---------------- */
@@ -1301,6 +1309,35 @@ table.doc td.lbl{background:var(--surface-alt);font-weight:700;text-align:left;w
 
 .ws-inset{background:var(--surface-alt);border:1px solid var(--line-soft);
   border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:12px}
+
+/* ---------------- ประวัติแว่นเดิม (หน้าขาย) ---------------- */
+.eh-list{display:flex;flex-direction:column;gap:16px}
+
+/* คู่ที่สองเป็นต้นไปมีเส้นคั่น — ตอนกางออกต้องอ่านออกว่าคู่ไหนจบตรงไหน */
+.eh-round + .eh-round{border-top:1px solid var(--line-soft);padding-top:16px}
+
+.eh-when{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+
+.eh-when b{font-size:14px}
+
+.eh-case{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px}
+
+/* ตารางค่าสายตาเก่าอ่านอย่างเดียวและอยู่ในคอลัมน์แคบ — บีบให้พอดีกว่าตารางที่กรอกได้ */
+.rx-grid.eh-rx{min-width:0;font-size:13px}
+
+.rx-grid.eh-rx th,.rx-grid.eh-rx td{padding:4px 6px}
+
+.eh-none{margin:0 0 10px}
+
+.eh-items{display:grid;grid-template-columns:56px 1fr;gap:6px 12px;margin:12px 0 0;
+  align-items:baseline}
+
+.eh-items dt{font-size:11.5px;font-weight:700;color:var(--ink-faint);
+  letter-spacing:.4px;text-transform:uppercase}
+
+.eh-items dd{margin:0;font-size:13.5px;color:var(--ink)}
+
+.eh-items dd small{display:block;font-size:12px;color:var(--ink-soft);margin-top:2px}
 
 /* ---- ตาเปล่า / ระยะที่ใช้สายตา ----
    ตาเปล่าแยกซ้ายขวา ระยะไม่แยก จับเป็นสองกลุ่มให้เห็นว่าคนละเรื่องกัน */

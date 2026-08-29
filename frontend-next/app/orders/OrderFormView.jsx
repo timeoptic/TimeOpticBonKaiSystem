@@ -26,7 +26,8 @@ import {
 import { Picker } from '../../components/Picker.jsx';
 import { StockPicker, stockLabel } from '../../components/StockPicker.jsx';
 import { RxSets } from '../../components/RxSets.jsx';
-import { EmployeeSelect, ListSelect } from '../../components/Selects.jsx';
+import { EyewearHistory } from '../../components/EyewearHistory.jsx';
+import { EmployeeSelect } from '../../components/Selects.jsx';
 import { RX_KIND_LABEL } from '../../lib/constants.js';
 import {
   custName, fmtDateTime, money, power, rxNum,
@@ -105,6 +106,19 @@ export function OrderFormView({
   const [rxIdState, setRxId] = useState(undefined);
   const [items, setItems] = useState(undefined);
   const [prices, setPrices] = useState(undefined);
+
+  /* ประวัติแว่นเดิม — ยิงแยกจากตัวออเดอร์เพราะลูกค้าเปลี่ยนได้ทีหลัง เมื่อคนขายเลือก
+     จาก Picker ในโหมดออเดอร์ลอย (ไม่มีเคส) ต้องโหลดประวัติของคนใหม่ตามไปด้วย
+     exclude_case กันไม่ให้เคสที่กำลังเปิดอยู่โผล่มาเป็น "ของเดิม" ของตัวเอง */
+  const histCustomerId = customerOverride?.id ?? data?.customerId ?? null;
+  const histCaseId = data?.caseId ?? null;
+  const { data: history, loading: historyLoading } = useAsync(
+    () => (histCustomerId
+      ? api.get(`/api/customers/${histCustomerId}/eyewear-history`,
+        histCaseId ? { exclude_case: histCaseId } : undefined)
+      : Promise.resolve([])),
+    [histCustomerId, histCaseId],
+  );
 
   if (loading) return <Loading />;
   if (error) return <Card><h2>โหลดข้อมูลไม่สำเร็จ</h2><p className="muted">{error.message}</p></Card>;
@@ -264,6 +278,11 @@ export function OrderFormView({
       )}
 
       <Split>
+        {/* คอลัมน์ซ้ายมีสองใบ: ลูกค้าคนนี้เป็นใคร แล้วครั้งก่อนเขาตัดแว่นอะไรไป
+            คำถามสองข้อที่คนขายถามติดกันเสมอ
+            พอจอแคบลงเหลือคอลัมน์เดียว ลำดับต้องสลับเป็น ลูกค้า → ค่าสายตาปัจจุบัน →
+            ประวัติแว่นเดิม ซึ่งจัดด้วย order ใน globals.css (ดู .sales-left) */}
+        <div className="stack sales-left">
         <Card
           title="ลูกค้า / เคส"
           right={!editing && !caseId
@@ -296,6 +315,9 @@ export function OrderFormView({
             </div>
           )}
         </Card>
+
+        <EyewearHistory rows={history} loading={historyLoading} />
+        </div>
 
         <Card
           title={caseId ? 'ค่าสายตาของเคส' : 'เลือกผลวัดสายตา'}
@@ -359,12 +381,13 @@ export function OrderFormView({
 
       <form onSubmit={onSubmit(save)}>
         <Card title="รายละเอียดออเดอร์">
+          {/* ไม่ถาม "ช่องทางที่รู้จัก" ที่นี่แล้ว — ถามไปแล้วตอนเปิดเคส ถามซ้ำตอนขายได้
+              คำตอบที่ขัดกันเอง คอลัมน์ custom_orders.marketing ยังอยู่และของเก่ายังอ่านได้
+              ส่งค่าเดิมไปกับฟอร์มด้วย เพราะ PUT เขียนทับทุกคอลัมน์ ไม่ส่งคือล้างทิ้ง */}
+          <input type="hidden" name="marketing" value={o.marketing || ''} readOnly />
           <FormGrid>
             <Field label="พนักงานผู้ขาย / Employee">
               <EmployeeSelect name="employee_id" defaultValue={o.employee_id || ''} />
-            </Field>
-            <Field label="ช่องทางที่รู้จัก / Marketing">
-              <ListSelect name="marketing" kind="marketing" defaultValue={o.marketing || ''} blank="—" />
             </Field>
           </FormGrid>
         </Card>

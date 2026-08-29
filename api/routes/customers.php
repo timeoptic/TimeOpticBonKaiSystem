@@ -20,6 +20,83 @@ GET('/api/customers', function (array $req) {
     );
 });
 
+/**
+ * "ครั้งก่อนลูกค้าตัดแว่นอะไรกับเรา" — หนึ่งแถวคือแว่นหนึ่งคู่ที่เคยสั่งตัด
+ *
+ * ตั้งต้นจาก custom_orders ไม่ใช่ prescriptions เพราะคำถามคือ *แว่น* ที่เคยได้ไป
+ * ไม่ใช่ครั้งที่เคยมาวัดตา รอบที่วัดแล้วไม่ได้ตัดจึงไม่นับเป็นประวัติแว่นเดิม
+ *
+ * ค่าสายตาที่แนบไปคือใบที่ออเดอร์นั้นถูกสร้างจากจริง (final_prescription_id) ซึ่งเป็น
+ * คำตอบที่ตรงที่สุด ถ้าใบนั้นหายไปค่อยถอยไปหาใบ final ของเคสเดียวกัน แล้วค่อยเป็น
+ * measured ตามลำดับ — ไม่ใช่หยิบใบไหนก็ได้ของลูกค้าคนนี้มาแปะ
+ *
+ * `exclude_case` ตัดเคสปัจจุบันออก เพราะกรอบกับเลนส์ที่กำลังเลือกอยู่ไม่ใช่ "ของเดิม"
+ */
+GET('/api/customers/:id/eyewear-history', function (array $req) {
+    $id      = int_or($req['params']['id']);
+    $exclude = int_or($req['query']['exclude_case'] ?? null);
+    $limit   = min(int_or($req['query']['limit'] ?? null, 20), 50);
+
+    $args  = [$id];
+    $where = 'o.customer_id = ?';
+    if ($exclude) {
+        $where .= ' AND (o.case_id IS NULL OR o.case_id <> ?)';
+        $args[] = $exclude;
+    }
+    $args[] = $limit;
+
+    $orders = Db::all(
+        "SELECT o.id AS order_id, o.case_id, o.invoice_code, o.order_date,
+                o.final_prescription_id,
+                o.frame_name, o.frame_brand, o.frame_model, o.frame_color,
+                o.frame_size, o.frame_sku,
+                o.lens_name, o.lens_brand, o.lens_design, o.lens_index,
+                o.lens_coating, o.lens_tint, o.lens_addons, o.lens_type,
+                o.total_price, o.discount,
+                cs.case_code, cs.opened_at
+           FROM custom_orders o
+           LEFT JOIN cases cs ON cs.id = o.case_id
+          WHERE $where
+          ORDER BY COALESCE(o.order_date, cs.opened_at) DESC, o.id DESC
+          LIMIT ?",
+        ...$args
+    );
+    if (!$orders) {
+        return [];
+    }
+
+    /* ใบสายตาของทุกเคสในรายการ ดึงรอบเดียวแล้วค่อยจับคู่ ไม่ยิงทีละแถว */
+    $caseIds = array_values(array_filter(array_map(fn($o) => (int) $o['case_id'], $orders)));
+    $rxIds   = array_values(array_filter(array_map(fn($o) => (int) $o['final_prescription_id'], $orders)));
+
+    $byCase = [];
+    if ($caseIds) {
+        $in = implode(',', array_fill(0, count($caseIds), '?'));
+        foreach (Db::all(
+            "SELECT * FROM prescriptions
+              WHERE case_id IN ($in) AND kind IN ('final','measured')
+              ORDER BY FIELD(kind,'final','measured'), id DESC",
+            ...$caseIds
+        ) as $r) {
+            $byCase[(int) $r['case_id']] ??= $r;   // final มาก่อนเสมอจาก ORDER BY
+        }
+    }
+    $byId = [];
+    if ($rxIds) {
+        $in = implode(',', array_fill(0, count($rxIds), '?'));
+        foreach (Db::all("SELECT * FROM prescriptions WHERE id IN ($in)", ...$rxIds) as $r) {
+            $byId[(int) $r['id']] = $r;
+        }
+    }
+
+    return array_map(function (array $o) use ($byId, $byCase) {
+        $o['prescription'] = $byId[(int) $o['final_prescription_id']]
+            ?? $byCase[(int) $o['case_id']]
+            ?? null;
+        return $o;
+    }, $orders);
+});
+
 GET('/api/customers/:id', function (array $req) {
     $id = int_or($req['params']['id']);
     $c  = Db::get('SELECT * FROM customers WHERE id = ?', $id);
