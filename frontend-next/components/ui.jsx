@@ -62,7 +62,9 @@ export function Field({ label, hint, children, className = '' }) {
   );
 }
 
-export const Split = ({ children }) => <div className="split">{children}</div>;
+export const Split = ({ children, className = '' }) => (
+  <div className={`split ${className}`}>{children}</div>
+);
 export const Stack = ({ children, style }) => <div className="stack" style={style}>{children}</div>;
 export const Row = ({ children, style }) => <div className="row" style={style}>{children}</div>;
 export const Toolbar = ({ children, className = '' }) => (

@@ -2,30 +2,34 @@
 /**
  * Process 5 — ชำระเงิน.
  *
- * The question this screen answers first is "how much is still owed", so that
- * is what it opens with: the order total, what has come in, and what is left,
- * with a bar showing how far along the payment is.
+ * สองคอลัมน์: ซ้ายคือสิ่งที่ทำ (รับเงินเข้ามา แล้วประวัติว่ารับอะไรไปบ้าง)
+ * ขวาคือสิ่งที่อ่าน (ยอดคงเหลือ กับใครเป็นใคร) — คนที่เปิดหน้านี้มาทำอย่างเดียว
+ * คือรับเงิน ตัวเลขที่ต้องเห็นตลอดจึงอยู่ข้างขวาแบบไม่เลื่อนหาย ไม่ใช่แถบบนสุด
+ * ที่เลื่อนพ้นจอไปตอนกรอกฟอร์ม
  *
  * Every payment can carry its slip — the transfer screenshot or the receipt —
  * attached to the payment row it proves (case_photos.payment_id), never loose
  * on the case, so a row and its evidence cannot drift apart.
  */
 import { useRef, useState } from 'react';
+import Link from 'next/link';
 import { api } from '../../../../lib/apiClient.js';
 import { useAsync, readForm } from '../../../../lib/hooks.js';
 import { useToast } from '../../../../components/Toast.jsx';
 import { useConfirm } from '../../../../components/Confirm.jsx';
-import { Badge, Card, Field, FormGrid, Row } from '../../../../components/ui.jsx';
+import { Badge, Card, Field, FormGrid, Row, Split } from '../../../../components/ui.jsx';
 import { EmployeeSelect } from '../../../../components/Selects.jsx';
 import { Icon } from '../../../../components/Icon.jsx';
 import { useMeta } from '../../../../contexts/MetaContext.jsx';
-import { fmtDateTime, money, nowLocal, toStamp } from '../../../../lib/format.js';
+import { custName, fmtDate, fmtDateTime, money, nowLocal, toStamp } from '../../../../lib/format.js';
 
+/* "จ่ายบางส่วน" ออกแล้ว — มันกับ "มัดจำ" ตอบคำถามเดียวกัน (จ่ายมาไม่ครบ) ต่างกันแค่
+   ว่าเป็นก้อนแรกหรือไม่ ซึ่งระบบดูจากประวัติเองได้ ตัวเลือกที่ต้องหยุดคิดว่าจะเลือก
+   อันไหนดีคือตัวเลือกที่กรอกผิดได้ — ป้ายยังอยู่ในตารางแปลเพื่อให้แถวเก่าอ่านออก */
 const KINDS = [
-  ['deposit', 'มัดจำ'], ['partial', 'จ่ายบางส่วน'],
-  ['final', 'ชำระส่วนที่เหลือ'], ['full', 'ชำระเต็ม'],
+  ['deposit', 'มัดจำ'], ['final', 'ชำระส่วนที่เหลือ'], ['full', 'ชำระเต็ม'],
 ];
-const KIND_LABEL = Object.fromEntries(KINDS);
+const KIND_LABEL = { ...Object.fromEntries(KINDS), partial: 'จ่ายบางส่วน' };
 const KIND_BADGE = { deposit: 'blue', partial: 'warn', final: 'ok', full: 'ok' };
 
 const METHOD_ICON = {
@@ -83,9 +87,7 @@ export function PaymentPanel({ c, reload }) {
   const chooseKind = (v) => {
     setKind(v);
     if ((v === 'full' || v === 'final') && left > 0) setAmount(String(left));
-    if (v === 'deposit' || v === 'partial') {
-      if (!enteredAmount || enteredAmount === left) setAmount('');
-    }
+    if (v === 'deposit' && (!enteredAmount || enteredAmount === left)) setAmount('');
   };
 
   const add = async (e) => {
@@ -142,29 +144,11 @@ export function PaymentPanel({ c, reload }) {
   };
 
   return (
-    <div className="stack">
+    <>
       <input ref={rowSlipRef} type="file" accept={ACCEPT} multiple style={{ display: 'none' }} onChange={onRowSlip} />
 
-      <Card>
-        <div className="pay-summary">
-          <div className="pay-figure">
-            <span>ยอดสุทธิ</span>
-            <b>{money(net)}</b>
-          </div>
-          <div className="pay-figure ok">
-            <span>รับแล้ว</span>
-            <b>{money(paid)}</b>
-          </div>
-          <div className={`pay-figure ${left > 0 ? 'due' : 'ok'}`}>
-            <span>คงเหลือ</span>
-            <b>{money(left)}</b>
-          </div>
-          <div className="pay-bar-wrap">
-            <div className="pay-bar"><span style={{ width: `${pct}%` }} /></div>
-            <small>{net > 0 ? `ชำระแล้ว ${pct}%` : 'ยังไม่มียอดจากออเดอร์'}</small>
-          </div>
-        </div>
-      </Card>
+      <Split className="aside">
+      <div className="stack">
 
       <Card title="รับเงินเข้ามาใหม่">
         <form onSubmit={add}>
@@ -297,46 +281,95 @@ export function PaymentPanel({ c, reload }) {
         {payments.length === 0 ? (
           <p className="muted">ยังไม่มีการรับเงินในเคสนี้</p>
         ) : (
-          <div className="pay-list">
+          /* ไทม์ไลน์แทนตาราง — เงินเข้ามาเป็นเหตุการณ์ตามเวลา ไม่ใช่แถวข้อมูลที่จะเอาไป
+             เรียงใหม่หรือกรอง วงกลมไอคอนบอกวิธีจ่ายได้ตั้งแต่ยังไม่อ่านตัวหนังสือ */
+          <ol className="pay-feed">
             {payments.map((p) => (
-              <div className={`pay-row ${p.cancelled_at ? 'cancelled' : ''}`} key={p.id}>
-                <div className="pay-row-main">
-                  <b>{money(p.amount)}</b>
-                  <Badge kind={KIND_BADGE[p.kind] || 'gray'}>{KIND_LABEL[p.kind] || p.kind}</Badge>
-                  <span className="muted">
-                    <Icon name={METHOD_ICON[p.method] || 'coins'} /> {methodLabel[p.method] || p.method}
-                  </span>
-                  {p.reference ? <span className="muted">{`อ้างอิง ${p.reference}`}</span> : null}
-                  {p.cancelled_at ? <Badge kind="danger">ยกเลิกแล้ว</Badge> : null}
+              <li className={`pay-ev ${p.cancelled_at ? 'cancelled' : ''}`} key={p.id}>
+                <span className={`pay-ev-dot ${p.cancelled_at ? 'off' : ''}`}>
+                  <Icon name={METHOD_ICON[p.method] || 'coins'} />
+                </span>
+                <div className="pay-ev-body">
+                  <div className="pay-ev-head">
+                    <b>{money(p.amount)}</b>
+                    <Badge kind={KIND_BADGE[p.kind] || 'gray'}>{KIND_LABEL[p.kind] || p.kind}</Badge>
+                    <span className="muted">{methodLabel[p.method] || p.method}</span>
+                    {p.cancelled_at ? <Badge kind="danger">ยกเลิกแล้ว</Badge> : null}
+                  </div>
+                  <div className="pay-ev-when muted">
+                    {fmtDateTime(p.paid_at)}
+                    {p.received_by_name ? ` · รับโดย ${p.received_by_name}` : ''}
+                    {p.reference ? ` · อ้างอิง ${p.reference}` : ''}
+                    {p.notes ? ` · ${p.notes}` : ''}
+                  </div>
+                  <div className="pay-row-slips">
+                    {slipsOf(p.id).map((f) => (
+                      <span className="slip-chip lg" key={f.id}>
+                        <a href={api.url('/api/uploads/' + f.id)} target="_blank" rel="noreferrer">
+                          {f.mime_type === 'application/pdf'
+                            ? <span className="slip-file"><Icon name="file" /></span>
+                            : <img src={api.url('/api/uploads/' + f.id)} alt={f.original_name || 'สลิป'} />}
+                        </a>
+                        <button type="button" onClick={() => removeSlip(f)} title="ลบสลิป"><Icon name="x" /></button>
+                      </span>
+                    ))}
+                    <button type="button" className="btn btn-sm btn-light" onClick={() => attachToRow(p)}>
+                      <Icon name="camera" /> แนบสลิป
+                    </button>
+                    <button type="button" className="btn btn-sm btn-light" onClick={() => remove(p)}>
+                      <Icon name="trash" />
+                    </button>
+                  </div>
                 </div>
-                <div className="pay-row-sub muted">
-                  {fmtDateTime(p.paid_at)}
-                  {p.received_by_name ? ` · รับโดย ${p.received_by_name}` : ''}
-                  {p.notes ? ` · ${p.notes}` : ''}
-                </div>
-                <div className="pay-row-slips">
-                  {slipsOf(p.id).map((f) => (
-                    <span className="slip-chip lg" key={f.id}>
-                      <a href={api.url('/api/uploads/' + f.id)} target="_blank" rel="noreferrer">
-                        {f.mime_type === 'application/pdf'
-                          ? <span className="slip-file"><Icon name="file" /></span>
-                          : <img src={api.url('/api/uploads/' + f.id)} alt={f.original_name || 'สลิป'} />}
-                      </a>
-                      <button type="button" onClick={() => removeSlip(f)} title="ลบสลิป"><Icon name="x" /></button>
-                    </span>
-                  ))}
-                  <button type="button" className="btn btn-sm btn-light" onClick={() => attachToRow(p)}>
-                    <Icon name="camera" /> แนบสลิป
-                  </button>
-                  <button type="button" className="btn btn-sm btn-light" onClick={() => remove(p)}>
-                    <Icon name="trash" />
-                  </button>
-                </div>
-              </div>
+              </li>
             ))}
-          </div>
+          </ol>
         )}
       </Card>
-    </div>
+
+      </div>
+
+      {/* คอลัมน์ขวา — ตัวเลขกับข้อเท็จจริงที่ต้องเห็นตลอดเวลาที่กรอกฟอร์มฝั่งซ้าย */}
+      <div className="stack">
+        <Card title="สรุปยอด" right={
+          left > 0
+            ? <Badge kind={paid > 0 ? 'warn' : 'gray'}>{paid > 0 ? 'ชำระบางส่วน' : 'ยังไม่ชำระ'}</Badge>
+            : <Badge kind="ok"><Icon name="check" /> ชำระครบแล้ว</Badge>
+        }>
+          <div className="pay-due">
+            <span>คงเหลือ</span>
+            <b className={left > 0 ? 'due' : 'ok'}>{money(left)}</b>
+          </div>
+          <div className="pay-bar-wrap">
+            <div className="pay-bar"><span style={{ width: `${pct}%` }} /></div>
+            <small>{net > 0 ? `ชำระแล้ว ${pct}% ของ ${money(net)}` : 'ยังไม่มียอดจากออเดอร์'}</small>
+          </div>
+          <dl className="pay-facts">
+            <dt>ยอดสุทธิ</dt><dd>{money(net)}</dd>
+            <dt>รับแล้ว</dt><dd className="ok">{money(paid)}</dd>
+          </dl>
+        </Card>
+
+        <Card title="รายละเอียด">
+          <dl className="pay-meta">
+            <dt><Icon name="user" /> ลูกค้า</dt>
+            <dd>{custName(c) || '—'}</dd>
+            <dt><Icon name="phone" /> โทร</dt>
+            <dd>{c.phone || '—'}</dd>
+            <dt><Icon name="board" /> เคส</dt>
+            <dd className="mono">{c.case_code}</dd>
+            <dt><Icon name="glasses" /> ออเดอร์</dt>
+            <dd className="mono">
+              {c.order
+                ? <Link href={'/orders/detail?id=' + c.order.id}>{c.order.invoice_code || `#${c.order.id}`}</Link>
+                : <span className="muted">ยังไม่มีออเดอร์</span>}
+            </dd>
+            <dt><Icon name="calendar" /> วันนัดรับ</dt>
+            <dd>{c.order?.appointment_date ? fmtDate(c.order.appointment_date) : '—'}</dd>
+          </dl>
+        </Card>
+      </div>
+      </Split>
+    </>
   );
 }
