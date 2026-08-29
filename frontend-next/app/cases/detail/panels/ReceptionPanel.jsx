@@ -1,8 +1,13 @@
 'use client';
 /**
  * Process 1 — รับลูกค้า. The intake facts that belong to the case itself
- * (who took it, how the customer found us, the rush flag and the reception
- * note), plus a read-only look at the customer the case is attached to.
+ * (who took it, how the customer found us and the reception note), plus a
+ * read-only look at the customer the case is attached to.
+ *
+ * The rush flag and the free-text source detail used to be edited here. Both
+ * columns still exist and still render wherever they were shown before — this
+ * form just no longer offers them, and the `...c` spread below carries the
+ * stored values through untouched on every save.
  *
  * Saving here is a draft save: it writes the case row and leaves the
  * process status alone — ProcessShell owns "✓ เปิดเคสเรียบร้อย".
@@ -11,7 +16,7 @@ import Link from 'next/link';
 import { api } from '../../../../lib/apiClient.js';
 import { readForm } from '../../../../lib/hooks.js';
 import { useToast } from '../../../../components/Toast.jsx';
-import { Check, Field, FormActions, FormGrid, Kv } from '../../../../components/ui.jsx';
+import { Field, FormActions, FormGrid, Kv } from '../../../../components/ui.jsx';
 import { EmployeeSelect, ListSelect } from '../../../../components/Selects.jsx';
 import { custName, fmtDate } from '../../../../lib/format.js';
 import { Icon } from '../../../../components/Icon.jsx';
@@ -50,12 +55,6 @@ export function ReceptionPanel({ c, reload }) {
           </Field>
           <Field label="รู้จักเราจากช่องทางไหน / Customer Source">
             <ListSelect name="referral_source" kind="referral_source" defaultValue={c.referral_source || ''} blank="— ไม่ระบุ —" />
-          </Field>
-          <Field label="รายละเอียดช่องทาง / Source Detail">
-            <input name="referral_note" defaultValue={c.referral_note || ''} placeholder="ไม่กรอกก็ได้" />
-          </Field>
-          <Field label="งานด่วน">
-            <Check name="is_rush" defaultChecked={!!Number(c.is_rush)}><Icon name="flame" /> ทำเป็นงานด่วน</Check>
           </Field>
         </FormGrid>
         <Field label="บันทึกการรับเรื่อง" className="full">

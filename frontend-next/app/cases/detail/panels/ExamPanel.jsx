@@ -60,7 +60,6 @@ const OLD_SOURCES = [
   ['external_rx', 'ใบ Prescription จากภายนอก'],
   ['', 'ไม่มีข้อมูลค่าสายตาเดิม'],
 ];
-const OLD_SOURCE_LABEL = Object.fromEntries(OLD_SOURCES);
 
 const FINAL_SOURCES = [
   ['measured', 'ใช้ค่าจาก Measured'],
@@ -712,25 +711,10 @@ export function ExamPanel({ c, reload }) {
         </Field>
       </Section>
 
-      {/* อ่านอย่างเดียว — แก้ค่าสายตาทำที่ข้างบนนี้เท่านั้น เคยมีปุ่ม "แก้ไขทั้งใบ" ที่พา
-          ไปฟอร์มแยกซึ่งเขียนทับทุกคอลัมน์ด้วยช่องที่มีไม่ครบ กดบันทึกเฉย ๆ ก็ล้าง
-          ค่าตาเปล่า ค่าแว่นเดิม และเหตุผลที่ปรับค่าทิ้งไป 25 คอลัมน์ */}
-      {rows.length > 0 && (
-        <Section n="7" title="ค่าสายตาที่บันทึกไว้ในรอบนี้">
-          <div className="rx-history">
-            {rows.map((r) => (
-              <div key={r.id} className="rx-history-row static">
-                <b>
-                  {`${r.kind === 'final' ? 'ค่าที่ใช้จริง' : r.kind === 'old' ? 'ค่าเดิม' : 'ค่าที่วัดได้'}`}
-                  {r.kind === 'old' && r.source ? ` (${OLD_SOURCE_LABEL[r.source] || r.source})` : ''}
-                </b>
-                <span>{`R ${power(r.r_sphere)} / ${power(r.r_cylinder)} x ${r.r_axis || '—'}`}</span>
-                <span>{`L ${power(r.l_sphere)} / ${power(r.l_cylinder)} x ${r.l_axis || '—'}`}</span>
-              </div>
-            ))}
-          </div>
-        </Section>
-      )}
+      {/* ไม่มีหัวข้อ "ค่าสายตาที่บันทึกไว้ในรอบนี้" แล้ว — มันเคยมีเหตุผลตอนที่เป็นทาง
+          เดียวที่จะเข้าถึงใบดิบผ่านปุ่ม "แก้ไขทั้งใบ" พอปุ่มนั้นหายไป มันเหลือแค่พิมพ์
+          SPH/CYL/AXIS ซ้ำจากหัวข้อ 3/4/5 ที่แสดงครบทุกคอลัมน์อยู่แล้ว บวกตารางเทียบ
+          ท้ายหัวข้อ 5 ที่วางค่าทั้งสามชุดเรียงข้างกัน */}
     </fieldset>
   );
 }

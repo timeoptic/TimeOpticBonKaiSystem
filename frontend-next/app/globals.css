@@ -97,7 +97,15 @@ a:hover{text-decoration:underline}
 
 .icon-btn:hover{background:var(--accent-soft);color:var(--accent)}
 
-.content{padding:20px;width:100%;max-width:none}
+/* จอกว้างขึ้นไม่ได้แปลว่าอยากได้ช่องกรอกที่กว้างขึ้น — ปล่อยไว้เฉย ๆ ที่จอ 2560
+   ช่อง "เลือกพนักงาน" จะกว้าง 551px สำหรับข้อความ 150px ตันเพดานแล้วจัดกลาง
+   ที่เหลือไปเป็นขอบ ซึ่งอ่านง่ายกว่าการยืดทุกอย่างให้เต็มจอ */
+.content{padding:20px;width:100%;max-width:1680px;margin-inline:auto}
+
+/* ฟอร์มตันเร็วกว่านั้นอีก ตารางกับกระดานงานยังใช้ความกว้างเต็มการ์ดได้ตามเดิม */
+.form-grid,.form-actions{max-width:1320px}
+
+textarea{max-width:1320px}
 
 /* ---------------- page header (mirrors the Access form banner) --- */
 .page-head{
