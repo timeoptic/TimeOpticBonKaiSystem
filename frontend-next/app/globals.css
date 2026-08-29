@@ -555,14 +555,6 @@ dl.kv dd{margin:0;font-weight:600}
 
 @media (max-width:960px){
   .split{grid-template-columns:1fr}
-
-  /* หน้าขายพอเหลือคอลัมน์เดียว ค่าสายตาของเคสปัจจุบันต้องมาก่อนประวัติแว่นเดิม —
-     คนขายกำลังจะสั่งตัดจากค่าปัจจุบัน ประวัติเป็นข้อมูลประกอบ ไม่ใช่สิ่งที่ต้องเลื่อนผ่าน
-     display:contents ปล่อยลูกทั้งสองใบออกมาเป็นแถวของกริดเอง แล้วค่อยสั่งลำดับ */
-  .sales-left{display:contents}
-  .sales-left > .card:first-child{order:1}
-  .sales-left ~ .card{order:2}
-  .sales-left > .card:last-child{order:3}
 }
 
 /* ---------------- timeline ---------------- */
