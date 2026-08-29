@@ -244,7 +244,8 @@ final class Migrate
                for the ติดตามเลนส์ screen; that screen and its step are gone.) */
             'v_case_board' => "CREATE OR REPLACE VIEW v_case_board AS
                 SELECT c.id, c.case_code, c.status, c.is_rush, c.opened_at, c.closed_at,
-                       c.customer_id, c.notes, c.case_type, c.referral_source,
+                       c.customer_id, c.notes, c.case_type, c.customer_category,
+                       c.referral_source, c.referral_note,
                        s.stage_no, s.label_th AS status_label_th, s.label_en AS status_label_en,
                        s.stage_group, s.sort_order AS status_order, s.is_waiting, s.is_terminal,
                        cu.first_name, cu.last_name, cu.phone, cu.line_id,
@@ -341,6 +342,30 @@ final class Migrate
         Db::run("DELETE FROM case_statuses WHERE code NOT IN ($in)", ...$codes);
     }
 
+    /**
+     * ย้าย "ใครเป็นลูกค้า" ออกจาก "งานนี้คืองานอะไร".
+     *
+     * `case_type` เคยรับสองหน้าที่: SIGHTFIRST กับ ลูกค้าใหม่ ปนอยู่กับ ตัดแว่นใหม่ /
+     * เปลี่ยนเลนส์ / ซ่อม ทั้งที่คนละคำถาม — เคส SIGHTFIRST หนึ่งใบจึงบอกไม่ได้เลยว่า
+     * เป็นงานตัดแว่นใหม่หรือเปลี่ยนเลนส์ เพราะช่องถูกใช้ไปแล้ว
+     *
+     * เดินครั้งเดียวก็พอ แต่เขียนให้รันซ้ำได้ไม่เสียหาย: แถวที่มี customer_category
+     * แล้วจะไม่ถูกแตะ และค่าที่ไม่ใช่ประเภทงานจริงจะถูกล้างออกจาก case_type
+     */
+    private static function splitCustomerCategoryOutOfCaseType(): void
+    {
+        Db::run(
+            "UPDATE cases SET customer_category = 'sight_first'
+              WHERE customer_category IS NULL AND case_type = 'SIGHTFIRST'"
+        );
+        Db::run("UPDATE cases SET customer_category = 'customer' WHERE customer_category IS NULL");
+        /* ค่าที่ตอบคำถาม "ใครเป็นลูกค้า" ไม่ใช่ "งานอะไร" — ย้ายความหมายไปแล้ว ล้างทิ้ง */
+        Db::run(
+            "UPDATE cases SET case_type = NULL
+              WHERE case_type IN ('SIGHTFIRST', 'ลูกค้าใหม่', 'ลูกค้าเก่า', 'ลูกค้าร้าน')"
+        );
+    }
+
     /** @return string[] "table.column" names actually added this run */
     private static function addColumns(string $table, array $columns): array
     {
@@ -374,9 +399,6 @@ final class Migrate
                 Db::pdo()->exec($sql);
                 $created[] = $name;
             }
-        }
-        foreach (self::views() as $sql) {
-            Db::pdo()->exec($sql);
         }
 
         /* ช่องทางรับเงินที่ร้านใช้จริง — ถุงเงิน (กรุงไทย) เป็นช่องทางหนึ่ง ไม่ใช่ "อื่น ๆ"
@@ -417,10 +439,14 @@ final class Migrate
             ]),
             self::addColumns('cases', [
                 'closed_by' => 'int(10) unsigned DEFAULT NULL',
-                /* ประเภทงานของเคส — คนละเรื่องกับ "ลูกค้าเก่า/ใหม่" (is_new_customer)
-                   เก็บเป็น varchar เพื่อให้เพิ่มประเภทใหม่ได้โดยไม่ต้องแก้ schema:
-                   /api/meta สร้างตัวเลือกจากค่าที่เคยใช้จริงรวมกับค่าตั้งต้น */
+                /* ประเภท "งาน" — ตัดแว่นใหม่ / เปลี่ยนเลนส์ / ซ่อม / ตรวจสายตา
+                   ตัวเลือกล็อกไว้ที่ Lookups::lists() ไม่ได้อ่านจากค่าที่เคยพิมพ์แล้ว */
                 'case_type'     => 'varchar(40) DEFAULT NULL',
+                /* ประเภท "ลูกค้า" — sight_first / customer. เคยปนอยู่ใน case_type
+                   ซึ่งทำให้ตอบสองคำถามด้วยช่องเดียว: เคส SIGHTFIRST เลยบอกไม่ได้ว่า
+                   เป็นงานตัดแว่นใหม่หรือเปลี่ยนเลนส์ ตอนนี้เป็นคนละแกนกัน และ
+                   ตัวแบ่งสมุดงาน SightFirst / ลูกค้าร้าน อ่านจากช่องนี้ */
+                'customer_category' => 'varchar(20) DEFAULT NULL',
                 /* ช่องทางที่รู้จักร้าน เลือก "อื่น ๆ" แล้วพิมพ์เองได้ */
                 'referral_note' => 'varchar(255) DEFAULT NULL',
             ]),
@@ -452,7 +478,15 @@ final class Migrate
                 'external_date'        => 'date DEFAULT NULL',
             ])
         );
+        /* Views come after addColumns, not before: v_case_board selects columns that
+           addColumns() is what puts there, so on a database that has not seen this
+           release yet, building the view first fails on its own migration. */
+        foreach (self::views() as $sql) {
+            Db::pdo()->exec($sql);
+        }
+
         self::reshapeCaseStatuses();
+        self::splitCustomerCategoryOutOfCaseType();
         /* พร้อมเพย์ / QR ไม่ได้ใช้แล้ว — ซ่อนจากตัวเลือก แต่แถวยังอยู่ให้ประวัติอ่านออก */
         Db::run("UPDATE list_pay_type SET is_active = 0 WHERE code = 'QR'");
 

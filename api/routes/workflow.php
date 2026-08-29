@@ -72,13 +72,14 @@ GET('/api/case-deliveries/:case_id', fn(array $r) => Db::get(
 GET('/api/delivery', function (array $req) {
     $q = $req['query'];
 
-    /* งาน SIGHTFIRST กับงานลูกค้าร้านแยกสมุดกันเหมือนกระดานงาน */
+    /* งาน SightFirst กับงานลูกค้าร้านแยกสมุดกันเหมือนกระดานงาน — อ่าน customer_category
+       ตัวเดียวกับ /api/cases ไม่ใช่ case_type ซึ่งบอกว่าเป็นงานอะไร */
     $client = str_or($q['client'] ?? null);
     $book = '';
     if ($client === 'sightfirst') {
-        $book = " AND b.case_type = 'SIGHTFIRST'";
+        $book = " AND b.customer_category = 'sight_first'";
     } elseif ($client === 'shop') {
-        $book = " AND (b.case_type IS NULL OR b.case_type <> 'SIGHTFIRST')";
+        $book = " AND (b.customer_category IS NULL OR b.customer_category <> 'sight_first')";
     }
 
     $rows = Db::all(

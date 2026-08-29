@@ -1942,6 +1942,10 @@ table.doc td.lbl{background:var(--surface-alt);font-weight:700;text-align:left;w
   /* ต่ำกว่า 16px = Safari บน iPhone ซูมเข้าเองตอนแตะช่องกรอก แล้วไม่ซูมกลับ */
   input,select,textarea{font-size:16px}
   .rx-grid input,.measure-input input{font-size:16px}
+  /* พอ font ถูกดันเป็น 16px แล้ว select เตี้ยกว่า input 1px เพราะ Chrome บังคับ
+     line-height:normal ให้ select ทับ CSS เสมอ (แก้ที่ line-height ไม่ได้)
+     ตรึงความสูงขั้นต่ำเท่ากันแทน — 44px เป็นขนาดเป้านิ้วที่แนะนำอยู่แล้ว */
+  .form-grid input,.form-grid select{min-height:44px}
 
   .btn{padding:10px 18px}
   .btn-lg{padding:12px 20px;font-size:15px}

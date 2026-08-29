@@ -35,14 +35,24 @@ export function ReceptionPanel({ c, reload }) {
           <Field label="พนักงานผู้รับเรื่อง">
             <EmployeeSelect name="received_by" defaultValue={c.received_by || ''} />
           </Field>
-          <Field label="ประเภทงาน / Case type">
+          <Field label="ประเภทงาน / Case Type">
             <ListSelect name="case_type" kind="case_type" defaultValue={c.case_type || ''} blank="— ไม่ระบุ —" />
           </Field>
-          <Field label="ช่องทางที่รู้จักร้าน">
+          {/* เลือกผิดตอนเปิดเคสต้องแก้ได้ที่นี่ — มันคือตัวแบ่งสมุดงานบนกระดาน
+              ถ้าแก้ไม่ได้ เคสก็ค้างอยู่ผิดแท็บไปตลอด */}
+          <Field label="ประเภทลูกค้า / Customer Category">
+            <ListSelect
+              name="customer_category"
+              kind="customer_category"
+              defaultValue={c.customer_category || ''}
+              blank="— เลือกประเภทลูกค้า —"
+            />
+          </Field>
+          <Field label="รู้จักเราจากช่องทางไหน / Customer Source">
             <ListSelect name="referral_source" kind="referral_source" defaultValue={c.referral_source || ''} blank="— ไม่ระบุ —" />
           </Field>
-          <Field label="ระบุช่องทาง (ถ้าเลือกอื่น ๆ)">
-            <input name="referral_note" defaultValue={c.referral_note || ''} />
+          <Field label="รายละเอียดช่องทาง / Source Detail">
+            <input name="referral_note" defaultValue={c.referral_note || ''} placeholder="ไม่กรอกก็ได้" />
           </Field>
           <Field label="งานด่วน">
             <Check name="is_rush" defaultChecked={!!Number(c.is_rush)}><Icon name="flame" /> ทำเป็นงานด่วน</Check>

@@ -17,6 +17,7 @@ import { useAsync, useDebounced } from '../../lib/hooks.js';
 import { Badge, Card, Loading, PageHead } from '../../components/ui.jsx';
 import { DataTable } from '../../components/DataTable.jsx';
 import { Icon } from '../../components/Icon.jsx';
+import { CaseTags } from '../../components/CaseTags.jsx';
 import { custName, fmtDate, money } from '../../lib/format.js';
 
 const BUCKET = {
@@ -163,9 +164,7 @@ export default function DeliveryListPage() {
                     </b>
                     <small className="cell-tags">
                       {`รับ: ${fmtDate(r.opened_at)}`}
-                      {r.case_type ? (
-                        <Badge kind={r.case_type === 'SIGHTFIRST' ? 'blue' : 'gray'}>{r.case_type}</Badge>
-                      ) : null}
+                      <CaseTags row={r} />
                     </small>
                   </div>
                 ),

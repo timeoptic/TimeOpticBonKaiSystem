@@ -22,13 +22,16 @@ GET('/api/cases', function (array $req) {
         $where[] = 'is_rush = 1';
     }
     /* The shop thinks in two books of work before it thinks in anything else:
-       งาน SIGHTFIRST and งานลูกค้าร้าน. Everything without a type is the shop's
-       own — a case nobody labelled came in through the door. */
+       งาน SightFirst and งานลูกค้าร้าน. That split is customer_category, not
+       case_type — case_type says what the job is (ตัดแว่นใหม่ / เปลี่ยนเลนส์ / …),
+       which is a different question and used to be crowded out by this one.
+       Everything unlabelled is the shop's own: a case nobody marked came in
+       through the door. */
     $client = str_or($q['client'] ?? null);
     if ($client === 'sightfirst') {
-        $where[] = "case_type = 'SIGHTFIRST'";
+        $where[] = "customer_category = 'sight_first'";
     } elseif ($client === 'shop') {
-        $where[] = "(case_type IS NULL OR case_type <> 'SIGHTFIRST')";
+        $where[] = "(customer_category IS NULL OR customer_category <> 'sight_first')";
     }
     if ($caseType = str_or($q['case_type'] ?? null)) {
         $where[] = 'case_type = ?';
@@ -167,8 +170,8 @@ POST('/api/cases', function (array $req) {
         $r = $q->run(
             'INSERT INTO cases (case_code, customer_id, status, is_new_customer, is_rush,
                priority_note, received_by, recorded_by, referral_source, referral_note,
-               case_type, reception_note, notes)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
+               case_type, customer_category, reception_note, notes)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
             $code,
             $cid,
             $status,
@@ -180,6 +183,7 @@ POST('/api/cases', function (array $req) {
             nul($body['referral_source'] ?? null),
             nul($body['referral_note'] ?? null),
             nul($body['case_type'] ?? null),
+            nul($body['customer_category'] ?? null),
             nul($body['reception_note'] ?? null),
             nul($body['notes'] ?? null)
         );
@@ -203,7 +207,7 @@ PUT('/api/cases/:id', function (array $req) {
     }
     Db::run(
         'UPDATE cases SET is_rush = ?, priority_note = ?, received_by = ?,
-           referral_source = ?, referral_note = ?, case_type = ?,
+           referral_source = ?, referral_note = ?, case_type = ?, customer_category = ?,
            reception_note = ?, notes = ? WHERE id = ?',
         boolInt($body['is_rush'] ?? null),
         nul($body['priority_note'] ?? null),
@@ -211,6 +215,7 @@ PUT('/api/cases/:id', function (array $req) {
         nul($body['referral_source'] ?? null),
         nul($body['referral_note'] ?? null),
         nul($body['case_type'] ?? null),
+        nul($body['customer_category'] ?? null),
         nul($body['reception_note'] ?? null),
         nul($body['notes'] ?? null),
         $id

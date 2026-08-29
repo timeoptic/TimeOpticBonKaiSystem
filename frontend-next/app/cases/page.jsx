@@ -3,10 +3,14 @@
  * Case Board.
  *
  * The shop reads this list two ways before it reads it any other way: งาน
- * SIGHTFIRST and งานลูกค้าร้าน are different books of work with different
+ * Sight First and งานลูกค้าร้าน are different books of work with different
  * people chasing them, so that split is the first control on the page rather
  * than something buried in a dropdown. A case nobody labelled is the shop's
  * own — walking in the door is the default, not a missing value.
+ *
+ * That split reads `customer_category`. It used to read `case_type`, which also
+ * had to say what kind of job the case was — one column answering two questions
+ * means neither answer is reliable.
  *
  * Filtering happens in the browser on purpose: the counts on every chip stay
  * live and switching views costs nothing. The same filters exist on
@@ -23,8 +27,7 @@ import { useMeta } from '../../contexts/MetaContext.jsx';
 import { STAGE_GROUPS, stageInfo } from '../../lib/constants.js';
 import { fmtDate, moneyShort } from '../../lib/format.js';
 import { Icon } from '../../components/Icon.jsx';
-
-const SIGHTFIRST = 'SIGHTFIRST';
+import { CaseTags, SIGHT_FIRST } from '../../components/CaseTags.jsx';
 
 /* the four yes/no views of the board. Four bare checkboxes in a row read as a
    settings dialog; the same four as chips read as "what am I looking at". */
@@ -38,8 +41,8 @@ const TOGGLES = [
 /** the two books of work, plus everything at once */
 const CLIENTS = [
   ['', 'ทั้งหมด', null],
-  ['sightfirst', 'SightFirst', (c) => c.case_type === SIGHTFIRST],
-  ['shop', 'ลูกค้าร้าน', (c) => c.case_type !== SIGHTFIRST],
+  ['sightfirst', 'SightFirst', (c) => c.customer_category === SIGHT_FIRST],
+  ['shop', 'ลูกค้าร้าน', (c) => c.customer_category !== SIGHT_FIRST],
 ];
 
 function CaseCard({ c, onOpen }) {
@@ -52,10 +55,8 @@ function CaseCard({ c, onOpen }) {
         {Number(c.is_rush) ? <Badge kind="danger"><Icon name="flame" /> ด่วน</Badge> : null}
       </div>
       <div className="cc-code">{`${c.case_code}${c.invoice_code ? ' · ' + c.invoice_code : ''}`}</div>
-      {c.case_type ? (
-        <div className="cc-tags">
-          <Badge kind={c.case_type === SIGHTFIRST ? 'blue' : 'gray'}>{c.case_type}</Badge>
-        </div>
+      {c.customer_category === SIGHT_FIRST || c.case_type ? (
+        <div className="cc-tags"><CaseTags row={c} /></div>
       ) : null}
       <div className="cc-status">
         <Icon name={stageInfo(c.process_stage || c.stage_group).icon} />

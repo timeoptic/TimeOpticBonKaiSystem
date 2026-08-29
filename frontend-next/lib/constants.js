@@ -46,6 +46,20 @@ export const ACTION_LABEL = {
 
 export const RX_KIND_LABEL = { old: 'ค่าเดิม', measured: 'ที่วัดได้', final: 'ที่ใช้จริง' };
 
+/**
+ * ตัวอย่างที่ขึ้นใน "รายละเอียดช่องทาง" ตามช่องทางหลักที่เลือก — เป็น placeholder
+ * ไม่ใช่ตัวเลือก พนักงานพิมพ์อะไรก็ได้ หรือปล่อยว่างก็บันทึกได้
+ * คีย์ตรงกับ referral_source ใน api/core/Lookups.php
+ */
+export const SOURCE_DETAIL_HINT = {
+  fb_ig_tt: 'เช่น Facebook Ads, Instagram, TikTok',
+  line: 'เช่น LINE OA, LINE จากเพื่อนแนะนำ',
+  ai: 'เช่น ChatGPT, Gemini',
+  google: 'เช่น ค้นหาจาก Google, Google Maps',
+  walk_in: 'เช่น เดินผ่านหน้าร้าน, เห็นป้ายหน้าร้าน',
+  other: 'ระบุช่องทางที่รู้จักร้าน',
+};
+
 export const BOOKING_STATUS_CLASS = {
   booked: 'blue', confirmed: 'blue', arrived: 'warn', in_service: 'warn',
   done: 'ok', no_show: 'danger', cancelled: 'gray',

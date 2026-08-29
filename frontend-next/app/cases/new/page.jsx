@@ -2,14 +2,18 @@
 /**
  * Opening a case — the first step of the shop's workflow.
  *
- * Three things get asked here that are deliberately NOT the same question:
+ * Four things get asked here that are deliberately NOT the same question:
  *
  *   ลูกค้าเก่า / ลูกค้าใหม่  whether this person already exists in the system.
  *                          Picks a customer, or creates one — never both.
- *   ประเภทงาน               what kind of job this case is (SIGHTFIRST, ตัดแว่นใหม่ …).
- *                          An existing customer can perfectly well open a
- *                          SIGHTFIRST case, so it is stored on the case.
- *   ผู้รับเรื่อง              which member of staff took the customer in.
+ *   ประเภทงาน               what kind of job this case is — ตัดแว่นใหม่ / เปลี่ยนเลนส์ /
+ *                          ซ่อม / ตรวจสายตา. About the work, not the person.
+ *   ประเภทลูกค้า             which book of work this belongs to: Sight First or the
+ *                          shop's own customers. This is what splits the board.
+ *   รู้จักเราจากช่องทางไหน   how they found the shop, plus a free-text detail.
+ *
+ * ประเภทงาน กับ ประเภทลูกค้า เคยเป็นช่องเดียวกัน ซึ่งแปลว่าเคส SIGHTFIRST หนึ่งใบ
+ * บอกไม่ได้เลยว่าเป็นงานตัดแว่นใหม่หรือเปลี่ยนเลนส์ เพราะช่องถูกใช้ไปตอบอีกคำถามแล้ว
  *
  * A new customer is created inline: the customer row is saved first, this page
  * keeps it selected, and the case is opened against it — no navigating away and
@@ -27,7 +31,7 @@ import {
 import { QueryParamPage } from '../../../components/QueryParamPage.jsx';
 import { Picker } from '../../../components/Picker.jsx';
 import { EmployeeSelect, ListSelect } from '../../../components/Selects.jsx';
-import { NATIONALITIES } from '../../../lib/constants.js';
+import { NATIONALITIES, SOURCE_DETAIL_HINT } from '../../../lib/constants.js';
 import { custName, fmtDate } from '../../../lib/format.js';
 import { Icon } from '../../../components/Icon.jsx';
 
@@ -106,12 +110,13 @@ function CaseFormInner() {
     setBusy(true);
     try {
       const body = readForm(e.currentTarget);
+      /* รายละเอียดช่องทางเก็บเสมอไม่ว่าจะเลือกช่องทางไหน — ของเดิมทิ้งทุกอย่างที่ไม่ใช่
+         "อื่น ๆ" ซึ่งแปลว่า "Facebook Ads" ที่พนักงานพิมพ์ไว้หายไปเงียบ ๆ */
       const saved = await api.post('/api/cases', {
         ...body,
         customer_id: customer.id,
         is_new_customer: isNewCustomer ? 1 : 0,
         recorded_by: body.received_by || null,
-        referral_note: body.referral_source === 'other' ? body.referral_note : '',
       });
       ok('เปิดเคส ' + saved.case_code + ' แล้ว');
       router.push('/cases/detail?id=' + saved.id + '&step=reception');
@@ -184,14 +189,26 @@ function CaseFormInner() {
 
       <form onSubmit={save}>
         <Card title="2. ข้อมูลการเปิดเคส">
-          <FormGrid>
+          {/* กริดเดียวไหลเอง ไม่ใช้ span — `.field.span2` ไม่มี override ที่จอแคบ
+              พอคอลัมน์เหลือ 2 หรือ 1 มันจะไปสร้างคอลัมน์ที่สามขึ้นมาแล้วล้นจอ
+              ที่ 1440 ได้ 3 คอลัมน์: ผู้รับ · ประเภทงาน · ประเภทลูกค้า แล้วขึ้นบรรทัดใหม่
+              เป็น ช่องทาง · รายละเอียด ซึ่งเป็นการจับกลุ่มที่ต้องการพอดี */}
+          <FormGrid two>
             <Field label="พนักงานผู้รับเรื่อง" hint="ผู้รับลูกค้าในเคสนี้ ตรวจย้อนหลังได้จากไทม์ไลน์">
               <EmployeeSelect name="received_by" defaultValue="" />
             </Field>
-            <Field label="ประเภทงาน / Case type" hint="เป็นข้อมูลของเคส ไม่ใช่ของลูกค้า">
+            <Field label="ประเภทงาน / Case Type" hint="งานชิ้นนี้คืองานอะไร">
               <ListSelect name="case_type" kind="case_type" defaultValue="" blank="— เลือกประเภทงาน —" />
             </Field>
-            <Field label="รู้จักเราจากช่องทางไหน">
+            <Field label="ประเภทลูกค้า / Customer Category" hint="ใช้แยกสมุดงานบนกระดาน">
+              <ListSelect
+                name="customer_category"
+                kind="customer_category"
+                defaultValue=""
+                blank="— เลือกประเภทลูกค้า —"
+              />
+            </Field>
+            <Field label="รู้จักเราจากช่องทางไหน / Customer Source" hint="ช่องทางหลัก">
               <ListSelect
                 name="referral_source"
                 kind="referral_source"
@@ -200,12 +217,13 @@ function CaseFormInner() {
                 blank="— ไม่ระบุ —"
               />
             </Field>
-            {channel === 'other' && (
-              <Field label="ระบุช่องทาง">
-                <input name="referral_note" placeholder="เช่น ป้ายหน้าห้าง, งานอีเวนต์" />
-              </Field>
-            )}
-            {/* เคสใหม่เริ่มที่ "02 รับลูกค้า / ลงข้อมูล" เสมอ (ค่า default ของ POST /api/cases)
+            <Field label="รายละเอียดช่องทาง / Source Detail" hint="ไม่กรอกก็บันทึกได้">
+              <input
+                name="referral_note"
+                placeholder={SOURCE_DETAIL_HINT[channel] || 'เช่น Facebook Ads, LINE OA, ค้นหาจาก Google'}
+              />
+            </Field>
+            {/* เคสใหม่เริ่มที่ "รับลูกค้า / ลงข้อมูล" เสมอ (ค่า default ของ POST /api/cases)
                 ของเดิมให้เลือกได้ 30 สถานะ แต่ในทางปฏิบัติไม่มีใครเลือกอย่างอื่น
                 จะข้ามขั้นก็กดเลื่อนที่แถบขั้นตอนของเคสนั้นได้อยู่แล้ว
 

@@ -17,6 +17,7 @@ import { Badge, Card, Loading, PageHead } from './ui.jsx';
 import { DataTable } from './DataTable.jsx';
 import { StatusChip } from './StatusChip.jsx';
 import { Icon } from './Icon.jsx';
+import { CaseTags } from './CaseTags.jsx';
 import { custName, fmtDate, money } from '../lib/format.js';
 
 const BOOKS = [
@@ -95,9 +96,7 @@ export function ProcessCaseList({ stageGroup, icon, title, subtitle }) {
           </b>
           <small className="cell-tags">
             {`รับ: ${fmtDate(r.opened_at)}`}
-            {r.case_type ? (
-              <Badge kind={r.case_type === 'SIGHTFIRST' ? 'blue' : 'gray'}>{r.case_type}</Badge>
-            ) : null}
+            <CaseTags row={r} />
           </small>
         </div>
       ),
