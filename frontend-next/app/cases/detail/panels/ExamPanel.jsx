@@ -39,14 +39,20 @@ const HEALTH = [
   ['health_medication', 'ใช้ยาประจำ'],
 ];
 
+/* PD ไม่มีในตารางนี้แล้ว — วัดที่ขั้น "วัด Center" ที่เดียว (centerings) แล้วดึงมาแสดง
+   อ่านอย่างเดียว ค่าที่กรอกได้สองที่คือค่าที่ขัดกันเองได้ */
 const FULL_COLS = [
   ['sphere', 'SPH'], ['cylinder', 'CYL'], ['axis', 'AXIS'], ['add', 'ADD'],
-  ['pd', 'PD'], ['va', 'VA'], ['prism', 'PRISM'], ['base', 'BASE'],
+  ['va', 'VA'], ['prism', 'PRISM'], ['base', 'BASE'],
 ];
 const OLD_COLS = [
-  ['sphere', 'SPH'], ['cylinder', 'CYL'], ['axis', 'AXIS'], ['add', 'ADD'],
-  ['va', 'VA'], ['pd', 'PD'],
+  ['sphere', 'SPH'], ['cylinder', 'CYL'], ['axis', 'AXIS'], ['add', 'ADD'], ['va', 'VA'],
 ];
+
+/** ค่าที่ Final ต้องมีครบทั้งสองตา ถึงจะยืนยันได้ — ADD / PRISM / BASE ไม่บังคับ */
+const FINAL_REQUIRED = [['sphere', 'SPH'], ['cylinder', 'CYL'], ['axis', 'AXIS'], ['va', 'VA']];
+
+const EYE_LABEL = { r: 'R / ขวา', l: 'L / ซ้าย' };
 
 const OLD_SOURCES = [
   ['history', 'ดึงจากประวัติในระบบ'],
@@ -62,26 +68,34 @@ const FINAL_SOURCES = [
   ['adjusted', 'ปรับค่าเอง / Adjusted'],
 ];
 
-/** OD above OS, one column per measurement — the two eyes must never look alike
+/** R above L, one column per measurement — the two eyes must never look alike
  * enough to be read off the wrong row. A blank stays blank: 0.00 is a real
- * power, so it can never stand in for "ไม่มีข้อมูล". */
-function RxGrid({ cols, get, set, readOnly = false }) {
-  const eye = (k, label) => (
+ * power, so it can never stand in for "ไม่มีข้อมูล".
+ *
+ * `missing` marks the cells a save is waiting on, so "กรุณากรอก SPH" points at
+ * a box rather than leaving the reader to hunt for which of eight it meant. */
+function RxGrid({ cols, get, set, readOnly = false, missing = null }) {
+  const eye = (k) => (
     <tr key={k}>
-      <th scope="row">{label}</th>
-      {cols.map(([f]) => (
-        <td key={f}>
-          {readOnly
-            ? <span>{get(k, f) || '—'}</span>
-            : (
-              <input
-                aria-label={`${label} ${f}`}
-                value={get(k, f)}
-                onChange={(e) => set(k, f, e.target.value)}
-              />
-            )}
-        </td>
-      ))}
+      <th scope="row">{EYE_LABEL[k]}</th>
+      {cols.map(([f]) => {
+        const bad = !!missing?.[`${k}_${f}`];
+        return (
+          <td key={f}>
+            {readOnly
+              ? <span>{get(k, f) || '—'}</span>
+              : (
+                <input
+                  aria-label={`${EYE_LABEL[k]} ${f}`}
+                  aria-invalid={bad || undefined}
+                  className={bad ? 'rx-missing' : undefined}
+                  value={get(k, f)}
+                  onChange={(e) => set(k, f, e.target.value)}
+                />
+              )}
+          </td>
+        );
+      })}
     </tr>
   );
   return (
@@ -94,8 +108,8 @@ function RxGrid({ cols, get, set, readOnly = false }) {
           </tr>
         </thead>
         <tbody>
-          {eye('r', 'OD / ขวา')}
-          {eye('l', 'OS / ซ้าย')}
+          {eye('r')}
+          {eye('l')}
         </tbody>
       </table>
     </div>
@@ -208,6 +222,25 @@ export function ExamPanel({ c, reload }) {
   };
 
   const set = (name, value) => { touch(); setForm((f) => ({ ...f, [name]: value })); };
+
+  /**
+   * ระยะที่ใช้สายตาเป็นค่าเดียวต่อคน แต่ schema เก็บเป็นสองคอลัมน์ (_r / _l) มาแต่เดิม
+   * และ §11 บอกว่าอย่า rename ตาราง จึงเขียนค่าเดียวกันลงทั้งสองช่อง แถวจะได้ไม่ขัดกันเอง
+   * ไม่ว่าใครอ่านช่องไหน ส่วนตอนอ่านก็รับค่าจากแถวเก่าที่กรอกไว้ข้างเดียวได้
+   */
+  const distanceOf = (base) => form[`${base}_r`] || form[`${base}_l`] || '';
+  const setWorkingDistance = (base, value) => {
+    touch();
+    setForm((f) => ({ ...f, [`${base}_r`]: value, [`${base}_l`]: value }));
+  };
+  const readingDistance = distanceOf('dist_vertical');
+  const computerDistance = distanceOf('dist_monitor');
+
+  /* PD มาจากขั้น "วัด Center" ที่เดียว — ที่นี่อ่านอย่างเดียว ห้ามมีที่กรอกซ้ำ */
+  const centering = c.centering || null;
+  const pdFromCenter = centering?.pd_total
+    || [centering?.r_pd, centering?.l_pd].filter(Boolean).join(' / ')
+    || '';
   const setOld = (name, value) => { touch(); setOldForm((f) => ({ ...f, [name]: value })); };
   const field = (name, label, placeholder) => (
     <Field label={label}>
@@ -258,6 +291,30 @@ export function ExamPanel({ c, reload }) {
   const confirmed = st.status === 'completed' && !!Number(st.stored) && !!st.completed_at;
   const shownFinal = confirmed && finalRow ? bothEyes(finalRow) : finalValues;
 
+  /**
+   * ค่าที่ Final ยังขาด — คิดจากชุดที่กำลังจะถูกใช้จริง ไม่ใช่จากช่องที่พิมพ์อยู่
+   * เพราะเลือก "ใช้ค่าจาก Measured" แล้วช่องที่ว่างคือช่องใน Measured
+   *
+   * SPH / CYL / AXIS / VA ต้องครบทั้งสองตา ส่วน ADD / PRISM / BASE ไม่บังคับ
+   * — 0.00 เป็นค่าจริง คนไม่มีสายตาเอียงก็กรอก 0.00 ได้ ระบบไม่เดาให้
+   */
+  const missingFinal = useMemo(() => {
+    const cells = {};
+    const short = new Set();
+    for (const k of ['r', 'l']) {
+      for (const [f, label] of FINAL_REQUIRED) {
+        if (String(finalValues[k][f] ?? '').trim() === '') {
+          cells[`${k}_${f}`] = true;
+          short.add(label);
+        }
+      }
+    }
+    return {
+      cells,
+      labels: [...short].map((label) => `กรุณากรอก ${label}`),
+    };
+  }, [finalValues]);
+
   const saveDraft = async () => {
     const stamp = toStamp(form.test_date ? dtLocal(form.test_date) : nowLocal());
     const measuredBody = {
@@ -305,8 +362,10 @@ export function ExamPanel({ c, reload }) {
       return false;
     }
     const values = finalValues;
-    if (!values.r.sphere && !values.l.sphere) {
-      err('ยังไม่มีค่าสายตาที่จะใช้ — กรอก Measured Prescription หรือเลือกแหล่งอื่นก่อน');
+    /* ค่าสายตาที่จะเอาไปสั่งตัดต้องครบ ไม่ใช่แค่มี SPH — ใบที่ขาด AXIS หรือ VA
+       ไปโผล่ที่ห้องผลิตแล้วต้องโทรกลับมาถามคือสิ่งที่กันตรงนี้ */
+    if (missingFinal.labels.length) {
+      err(missingFinal.labels.join('\n'));
       return false;
     }
     const saved = await saveDraft();
@@ -328,7 +387,8 @@ export function ExamPanel({ c, reload }) {
       test_date: toStamp(nowLocal()),
       test_for: form.test_for || '',
       performed_by: form.performed_by || null,
-      pd_total: form.pd_total || '',
+      /* ไม่ส่ง pd_total / r_pd / l_pd — PD เป็นของขั้นวัด Center (ตาราง centerings)
+         ใบสายตาถือค่านั้นไม่ได้ ไม่งั้นจะมีสองแหล่งที่ขัดกันได้ */
       exam_note: form.exam_note || '',
       notes: form.notes || '',
     };
@@ -356,25 +416,49 @@ export function ExamPanel({ c, reload }) {
   }, [register]);
 
   const compare = [
-    ['OD SPH', oldForm.r_sphere, form.r_sphere, shownFinal.r.sphere],
-    ['OD CYL', oldForm.r_cylinder, form.r_cylinder, shownFinal.r.cylinder],
-    ['OS SPH', oldForm.l_sphere, form.l_sphere, shownFinal.l.sphere],
-    ['OS CYL', oldForm.l_cylinder, form.l_cylinder, shownFinal.l.cylinder],
+    ['R SPH', oldForm.r_sphere, form.r_sphere, shownFinal.r.sphere],
+    ['R CYL', oldForm.r_cylinder, form.r_cylinder, shownFinal.r.cylinder],
+    ['L SPH', oldForm.l_sphere, form.l_sphere, shownFinal.l.sphere],
+    ['L CYL', oldForm.l_cylinder, form.l_cylinder, shownFinal.l.cylinder],
   ];
 
   return (
     <fieldset className="exam-ws" disabled={confirmed}>
       <Section n="1" title="ค่าสายตาเปล่า / Visual Acuity" hint="ค่าการมองเห็นก่อนใส่แว่น และระยะที่ลูกค้าใช้สายตาเป็นประจำ">
-        <FormGrid>
-          {field('va_naked_r', 'VA ตาเปล่า OD / ขวา', '20/40')}
-          {field('va_naked_l', 'VA ตาเปล่า OS / ซ้าย', '20/40')}
-          {field('bin_r_va', 'VA ระยะใกล้ OD / ขวา', 'N6')}
-          {field('bin_l_va', 'VA ระยะใกล้ OS / ซ้าย', 'N6')}
-          {field('dist_vertical_r', 'ระยะอ่านหนังสือ R (ซม.)')}
-          {field('dist_vertical_l', 'ระยะอ่านหนังสือ L (ซม.)')}
-          {field('dist_monitor_r', 'ระยะคอมพิวเตอร์ R (ซม.)')}
-          {field('dist_monitor_l', 'ระยะคอมพิวเตอร์ L (ซม.)')}
-        </FormGrid>
+        {/* ตาเปล่าแยกซ้ายขวาเพราะสองตาเห็นไม่เท่ากัน ส่วนระยะที่ใช้สายตาเป็นระยะจาก
+            หน้าไปหนังสือหรือจอ — ตัวเดียวต่อคน ไม่ใช่ต่อตา จึงไม่แยก R / L */}
+        <div className="va-row">
+          <fieldset className="va-eyes">
+            <legend>ตาเปล่า</legend>
+            {field('va_naked_r', 'R', '20/40')}
+            {field('va_naked_l', 'L', '20/40')}
+          </fieldset>
+          <fieldset className="va-dist">
+            <legend>ระยะที่ใช้สายตา</legend>
+            <Field label="ระยะอ่านหนังสือ / Reading">
+              <div className="unit-input">
+                <input
+                  inputMode="decimal"
+                  value={readingDistance}
+                  placeholder="40"
+                  onChange={(e) => setWorkingDistance('dist_vertical', e.target.value)}
+                />
+                <span>CM</span>
+              </div>
+            </Field>
+            <Field label="ระยะคอมพิวเตอร์ / Computer">
+              <div className="unit-input">
+                <input
+                  inputMode="decimal"
+                  value={computerDistance}
+                  placeholder="60"
+                  onChange={(e) => setWorkingDistance('dist_monitor', e.target.value)}
+                />
+                <span>CM</span>
+              </div>
+            </Field>
+          </fieldset>
+        </div>
       </Section>
 
       <Section n="2" title="ประวัติสุขภาพ" hint="ติ๊กเฉพาะที่ลูกค้าแจ้งในเคสนี้ — ค่าที่ติ๊กถูกเก็บไว้กับรอบนี้ ไม่ได้อ่านจากโปรไฟล์ลูกค้าแบบสด">
@@ -434,8 +518,8 @@ export function ExamPanel({ c, reload }) {
                   return (
                     <button type="button" key={s.key} className="rx-history-row" onClick={() => pullFrom(s)}>
                       <b>{`${fmtDate(s.exam_date)}${s.case_code ? ` · ${s.case_code}` : ''}`}</b>
-                      <span>{`OD ${power(src?.r_sphere)} / ${power(src?.r_cylinder)} x ${src?.r_axis || '—'}`}</span>
-                      <span>{`OS ${power(src?.l_sphere)} / ${power(src?.l_cylinder)} x ${src?.l_axis || '—'}`}</span>
+                      <span>{`R ${power(src?.r_sphere)} / ${power(src?.r_cylinder)} x ${src?.r_axis || '—'}`}</span>
+                      <span>{`L ${power(src?.l_sphere)} / ${power(src?.l_cylinder)} x ${src?.l_axis || '—'}`}</span>
                       <span className="muted">{s.final ? 'ค่าที่ใช้จริง' : 'ค่าที่วัดได้'}</span>
                     </button>
                   );
@@ -486,16 +570,9 @@ export function ExamPanel({ c, reload }) {
       </Section>
 
       <Section n="4" title="MEASURED PRESCRIPTION" sub="ค่าที่วัดได้ในการตรวจครั้งนี้" hint="ค่าดิบที่วัดได้จริง — ถ้าจะใช้ค่าอื่นกับงาน ให้ไปปรับที่ Final ข้างล่าง ไม่ต้องแก้ตรงนี้">
+        {/* ไม่มี "ใช้สำหรับ / Test for" ตรงนี้แล้ว — ค่าที่เพิ่งวัดได้ยังไม่ได้ถูกสั่งให้ใช้
+            กับอะไร คำถามนั้นเป็นของ Final ข้างล่าง */}
         <FormGrid>
-          <Field label="ใช้สำหรับ / Test for">
-            <ListSelect
-              name="test_for"
-              kind="test_for"
-              value={form.test_for ?? ''}
-              onChange={(e) => set('test_for', e.target.value)}
-              blank="—"
-            />
-          </Field>
           <Field label="ผู้วัด">
             <EmployeeSelect
               name="performed_by"
@@ -510,7 +587,13 @@ export function ExamPanel({ c, reload }) {
               onChange={(e) => set('test_date', e.target.value)}
             />
           </Field>
-          {field('pd_total', 'PD รวม')}
+          <Field label="PD" hint="วัดที่ขั้น “วัด Center” — ที่นี่อ่านอย่างเดียว">
+            <div className="pd-readonly">
+              {pdFromCenter
+                ? <><b>{pdFromCenter}</b><span className="muted"> mm · จาก วัด Center</span></>
+                : <span className="muted">— ยังไม่มีข้อมูล Center —</span>}
+            </div>
+          </Field>
         </FormGrid>
         <RxGrid
           cols={FULL_COLS}
@@ -520,6 +603,27 @@ export function ExamPanel({ c, reload }) {
       </Section>
 
       <Section n="5" title="FINAL PRESCRIPTION" sub="ค่าสายตาที่ใช้จริงในเคสนี้" hint="เลือกว่าจะใช้ค่าชุดไหน ระบบจะคัดลอกค่าเก็บเป็นของรอบนี้ — ปรับตรงนี้ไม่กระทบค่าที่วัดได้">
+        {/* "ใช้สำหรับ" อยู่ที่นี่ ไม่ใช่ที่ Measured — มันบอกว่าค่าชุดที่ตัดสินใจใช้แล้วนี้
+            ถูกสั่งไว้ให้ใช้ทำอะไร ซึ่งเป็นการตัดสินใจ ไม่ใช่ผลการวัด */}
+        <FormGrid two>
+          <Field label="ใช้สำหรับ / Test For">
+            <ListSelect
+              name="test_for"
+              kind="test_for"
+              value={form.test_for ?? ''}
+              onChange={(e) => set('test_for', e.target.value)}
+              blank="— เลือกการใช้งาน —"
+            />
+          </Field>
+          <Field label="PD" hint="วัดที่ขั้น “วัด Center” — ที่นี่อ่านอย่างเดียว">
+            <div className="pd-readonly">
+              {pdFromCenter
+                ? <><b>{pdFromCenter}</b><span className="muted"> mm · จาก วัด Center</span></>
+                : <span className="muted">— ยังไม่มีข้อมูล Center —</span>}
+            </div>
+          </Field>
+        </FormGrid>
+
         <Row style={{ gap: 8, marginBottom: 10 }}>
           {FINAL_SOURCES.map(([v, label]) => (
             <button
@@ -547,11 +651,20 @@ export function ExamPanel({ c, reload }) {
         <RxGrid
           cols={FULL_COLS}
           readOnly={confirmed || finalSource !== 'adjusted'}
+          missing={confirmed ? null : missingFinal.cells}
           get={(k, f) => (confirmed
             ? (shownFinal[k][f] || '')
             : finalSource === 'adjusted' ? (finalRx[`${k}_${f}`] ?? '') : (finalValues[k][f] || ''))}
           set={(k, f, v) => { touch(); setFinalRx((x) => ({ ...x, [`${k}_${f}`]: v })); }}
         />
+
+        {!confirmed && missingFinal.labels.length > 0 && (
+          <p className="rx-missing-note">
+            <Icon name="warning" />
+            {` ยังยืนยันไม่ได้ — ${missingFinal.labels.join(' · ')}`}
+            {finalSource !== 'adjusted' ? ' (แก้ที่ชุดค่าที่เลือกไว้ หรือกด “ปรับค่าเอง”)' : ''}
+          </p>
+        )}
 
         {finalSource === 'adjusted' && (
           <Field label="เหตุผลที่ปรับค่าเอง" className="full">
@@ -610,8 +723,8 @@ export function ExamPanel({ c, reload }) {
                   {`${r.kind === 'final' ? 'ค่าที่ใช้จริง' : r.kind === 'old' ? 'ค่าเดิม' : 'ค่าที่วัดได้'}`}
                   {r.kind === 'old' && r.source ? ` (${OLD_SOURCE_LABEL[r.source] || r.source})` : ''}
                 </b>
-                <span>{`OD ${power(r.r_sphere)} / ${power(r.r_cylinder)} x ${r.r_axis || '—'}`}</span>
-                <span>{`OS ${power(r.l_sphere)} / ${power(r.l_cylinder)} x ${r.l_axis || '—'}`}</span>
+                <span>{`R ${power(r.r_sphere)} / ${power(r.r_cylinder)} x ${r.r_axis || '—'}`}</span>
+                <span>{`L ${power(r.l_sphere)} / ${power(r.l_cylinder)} x ${r.l_axis || '—'}`}</span>
                 <Link className="btn btn-sm btn-light" href={'/prescriptions/edit?id=' + r.id}><Icon name="pencil" /> แก้ไขทั้งใบ</Link>
               </div>
             ))}

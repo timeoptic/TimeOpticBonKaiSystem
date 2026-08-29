@@ -44,8 +44,8 @@ export function ExamHistory({ sessions }) {
 
             <Row className="exam-round-summary">
               <Badge kind={s.final ? 'ok' : 'gray'}>{s.final ? 'ค่าที่ใช้จริง' : 'ค่าที่วัดได้'}</Badge>
-              <span>{`OD ${power(summary?.r_sphere)} / ${power(summary?.r_cylinder)} × ${summary?.r_axis || '—'}`}</span>
-              <span>{`OS ${power(summary?.l_sphere)} / ${power(summary?.l_cylinder)} × ${summary?.l_axis || '—'}`}</span>
+              <span>{`R ${power(summary?.r_sphere)} / ${power(summary?.r_cylinder)} × ${summary?.r_axis || '—'}`}</span>
+              <span>{`L ${power(summary?.l_sphere)} / ${power(summary?.l_cylinder)} × ${summary?.l_axis || '—'}`}</span>
             </Row>
 
             {isOpen && (

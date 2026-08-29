@@ -89,8 +89,8 @@ function OrderDetailInner() {
             ['ช่องทาง', o.marketing || '-'],
             ['เลนส์', o.lens_name || '-'],
             ['กรอบ', o.frame_name || '-'],
-            ['เลนส์ขวา (OD, stock)', itemValue(o.left_lens)],
-            ['เลนส์ซ้าย (OS, stock)', itemValue(o.right_lens)],
+            ['เลนส์ขวา (R, stock)', itemValue(o.left_lens)],
+            ['เลนส์ซ้าย (L, stock)', itemValue(o.right_lens)],
             ['กรอบ (stock)', itemValue(o.frame)],
             ['หมายเหตุ', o.notes || '-'],
           ]}

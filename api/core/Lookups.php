@@ -91,7 +91,10 @@ final class Lookups
             ['other', 'อื่นๆ'],
         ];
 
-        $out['test_for']     = ['Distance', 'Reading', 'Progressive', 'Bi-focal'];
+        /* "ค่าสายตาชุดนี้สั่งตัดไว้ใช้ทำอะไร" — ถามที่ Final Prescription ที่เดียว
+           ไม่ใช่ที่ Measured เพราะค่าที่วัดได้ยังไม่ได้ถูกสั่งให้ใช้กับอะไร */
+        $out['test_for'] = ['Distance', 'Reading', 'Progressive', 'Bi-focal',
+            'Degressive', 'Computer'];
         /* ค่าแว่นเดิมมาได้ 3 ทางเท่านั้น (ตรงกับแอปเดิม lib/migrate.js) */
         $out['rx_source_old'] = [
             ['history', 'ดึงจากประวัติในระบบ'],

@@ -10,7 +10,7 @@
  * can't live in plain uncontrolled inputs: the picked customer/case context
  * (read-only once a case is known, pickable via <Picker> for a standalone
  * order), which prescription becomes final_prescription_id, the three
- * <StockPicker> selections (frame / lens OD / lens OS), and the four price
+ * <StockPicker> selections (frame / lens R / lens L), and the four price
  * fields + discount, which are kept live so the Total / Net Total mirror
  * what the server (Task 2's orderVals()) will compute and validate.
  */
@@ -434,7 +434,7 @@ export function OrderFormView({
         <Card title="เลนส์ — Lens">
           <p className="hint">ถ้ายังต้องสั่งเลนส์จากซัพพลายเออร์ ให้ข้ามการเลือกสต็อกไปก่อน</p>
           <Split>
-            <Fieldset legend="เลนส์ขวา (OD)">
+            <Fieldset legend="เลนส์ขวา (R)">
               <StockPicker
                 type="Lens"
                 picked={picked.lensOd}
@@ -443,7 +443,7 @@ export function OrderFormView({
                 selectedId={picked.lensOd?.id ?? null}
               />
             </Fieldset>
-            <Fieldset legend="เลนส์ซ้าย (OS)">
+            <Fieldset legend="เลนส์ซ้าย (L)">
               <StockPicker
                 type="Lens"
                 picked={picked.lensOs}

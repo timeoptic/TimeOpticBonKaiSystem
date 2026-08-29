@@ -36,11 +36,12 @@ function EyeSide({ side, t }) {
   return (
     <Fieldset legend={side === 'R' ? 'ตาขวา — Right (R)' : 'ตาซ้าย — Left (L)'}>
       <FormGrid>
+        {/* ไม่มี PD ที่นี่ — วัดที่ขั้น "วัด Center" ที่เดียว (ตาราง centerings)
+            ค่าที่กรอกได้สองที่คือค่าที่ขัดกันเองได้ */}
         {box('sphere', 'Sphere', '-1.25')}
         {box('cylinder', 'Cylinder', '-0.50')}
         {box('axis', 'Axis', '90')}
         {box('add', 'Add', '+2.00')}
-        {box('pd', 'PD', '32')}
         {box('va', 'VA', '1.0')}
         {box('prism', 'Prism')}
         {box('base', 'Base')}
@@ -90,6 +91,10 @@ export function PrescriptionFormView({ editing }) {
     body.customer_id = customer.id;
     body.case_id = caseId;
     body.test_date = toStamp(body.test_date);
+    /* ระยะที่ใช้สายตากรอกช่องเดียว แต่ schema มีสองคอลัมน์ — เขียนลงทั้งคู่ให้แถวตรงกัน
+       ไม่งั้น PUT ซึ่งเขียนทับทุกคอลัมน์จะล้างข้าง L ทิ้งเงียบ ๆ */
+    body.dist_vertical_l = body.dist_vertical_r ?? '';
+    body.dist_monitor_l = body.dist_monitor_r ?? '';
     try {
       if (editing) await api.put('/api/prescriptions/' + id, body);
       else await api.post('/api/prescriptions', body);
@@ -159,12 +164,15 @@ export function PrescriptionFormView({ editing }) {
 
           <Fieldset legend="ข้อมูลเพิ่มเติม">
             <FormGrid>
-              <Field label="PD รวม"><input name="pd_total" defaultValue={t.pd_total || ''} /></Field>
               <Field label="แว่นเดิมเป็นแบบ"><input name="old_glasses_type" defaultValue={t.old_glasses_type || ''} /></Field>
-              <Field label="ระยะแนวตั้ง R"><input name="dist_vertical_r" defaultValue={t.dist_vertical_r || ''} /></Field>
-              <Field label="ระยะแนวตั้ง L"><input name="dist_vertical_l" defaultValue={t.dist_vertical_l || ''} /></Field>
-              <Field label="ระยะจอ R"><input name="dist_monitor_r" defaultValue={t.dist_monitor_r || ''} /></Field>
-              <Field label="ระยะจอ L"><input name="dist_monitor_l" defaultValue={t.dist_monitor_l || ''} /></Field>
+              {/* ระยะที่ใช้สายตาเป็นค่าเดียวต่อคน ไม่ใช่ต่อตา — schema เก็บสองคอลัมน์
+                  มาแต่เดิม จึงเขียนค่าเดียวกันลงทั้งคู่ (ดู ExamPanel) */}
+              <Field label="ระยะอ่านหนังสือ (ซม.)">
+                <input name="dist_vertical_r" defaultValue={t.dist_vertical_r || t.dist_vertical_l || ''} />
+              </Field>
+              <Field label="ระยะคอมพิวเตอร์ (ซม.)">
+                <input name="dist_monitor_r" defaultValue={t.dist_monitor_r || t.dist_monitor_l || ''} />
+              </Field>
               <Field label="รู้จักร้านจาก">
                 <ListSelect name="known_from" kind="marketing" defaultValue={t.known_from || ''} blank="—" />
               </Field>

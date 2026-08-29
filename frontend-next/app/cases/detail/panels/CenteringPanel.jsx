@@ -152,14 +152,14 @@ export function CenteringPanel({ c, reload }) {
           </div>
 
           <Group icon="users" title="PD" cols={3}>
-            <Measure label="PD ขวา (OD)" unit="mm" value={form.r_pd} onChange={set('r_pd')} placeholder="31.0" />
-            <Measure label="PD ซ้าย (OS)" unit="mm" value={form.l_pd} onChange={set('l_pd')} placeholder="31.0" />
+            <Measure label="PD ขวา (R)" unit="mm" value={form.r_pd} onChange={set('r_pd')} placeholder="31.0" />
+            <Measure label="PD ซ้าย (L)" unit="mm" value={form.l_pd} onChange={set('l_pd')} placeholder="31.0" />
             <Measure label="PD รวม" unit="mm" value={pdTotal} readOnly hint="ขวา + ซ้าย" />
           </Group>
 
           <Group icon="eye" title="FH" cols={2}>
-            <Measure label="FH ขวา (OD)" unit="mm" value={form.r_height} onChange={set('r_height')} placeholder="18.5" />
-            <Measure label="FH ซ้าย (OS)" unit="mm" value={form.l_height} onChange={set('l_height')} placeholder="18.5" />
+            <Measure label="FH ขวา (R)" unit="mm" value={form.r_height} onChange={set('r_height')} placeholder="18.5" />
+            <Measure label="FH ซ้าย (L)" unit="mm" value={form.l_height} onChange={set('l_height')} placeholder="18.5" />
           </Group>
 
           <Group icon="glasses" title="FRAME BOX" cols={4}>

@@ -66,7 +66,7 @@ const isKnownStep = (step) => isProcess(step)
   || Object.prototype.hasOwnProperty.call(EXTRA_PANELS, step)
   || step === 'overview';
 
-/** One picked item on the overview — frame / lens OD / lens OS. */
+/** One picked item on the overview — frame / lens R / lens L. */
 function ItemCard({ title, name, sub, price, inStock }) {
   return (
     <Card
@@ -183,14 +183,14 @@ function OverviewTab({ c, showTab }) {
             inStock={!!o.frame_product_id}
           />
           <ItemCard
-            title="เลนส์ขวา (OD)"
+            title="เลนส์ขวา (R)"
             name={o.lens_name}
             sub={[o.lens_brand, o.lens_index, o.lens_coating].filter(Boolean).join(' · ')}
             price={o.lens_od_price}
             inStock={!!o.lens_product_id}
           />
           <ItemCard
-            title="เลนส์ซ้าย (OS)"
+            title="เลนส์ซ้าย (L)"
             name={o.lens_name}
             sub={[o.lens_brand, o.lens_index, o.lens_coating].filter(Boolean).join(' · ')}
             price={o.lens_os_price}
