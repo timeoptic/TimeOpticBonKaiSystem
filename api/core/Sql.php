@@ -106,7 +106,7 @@ function setStatus(Tx $q, ?int $caseId, ?string $toStatus, array $opt = []): voi
 
 /**
  * Shared create-or-update handler for the one-row-per-case workflow tables
- * (centerings, frame_fittings, production_jobs).
+ * (centerings, frame_fittings, case_deliveries).
  */
 function upsertFactory(array $spec): callable
 {

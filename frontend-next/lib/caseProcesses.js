@@ -1,5 +1,5 @@
 /**
- * The 10 processes a case goes through — the single place their id, label,
+ * The 6 processes a case goes through — the single place their id, label,
  * colour and "ยืนยันเสร็จ" wording live. `lib/constants.js` builds STAGE_META /
  * STAGE_GROUPS from this list, so the board, the stepper and the sidebar all
  * read the same names.
@@ -10,23 +10,26 @@
  * The workflow is deliberately NON-LINEAR: this array is display order only.
  * Nothing here says a process must wait for the one before it; what a process
  * needs is decided by its own requirements, server-side.
+ *
+ * ส่งมอบเป็นขั้นสุดท้ายจริง ๆ — ยืนยันแล้วเคสปิด ไม่มีขั้น "จบงาน" ให้กดซ้ำ
  */
 
 export const CASE_PROCESSES = [
   { id: 'reception', label: 'รับลูกค้า', color: '#7a5cc4', icon: '🛎', completeLabel: 'เปิดเคสเรียบร้อย' },
   { id: 'exam', label: 'วัดสายตา', color: '#2f6fd0', icon: '👁', completeLabel: 'ยืนยันผลวัดสายตา' },
   { id: 'sales', label: 'ขาย/เลือกกรอบ', color: '#0f8f8f', icon: '🛍', completeLabel: 'ยืนยันรายการขาย' },
-  { id: 'centering', label: 'วัด Center', color: '#8a6d00', icon: '🎯', completeLabel: 'ยืนยันค่า Center' },
   { id: 'payment', label: 'ชำระเงิน', color: '#0a7a3d', icon: '💳', completeLabel: 'ยืนยันการชำระเงิน' },
-  { id: 'lens', label: 'เลนส์', color: '#0d7fa0', icon: '👓', completeLabel: 'ส่งเข้าห้องผลิต' },
-  { id: 'production', label: 'ผลิต', color: '#c07000', icon: '🔧', completeLabel: 'ผลิตเสร็จแล้ว' },
-  { id: 'qc', label: 'ตรวจ QC', color: '#b32020', icon: '🔍', completeLabel: 'QC ผ่าน' },
-  { id: 'delivery', label: 'ส่งมอบ', color: '#127a4a', icon: '📦', completeLabel: 'ส่งมอบแล้ว' },
-  { id: 'done', label: 'จบงาน', color: '#6b7a90', icon: '✅', completeLabel: 'จบเคส' },
+  { id: 'centering', label: 'วัด Center', color: '#8a6d00', icon: '🎯', completeLabel: 'ยืนยันค่า Center' },
+  { id: 'delivery', label: 'ส่งมอบ', color: '#127a4a', icon: '📦', completeLabel: 'ส่งมอบเสร็จ — ปิดเคส' },
 ];
 
+/** สถานะปิดเคส — ไม่ใช่ขั้นตอน แต่กระดานงานต้องมีคอลัมน์ให้เคสที่จบแล้วไปอยู่ */
+export const DONE_STAGE = { id: 'done', label: 'จบงาน', color: '#6b7a90', icon: '✅' };
+
 export const processInfo = (id) =>
-  CASE_PROCESSES.find((p) => p.id === id) || { id, label: id || '-', color: '#6b7a90', icon: '•' };
+  CASE_PROCESSES.find((p) => p.id === id)
+  || (id === DONE_STAGE.id ? DONE_STAGE : null)
+  || { id, label: id || '-', color: '#6b7a90', icon: '•' };
 
 /** the 6 statuses a process can be in — icon and colour class for the stepper */
 export const PROCESS_STATE_META = {

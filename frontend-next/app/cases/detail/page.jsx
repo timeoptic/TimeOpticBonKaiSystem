@@ -2,7 +2,7 @@
 /**
  * Case workspace.
  *
- * The 10 processes are not a wizard: any of them can be opened at any time, in
+ * The 6 processes are not a wizard: any of them can be opened at any time, in
  * any order (ขาย before วัดสายตา is normal here). So this page keeps two ideas
  * apart on purpose:
  *
@@ -36,29 +36,21 @@ import { custName, fmtDate, fmtDateTime, money, moneyShort } from '../../../lib/
 import { ReceptionPanel } from './panels/ReceptionPanel.jsx';
 import { ExamPanel } from './panels/ExamPanel.jsx';
 import { SalesPanel } from './panels/SalesPanel.jsx';
-import { CenteringPanel } from './panels/CenteringPanel.jsx';
-import { LensPanel } from './panels/LensPanel.jsx';
-import { Icon } from '../../../components/Icon.jsx';
-import { ProductionPanel } from './panels/ProductionPanel.jsx';
-import { QcPanel } from './panels/QcPanel.jsx';
-import { DeliveryPanel } from './panels/DeliveryPanel.jsx';
 import { PaymentPanel } from './panels/PaymentPanel.jsx';
+import { CenteringPanel } from './panels/CenteringPanel.jsx';
+import { DeliveryPanel } from './panels/DeliveryPanel.jsx';
+import { Icon } from '../../../components/Icon.jsx';
 import { NotifyPanel } from './panels/NotifyPanel.jsx';
 import { TimelinePanel } from './panels/TimelinePanel.jsx';
-import { ClosePanel } from './panels/ClosePanel.jsx';
 
 /** one panel per process — ids come from lib/caseProcesses.js */
 const PROCESS_PANELS = {
   reception: ReceptionPanel,
   exam: ExamPanel,
   sales: SalesPanel,
-  centering: CenteringPanel,
   payment: PaymentPanel,
-  lens: LensPanel,
-  production: ProductionPanel,
-  qc: QcPanel,
+  centering: CenteringPanel,
   delivery: DeliveryPanel,
-  done: ClosePanel,
 };
 
 /** views that are not a process — no status, no complete action */

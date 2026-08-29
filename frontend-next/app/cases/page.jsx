@@ -43,9 +43,6 @@ const CLIENTS = [
 ];
 
 function CaseCard({ c, onOpen }) {
-  const late = c.expected_arrival
-    && new Date(c.expected_arrival) < new Date()
-    && c.lens_status === 'waiting_arrival';
   const owed = Number(c.balance) > 0;
 
   return (
@@ -77,7 +74,6 @@ function CaseCard({ c, onOpen }) {
       </div>
       <div className="cc-foot">
         <span className="muted">{`เปิดมา ${c.age_days} วัน`}</span>
-        {late ? <Badge kind="danger">เลนส์เลย ETA</Badge> : null}
         {Number(c.is_waiting) ? <Badge kind="warn">รอ</Badge> : null}
       </div>
     </div>
@@ -119,7 +115,7 @@ function CaseBoardInner() {
 
   /* Columns come from what the case has actually finished (process_stage,
      computed by the API), not from cases.status — that one is set by hand and
-     drifts: a case could sit in "ผลิต" with no order and no production job. */
+     drifts: a case could sit in "ส่งมอบ" with no order and no centering. */
   const byGroup = {};
   for (const r of shown) (byGroup[r.process_stage || r.stage_group] ||= []).push(r);
   const groups = (showDone ? [...STAGE_GROUPS, 'done'] : STAGE_GROUPS)
@@ -136,7 +132,7 @@ function CaseBoardInner() {
         actions={(
           <>
             <Link className="btn btn-ghost" href="/cases/new">+ เปิดเคสใหม่</Link>
-            <Link className="btn btn-ghost" href="/lens-tracker"><Icon name="search" /> ติดตามเลนส์</Link>
+            <Link className="btn btn-ghost" href="/delivery"><Icon name="box" /> กระดานส่งมอบ</Link>
           </>
         )}
       />

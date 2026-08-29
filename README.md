@@ -3,7 +3,7 @@
 เว็บแอปสำหรับร้านแว่นตา TimeOptic ทำงานบนฐานข้อมูล **MariaDB `timeoptic`** ของ XAMPP
 (schema เดิมที่ออกแบบไว้แล้ว 27 ตาราง + 7 views — แอปนี้ต่อเข้ากับของเดิม ไม่ได้สร้างใหม่)
 
-**สแต็กปัจจุบัน: React (frontend) + PHP REST API (backend)**
+**สแต็กปัจจุบัน: Next.js static export (frontend) + PHP REST API (backend) + MariaDB**
 
 ---
 
@@ -18,24 +18,22 @@ timeoptic-web/
 │   ├── config.php              อ่านค่าจาก .env / environment
 │   ├── core/                   Db(PDO) · Router · Http · Helpers · Sql · Lookups
 │   ├── services/               Telegram · Migrate · Scheduler · Booking
-│   ├── routes/                 18 ไฟล์ — หนึ่งไฟล์ต่อหนึ่งกลุ่มข้อมูล
+│   ├── routes/                 19 ไฟล์ — หนึ่งไฟล์ต่อหนึ่งกลุ่มข้อมูล
 │   └── cli/                    reminder.php (Task Scheduler) · serve.php (banner)
 │
-├── frontend/                 Frontend — React 19 + Vite + React Router
-│   └── src/
-│       ├── api/                client.js (fetch) · meta.jsx (context ของ dropdown)
-│       ├── lib/                format.js · constants.js · hooks.js
-│       ├── components/         Shell · Card/Table/Field · Picker · Toast · Confirm
-│       ├── pages/              39 หน้าจอ แยกตามโดเมน
-│       └── styles/app.css      สไตล์เดิม ยกมาทั้งไฟล์
+├── frontend-next/            Frontend — Next.js 15 (App Router) + React 19 · static export
+│   ├── app/                    30 หน้าจอ แยกตามโดเมน (file-based routing)
+│   │   └── globals.css         สไตล์ทั้งระบบไฟล์เดียว (คอม / iPad / โทรศัพท์)
+│   ├── components/             Shell · DataTable · Card/Field · Picker · Toast · Confirm
+│   ├── contexts/               MetaContext — dropdown ที่โหลดจาก /api/meta
+│   └── lib/                    apiClient · format · constants · hooks · caseProcesses
 │
-├── lib/  public/  server.js   ⚠️ ของเดิม (Node + vanilla JS) — เก็บไว้เทียบผล
-└── start-api.bat  start-web.bat
+└── start-api.bat
 ```
 
-ที่แยก `api/routes/` เป็น 18 ไฟล์เพราะเดิม endpoint ทั้ง 85 ตัวอยู่ใน `lib/api.js`
-ไฟล์เดียว 1,773 บรรทัด — จะแก้อะไรทีต้องไล่หาทั้งไฟล์ ตอนนี้แก้ `bookings`
-ก็เปิดแค่ `api/routes/bookings.php`
+ที่แยก `api/routes/` เป็น 19 ไฟล์เพราะรุ่นแรก (Node) รวม endpoint ทั้ง 85 ตัวไว้ในไฟล์
+เดียว 1,773 บรรทัด — จะแก้อะไรทีต้องไล่หาทั้งไฟล์ ตอนนี้แก้ `bookings` ก็เปิดแค่
+`api/routes/bookings.php`
 
 ---
 
@@ -43,14 +41,16 @@ timeoptic-web/
 
 **ต้องเปิด MySQL ของ XAMPP ก่อน** (XAMPP Control Panel → MySQL → Start)
 
-เปิดสองหน้าต่าง (หรือดับเบิลคลิกสองไฟล์นี้):
+เปิดสองหน้าต่าง:
 
 ```bat
-start-api.bat        REM  PHP API   → http://127.0.0.1:8080
-start-web.bat        REM  React     → http://localhost:5173
+start-api.bat                       REM  PHP API  → http://127.0.0.1:8080
+cd frontend-next && npm run dev     REM  Next.js  → http://localhost:3000
 ```
 
-ใช้งานจริงที่ **http://localhost:5173** — Vite จะส่งต่อ `/api/*` ไปที่ PHP ให้เอง
+ใช้งานจริงที่ **http://localhost:3000** — static export ไม่มี dev proxy แบบ Vite
+ฝั่งเว็บจึงยิงตรงไปที่ API ตามค่าใน `frontend-next/.env.development`
+(`NEXT_PUBLIC_API_ORIGIN=http://127.0.0.1:8080` — แก้ให้ตรงกับพอร์ตที่รัน API จริง)
 
 ตั้งค่าเชื่อมต่อในไฟล์ `.env` (ไม่เข้า git — ดู `.env.example`):
 
@@ -60,18 +60,19 @@ TELEGRAM_BOT_TOKEN=...   TELEGRAM_CHAT_ID=...
 ```
 
 * PHP **8.0+** ต้องมี `pdo_mysql` (XAMPP มีให้อยู่แล้ว — เครื่องนี้ 8.0.30 ✔)
-* Node **20+** ใช้เฉพาะตอน dev/build ฝั่ง React (เครื่องนี้ v24.18.0 ✔)
+* Node **20+** ใช้เฉพาะตอน dev/build ฝั่ง Next.js (เครื่องนี้ v24.18.0 ✔)
 * ดูข้อมูลดิบผ่าน **phpMyAdmin**: http://localhost/phpmyadmin (ต้องเปิด Apache ด้วย)
 
 ### ขึ้นใช้งานจริงบน Apache
 
 ```bat
-cd frontend && npm run build
+cd frontend-next && npm run build
 ```
 
-แล้วชี้ Apache ไปที่โฟลเดอร์โปรเจกต์ โดยเสิร์ฟ `frontend/dist/` เป็น document root
+แล้วชี้ Apache ไปที่โฟลเดอร์โปรเจกต์ โดยเสิร์ฟ `frontend-next/out/` เป็น document root
 และ `api/` เป็นโฟลเดอร์ย่อย — `.htaccess` ใน `api/` จัดการ routing ให้แล้ว
-(ไม่ต้องรัน `php -S` และไม่ต้องรัน Node)
+(`.env.production` ตั้ง `NEXT_PUBLIC_API_ORIGIN=` ว่างไว้ เพราะอยู่โดเมนเดียวกันแล้ว —
+ไม่ต้องรัน `php -S` และไม่ต้องรัน Node)
 
 ### ตัวเตือนคิว Telegram
 
@@ -121,20 +122,29 @@ C:\xampp\php\php.exe C:\test\timeoptic-web\api\cli\reminder.php
 
 ## Flow การทำงาน — งานหนึ่งชิ้น = หนึ่ง "เคส"
 
-ระบบเดินตาม `case_statuses` 32 สถานะในฐานข้อมูล (stage 02 → 19):
+Main Process มี **6 ขั้น**:
 
 ```
-รับลูกค้า → วัดสายตา → สรุปค่าสายตา → เลือกกรอบ/เลนส์ → วัดจุดศูนย์กลาง
-→ ยืนยันออเดอร์ → ชำระเงิน → นัดหมาย → วัดกรอบ → หาแหล่งเลนส์
-      ├─ มีในสต็อก ──────────────┐
-      └─ สั่งซัพพลายเออร์ → รอเลนส์ ─┤
-→ จับคู่ + ตรวจ → ฝนเลนส์ → QC ─(ไม่ผ่าน)→ ซ่อม → QC ใหม่
-→ แพ็ค → แจ้งลูกค้า → รอรับ → รับของ → เสร็จสิ้น
+รับลูกค้า → วัดสายตา → ขาย/เลือกกรอบ → ชำระเงิน → วัด Center → ส่งมอบ
+reception   exam       sales           payment    centering    delivery
 ```
 
-การกระทำทุกอย่างเขียนลง `case_events` เป็น audit log อัตโนมัติ
-และหลายอย่างจะ **เลื่อนสถานะเคสให้เอง** เช่น
-บันทึก QC ผ่าน → `packing`, QC ไม่ผ่าน → `qc_failed`, ปิดออเดอร์ → `completed`
+รายชื่อหกขั้นนี้ประกาศไว้สองที่และต้องตรงกันเสมอ — `frontend-next/lib/caseProcesses.js`
+กับ `api/routes/processes.php` ส่วน `case_statuses` (18 แถว) คือสถานะย่อยภายในแต่ละขั้น
+จัดกลุ่มด้วยคอลัมน์ `stage_group` และประกาศไว้ที่ `Migrate::CASE_STATUS_ROWS`
+
+**ขั้นตอนไม่เป็นเส้นตรง** — เปิดขั้นไหนก่อนก็ได้ (ขายก่อนวัดสายตาเป็นเรื่องปกติที่นี่)
+สิ่งที่แต่ละขั้นต้องมีก่อนกดยืนยันตัดสินจากข้อมูลของขั้นนั้นเอง ฝั่งเซิร์ฟเวอร์
+มีแค่ "ส่งมอบ" ที่ถูกล็อกไว้ และล็อกด้วยเงื่อนไขเดียวคือยังไม่มีออเดอร์
+
+ยืนยัน "ส่งมอบ" = ปิดเคส (`cases.status = 'completed'`) ไม่มีขั้น "จบงาน" แยกอีกที
+
+การกระทำทุกอย่างเขียนลง `case_events` เป็น audit log อัตโนมัติ และการยืนยันขั้นตอน
+จะ **เลื่อนสถานะเคสให้เอง** ไปยังขั้นที่ยังไม่เสร็จถัดไป โดยไม่ดึงเคสถอยหลัง
+
+> เดิมมี 10 ขั้น (เพิ่ม เลนส์ · ผลิต · QC · จบงาน) — สามขั้นกลางถูกตัดออกจากระบบ
+> เมื่อ 29 ส.ค. 2026 พร้อมกับหน้า `/lens` `/production` `/qc` `/lens-tracker`
+> ดู `docs/superpowers/specs/2026-08-29-main-process-6-steps-design.md`
 
 ---
 
@@ -145,9 +155,9 @@ C:\xampp\php\php.exe C:\test\timeoptic-web\api\cli\reminder.php
 | **เมนูหลัก** | KPI วันนี้ + งานค้างแต่ละขั้นตอน + **คิวจองวันนี้ (นับถอยหลัง)** + ออเดอร์ว่าง / ออเดอร์ที่ยังไม่ปิด |
 | **📅 ปฏิทินจองคิว** | ปฏิทินรายเดือน + คิวรายวัน + จอง/แก้ไข/ยกเลิก + เปิดเคสจากคิว |
 | **⚙️ ตั้งค่า/แจ้งเตือน** | ตั้งค่า Telegram · ทดสอบส่ง · รันตัวเตือนเอง · ประวัติการแจ้งเตือน |
-| **กระดานงาน** (Case Board) | คิวงานแบบ kanban 6 คอลัมน์ตาม stage_group · กรองงานด่วน · การ์ดบอกวันนัด/ยอดค้าง/อายุงาน |
-| **รายละเอียดเคส** | 6 แท็บ — ค่าสายตา · เลนส์ · ผลิต&QC · การเงิน · ติดต่อลูกค้า · ไทม์ไลน์ |
-| **ติดตามเลนส์** (Lens Tracker) | เลนส์ที่สั่งซัพพลายเออร์ · ETA · ความเสี่ยง (late/soon/ok) · ตัวที่เสี่ยงกระทบวันนัด |
+| **กระดานงาน** (Case Board) | คิวงานแบบ kanban 6 คอลัมน์ตามขั้นตอน · แยกสมุด SightFirst / ลูกค้าร้าน · กรองงานด่วน/ค้างชำระ · ซ่อนขั้นที่ว่าง |
+| **รายละเอียดเคส** | แถบ 6 ขั้น + แผงของขั้นที่เปิดอยู่ (รับลูกค้า · วัดสายตา · ขาย · ชำระเงิน · วัด Center · ส่งมอบ) + ภาพรวม · ติดต่อลูกค้า · ไทม์ไลน์ |
+| **ส่งมอบ** | เคสที่พร้อมให้ลูกค้ามารับ · แยก พร้อมส่ง / รอลูกค้า / ยังไม่พร้อม · ยอดค้างชำระไม่ปิดกั้นการส่งมอบ |
 | ลูกค้า / ค้นหาลูกค้า | ประวัติเคส + ค่าสายตา + ออเดอร์ ครบในหน้าเดียว |
 | วัดสายตา | ค่าสายตาเต็มรูปแบบ — SPH/CYL/AXIS/ADD/PD/VA/PRISM/BASE + ประวัติสุขภาพ + ระยะทำงาน |
 | ออเดอร์ตัดแว่น | สร้าง / แก้ไข / เติมของ / ปิดการขาย |
@@ -156,14 +166,16 @@ C:\xampp\php\php.exe C:\test\timeoptic-web\api\cli\reminder.php
 | รายรับ / รายจ่าย | บันทึก + ประวัติ + สรุปยอด |
 | รายงาน | 5 รายงาน + เอกสารพิมพ์ 2 แบบ |
 
-### แท็บในหน้าเคส
+### แผงของแต่ละขั้นในหน้าเคส
 
-* **ค่าสายตา** — ดูค่าเดิม / ค่าที่วัดได้ / ค่าที่ใช้จริง, กด "ใช้ค่านี้เป็นค่าจริง" เพื่อ confirm เข้า `custom_orders.final_prescription_id`
-* **เลนส์** — เลือกว่ามีในสต็อกหรือต้องสั่ง, บันทึกซัพพลายเออร์/ETA, บันทึกการโทรตาม (เก็บ ETA เดิม→ใหม่, กระทบวันนัดไหม, แจ้งลูกค้าหรือยัง), ปุ่ม "เลนส์มาถึงแล้ว"
-* **ผลิต & QC** — วัดกรอบ (lens width/bridge/temple/ED/DBL), จุดศูนย์กลาง (PD/height/vertex/pantoscopic/wrap), งานฝน, checklist การแพ็ค 6 ข้อ, บันทึกผล QC เป็นรอบ ๆ
-* **การเงิน** — รายการรับเงินทั้งหมด (มัดจำ/บางส่วน/ปิดยอด) + บันทึกรับเงินใหม่
-* **ติดต่อลูกค้า** — log การโทร/LINE พร้อมผลการติดต่อ
-* **ไทม์ไลน์** — `case_events` ทั้งหมดเรียงเวลา + เพิ่มบันทึกเองได้
+* **รับลูกค้า** — ใครรับเรื่อง, ช่องทางที่รู้จักร้าน, ประเภทงาน, งานด่วนหรือไม่
+* **วัดสายตา** — ค่าเดิม / ค่าที่วัดได้ / ค่าที่ใช้จริง (SPH/CYL/AXIS/ADD/PD/VA/PRISM/BASE), กด "ใช้ค่านี้เป็นค่าจริง" เพื่อ confirm เข้า `custom_orders.final_prescription_id`
+* **ขาย/เลือกกรอบ** — เปิดออเดอร์, เลือกกรอบและเลนส์จากคลัง, ราคา/ส่วนลด — **เลือกแล้วตัดสต็อกทันที** (เปลี่ยนใจเลือกชิ้นใหม่ ระบบคืนชิ้นเดิมเข้าคลังให้เอง)
+* **ชำระเงิน** — รายการรับเงินทั้งหมด (มัดจำ/บางส่วน/ปิดยอด) + บันทึกรับเงินใหม่
+* **วัด Center** — จุดศูนย์กลาง (PD/height/vertex/pantoscopic/wrap) และวัดกรอบ/ฟิตติ้ง (lens width/bridge/temple/ED/DBL)
+* **ส่งมอบ** — อ่านอย่างเดียว: ส่งให้ใคร ส่งอะไร ยอดเงินเป็นยังไง แล้วกดยืนยัน — ยืนยันแล้วเคสปิด
+
+นอกจากหกขั้นยังมี **ภาพรวม** · **ติดต่อลูกค้า** (log การโทร/LINE) · **ไทม์ไลน์** (`case_events` เรียงเวลา)
 
 ---
 
@@ -190,7 +202,7 @@ balance = total_price − discount − paid
 ## ตารางที่ใช้
 
 ใช้ schema เดิมทั้ง 27 ตาราง **โดยไม่แก้ไขหรือลบอะไรเลย** และเพิ่มใหม่ 4 ตารางสำหรับระบบจองคิว
-(สร้างอัตโนมัติตอน start ด้วย `CREATE TABLE IF NOT EXISTS` — ดู `lib/migrate.js`):
+(สร้างอัตโนมัติตอน start ด้วย `CREATE TABLE IF NOT EXISTS` — ดู `api/services/Migrate.php`):
 
 ```
 bookings          การจองคิว (วัน/เวลา/บริการ/ช่องทาง/ผู้ดูแล/นาทีที่จะเตือน/บันทึกเบื้องต้น)
@@ -202,47 +214,24 @@ app_settings      key/value เก็บ Telegram token, chat id, ค่าป�
 ตารางเดิมที่ใช้:
 
 ```
-cases · case_statuses · case_events · case_photos
+cases · case_statuses · case_events · case_photos · case_processes
 customers · employees · suppliers
-prescriptions · centerings · frame_fittings
-custom_orders · lens_jobs · lens_followups · production_jobs · qc_checks
-payments · sales · stock · product_locations
+prescriptions · centerings · frame_fittings · case_deliveries
+custom_orders · payments · sales · stock_lots · product_locations
 incomes · expenses · customer_notifications
 list_sex · list_marketing · list_pay_type · list_product_type · list_len_type
-views: v_case_board · v_lens_tracker · v_order_history · v_orders_unclosed
-       v_orders_unfilled · v_sale_history · v_stock_available
+views: v_case_board · v_order_history · v_orders_unclosed
+       v_orders_unfilled · v_sale_history · v_stock_available · v_stock_lot
 ```
 
-แอปอ่านจาก `v_case_board` และ `v_lens_tracker` โดยตรง (กระดานงาน + ตัวติดตามเลนส์)
+แอปอ่านจาก `v_case_board` โดยตรง (กระดานงาน)
+
+ตารางของขั้นที่ถูกตัดออกยังอยู่ในฐานข้อมูลแต่ไม่มีโค้ดอ่าน/เขียนแล้ว —
+`lens_jobs` · `lens_followups` · `production_jobs` · `production_withdrawals` ·
+`qc_checks` · `stock_reservations` · `case_item_fulfillment` (view `v_lens_tracker` ด้วย)
 
 **หมายเหตุ:** คอลัมน์ค่าสายตาใน `prescriptions` เป็น `VARCHAR(20)` ไม่ใช่ตัวเลข
 หน้าเว็บจึงรับค่าอย่าง `-1.25`, `+2.00`, `plano` ได้ตามที่ schema ตั้งใจไว้
-
----
-
-## โครงสร้างโปรเจกต์
-
-```
-timeoptic-web/
-├── server.js              HTTP server + ตรวจการเชื่อมต่อ DB ตอน start
-├── lib/
-│   ├── db.js              mysql2 pool, transaction helper, lookup lists
-│   └── api.js             JSON API + business logic + case state machine
-├── public/
-│   ├── index.html
-│   ├── css/app.css
-│   └── js/
-│       ├── app.js         router + เมนู
-│       ├── core.js        API client + DOM helper + formatting
-│       └── views/
-│           ├── cases.js        กระดานงาน, รายละเอียดเคส 6 แท็บ, lens tracker
-│           ├── core-views.js   เมนูหลัก, ลูกค้า, ค่าสายตา, พนักงาน
-│           ├── orders.js       ออเดอร์: list / form / fill / close
-│           ├── shop.js         สต็อก, ตำแหน่งสินค้า, การขาย, ซัพพลายเออร์
-│           ├── finance.js      รายรับ / รายจ่าย
-│           └── reports.js      รายงาน + เอกสารพิมพ์
-└── .env.example
-```
 
 ---
 
@@ -254,7 +243,9 @@ GET    /api/dashboard                   KPI + คิวงาน + สรุป�
 
 GET    /api/cases?q=&stage_group=&rush=&open=
 POST   /api/cases                       · PUT /api/cases/:id
-GET    /api/cases/:id                   เคสแบบเต็ม (rx, order, lens, qc, payments, events…)
+GET    /api/cases/:id                   เคสแบบเต็ม (rx, order, centering, delivery, payments, events…)
+GET    /api/cases/:id/processes         สถานะทั้ง 6 ขั้น + สิ่งที่ยังขาด + สิ่งที่ปิดกั้นอยู่
+POST   /api/cases/:id/processes/:p/start · /complete · /reopen · /state
 POST   /api/cases/:id/status            เปลี่ยนสถานะ + เขียน case_event
 POST   /api/cases/:id/note              เพิ่มบันทึกลงไทม์ไลน์
 POST   /api/cases/:id/notify            บันทึกการติดต่อลูกค้า
@@ -269,16 +260,14 @@ GET    /api/stock/names                 · GET/POST/PUT/DELETE /api/locations
 
 GET    /api/orders?status=&q=&from=&to= status: all|unfilled|unclosed|open|closed
 POST   /api/orders                      · GET/PUT/DELETE /:id
-POST   /api/orders/:id/fill             ผูกเลนส์ซ้าย/ขวา/กรอบจากคลัง
-POST   /api/orders/:id/close            ปิดการขาย + ตัดสต็อก + สร้าง payment
-POST   /api/orders/:id/reopen           ยกเลิกการปิด + คืนสต็อก + ลบ payment ก้อนสุดท้าย
+POST   /api/orders/:id/fill             ผูกเลนส์ซ้าย/ขวา/กรอบจากคลัง + ตัดสต็อก (คืนชิ้นเดิมถ้าเปลี่ยน)
+POST   /api/orders/:id/close            ปิดการขาย + สร้าง payment (ของถูกตัดไปแล้วที่ /fill)
+POST   /api/orders/:id/reopen           ยกเลิกการปิด + ลบ payment ก้อนสุดท้าย
 
 GET/POST/DELETE /api/payments           ledger การรับเงิน
-GET    /api/lens-tracker?risk=&threatens=
-GET    /api/lens-jobs/:id  ·  POST /api/lens-jobs
-POST   /api/lens-jobs/:id/followup      บันทึกการตามเลนส์ (อัปเดต ETA + วันนัด)
-POST   /api/lens-jobs/:id/receive       เลนส์มาถึงร้าน
-POST   /api/centerings · /api/frame-fittings · /api/production-jobs · /api/qc-checks
+POST   /api/centerings · /api/frame-fittings      · GET /:case_id
+POST   /api/case-deliveries             บันทึกการส่งมอบ · GET /:case_id
+GET    /api/delivery?bucket=&client=&q= กระดานส่งมอบ
 
 GET/POST/DELETE  /api/sales
 GET/POST/PUT/DELETE  /api/income · /api/expense

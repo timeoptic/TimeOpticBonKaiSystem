@@ -110,7 +110,7 @@ final class Migrate
                 CONSTRAINT fk_nl_booking FOREIGN KEY (booking_id) REFERENCES bookings (id) ON DELETE SET NULL
               ) $c",
 
-            /* one row per (case, process) — the 9-process workflow's own status
+            /* one row per (case, process) — the 6-process workflow's own status
                axis, written only by an explicit action on that process. A case
                with no rows still reports a status; it is derived from its data
                (api/routes/processes.php). */
@@ -127,6 +127,25 @@ final class Migrate
                 PRIMARY KEY (id),
                 UNIQUE KEY uq_cp_case_process (case_id, process),
                 CONSTRAINT fk_cp_case FOREIGN KEY (case_id) REFERENCES cases (id) ON DELETE CASCADE
+              ) $c",
+
+            /* ส่งมอบ — one row per case, the last step of the 6-step flow.
+               The handover used to be written onto production_jobs.pickup_at,
+               which meant a case could not be handed over without a production
+               job; the bench room is gone, the handover is not. */
+            'case_deliveries' => "CREATE TABLE IF NOT EXISTS case_deliveries (
+                id                        int(10) unsigned NOT NULL AUTO_INCREMENT,
+                case_id                   int(10) unsigned NOT NULL,
+                order_id                  int(10) unsigned DEFAULT NULL,
+                delivered_at              datetime DEFAULT NULL,
+                handed_over_by            int(10) unsigned DEFAULT NULL,
+                received_by_customer_name varchar(120) DEFAULT NULL,
+                note                      varchar(500) DEFAULT NULL,
+                created_at                datetime NOT NULL DEFAULT current_timestamp(),
+                updated_at                datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+                PRIMARY KEY (id),
+                UNIQUE KEY uq_cd_case (case_id),
+                CONSTRAINT fk_cd_case FOREIGN KEY (case_id) REFERENCES cases (id) ON DELETE CASCADE
               ) $c",
 
             /* every stock item pulled for a case's production — the initial
@@ -219,9 +238,10 @@ final class Migrate
     private static function views(): array
     {
         return [
-            /* One row per case. The original joined custom_orders and lens_jobs
-               on case_id, so a case with two orders came back twice and the
-               board drew it twice — pick the latest of each instead. */
+            /* One row per case. The original joined custom_orders on case_id, so
+               a case with two orders came back twice and the board drew it twice
+               — pick the latest instead. (It also carried four lens_jobs columns
+               for the ติดตามเลนส์ screen; that screen and its step are gone.) */
             'v_case_board' => "CREATE OR REPLACE VIEW v_case_board AS
                 SELECT c.id, c.case_code, c.status, c.is_rush, c.opened_at, c.closed_at,
                        c.customer_id, c.notes, c.case_type, c.referral_source,
@@ -234,8 +254,6 @@ final class Migrate
                        o.total_price - o.discount AS net_price,
                        COALESCE(p.paid, 0) AS paid,
                        o.total_price - o.discount - COALESCE(p.paid, 0) AS balance,
-                       lj.source AS lens_source, lj.status AS lens_status,
-                       lj.expected_arrival, lj.follow_up_count,
                        TIMESTAMPDIFF(DAY, c.opened_at, CURRENT_TIMESTAMP()) AS age_days
                   FROM cases c
                   JOIN case_statuses s ON s.code = c.status
@@ -243,12 +261,84 @@ final class Migrate
                   LEFT JOIN employees e ON e.id = c.received_by
                   LEFT JOIN custom_orders o
                          ON o.id = (SELECT MAX(o2.id) FROM custom_orders o2 WHERE o2.case_id = c.id)
-                  LEFT JOIN lens_jobs lj
-                         ON lj.id = (SELECT MAX(l2.id) FROM lens_jobs l2 WHERE l2.case_id = c.id)
                   LEFT JOIN (SELECT order_id, SUM(amount) paid FROM payments
                               WHERE order_id IS NOT NULL AND cancelled_at IS NULL
                               GROUP BY order_id) p ON p.order_id = o.id",
         ];
+    }
+
+    /**
+     * The 6-step case flow, spelled out as rows of case_statuses.
+     *
+     *   รับลูกค้า → วัดสายตา → ขาย/เลือกกรอบ → ชำระเงิน → วัด Center → ส่งมอบ
+     *
+     * `stage_group` is the step; `code` is the one status a case sits on inside
+     * it. Two rules the rest of the app leans on, so they are enforced here
+     * rather than left to whoever edits the table next:
+     *
+     *   1. sort_order never crosses back into an earlier group. advanceCaseStatus()
+     *      compares sort_order to decide "don't drag the case backwards", so a
+     *      sales-group row sorting after a payment-group row would let a case
+     *      bounce. This is why นัดหมาย/เอกสาร sits in delivery, not sales.
+     *   2. every non-terminal group has at least one row, because
+     *      entryStatusOfGroup() takes the first of them by sort_order.
+     *
+     * Declared in full and reconciled on every boot: a code that is not in this
+     * list is not part of the flow, and any case still parked on one is moved to
+     * the delivery step (everything cut — เลนส์, ผลิต, QC, แพ็คสินค้า — happened
+     * after วัด Center and before the customer collected).
+     */
+    private const CASE_STATUS_ROWS = [
+        // code,               stage_no, stage_group, label_th, label_en, sort, waiting, terminal
+        ['reception',      '1', 'reception', 'รับลูกค้า / ลงข้อมูล', 'Reception',            10, 0, 0],
+        ['old_rx',         '1', 'reception', 'บันทึกค่าสายตาเดิม',   'Old prescription',     20, 0, 0],
+        ['waiting_exam',   '2', 'exam',      'รอวัดสายตา',           'Waiting for exam',     30, 1, 0],
+        ['exam',           '2', 'exam',      'กำลังวัดสายตา',        'Eye examination',      40, 0, 0],
+        ['rx_decision',    '2', 'exam',      'ตัดสินใจค่าสายตา',     'Prescription decision', 50, 0, 0],
+        ['waiting_sales',  '3', 'sales',     'รอฝ่ายขาย',            'Waiting for sales',    60, 1, 0],
+        ['sales',          '3', 'sales',     'ขาย / เลือกกรอบ',      'Sales',                70, 0, 0],
+        ['order_confirm',  '3', 'sales',     'ยืนยันออเดอร์',        'Order confirmation',   80, 0, 0],
+        ['payment',        '4', 'payment',   'ชำระเงิน',             'Payment',              90, 0, 0],
+        ['centering',      '5', 'centering', 'วัดจุดศูนย์กลาง',      'Centering',           100, 0, 0],
+        ['frame_fitting',  '5', 'centering', 'วัดกรอบ / ฟิตติ้ง',    'Frame & fitting',     110, 0, 0],
+        ['appointment',    '6', 'delivery',  'นัดหมายรับของ',        'Appointment',         120, 0, 0],
+        ['ready_notify',   '6', 'delivery',  'พร้อมแจ้งลูกค้า',      'Ready to notify',     130, 1, 0],
+        ['notified',       '6', 'delivery',  'แจ้งลูกค้าแล้ว',       'Customer notified',   140, 0, 0],
+        ['waiting_pickup', '6', 'delivery',  'รอลูกค้ามารับ',        'Waiting for pickup',  150, 1, 0],
+        ['pickup',         '6', 'delivery',  'ส่งมอบ',               'Pickup',              160, 0, 0],
+        ['completed',      '—', 'done',      'ปิดเคสแล้ว',           'Completed',           900, 0, 1],
+        ['cancelled',      '—', 'done',      'ยกเลิกเคส',            'Cancelled',           910, 0, 1],
+    ];
+
+    /** where a case goes when the status it is sitting on is no longer in the flow */
+    private const DEAD_STATUS_LANDING = 'appointment';
+
+    private static function reshapeCaseStatuses(): void
+    {
+        $codes = [];
+        foreach (self::CASE_STATUS_ROWS as $r) {
+            $codes[] = $r[0];
+            Db::run(
+                'INSERT INTO case_statuses
+                   (code, stage_no, stage_group, label_th, label_en, sort_order, is_waiting, is_terminal)
+                 VALUES (?,?,?,?,?,?,?,?)
+                 ON DUPLICATE KEY UPDATE
+                   stage_no = VALUES(stage_no), stage_group = VALUES(stage_group),
+                   label_th = VALUES(label_th), label_en = VALUES(label_en),
+                   sort_order = VALUES(sort_order), is_waiting = VALUES(is_waiting),
+                   is_terminal = VALUES(is_terminal)',
+                $r[0], $r[1], $r[2], $r[3], $r[4], $r[5], $r[6], $r[7]
+            );
+        }
+        $in = implode(',', array_fill(0, count($codes), '?'));
+        /* move the cases first: v_case_board INNER JOINs case_statuses, so a case
+           left pointing at a deleted code would vanish off the board entirely */
+        Db::run(
+            "UPDATE cases SET status = ? WHERE status NOT IN ($in)",
+            self::DEAD_STATUS_LANDING,
+            ...$codes
+        );
+        Db::run("DELETE FROM case_statuses WHERE code NOT IN ($in)", ...$codes);
     }
 
     /** @return string[] "table.column" names actually added this run */
@@ -362,18 +452,7 @@ final class Migrate
                 'external_date'        => 'date DEFAULT NULL',
             ])
         );
-        /* ขั้น "เลนส์" แยกออกจากห้องผลิต — สถานะที่ว่าด้วยตัวเลนส์ (หาของ/สั่ง/รอเข้า)
-           เป็นงานของฝ่ายขาย ไม่ใช่ช่างหน้าเครื่อง จึงย้ายมาอยู่กลุ่มของตัวเอง */
-        Db::run(
-            "UPDATE case_statuses SET stage_group = 'lens'
-              WHERE code IN ('lens_source','waiting_lens_picking','lens_ready',
-                             'lens_ordered','waiting_lens_arrival','lens_received')"
-        );
-        Db::run("UPDATE case_statuses SET stage_group = 'centering' WHERE code = 'centering'");
-        /* ลองกรอบ/วัดกรอบเป็นการวัด ไม่ใช่งานหน้าเครื่อง — และถ้ายังค้างอยู่กลุ่มผลิต
-           สถานะแรกของกลุ่มผลิตจะมาก่อนกลุ่มเลนส์ ทำให้ "ส่งเข้าห้องผลิต" ถูกมองว่าถอยหลัง */
-        Db::run("UPDATE case_statuses SET stage_group = 'centering' WHERE code = 'frame_fitting'");
-        Db::run("UPDATE case_statuses SET stage_group = 'payment' WHERE code = 'payment'");
+        self::reshapeCaseStatuses();
         /* พร้อมเพย์ / QR ไม่ได้ใช้แล้ว — ซ่อนจากตัวเลือก แต่แถวยังอยู่ให้ประวัติอ่านออก */
         Db::run("UPDATE list_pay_type SET is_active = 0 WHERE code = 'QR'");
 

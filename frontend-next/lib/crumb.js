@@ -1,4 +1,4 @@
-/**
+﻿/**
  * path -> breadcrumb table + lookup, matched longest-first. Detail/edit pages
  * under a domain (e.g. /customers/detail?id=5) still match their domain's
  * '/customers' entry, since the id lives in the query string, not the path.
@@ -25,14 +25,10 @@ export const TITLES = [
   ['/cases/new', 'เปิดเคสใหม่'],
   ['/cases/detail', 'รายละเอียดเคส'],
   ['/cases', 'กระดานงาน'],
-  ['/lens-tracker', 'ติดตามเลนส์'],
   ['/exam', 'วัดสายตา'],
   ['/case-sales', 'ขาย-เลือกกรอบ'],
-  ['/centering', 'วัด Center'],
   ['/case-payments', 'ชำระเงิน'],
-  ['/lens', 'เลนส์'],
-  ['/production', 'ผลิต'],
-  ['/qc', 'QC'],
+  ['/centering', 'วัด Center'],
   ['/delivery', 'ส่งมอบ'],
   ['/employees', 'พนักงาน'],
   ['/orders/new', 'เปิดออเดอร์ใหม่'],

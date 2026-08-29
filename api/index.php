@@ -35,8 +35,8 @@ Telegram::configure($config['telegram']);
    in the UI. Adding a resource means adding a file here, nothing else. */
 foreach ([
     'meta', 'dashboard', 'cases', 'customers', 'employees', 'prescriptions',
-    'stock', 'locations', 'suppliers', 'orders', 'payments', 'lens_jobs',
-    'workflow', 'processes', 'lens', 'production', 'uploads', 'sales', 'cashflow', 'reports', 'bookings', 'settings',
+    'stock', 'locations', 'suppliers', 'orders', 'payments',
+    'workflow', 'processes', 'uploads', 'sales', 'cashflow', 'reports', 'bookings', 'settings',
 ] as $group) {
     require __DIR__ . "/routes/$group.php";
 }

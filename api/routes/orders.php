@@ -51,23 +51,47 @@ function orderVals(array $b): array
     return $out;
 }
 
+/** the three slots an order can hold a stock unit in */
+const ORDER_STOCK_SLOTS = ['lens_product_id', 'right_lens_product_id', 'frame_product_id'];
+
 /**
- * True when this case's production `start` flow (POST /api/production-jobs/:id/start)
- * already withdrew this specific item — i.e. a non-extra production_withdrawals row
- * exists for it. Used by close()/reopen() so they don't double-withdraw or
- * double-release stock that the production flow already accounted for.
+ * Move the order's hold on stock from whatever it was pointing at to what it
+ * points at now, one slot at a time.
+ *
+ * เลือกสินค้าเข้าออเดอร์ = ตัดสต็อกทันที ซึ่งแปลว่า /fill เรียกซ้ำได้ต้องไม่ทำให้
+ * ของหายทีละชิ้น: ช่องไหนเลขเปลี่ยน คืนชิ้นเดิมเข้าคลังก่อน แล้วค่อยตัดชิ้นใหม่
+ * ช่องไหนเลขเดิมไม่ต้องแตะ — คืนแล้วตัดซ้ำจะได้ inventory_logs สองแถวที่ไม่มีอะไรเกิดขึ้นจริง
+ *
+ * @param array<string,?int> $before  slot => stock_lot id the order held
+ * @param array<string,?int> $after   slot => stock_lot id the order should hold
  */
-function wasWithdrawnByProduction(Tx $q, ?int $caseId, string $itemType): bool
+function moveOrderStock(Tx $q, array $before, array $after, string $note): void
 {
-    if (!$caseId) {
-        return false;
+    $release = [];
+    $take    = [];
+    foreach (ORDER_STOCK_SLOTS as $slot) {
+        $old = $before[$slot] ? (int) $before[$slot] : null;
+        $new = $after[$slot] ? (int) $after[$slot] : null;
+        if ($old === $new) {
+            continue;
+        }
+        if ($old) {
+            $release[] = $old;
+        }
+        if ($new) {
+            $take[] = $new;
+        }
     }
-    $row = $q->get(
-        'SELECT id FROM production_withdrawals WHERE case_id = ? AND item_type = ? AND is_extra = 0 LIMIT 1',
-        $caseId,
-        $itemType
-    );
-    return (bool) $row;
+    /* คืนให้หมดก่อนแล้วค่อยหยิบ — ย้ายชิ้นเดิมจากช่องหนึ่งไปอีกช่องหนึ่งจะได้ไม่ไป
+       ติดว่า "ชิ้นนี้ถูกขายแล้ว" ด้วยตัวมันเองที่ยังไม่ได้คืน */
+    foreach ($release as $lot) {
+        releaseLot($q, $lot, "คืนของ: $note");
+    }
+    foreach ($take as $lot) {
+        if (!pickLot($q, $lot, $note)) {
+            bad('สินค้าชิ้นนี้ถูกขายไปแล้วระหว่างนี้ — เลือกชิ้นอื่น');
+        }
+    }
 }
 
 function orderDetail(?int $id): array
@@ -230,7 +254,10 @@ POST('/api/orders/:id/fill', function (array $req) {
         bad('ออเดอร์นี้ปิดการขายแล้ว');
     }
 
-    $pick = function (string $key) use ($body) {
+    /* "ขายไปแล้ว" ห้ามหยิบ ยกเว้นชิ้นที่ออเดอร์ใบนี้ถืออยู่แล้ว — ตั้งแต่ /fill
+       เป็นคนตัดสต็อก ชิ้นที่เพิ่งเลือกไปก็นับว่าขายแล้วทันที เปิดฟอร์มขึ้นมากด
+       บันทึกซ้ำโดยไม่เปลี่ยนอะไรจึงจะโดนปฏิเสธด้วยของของตัวเอง */
+    $pick = function (string $key) use ($body, $o) {
         $sid = int_or($body[$key] ?? null);
         if (!$sid) {
             return null;
@@ -239,7 +266,10 @@ POST('/api/orders/:id/fill', function (array $req) {
         if (!$s) {
             bad("ไม่พบสินค้ารหัส $sid");
         }
-        if ((int) $s['sold']) {
+        $held = in_array($sid, array_map('intval', array_filter([
+            $o['lens_product_id'], $o['right_lens_product_id'], $o['frame_product_id'],
+        ])), true);
+        if ((int) $s['sold'] && !$held) {
             bad("สินค้ารหัส $sid ({$s['product_name']}) ถูกขายไปแล้ว");
         }
         return $s;
@@ -267,6 +297,22 @@ POST('/api/orders/:id/fill', function (array $req) {
             nul($body['appointment_date'] ?? null) ?? $o['appointment_date'],
             !array_key_exists('notes', $body) ? $o['notes'] : nul($body['notes']),
             $id
+        );
+        /* ของออกจากคลังตรงนี้ ไม่ใช่ตอนปิดการขาย — เลือกให้ลูกค้าแล้วชิ้นนั้นเป็นของเขา
+           คนอื่นหยิบไม่ได้ (ห้องผลิตซึ่งเคยเป็นคนเบิกไม่มีแล้ว) */
+        moveOrderStock(
+            $q,
+            [
+                'lens_product_id'       => int_or($o['lens_product_id']),
+                'right_lens_product_id' => int_or($o['right_lens_product_id']),
+                'frame_product_id'      => int_or($o['frame_product_id']),
+            ],
+            [
+                'lens_product_id'       => $L ? (int) $L['id'] : null,
+                'right_lens_product_id' => $R ? (int) $R['id'] : null,
+                'frame_product_id'      => $F ? (int) $F['id'] : null,
+            ],
+            'เลือกสินค้าเข้าออเดอร์ ' . ($o['invoice_code'] ?? '')
         );
         $parts = array_filter([
             $L ? 'L#' . $L['id'] : null,
@@ -336,16 +382,7 @@ POST('/api/orders/:id/close', function (array $req) {
                 'รับเงินตอนปิดการขาย'
             );
         }
-        $items = [
-            'lens_od' => $o['lens_product_id'],
-            'lens_os' => $o['right_lens_product_id'],
-            'frame'   => $o['frame_product_id'],
-        ];
-        foreach ($items as $type => $sid) {
-            if ($sid && !wasWithdrawnByProduction($q, int_or($o['case_id']), $type)) {
-                pickLot($q, (int) $sid, 'ปิดการขายออเดอร์ ' . ($o['invoice_code'] ?? ''));
-            }
-        }
+        /* ของถูกตัดไปแล้วตอนเลือกเข้าออเดอร์ (/fill) — ปิดการขายคือเรื่องเงิน ไม่ใช่เรื่องของ */
         logEvent($q, int_or($o['case_id']), [
             'action'      => 'order_closed',
             'entity'      => 'custom_order',
@@ -378,16 +415,8 @@ POST('/api/orders/:id/reopen', function (array $req) {
             $id
         );
         $q->run("DELETE FROM payments WHERE order_id = ? AND kind = 'final'", $id);
-        $items = [
-            'lens_od' => $o['lens_product_id'],
-            'lens_os' => $o['right_lens_product_id'],
-            'frame'   => $o['frame_product_id'],
-        ];
-        foreach ($items as $type => $sid) {
-            if ($sid && !wasWithdrawnByProduction($q, int_or($o['case_id']), $type)) {
-                releaseLot($q, (int) $sid, 'เปิดออเดอร์ ' . ($o['invoice_code'] ?? '') . ' กลับ');
-            }
-        }
+        /* ของยังอยู่กับออเดอร์ — เปิดกลับมาแก้ไม่ได้แปลว่าเอาของคืนขึ้นชั้น
+           ถ้าจะคืนจริงคือแก้ที่ /fill ให้เลือกชิ้นอื่นหรือเอาออก */
         logEvent($q, int_or($o['case_id']), [
             'action'      => 'order_reopened',
             'entity'      => 'custom_order',

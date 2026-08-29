@@ -49,8 +49,6 @@ GET('/api/dashboard', function () {
     foreach ($stageCount as $group => $n) {
         $board[] = ['stage_group' => $group, 'n' => $n];
     }
-    $lens = Db::all('SELECT risk_level, COUNT(*) n FROM v_lens_tracker GROUP BY risk_level');
-
     $one = fn(string $sql, mixed ...$p) => Db::get($sql, ...$p) ?? [];
     $pairs = function (array $rows, string $k) {
         $out = [];
@@ -72,7 +70,6 @@ GET('/api/dashboard', function () {
         'unclosed'       => $unclosed,
         'bookings_today' => $bookingsToday,
         'board'          => $pairs($board, 'stage_group'),
-        'lens_risk'      => $pairs($lens, 'risk_level'),
         'stats'          => [
             'customers'  => (int) ($one('SELECT COUNT(*) n FROM customers')['n'] ?? 0),
             'open_cases' => (int) ($one(
@@ -87,9 +84,6 @@ GET('/api/dashboard', function () {
                 'SELECT COUNT(*) n FROM custom_orders WHERE order_closed = 0'
             )['n'] ?? 0),
             'stock_on_hand' => (int) ($one('SELECT COALESCE(SUM(remaining_qty),0) n FROM stock_lots')['n'] ?? 0),
-            'lens_waiting'  => (int) ($one(
-                "SELECT COUNT(*) n FROM lens_jobs WHERE status = 'waiting_arrival'"
-            )['n'] ?? 0),
             'received_today' => $one(
                 'SELECT COUNT(*) n, COALESCE(SUM(amount),0) amount FROM payments
                   WHERE DATE(paid_at) = ? AND cancelled_at IS NULL',

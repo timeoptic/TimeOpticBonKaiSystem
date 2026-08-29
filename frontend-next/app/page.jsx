@@ -17,7 +17,7 @@ const TILES = [
   ['👥', 'ลูกค้าใหม่', 'New Customer', '/customers/new'],
   ['👁', 'วัดสายตา', 'Prescription', '/prescriptions/new'],
   ['👓', 'เปิดออเดอร์ตัดแว่น', 'Custom Order', '/orders/new'],
-  ['🔎', 'ติดตามเลนส์', 'Lens Tracker', '/lens-tracker'],
+  ['📦', 'ส่งมอบ', 'Delivery', '/delivery'],
   ['🛍', 'ขายสินค้าทั่วไป', 'Product Sale', '/sales/new'],
   ['📦', 'เพิ่มสินค้าเข้าคลัง', 'Add to Stock', '/stock/new'],
   ['📜', 'ประวัติการสั่งซื้อ', 'Order History', '/orders'],
@@ -85,7 +85,6 @@ export default function Home() {
           value={String(s.open_cases)}
           sub={s.rush_cases ? `ด่วน ${s.rush_cases} เคส` : 'ทั้งร้าน'}
         />
-        <Kpi kind="warn" label="รอเลนส์มา" value={String(s.lens_waiting)} sub="Waiting arrival" />
         <Kpi
           kind="accent"
           label="คิวจองวันนี้"

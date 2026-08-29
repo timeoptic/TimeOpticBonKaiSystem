@@ -95,29 +95,12 @@ function caseDetail(?int $id): array
         (int) $c['customer_id']
     );
     $order = Db::get("SELECT $sel $from WHERE o.case_id = ? ORDER BY o.id DESC LIMIT 1", $id);
-    $lensJob = Db::get(
-        'SELECT lj.*, sup.name AS supplier_name,
-                ls.product_name AS left_lens_name, rs.product_name AS right_lens_name
-           FROM lens_jobs lj
-           LEFT JOIN suppliers sup    ON sup.id = lj.supplier_id
-           LEFT JOIN v_stock_lot ls   ON ls.id  = lj.left_lens_stock_id
-           LEFT JOIN v_stock_lot rs   ON rs.id  = lj.right_lens_stock_id
-          WHERE lj.case_id = ? ORDER BY lj.id DESC LIMIT 1',
-        $id
-    );
-    $centering  = Db::get('SELECT * FROM centerings WHERE case_id = ? ORDER BY id DESC LIMIT 1', $id);
-    $fitting    = Db::get('SELECT * FROM frame_fittings WHERE case_id = ? ORDER BY id DESC LIMIT 1', $id);
-    $production = Db::get('SELECT * FROM production_jobs WHERE case_id = ? ORDER BY id DESC LIMIT 1', $id);
-    $withdrawals = Db::all(
-        'SELECT w.*, e.employee_name AS withdrawn_by_name FROM production_withdrawals w
-           LEFT JOIN employees e ON e.id = w.withdrawn_by
-          WHERE w.case_id = ? ORDER BY w.id',
-        $id
-    );
-    $qc = Db::all(
-        'SELECT q.*, e.employee_name AS checked_by_name FROM qc_checks q
-           LEFT JOIN employees e ON e.id = q.checked_by
-          WHERE q.case_id = ? ORDER BY q.attempt DESC, q.id DESC',
+    $centering = Db::get('SELECT * FROM centerings WHERE case_id = ? ORDER BY id DESC LIMIT 1', $id);
+    $fitting   = Db::get('SELECT * FROM frame_fittings WHERE case_id = ? ORDER BY id DESC LIMIT 1', $id);
+    $delivery  = Db::get(
+        'SELECT d.*, e.employee_name AS handed_over_by_name FROM case_deliveries d
+           LEFT JOIN employees e ON e.id = d.handed_over_by
+          WHERE d.case_id = ?',
         $id
     );
     $payments = Db::all(
@@ -143,26 +126,14 @@ function caseDetail(?int $id): array
         $id
     );
 
-    if ($lensJob) {
-        $lensJob['followups'] = Db::all(
-            'SELECT f.*, e.employee_name AS contacted_by_name FROM lens_followups f
-               LEFT JOIN employees e ON e.id = f.contacted_by
-              WHERE f.lens_job_id = ? ORDER BY f.seq',
-            (int) $lensJob['id']
-        );
-    }
-
     $paid = sumCol(array_filter($payments, fn($p) => !$p['cancelled_at']), 'amount');
 
     $detail = $c + [
         'prescriptions' => $rx,
         'order'         => $order,
-        'lens_job'      => $lensJob,
         'centering'     => $centering,
         'frame_fitting' => $fitting,
-        'production'    => $production,
-        'production_withdrawals' => $withdrawals,
-        'qc_checks'     => $qc,
+        'delivery'      => $delivery,
         'payments'      => $payments,
         'notifications' => $notifs,
         'events'        => $events,
@@ -172,7 +143,7 @@ function caseDetail(?int $id): array
             : null,
     ];
 
-    /* the 9-process status axis (api/routes/processes.php) — needs everything
+    /* the 6-process status axis (api/routes/processes.php) — needs everything
        above it to decide what each process still needs */
     $detail['processes'] = caseProcessStates($detail);
     return $detail;

@@ -1,10 +1,10 @@
 <?php
 /**
- * Per-process state for the 9-process case workflow.
+ * Per-process state for the 6-process case workflow.
  *
  * The case's own `status` column stays what it always was — one status at a
  * time, the thing the board and the reports read. This file adds the second,
- * orthogonal axis the shop actually works in: each of the 9 processes carries
+ * orthogonal axis the shop actually works in: each of the 6 processes carries
  * its own status, so "ขาย" can be เสร็จแล้ว while "วัดสายตา" has not started.
  *
  * A process's status is only ever changed by an explicit action here
@@ -15,11 +15,14 @@
 declare(strict_types=1);
 
 /** canonical order — matches case_statuses.stage_group, so the board agrees */
-const CASE_PROCESSES = ['reception', 'exam', 'sales', 'centering', 'payment',
-    'lens', 'production', 'qc', 'delivery', 'done'];
+const CASE_PROCESSES = ['reception', 'exam', 'sales', 'payment', 'centering', 'delivery'];
 
-/** processes whose "เริ่ม/เสร็จ" action is gated by real stock/QC state */
-const GATED_PROCESSES = ['lens', 'production', 'qc', 'delivery', 'done'];
+/**
+ * Processes whose "เริ่ม/เสร็จ" action is gated by more than their own form
+ * being filled in. Only ส่งมอบ is: there is nothing to hand a customer until
+ * the sale has said what they are collecting.
+ */
+const GATED_PROCESSES = ['delivery'];
 
 function assertProcess(string $p): string
 {
@@ -38,8 +41,7 @@ function processMissing(array $c): array
     $order   = $c['order'] ?? null;
     $rx      = $c['prescriptions'] ?? [];
     $ce      = $c['centering'] ?? null;
-    $prod    = $c['production'] ?? null;
-    $qc      = ($c['qc_checks'] ?? [])[0] ?? null;
+    $dlv     = $c['delivery'] ?? null;
     $balance = $c['balance'];
 
     $hasFinalRx = false;
@@ -78,59 +80,29 @@ function processMissing(array $c): array
             ? 'ยอดคงเหลือ ' . round2($balance) : null,
     ]));
 
-    /* ขั้นเลนส์เสร็จ = ของที่ต้องใช้ทุกชิ้นถูกจองไว้ให้เคสนี้แล้ว (หรือเบิกไปแล้ว) */
-    $m['lens'] = lensMissing($c);
-
-    $prodDone = $prod && (($prod['status'] ?? '') === 'COMPLETED' || !empty($prod['edging_finished_at']));
-    $m['production'] = $prodDone ? [] : ['งานผลิตที่เสร็จแล้ว'];
-
-    $m['qc'] = $qc && ($qc['result'] ?? '') === 'pass' ? [] : ['ผล QC ที่ผ่าน'];
-
-    $m['delivery'] = $prod && !empty($prod['pickup_at']) ? [] : ['บันทึกการส่งมอบ'];
-
-    $m['done'] = array_values(array_filter([
-        !($prod && !empty($prod['pickup_at'])) ? 'ส่งมอบสินค้า' : null,
-        $balance !== null && (float) $balance > 0 ? 'เก็บเงินให้ครบ' : null,
-        $qc && ($qc['result'] ?? '') === 'fail' ? 'แก้ไขงานที่ QC ไม่ผ่าน' : null,
-    ]));
+    /* ยอดค้างชำระไม่ใช่เงื่อนไขของการส่งมอบ — ลูกค้ารับแว่นได้ แล้วเก็บเงินที่ขั้น
+       ชำระเงินตามปกติ ที่นี่ถามอย่างเดียวว่าบันทึกการส่งมอบไว้หรือยัง */
+    $m['delivery'] = $dlv && !empty($dlv['delivered_at']) ? [] : ['บันทึกการส่งมอบ'];
 
     return $m;
 }
 
 /**
  * Business gate — why a process cannot be *acted on* yet (as opposed to
- * merely incomplete). Only the late, gated processes have one; the flexible
- * zone (exam / sales / centering / payment) is deliberately always open.
+ * merely incomplete). Only ส่งมอบ has one; the rest of the flow
+ * (รับลูกค้า / วัดสายตา / ขาย / ชำระเงิน / วัด Center) is deliberately always open.
  */
 function processBlocking(array $c): array
 {
     $order = $c['order'] ?? null;
-    $prod  = $c['production'] ?? null;
-    $qc    = ($c['qc_checks'] ?? [])[0] ?? null;
-
-    /* ห้องผลิตไม่ตัดสินเรื่องของเอง — ของถูกจองไว้ที่ขั้นเลนส์แล้วเท่านั้นจึงเริ่มได้ */
-    $prodBlock = [];
-    if (!$order) {
-        $prodBlock[] = 'ยังไม่มีออเดอร์';
-    } else {
-        foreach (lensMissing($c) as $label) {
-            $prodBlock[] = $label;
-        }
-    }
-
-    $prodDone = $prod && (($prod['status'] ?? '') === 'COMPLETED' || !empty($prod['edging_finished_at']));
 
     return [
-        'reception'  => [],
-        'exam'       => [],
-        'sales'      => [],
-        'centering'  => [],
-        'payment'    => [],
-        'lens'       => $order ? [] : ['ยังไม่มีออเดอร์'],
-        'production' => $prodBlock,
-        'qc'         => $prodDone ? [] : ['งานผลิตยังไม่เสร็จ'],
-        'delivery'   => $qc && ($qc['result'] ?? '') === 'pass' ? [] : ['QC ยังไม่ผ่าน'],
-        'done'       => $prod && !empty($prod['pickup_at']) ? [] : ['ยังไม่ได้ส่งมอบ'],
+        'reception' => [],
+        'exam'      => [],
+        'sales'     => [],
+        'payment'   => [],
+        'centering' => [],
+        'delivery'  => $order ? [] : ['ยังไม่มีออเดอร์'],
     ];
 }
 
@@ -142,8 +114,6 @@ function processBlocking(array $c): array
 function processDerived(array $c, array $missing): array
 {
     $order = $c['order'] ?? null;
-    $prod  = $c['production'] ?? null;
-    $qc    = ($c['qc_checks'] ?? [])[0] ?? null;
     $out   = [];
 
     foreach (CASE_PROCESSES as $p) {
@@ -157,36 +127,16 @@ function processDerived(array $c, array $missing): array
     if ($order && $out['sales'] !== 'completed') {
         $out['sales'] = 'in_progress';
     }
-    if (($c['centering'] ?? null) && $out['centering'] !== 'completed') {
-        $out['centering'] = 'in_progress';
-    }
     if (count($c['payments'] ?? []) && $out['payment'] !== 'completed') {
         $out['payment'] = 'in_progress';
     }
-    if ($out['lens'] !== 'completed') {
-        $ln = lensProgress($c);
-        if ($ln['waiting']) {
-            $out['lens'] = 'waiting';
-        } elseif ($ln['touched']) {
-            $out['lens'] = 'in_progress';
-        }
+    if (($c['centering'] ?? null) && $out['centering'] !== 'completed') {
+        $out['centering'] = 'in_progress';
     }
-    if ($out['production'] !== 'completed') {
-        $status = $prod['status'] ?? null;
-        if ($status === 'WAITING_FOR_ITEM') {
-            $out['production'] = 'waiting';
-        } elseif ($status === 'IN_PRODUCTION') {
-            $out['production'] = 'in_progress';
-        } elseif ($prod) {
-            $out['production'] = 'in_progress';
-        }
-    }
-    if ($qc && ($qc['result'] ?? '') === 'fail') {
-        $out['qc'] = 'problem';
-    }
-    /* a case parked on a terminal status is finished, whatever else is open */
+    /* a case parked on a terminal status has been handed over, whatever else
+       is still open — ส่งมอบ is the step that closes the case */
     if ((int) ($c['is_terminal'] ?? 0) === 1) {
-        $out['done'] = 'completed';
+        $out['delivery'] = 'completed';
     }
     return $out;
 }
@@ -280,7 +230,7 @@ function advanceCaseStatus(Tx $q, array $c, array $states): void
     /* same reading as the board: the case is at the furthest step anything has
        happened on — not the first gap, which would drag a case back to ชำระเงิน
        the moment it takes a deposit instead of the full amount */
-    $order = array_values(array_filter(CASE_PROCESSES, fn($p) => $p !== 'done'));
+    $order = CASE_PROCESSES;
     $furthest = 0;
     foreach ($order as $idx => $p) {
         if (($states[$p]['status'] ?? 'not_started') !== 'not_started') {
@@ -355,7 +305,8 @@ POST('/api/cases/:id/processes/:process/complete', function (array $req) {
             'action' => 'process_completed', 'entity' => 'case_process',
             'note'   => $process . ($note ? " — $note" : ''),
         ]);
-        if ($process === 'done') {
+        /* ส่งมอบเป็นขั้นสุดท้าย — ยืนยันแล้วเคสจบ ไม่มีขั้น "จบงาน" ให้กดซ้ำอีกที */
+        if ($process === 'delivery') {
             setStatus($q, $id, 'completed', ['action' => 'process_completed']);
             return;
         }
@@ -412,10 +363,10 @@ GET('/api/cases/:id/processes', fn(array $r) => caseDetail(int_or($r['params']['
  * Where each case actually is, for a whole list at once.
  *
  * The board used to read cases.status, which is a value somebody sets by hand
- * and nothing ever checks against the work: a case could sit in "ผลิต" with no
- * order, no centering and no production job. This computes the same answer the
- * case page shows — the first of the 9 processes that is not finished — for
- * every case in one pass, so the board and the case agree.
+ * and nothing ever checks against the work: a case could sit in "ส่งมอบ" with
+ * no order and no centering. This computes the same answer the case page shows
+ * — the first of the 6 processes that is not finished — for every case in one
+ * pass, so the board and the case agree.
  *
  * Six aggregate queries, not one caseDetail() per row.
  */
@@ -466,32 +417,9 @@ function caseStageMap(array $caseIds): array
            FROM payments WHERE case_id IN ($in) AND cancelled_at IS NULL GROUP BY case_id",
         ...$ids
     ));
-    $prod = $flat(Db::all(
-        "SELECT case_id,
-                MAX(status = 'COMPLETED' OR edging_finished_at IS NOT NULL) AS done,
-                MAX(pickup_at IS NOT NULL) AS delivered,
-                MAX(status = 'IN_PRODUCTION' OR status = 'WAITING_FOR_ITEM') AS working,
-                MAX(started_at IS NOT NULL) AS started
-           FROM production_jobs WHERE case_id IN ($in) GROUP BY case_id",
-        ...$ids
-    ));
-    $qc = $flat(Db::all(
-        "SELECT case_id, MAX(result = 'pass') AS passed, COUNT(*) AS n
-           FROM qc_checks WHERE case_id IN ($in) GROUP BY case_id",
-        ...$ids
-    ));
-    /* ขั้นเลนส์: กี่ชิ้นถูกจองไว้แล้ว และมีชิ้นไหนถูกยกเว้น (งานข้างเดียว) บ้าง */
-    $reserved = $flat(Db::all(
-        "SELECT case_id, COUNT(DISTINCT item_type) AS n
-           FROM stock_reservations
-          WHERE case_id IN ($in) AND status IN ('active','consumed')
-          GROUP BY case_id",
-        ...$ids
-    ));
-    $fulfil = $flat(Db::all(
-        "SELECT case_id, SUM(is_required = 0) AS skipped,
-                MAX(status IN ('ordered','received')) AS ordering, COUNT(*) AS n
-           FROM case_item_fulfillment WHERE case_id IN ($in) GROUP BY case_id",
+    $dlv = $flat(Db::all(
+        "SELECT case_id, MAX(delivered_at IS NOT NULL) AS delivered, COUNT(*) AS n
+           FROM case_deliveries WHERE case_id IN ($in) GROUP BY case_id",
         ...$ids
     ));
     $stored = [];
@@ -510,32 +438,23 @@ function caseStageMap(array $caseIds): array
         $paid = (float) ($pay[$id]['paid'] ?? 0);
         $net  = (float) ($orders[$id]['net'] ?? 0);
         $done = [
-            'reception'  => true,                                     // the case exists
-            'exam'       => !empty($rx[$id]['has_final']),
-            'sales'      => !empty($orders[$id]['filled']),
-            'centering'  => !empty($centering[$id]['done']),
-            'payment'    => !empty($pay[$id]['n']) && $net > 0 && $paid >= $net - 0.001,
-            'lens'       => (int) ($reserved[$id]['n'] ?? 0)
-                >= count(LENS_ITEM_TYPES) - (int) ($fulfil[$id]['skipped'] ?? 0),
-            'production' => !empty($prod[$id]['done']),
-            'qc'         => !empty($qc[$id]['passed']),
-            'delivery'   => !empty($prod[$id]['delivered']),
+            'reception' => true,                                     // the case exists
+            'exam'      => !empty($rx[$id]['has_final']),
+            'sales'     => !empty($orders[$id]['filled']),
+            'payment'   => !empty($pay[$id]['n']) && $net > 0 && $paid >= $net - 0.001,
+            'centering' => !empty($centering[$id]['done']),
+            'delivery'  => !empty($dlv[$id]['delivered']),
         ];
         /* Work that has visibly begun, whether or not it is finished. The shop
-           does not queue: a customer can pay a deposit and the bench starts
-           cutting, so payment sits half-done while production is where the job
-           actually is. */
+           does not queue: a customer can pay a deposit and go straight to วัด
+           Center, so payment sits half-done while the job has already moved on. */
         $active = [
-            'reception'  => true,
-            'exam'       => !empty($rx[$id]['n']),
-            'sales'      => !empty($orders[$id]['n']),
-            'centering'  => !empty($centering[$id]['n']),
-            'payment'    => !empty($pay[$id]['n']),
-            'lens'       => !empty($reserved[$id]['n']) || !empty($fulfil[$id]['n']),
-            'production' => !empty($prod[$id]['working']) || !empty($prod[$id]['done'])
-                || !empty($prod[$id]['started']),
-            'qc'         => !empty($qc[$id]['n']),
-            'delivery'   => !empty($prod[$id]['delivered']),
+            'reception' => true,
+            'exam'      => !empty($rx[$id]['n']),
+            'sales'     => !empty($orders[$id]['n']),
+            'payment'   => !empty($pay[$id]['n']),
+            'centering' => !empty($centering[$id]['n']),
+            'delivery'  => !empty($dlv[$id]['n']),
         ];
 
         /* an explicit ✓ on a process outranks what the data alone implies */
@@ -551,7 +470,7 @@ function caseStageMap(array $caseIds): array
            is the next step still open. Reading "first unfinished step" instead
            would park a case in ชำระเงิน forever on a deposit, while the glasses
            are being cut. */
-        $order = array_values(array_filter(CASE_PROCESSES, fn($p) => $p !== 'done'));
+        $order = CASE_PROCESSES;
         $furthest = 0;
         foreach ($order as $idx => $p) {
             if (!empty($done[$p]) || !empty($active[$p])) {

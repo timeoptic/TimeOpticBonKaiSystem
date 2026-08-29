@@ -19,16 +19,13 @@ const NAV = [
   ['งานในร้าน', [
     ['📅', 'ปฏิทินจองคิว', '/bookings'],
     ['🗂', 'กระดานงาน', '/cases'],
-    ['🔎', 'ติดตามเลนส์', '/lens-tracker'],
   ]],
-  ['ขั้นตอนงาน 10 ขั้น', [
+  /* รับลูกค้าไม่มีหน้ารวมของตัวเอง — "เปิดเคสใหม่" บนกระดานงานคือขั้นนั้น */
+  ['ขั้นตอนงาน 6 ขั้น', [
     ['👁', 'วัดสายตา', '/exam'],
     ['🛍', 'ขาย-เลือกกรอบ', '/case-sales'],
-    ['🎯', 'วัด Center', '/centering'],
     ['💳', 'ชำระเงิน', '/case-payments'],
-    ['👓', 'เลนส์', '/lens'],
-    ['🔧', 'ผลิต', '/production'],
-    ['🔍', 'QC', '/qc'],
+    ['🎯', 'วัด Center', '/centering'],
     ['📦', 'ส่งมอบ', '/delivery'],
   ]],
   ['งานหน้าร้าน', [
@@ -134,7 +131,7 @@ export function Shell({ children }) {
           </button>
           <div className="crumb" id="crumb">{crumb}</div>
           <div className="spacer" />
-          <Link className="btn btn-ghost" href="/"><Icon name="home" /> เมนูหลัก</Link>
+          <Link className="btn btn-ghost" href="/"><Icon name="home" /> <span className="lbl">เมนูหลัก</span></Link>
         </header>
         <div className="content" id="view">{children}</div>
       </main>
