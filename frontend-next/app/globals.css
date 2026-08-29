@@ -14,6 +14,10 @@
   --ok:#15803d; --ok-soft:#dcfce7;
   --warn:#b45309; --warn-soft:#fef3c7;
   --danger:#be123c; --danger-soft:#ffe4e6;
+  /* ช่องกรอกเป็นพื้นเติมสีอ่อน ไม่ใช่กล่องขอบขาว — ที่ว่างบนการ์ดขาวจึงอ่านเป็น
+     "ตรงนี้พิมพ์ได้" โดยไม่ต้องตีเส้นทุกช่อง ช่องที่กำลังพิมพ์กลับเป็นขาว
+     พร้อมขอบสีแบรนด์ ทำให้ตำแหน่งเคอร์เซอร์เด่นกว่าช่องอื่นทั้งฟอร์ม */
+  --field:#eef4f4; --field-hover:#e6efee; --panel:#f5f9f9;
   --radius:16px; --radius-sm:10px;
   --shadow:0 1px 2px rgba(12,74,74,.05),0 8px 24px rgba(12,74,74,.07);
   --shadow-lg:0 12px 30px rgba(12,74,74,.14);
@@ -302,7 +306,7 @@ table.grid tfoot td{font-weight:700;background:var(--surface-alt);border-top:2px
 .empty{padding:34px 16px;text-align:center;color:var(--ink-faint);font-size:14px}
 
 /* ---------------- forms ---------------- */
-.form-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px}
+.form-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px}
 
 .form-grid.two{grid-template-columns:repeat(auto-fill,minmax(320px,1fr))}
 
@@ -313,7 +317,7 @@ table.grid tfoot td{font-weight:700;background:var(--surface-alt);border-top:2px
 @media (max-width:1200px){.form-grid.intake{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (max-width:640px){.form-grid.intake{grid-template-columns:1fr}}
 
-.field{display:flex;flex-direction:column;gap:5px;min-width:0}
+.field{display:flex;flex-direction:column;gap:6px;min-width:0}
 
 .field.span2{grid-column:span 2}
 
@@ -322,23 +326,42 @@ table.grid tfoot td{font-weight:700;background:var(--surface-alt);border-top:2px
 label{font-size:12.5px;font-weight:600;color:var(--ink-soft)}
 
 input,select,textarea{
-  font:inherit;font-size:14px;padding:9px 12px;border:1px solid var(--line);
-  border-radius:var(--radius-sm);background:#fff;color:var(--ink);width:100%;min-width:0;
+  font:inherit;font-size:14px;padding:10px 13px;border:1px solid transparent;
+  border-radius:var(--radius-sm);background:var(--field);color:var(--ink);width:100%;min-width:0;
+  transition:background .12s ease,border-color .12s ease;
 }
 
-input:focus,select:focus,textarea:focus{outline:2px solid var(--accent-soft);border-color:var(--accent)}
+input:hover:not(:disabled):not([readonly]),
+select:hover:not(:disabled),
+textarea:hover:not(:disabled){background:var(--field-hover)}
 
-input:disabled,input[readonly],select:disabled,textarea:disabled{background:var(--surface-alt);color:var(--ink-soft)}
+/* ช่องที่กำลังพิมพ์กลายเป็นขาว — ตัดกับช่องอื่นที่เป็นพื้นเทา */
+input:focus,select:focus,textarea:focus{
+  outline:2px solid var(--accent-soft);border-color:var(--accent);background:#fff;
+}
+
+/* อ่านอย่างเดียวต้องดูต่างจาก "ยังไม่ได้พิมพ์" — ใช้เส้นขอบจาง ๆ บอกว่าแตะไม่ได้
+   แทนที่จะให้พื้นอ่อนลงเฉย ๆ ซึ่งอ่านเป็นช่องว่างที่รอให้กรอก */
+input:disabled,input[readonly],select:disabled,textarea:disabled{
+  background:#fafcfc;border-color:var(--line-soft);color:var(--ink-faint);
+}
 
 textarea{resize:vertical;min-height:74px}
 
 .hint{font-size:11.5px;color:var(--ink-faint)}
 
-fieldset{border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px 16px;margin:0 0 16px}
+/* กลุ่มย่อยในฟอร์มเป็นพื้นเทาอ่อนเป็นก้อน ไม่ใช่กล่องตีเส้น — เส้นขอบทุกชั้น
+   ทำให้ฟอร์มที่ซ้อนสองชั้นดูเหมือนตาราง มากกว่าดูเหมือนของที่จัดกลุ่มไว้ */
+fieldset{
+  border:1px solid transparent;border-radius:var(--radius);background:var(--panel);
+  padding:14px 16px 16px;margin:0 0 16px;
+}
 
-legend{font-size:12.5px;font-weight:700;color:var(--navy);padding:0 6px}
+legend{font-size:12px;font-weight:700;color:var(--accent-deep);letter-spacing:.3px;padding:0 6px}
 
-.form-actions{display:flex;gap:10px;flex-wrap:wrap;padding-top:4px}
+/* align-items:center — ข้อความอธิบายที่วางข้างปุ่ม ("เลือกลูกค้าก่อนจึงจะเปิดเคสได้")
+   ถูกยืดเต็มความสูงแถวแล้วไปเกาะเส้นฐานบน ทำให้ดูเหมือนหลุดออกมาจากแถว */
+.form-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;padding-top:8px}
 
 /* ---------------- buttons ---------------- */
 .btn{
@@ -1242,7 +1265,7 @@ table.doc td.lbl{background:var(--surface-alt);font-weight:700;text-align:left;w
 
 /* ---------------- Eye-exam workspace ---------------- */
 /* เป็น fieldset เพื่อให้ล็อกทั้งแผงได้ทีเดียวตอนยืนยันผลไปแล้ว */
-.exam-ws{display:flex;flex-direction:column;gap:22px;border:0;padding:0;margin:0;min-width:0}
+.exam-ws{display:flex;flex-direction:column;gap:26px;border:0;padding:0;margin:0;min-width:0;background:transparent}
 
 .exam-ws[disabled] input,.exam-ws[disabled] select,.exam-ws[disabled] textarea{
   background:var(--surface-alt);color:var(--ink-soft);cursor:default;
@@ -1250,9 +1273,11 @@ table.doc td.lbl{background:var(--surface-alt);font-weight:700;text-align:left;w
 
 .exam-ws[disabled] .chip-btn{opacity:.6}
 
-.ws-section{border-top:1px solid var(--line-soft);padding-top:14px}
+/* ไม่มีเส้นคั่น — หัวข้อตัวหนากับที่ว่างแบ่งกลุ่มได้อยู่แล้ว เส้นทุกเส้นที่เพิ่มเข้ามา
+   คือหนึ่งเส้นที่ตาต้องข้ามก่อนถึงข้อมูล */
+.ws-section{padding-top:6px}
 
-.exam-ws > .ws-section:first-child{border-top:0;padding-top:0}
+.exam-ws > .ws-section:first-child{padding-top:0}
 
 .ws-head{display:flex;align-items:center;gap:10px;margin-bottom:8px}
 
