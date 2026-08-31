@@ -1,6 +1,11 @@
-import './globals.css';
-import { Providers } from './providers.jsx';
-
+/**
+ * โครงนอกสุด — มีแค่ <html> กับ <body>
+ *
+ * ไม่มี CSS ไม่มี provider ตั้งใจให้ว่าง เพราะแอปนี้มีสองฝั่งที่หน้าตาคนละชุด
+ * กันจริง ๆ: หน้าร้านอยู่ที่ `/` (กลุ่ม `(frontdesk)`) และคลังกับต้นทุนอยู่ที่
+ * `/stock` แต่ละฝั่ง import สไตล์และ provider ของตัวเองใน layout ของกลุ่มมัน
+ * อะไรที่วางไว้ตรงนี้จะไปโผล่ทั้งสองฝั่ง ซึ่งเกือบทุกครั้งไม่ใช่สิ่งที่ต้องการ
+ */
 export const metadata = {
   title: 'TimeOptic — ระบบจัดการร้านแว่นตา',
   icons: {
@@ -9,7 +14,7 @@ export const metadata = {
 };
 
 // จอโทรศัพท์ที่มีติ่ง/ขอบโค้ง: ให้หน้าเว็บกินเต็มจอ แล้วค่อยเว้นระยะปลอดภัย
-// ด้วย env(safe-area-inset-*) ใน globals.css เอง
+// ด้วย env(safe-area-inset-*) ใน globals.css ของแต่ละฝั่งเอง
 export const viewport = {
   width: 'device-width',
   initialScale: 1,
@@ -22,9 +27,7 @@ export default function RootLayout({ children }) {
     // ก่อน React hydrate — ทำให้ dev overlay ขึ้น hydration mismatch ทั้งที่โค้ดเราไม่ได้ผิด
     // suppressHydrationWarning ที่นี่กันแค่ attribute ของแท็กนี้แท็กเดียว ไม่ได้ปิดทั้งหน้า
     <html lang="th" suppressHydrationWarning>
-      <body>
-        <Providers>{children}</Providers>
-      </body>
+      <body>{children}</body>
     </html>
   );
 }
