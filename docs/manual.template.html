@@ -1,0 +1,928 @@
+<title>คู่มือคลังและต้นทุน</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;800&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+Thai+Looped:wght@400;600;700&display=swap">
+
+<style>
+/* Tokens taken from web/app/tokens.css so the manual looks like the thing it
+   documents. Dark set derived from the same hues, not inverted.
+
+   The light grounds are the one deliberate departure: the app's cream reads as
+   warmth behind a working screen, and as a tint behind a page of screenshots —
+   twenty cream-bordered pictures on a cream page have nothing to sit against.
+   White gives them an edge. Edited straight on the published page and brought
+   back here, so the next build keeps it. */
+:root {
+  --paper:   oklch(100% 0 0);
+  --paper-2: oklch(97% 0.004 95);
+  --paper-3: oklch(94% 0.006 95);
+  --ink:     oklch(20% 0.012 250);
+  --ink-2:   oklch(20% 0.012 250 / 0.88);
+  --muted:   oklch(20% 0.012 250 / 0.60);
+  --rule:    oklch(20% 0.012 250 / 0.12);
+  --rule-2:  oklch(20% 0.012 250 / 0.22);
+
+  --pear:      oklch(86% 0.18 95);
+  --pear-deep: oklch(70% 0.19 95);
+  --tint-pear: oklch(86% 0.18 95 / 0.18);
+  --cyan-ink:  oklch(45% 0.16 235);
+  --tint-cyan: oklch(66% 0.18 235 / 0.12);
+  --coral-ink: oklch(45% 0.19 18);
+  --tint-coral:oklch(68% 0.24 18 / 0.13);
+  --mint-ink:  oklch(45% 0.13 150);
+  --tint-mint: oklch(80% 0.16 150 / 0.16);
+  --lav-ink:   oklch(45% 0.17 305);
+  --tint-lav:  oklch(74% 0.16 305 / 0.13);
+
+  --focus: oklch(52% 0.18 235);
+
+  --font-body: "Plus Jakarta Sans", "Noto Sans Thai Looped", ui-rounded, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "Noto Sans Thai Looped", ui-monospace, monospace;
+
+  --r-card: 20px;
+  --r-sm: 10px;
+  --r-pill: 999px;
+  --shadow: 0 1px 2px oklch(20% 0.012 250 / 0.05), 0 14px 32px -20px oklch(20% 0.012 250 / 0.22);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper:   oklch(19% 0.014 250);
+    --paper-2: oklch(23% 0.014 250);
+    --paper-3: oklch(27% 0.015 250);
+    --ink:     oklch(94% 0.010 95);
+    --ink-2:   oklch(94% 0.010 95 / 0.88);
+    --muted:   oklch(94% 0.010 95 / 0.58);
+    --rule:    oklch(94% 0.010 95 / 0.14);
+    --rule-2:  oklch(94% 0.010 95 / 0.26);
+    --pear:      oklch(80% 0.17 95);
+    --pear-deep: oklch(66% 0.18 95);
+    --tint-pear: oklch(86% 0.18 95 / 0.16);
+    --cyan-ink:  oklch(80% 0.13 235);
+    --tint-cyan: oklch(66% 0.18 235 / 0.18);
+    --coral-ink: oklch(76% 0.16 18);
+    --tint-coral:oklch(68% 0.24 18 / 0.20);
+    --mint-ink:  oklch(80% 0.13 150);
+    --tint-mint: oklch(80% 0.16 150 / 0.18);
+    --lav-ink:   oklch(80% 0.12 305);
+    --tint-lav:  oklch(74% 0.16 305 / 0.20);
+    --focus: oklch(72% 0.15 235);
+    --shadow: 0 1px 2px oklch(0% 0 0 / 0.30), 0 14px 32px -20px oklch(0% 0 0 / 0.55);
+  }
+}
+
+:root[data-theme="dark"] {
+  --paper:   oklch(19% 0.014 250);
+  --paper-2: oklch(23% 0.014 250);
+  --paper-3: oklch(27% 0.015 250);
+  --ink:     oklch(94% 0.010 95);
+  --ink-2:   oklch(94% 0.010 95 / 0.88);
+  --muted:   oklch(94% 0.010 95 / 0.58);
+  --rule:    oklch(94% 0.010 95 / 0.14);
+  --rule-2:  oklch(94% 0.010 95 / 0.26);
+  --pear:      oklch(80% 0.17 95);
+  --pear-deep: oklch(66% 0.18 95);
+  --tint-pear: oklch(86% 0.18 95 / 0.16);
+  --cyan-ink:  oklch(80% 0.13 235);
+  --tint-cyan: oklch(66% 0.18 235 / 0.18);
+  --coral-ink: oklch(76% 0.16 18);
+  --tint-coral:oklch(68% 0.24 18 / 0.20);
+  --mint-ink:  oklch(80% 0.13 150);
+  --tint-mint: oklch(80% 0.16 150 / 0.18);
+  --lav-ink:   oklch(80% 0.12 305);
+  --tint-lav:  oklch(74% 0.16 305 / 0.20);
+  --focus: oklch(72% 0.15 235);
+  --shadow: 0 1px 2px oklch(0% 0 0 / 0.30), 0 14px 32px -20px oklch(0% 0 0 / 0.55);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body);
+  /* Bigger than the reference doc on purpose. This is read standing at a
+     counter, often on a tablet, often by someone in a hurry. */
+  font-size: 17px;
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4, p, ul, ol, figure { margin: 0; }
+h1, h2, h3, h4 { text-wrap: balance; line-height: 1.25; }
+a { color: var(--cyan-ink); }
+a:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
+code { font-family: var(--font-mono); font-size: 0.86em; }
+
+.page { display: grid; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 62rem) { .page { grid-template-columns: 16rem minmax(0, 1fr); } }
+
+/* --- contents rail -------------------------------------------------------- */
+
+.rail { background: var(--paper-2); border-block-end: 1px solid var(--rule); padding: 1.5rem 1.25rem; }
+
+@media (min-width: 62rem) {
+  .rail {
+    position: sticky; top: 0; align-self: start;
+    max-height: 100dvh; overflow-y: auto;
+    border-block-end: 0; border-inline-end: 1px solid var(--rule);
+  }
+}
+
+.rail__brand { display: flex; align-items: center; gap: 0.6rem; margin-block-end: 1.5rem; }
+.rail__dot { inline-size: 12px; block-size: 12px; flex: none; border-radius: var(--r-pill); background: var(--pear); box-shadow: 0 0 0 4px var(--tint-pear); }
+.rail__name { font-weight: 800; letter-spacing: -0.01em; line-height: 1.15; }
+.rail__sub { font-family: var(--font-mono); font-size: 0.66rem; color: var(--muted); letter-spacing: 0.06em; }
+
+.rail__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; counter-reset: sec; }
+
+.rail__list a {
+  display: flex; gap: 0.5rem;
+  padding: 0.35rem 0.6rem;
+  border-radius: var(--r-sm);
+  color: var(--ink-2); font-size: 0.9rem; text-decoration: none;
+}
+
+.rail__list a::before {
+  counter-increment: sec;
+  content: counter(sec);
+  font-family: var(--font-mono); font-size: 0.72rem;
+  color: var(--muted); flex: none; min-inline-size: 1.1rem;
+}
+
+.rail__list a:hover { background: var(--tint-cyan); color: var(--ink); }
+
+/* --- content -------------------------------------------------------------- */
+
+.main { padding: 2rem 1.25rem 5rem; min-width: 0; }
+@media (min-width: 62rem) { .main { padding: 3rem 2.5rem 6rem; } }
+
+.wrap { max-width: 62rem; display: flex; flex-direction: column; gap: 3.5rem; }
+
+.hero { display: flex; flex-direction: column; gap: 0.9rem; }
+.eyebrow { font-family: var(--font-mono); font-size: 0.7rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+.hero h1 { font-size: clamp(2rem, 4vw + 1rem, 2.9rem); font-weight: 800; letter-spacing: -0.02em; }
+.hero p { max-width: 60ch; color: var(--ink-2); }
+
+section.screen { display: flex; flex-direction: column; gap: 1.1rem; scroll-margin-top: 1.5rem; }
+
+/* Each screen is numbered because the manual is read in order the first time
+   and jumped into by number after that. */
+h2.h {
+  display: flex; align-items: baseline; gap: 0.7rem;
+  font-size: 1.55rem; font-weight: 800; letter-spacing: -0.015em;
+  padding-block-end: 0.55rem;
+  border-block-end: 2px solid var(--pear);
+}
+
+h2.h .num {
+  font-family: var(--font-mono); font-size: 0.95rem; font-weight: 700;
+  color: var(--ink);
+  background: var(--pear);
+  border-radius: var(--r-pill);
+  min-inline-size: 1.9rem; block-size: 1.9rem;
+  display: grid; place-items: center; flex: none;
+}
+
+h2.h .where { margin-inline-start: auto; font-family: var(--font-mono); font-size: 0.78rem; font-weight: 500; color: var(--muted); white-space: nowrap; }
+
+h3 { font-size: 1.08rem; font-weight: 700; margin-block-start: 0.9rem; }
+
+p.body, li.body { max-width: 64ch; color: var(--ink-2); }
+ul.body { max-width: 64ch; color: var(--ink-2); padding-inline-start: 1.2rem; display: flex; flex-direction: column; gap: 0.3rem; }
+.lede { color: var(--muted); max-width: 64ch; }
+
+/* --- screenshot ----------------------------------------------------------- */
+
+.shot { display: flex; flex-direction: column; gap: 0.5rem; margin: 0; }
+
+.shot img {
+  max-inline-size: 100%; block-size: auto;
+  border: 1px solid var(--rule-2);
+  border-radius: var(--r-card);
+  box-shadow: var(--shadow);
+  background: var(--paper-2);
+}
+
+.shot figcaption { font-size: 0.85rem; color: var(--muted); }
+
+.shot--todo .shot__todo {
+  display: grid; place-items: center;
+  min-block-size: 11rem;
+  border: 2px dashed var(--rule-2);
+  border-radius: var(--r-card);
+  color: var(--muted);
+  font-family: var(--font-mono); font-size: 0.85rem;
+  background: var(--paper-2);
+}
+
+/* --- control table -------------------------------------------------------- */
+
+.scroll { overflow-x: auto; }
+
+table { border-collapse: collapse; width: 100%; font-size: 0.92rem; }
+th, td { text-align: left; padding: 0.55rem 0.75rem; border-block-end: 1px solid var(--rule); vertical-align: top; }
+thead th {
+  font-family: var(--font-mono); font-size: 0.68rem; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--muted); white-space: nowrap;
+  border-block-end: 1px solid var(--rule-2);
+}
+tbody tr:last-child td { border-block-end: 0; }
+td:first-child { font-weight: 600; }
+.muted { color: var(--muted); font-weight: 400; }
+
+/* A button named in prose is drawn the way it looks on screen, so "press
+   ตัดสต็อก" is unambiguous about which thing on the page it means. */
+.b {
+  display: inline-block;
+  font-size: 0.86em; font-weight: 600;
+  padding: 0.08em 0.55em;
+  border-radius: var(--r-pill);
+  background: var(--paper-3);
+  border: 1px solid var(--rule-2);
+  white-space: nowrap;
+}
+
+.b--go { background: var(--pear); border-color: var(--pear-deep); color: var(--ink); }
+.b--chip { background: var(--tint-cyan); border-color: transparent; color: var(--cyan-ink); }
+.b--danger { background: var(--tint-coral); border-color: transparent; color: var(--coral-ink); }
+
+/* --- callouts ------------------------------------------------------------- */
+
+.note {
+  display: flex; flex-direction: column; gap: 0.4rem;
+  padding: 0.9rem 1.1rem;
+  border-radius: var(--r-card);
+  background: var(--paper-2);
+  border: 1px solid var(--rule-2);
+}
+
+.note--warn { background: var(--tint-coral); border-color: transparent; }
+.note--tip { background: var(--tint-mint); border-color: transparent; }
+.note--role { background: var(--tint-lav); border-color: transparent; }
+.note__t { font-weight: 700; }
+.note p { max-width: 62ch; font-size: 0.92rem; }
+
+/* --- numbered walk-through ------------------------------------------------ */
+
+.steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.6rem; counter-reset: st; }
+
+.steps li {
+  display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.75rem;
+  align-items: start;
+  max-width: 64ch;
+  color: var(--ink-2);
+}
+
+.steps li::before {
+  counter-increment: st;
+  content: counter(st);
+  inline-size: 1.6rem; block-size: 1.6rem;
+  display: grid; place-items: center;
+  border-radius: var(--r-pill);
+  background: var(--paper-3);
+  font-family: var(--font-mono); font-size: 0.75rem; font-weight: 700;
+  color: var(--ink);
+}
+
+footer.foot {
+  margin-block-start: 2rem; padding-block-start: 1.5rem;
+  border-block-start: 1px solid var(--rule);
+  font-size: 0.85rem; color: var(--muted); max-width: 64ch;
+}
+</style>
+
+<div class="page">
+
+<nav class="rail" aria-label="สารบัญ">
+  <div class="rail__brand">
+    <span class="rail__dot" aria-hidden="true"></span>
+    <span>
+      <span class="rail__name">คลังและต้นทุน</span><br>
+      <span class="rail__sub">คู่มือใช้งาน</span>
+    </span>
+  </div>
+  <ul class="rail__list">
+    <li><a href="#s1">เข้าสู่ระบบและเมนู</a></li>
+    <li><a href="#s2">รับของเข้าคลัง</a></li>
+    <li><a href="#s3">เพิ่มสินค้าใหม่</a></li>
+    <li><a href="#s4">เบิก / ตัดสต็อก</a></li>
+    <li><a href="#s5">ใบสั่งตัด RX</a></li>
+    <li><a href="#s6">สินค้าและภาพรวม</a></li>
+    <li><a href="#s7">ล็อตสต็อก</a></li>
+    <li><a href="#s8">ความเคลื่อนไหว</a></li>
+    <li><a href="#s9">แดชบอร์ด</a></li>
+    <li><a href="#s10">สาขาและค้างรับ</a></li>
+    <li><a href="#s11">จัดการผู้ใช้</a></li>
+    <li><a href="#s12">ปุ่มที่บางคนไม่เห็น</a></li>
+  </ul>
+</nav>
+
+<main class="main">
+<div class="wrap">
+
+<header class="hero">
+  <p class="eyebrow">คู่มือใช้งานทีละปุ่ม</p>
+  <h1>ระบบคลังและต้นทุน</h1>
+  <p>ทุกหน้าจอ ทุกปุ่ม ว่ากดแล้วเกิดอะไรขึ้น และตอนไหนปุ่มนั้นจะไม่มีให้กด อ่านตามลำดับก็ได้ หรือกระโดดไปหน้าที่ต้องใช้จากสารบัญด้านซ้าย</p>
+</header>
+
+<!-- ================================================================ 1 ==== -->
+
+<section class="screen" id="s1">
+  <h2 class="h"><span class="num">1</span> เข้าสู่ระบบและเมนู</h2>
+
+  <!--SHOT:login|หน้าเข้าสู่ระบบ — มีแค่สองช่องกับปุ่มเดียว-->
+
+  <ol class="steps">
+    <li>พิมพ์ <strong>ชื่อผู้ใช้</strong> กับ <strong>รหัสผ่าน</strong> ที่เจ้าของร้านตั้งให้</li>
+    <li>กด <span class="b b--go">เข้าสู่ระบบ</span></li>
+  </ol>
+
+  <p class="body">ระบบจำการเข้าสู่ระบบไว้ ปิดแท็บแล้วเปิดใหม่ไม่ต้องพิมพ์ซ้ำ จนกว่าจะกดออกจากระบบเอง</p>
+
+  <!-- The "open it from another machine" tip was removed from the published
+       page and the removal brought back here. The same instructions live on the
+       in-app help screen, where someone who is already signed in and looking for
+       them will find them; in a manual read on the shop tablet it was answering
+       a question nobody standing at that screen was asking. -->
+
+  <h3>แถบเมนูซ้าย</h3>
+  <p class="body">อยู่ทุกหน้า ไม่หายไปไหน จอเล็กกว่า 900px มันจะกลายเป็นแถบเลื่อนแนวนอนด้านบนแทน ไม่ได้ซ่อนอยู่หลังปุ่มขีดสามขีด เพราะงานคลังต้องสลับหน้าตลอด</p>
+
+  <div class="scroll">
+  <table>
+    <thead><tr><th>กลุ่ม</th><th>เมนู</th><th>ใช้ทำอะไร</th></tr></thead>
+    <tbody>
+      <tr><td rowspan="3">งานประจำวัน</td><td>เบิก / ตัดสต็อก</td><td>ตัดของออกจากคลัง — ขาย เบิกใช้ ของเสีย</td></tr>
+      <tr><td>รับของเข้าคลัง</td><td>ล็อตใหม่ที่ผู้ขายส่งมา</td></tr>
+      <tr><td>ใบสั่งตัด RX</td><td>สั่งเลนส์เฉพาะราย และลงต้นทุนทีหลัง</td></tr>
+      <tr><td rowspan="4">คลัง</td><td>แดชบอร์ด</td><td>สรุปตัวเลขตามช่วงวัน</td></tr>
+      <tr><td>สินค้าและภาพรวม</td><td>ดัชนีสินค้าทั้งหมด</td></tr>
+      <tr><td>ล็อตสต็อก</td><td>ล็อตเรียงตามคิว FIFO</td></tr>
+      <tr><td>ความเคลื่อนไหว</td><td>ประวัติทุกครั้งที่ของขยับ</td></tr>
+      <tr><td rowspan="2">เงินและสาขา</td><td>ค้างรับจากสาขา</td><td>ของออกไปแล้วเงินยังไม่มา</td></tr>
+      <tr><td>สาขา</td><td>รายชื่อสาขาที่มาเบิกได้</td></tr>
+      <tr><td>ระบบ</td><td>จัดการผู้ใช้</td><td>บัญชีและสิทธิ์ — เจ้าของร้านเท่านั้น</td></tr>
+      <tr><td>ช่วยเหลือ</td><td>คู่มือการใช้งาน</td><td>คู่มือฉบับย่อในตัวแอป</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>ทางลัด Ctrl + K</h3>
+
+  <!--SHOT:palette|กด Ctrl+K ที่หน้าไหนก็ได้ พิมพ์ชื่อหน้าหรือชื่อสินค้า-->
+
+  <p class="body">กด <span class="b">Ctrl</span> + <span class="b">K</span> เปิดช่องค้นหาลอย พิมพ์ชื่อหน้าเพื่อกระโดดไป หรือพิมพ์ SKU / ชื่อสินค้าเพื่อเปิดสินค้านั้นเลย ลูกศร <span class="b">↑</span> <span class="b">↓</span> เลื่อน <span class="b">Enter</span> เลือก <span class="b">Esc</span> ปิด</p>
+
+  <p class="body">หน้าต่างที่เด้งขึ้นมา (ลิ้นชักสินค้า ฟอร์มเพิ่มสินค้า) ปิดได้สามทาง — กดปุ่ม <span class="b">✕ ปิด</span> กด <span class="b">Esc</span> หรือ<strong>กดที่พื้นที่มืดรอบ ๆ</strong></p>
+
+  <p class="body">ปุ่มบอกด้วยรูปว่ามันทำอะไร — <strong>กากบาท</strong>คือปิด <strong>ถังขยะสีแดง</strong>คือลบ ไม่ใช่แค่ตัวหนังสือ · ข้อความแจ้งเตือนมุมจอก็เหมือนกัน <strong>ถูกสีเขียว</strong>คือสำเร็จ <strong>สามเหลี่ยมสีแดง</strong>คือไม่สำเร็จ</p>
+
+  <p class="body">ในนั้นมีทางลัดที่ไม่มีในเมนูซ้ายด้วย เช่น <em>ล็อตที่ยังไม่มีต้นทุน</em> · <em>ล็อตใกล้หมดอายุ</em> · <em>ของเสีย</em> · <em>สาขายังค้างเงิน</em></p>
+</section>
+
+<!-- ================================================================ 3 ==== -->
+
+<section class="screen" id="s2">
+  <h2 class="h"><span class="num">2</span> รับของเข้าคลัง <span class="where">/receive</span></h2>
+
+  <p class="lede">ผู้ขายส่งของมา ล็อตใหม่เข้าคลังที่นี่ — เป็นงานแรกของวงจร ของต้องเข้าก่อนถึงจะมีให้เบิก</p>
+
+  <!--SHOT:receive|หน้ารับของ — เลือกสินค้าจากตารางก่อน ฟอร์มจะโผล่ทีหลัง-->
+
+  <h3>ขั้นที่หนึ่ง เลือกสินค้า</h3>
+
+  <p class="body">ตารางนี้หน้าตาเหมือนกันทุกหน้าที่ต้องเลือกสินค้า (หน้าเบิก หน้า RX ก็อันเดียวกัน) ต่างกันแค่ว่าแต่ละหน้ากรองอะไรออก — หน้านี้แสดงเฉพาะ<strong>สินค้าสำเร็จรูป</strong> เพราะของสั่งตัด RX ไม่มีล็อตให้รับ</p>
+
+  <div class="scroll">
+  <table>
+    <thead><tr><th>ปุ่ม / ช่อง</th><th>กดแล้วเกิดอะไร</th></tr></thead>
+    <tbody>
+      <tr><td>ช่องค้นหา</td><td>พิมพ์ SKU ชื่อสินค้า หรือแบรนด์ แล้วกด <span class="b b--go">ค้นหา</span> หรือ Enter</td></tr>
+      <tr><td><span class="b">ล้าง</span></td><td>โผล่มาเมื่อค้นหาอยู่ ล้างคำค้นกลับไปดูทั้งหมด</td></tr>
+      <tr><td>เรียงตาม <span class="muted">(ขวาบน)</span></td><td>ชื่อสินค้า · SKU · แบรนด์ · ชนิดสินค้า · ข้างตา · Index · ชนิดเลนส์ · ค่าสายตา SPH · คงเหลือ · ราคาขาย — <strong>สามอย่างแรกที่ไม่มีหัวคอลัมน์ของตัวเองแล้ว (SKU แบรนด์ ข้างตา) เรียงจากตรงนี้ได้</strong></td></tr>
+      <tr><td><span class="b">▲ น้อย → มาก</span></td><td>สลับทิศทางการเรียง กดอีกทีกลับด้าน</td></tr>
+      <tr><td><span class="b b--chip">ทุกข้าง</span> <span class="b b--chip">L</span> <span class="b b--chip">R</span></td><td>กรองเฉพาะเลนส์ข้างซ้ายหรือขวา</td></tr>
+      <tr><td><span class="b b--chip">ทุกชนิด</span> <span class="b b--chip">เลนส์</span> <span class="b b--chip">กรอบแว่น</span> …</td><td>กรองตามชนิดสินค้า เหลือเฉพาะกลุ่มที่เลือก</td></tr>
+      <tr><td>หัวตาราง</td><td>คลิกที่หัวคอลัมน์ก็เรียงได้เหมือนกัน ลูกศรบอกว่ากำลังเรียงด้วยอะไร</td></tr>
+      <tr><td><strong>คลิกที่แถวสินค้า</strong></td><td>เลือกสินค้านั้น ตารางหายไป ฟอร์มโผล่แทน</td></tr>
+      <tr><td><span class="b">เปลี่ยนสินค้า</span></td><td>หลังเลือกแล้ว กดเพื่อกลับไปเลือกใหม่</td></tr>
+      <tr><td><span class="b b--go">เพิ่มสินค้าใหม่</span> <span class="muted">(มุมบนขวา)</span></td><td>ของที่ส่งมาไม่เคยมีในระบบ — ดูหัวข้อ 3</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>SKU · แบรนด์ · ข้างตา อยู่ในช่องชื่อสินค้า</h3>
+
+  <p class="body">ตารางเคยมีคอลัมน์ละอย่างสำหรับสามสิ่งนี้ ตอนนี้อยู่รวมกับชื่อสินค้าแล้ว — <strong>ชื่ออยู่บรรทัดบน SKU กับแบรนด์อยู่บรรทัดล่าง</strong> และป้าย <code>L</code> / <code>R</code> ต่อท้ายชื่อ ตารางจึงแคบลงสามคอลัมน์ และความกว้างที่ได้คืนมาไปอยู่กับคอลัมน์ที่บอกความต่างของเลนส์จริง ๆ</p>
+
+  <h3>เลนส์ — สองคอลัมน์ที่โผล่มาเอง</h3>
+
+  <p class="body">ร้านสต็อกเลนส์รุ่นเดียวกันหลายค่าสายตาและหลายดัชนี ตารางที่บอกแค่ชื่อจึงเป็นแถวหน้าตาเหมือนกันเรียงกันเป็นพืด <strong>ถ้าในรายการมีเลนส์ จะมีสองคอลัมน์เพิ่มมาเอง</strong> ไม่ต้องเปิดอะไร</p>
+
+  <div class="scroll">
+  <table>
+    <thead><tr><th>คอลัมน์</th><th>อ่านว่าอะไร</th></tr></thead>
+    <tbody>
+      <tr><td>สเปกเลนส์</td><td><code>1.60 · Bifocal</code> — Index กับชนิดเลนส์ บรรทัดเล็กใต้ลงมาคือ Coating</td></tr>
+      <tr><td>ค่าสายตา</td><td>บรรทัดบน <code>SPH −4.50 · CYL −1.25</code> คือสองค่าที่ใช้เลือกเลนส์ บรรทัดล่าง <code>AXIS 90 · ADD +1.50</code> คือส่วนที่เหลือ · <strong>ทุกค่ามีชื่อกำกับ</strong> ไม่ต้องจำว่าตัวไหนมาก่อน · เครื่องหมายบวกลบติดมาเสมอเพราะ +1.50 กับ −1.50 คือเลนส์คนละตัว · <strong>ขีด</strong> แปลว่าไม่เคยกรอกไว้ ไม่ใช่ศูนย์</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p class="body">คอลัมน์ทั้งสองกดเรียงได้ และในช่อง <em>เรียงตาม</em> มีตัวเลือกเพิ่มมาด้วย — Index · ชนิดเลนส์ · Coating · ค่าสายตา SPH</p>
+
+  <p class="body">แถวชิปสีม่วงมีสามกลุ่ม คั่นด้วยจุด — <strong>Index</strong> · <strong>ชนิดเลนส์</strong> · <strong>Coating</strong> ตัวเลขบนชิปคือจำนวนที่จะเจอถ้ากด และมันนับใหม่ทุกครั้งที่กดชิปอื่น ชิป Coating เรียงจากที่ร้านมีเยอะที่สุดลงไป ไม่ได้เรียง A–Z</p>
+
+  <h3>กดปุ่ม <span class="b b--chip">เลนส์</span> แล้วจะมีตัวกรองเฉพาะเลนส์</h3>
+
+  <!--SHOT:lens-filter|กดเลนส์แล้วแถวสีม่วงจะโผล่ — ตัวเลขบนชิปคือจำนวนที่จะเจอถ้ากด-->
+
+  <p class="body">แถบสีม่วงโผล่เฉพาะตอนกดปุ่ม <span class="b b--chip">เลนส์</span> เพราะถ้าขึ้นตลอดจะกินพื้นที่เหนือตารางไปครึ่งหน้า</p>
+
+  <ul class="body">
+    <li><strong>ตัวเลขบนชิปคือจำนวนที่จะเจอถ้ากด</strong> และเป็นจำนวนของ<em>หน้านี้</em> ไม่ใช่ทั้งร้าน — หน้ารับของแสดงเฉพาะสินค้าสำเร็จรูป ตัวเลขจึงไม่นับของสั่งตัด</li>
+    <li>ชิปที่เป็น <strong>0</strong> จะจางและกดไม่ได้ เช่น <code>Bifocal 0</code> ที่หน้า RX แปลว่าร้านไม่มีเลนส์ Bifocal แบบสั่งตัด</li>
+    <li>กดชิปเดิมซ้ำ = ยกเลิกตัวกรองนั้น</li>
+    <li>เปลี่ยนไปกดชนิดอื่นเช่น <span class="b b--chip">กรอบแว่น</span> ตัวกรองเลนส์จะถูกล้างไปด้วย จะได้ไม่มีการกรองที่มองไม่เห็นค้างอยู่</li>
+  </ul>
+
+  <div class="note note--tip">
+    <p class="note__t">หา Coating ใช้ช่องค้นหา</p>
+    <p>Coating มีหลายสิบแบบ เลยไม่ได้ทำเป็นปุ่ม พิมพ์ <code>Crizal Sapphire</code> ลงช่องค้นหาได้เลย มันหาจาก Coating ด้วย ไม่ใช่แค่ชื่อกับ SKU</p>
+  </div>
+
+  <h3>ขั้นที่สอง ฟอร์มรับล็อต</h3>
+
+  <p class="body">พอเลือกสินค้าแล้ว จะมีกล่องบอก <strong>ล็อตล่าสุดของสินค้านี้</strong> — เลขล็อต จำนวน ต้นทุน ผู้ขาย และวันที่รับ ระบบเติมค่าจากล็อตนั้นมาให้ล่วงหน้า เป็นการเดา ไม่ใช่การบังคับ แก้ได้ทุกช่อง</p>
+
+  <div class="scroll">
+  <table>
+    <thead><tr><th>ช่อง</th><th>ต้องกรอกไหม</th><th>รายละเอียด</th></tr></thead>
+    <tbody>
+      <tr><td>เลขล็อต</td><td>ต้อง</td><td>เลขจากผู้ขาย ระบบเดาต่อจากล็อตก่อนหน้าให้ (เช่น <code>LOT-2026-014</code> → <code>LOT-2026-015</code>) แก้ได้ถ้าผู้ขายใช้เลขอื่น</td></tr>
+      <tr><td>จำนวนที่รับเข้า</td><td>ต้อง</td><td>กด <span class="b">−</span> <span class="b">+</span> หรือพิมพ์เอง</td></tr>
+      <tr><td>ผู้ขาย</td><td class="muted">ไม่</td><td>เติมจากล็อตก่อนให้ เปลี่ยนได้ถ้าสั่งเจ้าอื่น</td></tr>
+      <tr><td>ต้นทุนต่อชิ้น</td><td class="muted">ไม่</td><td><strong>เว้นว่างได้</strong>ถ้าใบกำกับยังไม่มา ระบบจะนับล็อตนั้นเป็น &ldquo;รอต้นทุน&rdquo; แยกไว้ ไม่ได้คิดเป็นศูนย์ · พนักงานหน้าร้านกรอกช่องนี้ไม่ได้</td></tr>
+      <tr><td>วันที่รับเข้า</td><td>ต้อง</td><td>เป็นตัวจัดคิว FIFO ของที่รับก่อนถูกตัดก่อน</td></tr>
+      <tr><td>วันหมดอายุ</td><td class="muted">ไม่</td><td>ใส่แล้วจะไปโผล่ในตัวกรอง &ldquo;ใกล้หมดอายุ&rdquo; ที่หน้าล็อต</td></tr>
+      <tr><td>หมายเหตุ</td><td class="muted">ไม่</td><td>เช่น เลขที่ใบส่งของ</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p class="body">กด <span class="b b--go">รับเข้าคลัง</span> เพื่อบันทึก หลังบันทึกแล้ว<strong>สินค้ายังถูกเลือกค้างไว้</strong> เลขล็อตเดินต่อให้อัตโนมัติ จำนวนกลับไปเป็น 1 — พร้อมรับล็อตถัดไปของส่งชุดเดียวกันทันที</p>
+</section>
+
+<!-- ================================================================ 4 ==== -->
+
+<section class="screen" id="s3">
+  <h2 class="h"><span class="num">3</span> เพิ่มสินค้าใหม่ <span class="where">ปุ่มในหน้ารับของ</span></h2>
+
+  <p class="lede">ต่อจากหัวข้อที่แล้ว — ของที่ส่งมาไม่เคยมีในระบบ เลนส์ค่าสายตาใหม่ กรอบสีใหม่ กด <span class="b b--go">เพิ่มสินค้าใหม่</span> มุมบนขวาของหน้ารับของ แล้วกล่องนี้จะเปิดขึ้นมา</p>
+
+  <h3>ก่อนเริ่ม — คัดลอกจากของเดิม</h3>
+
+  <!--SHOT:newproduct-pick|หน้าแรกของกล่อง — คัดลอกจากของเดิม หรือเลือกชนิดเอง-->
+
+  <p class="body">เลนส์รุ่นเดิมแต่คนละค่าสายตาถือเป็น<strong>สินค้าคนละตัว</strong> เพราะสต็อกแยกกันตามค่าสายตา แต่ไม่ต้องพิมพ์ใหม่ทั้งหมด</p>
+
+  <!--SHOT:newproduct-copy|พิมพ์แล้วกดค้นหา จะขึ้นรายการให้เลือก-->
+
+  <ol class="steps">
+    <li>พิมพ์ SKU ชื่อสินค้า หรือแบรนด์ ในช่อง <em>เริ่มจากสินค้าที่มีอยู่แล้ว</em> — รายการกรองให้ทันทีที่พิมพ์ ไม่ต้องกดค้นหา</li>
+    <li>คลิกตัวที่ใกล้เคียงที่สุด</li>
+  </ol>
+
+  <p class="body">ระบบจะเติม <strong>SKU · ชื่อ · แบรนด์ · ราคาขาย · Coating · Index · ข้างตา · ค่าสายตา</strong> มาให้ครบ เหลือแค่แก้ส่วนที่ต่างจริง ๆ</p>
+
+  <div class="note note--tip">
+    <p class="note__t">SKU ถูกคัดลอกมาด้วย ตั้งใจ</p>
+    <p>SKU ของร้านเข้ารหัสสเปกอยู่แล้ว ของเดิมจึงเป็นแบบให้ของใหม่ แก้เฉพาะส่วนที่ต่าง ถ้าลืมแก้ ระบบจะเตือนว่า &ldquo;มีสินค้ารหัสนี้อยู่แล้ว&rdquo; ตอนกดบันทึก</p>
+  </div>
+
+  <p class="body">ช่องนี้มีในทุกหน้าที่เพิ่มสินค้าได้ รวมถึงหน้าที่รู้อยู่แล้วว่ากำลังเพิ่มอะไร</p>
+
+  <p class="body">ถ้าเป็นของใหม่จริง ๆ ไม่มีอะไรใกล้เคียง ให้กดการ์ดชนิดสินค้าด้านล่างแทน — <span class="b">เลนส์</span> <span class="b">กรอบแว่น</span> <span class="b">แว่นกันแดด</span> <span class="b">คอนแทคเลนส์</span> <span class="b">อุปกรณ์เสริม · น้ำยา</span> แต่ละการ์ดบอกไว้ล่วงหน้าว่าจะถามอะไรบ้าง</p>
+
+  <h3>สามขั้น</h3>
+
+  <p class="body">ตัวเลข ① ② ③ ด้านบนบอกว่าอยู่ขั้นไหน ขั้นที่ผ่านแล้วเป็นเครื่องหมายถูก</p>
+
+  <!--SHOT:newproduct-step1|ขั้นที่ 1 ข้อมูลหลัก-->
+
+  <div class="scroll">
+  <table>
+    <thead><tr><th>ขั้น 1 · ข้อมูลหลัก</th><th>รายละเอียด</th></tr></thead>
+    <tbody>
+      <tr><td>ชนิดสินค้า</td><td>เปลี่ยนแล้วช่องในขั้นที่ 2 จะเปลี่ยนตาม</td></tr>
+      <tr><td>SKU</td><td>ระบบออกให้เอง พิมพ์ทับได้ถ้าจะใช้รหัสของผู้ขาย · ต้องไม่ซ้ำกับของเดิม</td></tr>
+      <tr><td>ชื่อสินค้า</td><td><strong>ตั้งให้เองจากสเปก</strong> ไม่ต้องพิมพ์ — ดูหัวข้อถัดไป · พิมพ์ทับได้ถ้าจะใช้ชื่ออื่น</td></tr>
+      <tr><td>แบรนด์</td><td class="muted">ไม่บังคับ</td> </tr>
+      <tr><td>ราคาขาย</td><td class="muted">เว้นว่างได้</td></tr>
+      <tr><td>จำนวนขั้นต่ำ</td><td class="muted">เว้นว่างได้ — เหลือน้อยกว่านี้เมื่อไร หน้าสินค้าจะขึ้นเตือนให้สั่งล็อตใหม่</td></tr>
+      <tr><td>การผลิต</td><td><strong>สำเร็จรูป</strong> = เก็บเป็นสต็อก · <strong>สั่งตัด RX</strong> = ไม่มีสต็อก เลือกอันนี้แล้วขั้นที่ 3 จะหายไปเอง</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p class="body">กด <span class="b b--go">ถัดไป →</span> ถ้า SKU ยังว่างหรือชื่อยังประกอบไม่ได้ มันจะบอกตรงนี้เลย ไม่ปล่อยให้เดินไปถึงขั้น 3 แล้วค่อยเด้งกลับ</p>
+
+  <div class="note note--tip">
+    <p class="note__t">ชื่อสินค้าตั้งให้เองจากสเปก</p>
+    <p>เลนส์ได้ชื่อตามรูปแบบ <strong>แบรนด์ · รุ่น · Coating · (Index) · SPH/CYL · Add</strong> เช่น <code>Hoya HiVision MultiCoat (1.60) -2.25/-0.50</code> · กรอบแว่นได้ <strong>แบรนด์ รุ่น สี ขนาด</strong> · คอนแทคเลนส์ได้ <strong>แบรนด์ รุ่น BC DIA จำนวน</strong></p>
+    <p>ชื่อขึ้นสดตามที่กรอกในขั้นที่ 2 ช่องไหนเว้นว่างก็หายไปทั้งช่อง ไม่เหลือขีดค้าง เหตุผลที่ต้องตั้งให้: เลนส์รุ่นเดียวกันคนละค่าสายตาคือสินค้าคนละตัว ถ้าปล่อยให้พิมพ์เอง สองตัวจะอ่านเหมือนกันจนแยกไม่ออก แล้วสต็อกจะแตกเป็นสองแถวที่ไม่มีใครบอกได้ว่าอันไหนคืออันไหน</p>
+  </div>
+
+  <!--SHOT:newproduct-step2|ขั้นที่ 2 รายละเอียดสินค้าและค่าสายตา-->
+
+  <p class="body"><strong>ขั้น 2 · รายละเอียดสินค้า</strong> — ช่องเปลี่ยนไปตามชนิดที่เลือก ทุกชนิดถาม <strong>รุ่น</strong> ก่อน แล้วแตกต่างกันไป เลนส์ถามชนิดเลนส์ Index Coating ข้างตา · กรอบแว่นถามสี ขนาด วัสดุ · คอนแทคเลนส์ถาม BC DIA จำนวนต่อกล่อง</p>
+
+  <p class="body"><strong>ทุกช่องเป็นช่องค้นหาได้</strong> กดแล้วมีรายการให้เลือก พิมพ์เพื่อกรอง และพิมพ์ค่าใหม่ที่ไม่มีในรายการก็ได้ ระบบจะเก็บตามที่พิมพ์ รายการที่ขึ้นมาเป็นค่าที่ร้านตั้งไว้ก่อน แล้วต่อด้วยทุกค่าที่เคยกรอกในแคตตาล็อก — Coating เริ่มด้วย Hard · MultiCoat · Blue · Transition · Transition-Blue · Index เริ่มด้วย 1.50 ถึง 1.74 · SPH −12.00 ถึง +12.00 ทีละ 0.25 · CYL −6.00 ถึง +6.00 · ADD +0.75 ถึง +3.50 · AXIS 0–180</p>
+
+  <p class="body">ถ้าเป็น<strong>เลนส์สำเร็จรูป</strong> จะมีกล่อง <em>ค่าสายตา</em> เพิ่มมาด้วย — SPH · CYL · AXIS · ADD เพราะเลนส์สต็อกแยกตามค่าสายตา <strong>SPH กับ CYL เริ่มต้นที่ 0.00</strong> ซึ่งเป็นค่าจริงของตาที่ไม่ต้องแก้ ไม่ใช่ช่องว่าง</p>
+
+  <p class="body"><strong>เลนส์สั่งตัด RX ไม่ถามค่าสายตา</strong> — รุ่นเดียวตัดให้ลูกค้าได้หลายคน ค่าสายตาจึงอยู่บนใบสั่ง ไม่ได้อยู่บนตัวสินค้า</p>
+
+  <!--SHOT:newproduct-step3|ขั้นที่ 3 ล็อตแรกที่รับเข้า-->
+
+  <p class="body"><strong>ขั้น 3 · ล็อตแรกที่รับเข้า</strong> — ช่องเหมือนฟอร์มรับของทุกอย่าง (เลขล็อต จำนวน ผู้ขาย ต้นทุน วันที่รับเข้า วันหมดอายุ หมายเหตุ) ของที่ถืออยู่ตรงหน้าเข้าคลังพร้อมกับสินค้าใหม่เลย ไม่ต้องบันทึกแล้วไปหาฟอร์มรับของอีกรอบ</p>
+
+  <p class="body">กด <span class="b b--go">เพิ่มสินค้าและรับเข้าคลัง</span> จบในครั้งเดียว · <span class="b">← ย้อนกลับ</span> กลับไปแก้ขั้นก่อนหน้าได้ตลอด · <span class="b">ปิด</span> มุมบนขวาออกโดยไม่บันทึก</p>
+</section>
+
+<!-- ================================================================ 2 ==== -->
+
+<section class="screen" id="s4">
+  <h2 class="h"><span class="num">4</span> เบิก / ตัดสต็อก <span class="where">หน้าแรก</span></h2>
+
+  <p class="lede">ของที่รับเข้ามาแล้วออกจากคลังที่หน้านี้ — ขาย เบิกใช้ หรือตัดทิ้ง เป็นหน้าที่ใช้บ่อยที่สุดในวัน</p>
+
+  <!--SHOT:issue|หน้าแรก — เลือกสินค้าจากตารางก่อน ฟอร์มจะโผล่ทีหลัง-->
+
+  <h3>ขั้นที่หนึ่ง เลือกสินค้า</h3>
+
+  <p class="body">ตารางเลือกสินค้าเหมือนกับ<a href="#s2">หน้ารับของเข้าคลัง</a>ทุกอย่าง — ค้นหา เรียงตาม กรองข้างตา กรองชนิด คอลัมน์สเปกเลนส์กับค่าสายตา และตัวกรองเฉพาะเลนส์เมื่อกดปุ่ม <span class="b b--chip">เลนส์</span> ต่างกันแค่ปุ่มมุมบนขวาเป็น <span class="b">รับของเข้าคลัง</span> ที่พาข้ามไปอีกหน้า</p>
+
+  <h3>ขั้นที่สอง กรอกฟอร์ม</h3>
+
+  <!--SHOT:issue-form|ฟอร์มเบิก โผล่หลังเลือกสินค้าแล้ว-->
+
+  <p class="body">บรรทัดบนสุดบอก <strong>คงเหลือตอนนี้</strong> ราคาขาย และต้นทุนก้อนถัดไปที่จะถูกตัด (ต้นทุนเห็นเฉพาะเจ้าของร้านกับฝ่ายบัญชี)</p>
+
+  <p class="body">กล่องสินค้าที่เลือกไว้ด้านบนบอก<strong>ค่าเลนส์ทุกค่าที่บันทึกไว้</strong> เรียงเป็นป้ายที่<strong>มีชื่อกำกับทุกอัน</strong> — <code>Index 1.56</code> <code>ชนิดเลนส์ Bifocal</code> <code>Coating SeeCoat Blue</code> <code>ข้างตา L · ตาซ้าย</code> <code>SPH −4.50</code> <code>CYL −1.25</code> <code>AXIS 90</code> <code>ADD +2.00</code> — เทียบกับใบสั่งงานได้ทีละช่อง ไม่ต้องจำว่าตัวไหนมาก่อน และไม่ต้องย้อนกลับไปเปิดแคตตาล็อก</p>
+
+  <p class="body">ค่าที่ไม่เคยกรอกไว้จะ<strong>ไม่มีป้ายของมัน</strong> ไม่ใช่ป้ายที่เขียนว่าศูนย์ — เลนส์ที่ไม่ได้บันทึก CYL ไม่ใช่เลนส์ที่ CYL เป็นศูนย์ · ป้ายชุดเดียวกันนี้ขึ้นในลิ้นชักรายละเอียดสินค้าที่หน้า<a href="#s6">สินค้าและภาพรวม</a>ด้วย</p>
+
+  <div class="scroll">
+  <table>
+    <thead><tr><th>ปุ่ม / ช่อง</th><th>กดแล้วเกิดอะไร</th></tr></thead>
+    <tbody>
+      <tr><td><span class="b b--chip">เบิก / ขาย</span></td><td>ของออกไปตามปกติ ต้นทุนลงเป็นต้นทุนขาย</td></tr>
+      <tr><td><span class="b b--chip">ตัดของเสีย</span></td><td>ของพัง ทิ้ง ต้นทุนลงเป็นของเสีย <strong>ไม่ปนกับต้นทุนขาย</strong> — เลือกให้ถูก ถ้ากองรวมกันจะตอบไม่ได้ว่าเดือนนี้เสียไปกี่ชิ้น</td></tr>
+      <tr><td><span class="b">−</span> จำนวน <span class="b">+</span></td><td>กดบวกลบ หรือพิมพ์เอง กดบวกได้ไม่เกินจำนวนที่มีอยู่จริง</td></tr>
+      <tr><td>เลขที่เอกสาร</td><td>เลขอ้างอิงจากงานที่ทำ เช่น <code>JOB-1042</code> หรือเลขเคสจากหน้าร้าน ใส่ไว้จะตามรอยย้อนหลังได้</td></tr>
+      <tr><td><span class="b b--chip">พนักงานในร้าน</span></td><td>คนในร้านเป็นคนเบิก (ค่าตั้งต้น)</td></tr>
+      <tr><td><span class="b b--chip">สาขาอื่นมาเบิก</span></td><td>เปลี่ยนเป็นการเบิกของสาขา — ดูหัวข้อ 10</td></tr>
+      <tr><td><span class="b">เบิกแทนคนอื่น</span></td><td>ปกติระบบขึ้นชื่อคุณเป็นผู้เบิกอยู่แล้ว กดปุ่มนี้เมื่อเบิกให้เพื่อน แล้วเลือกชื่อจากรายการ</td></tr>
+      <tr><td><span class="b">กลับมาเป็นตัวเอง</span></td><td>ยกเลิกการเบิกแทน กลับมาเป็นชื่อคุณ</td></tr>
+      <tr><td>หมายเหตุ</td><td>มีปุ่มคำที่ร้านใช้บ่อยให้กดเลือก แล้วแก้เพิ่มได้ ไม่ต้องพิมพ์ใหม่ทุกครั้ง</td></tr>
+      <tr><td><span class="b b--go">ตัดสต็อก</span></td><td>บันทึก ระบบเลือกล็อตให้เองตามคิว FIFO ของเก่าออกก่อน</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="note note--tip">
+    <p class="note__t">ไม่ต้องเลือกล็อตเอง</p>
+    <p>ระบบตัดจากล็อตที่รับเข้ามาก่อนเสมอ และคิดต้นทุนตามล็อตนั้น ถ้าจำนวนที่เบิกกินหลายล็อต มันจะตัดต่อกันให้เอง แล้วบอกในข้อความยืนยันว่าตัดจากล็อตไหนไปเท่าไหร่</p>
+  </div>
+
+  <div class="note note--warn">
+    <p class="note__t">ถ้าของไม่พอ</p>
+    <p>จะขึ้นกล่องแดงบอกว่าเหลือเท่าไหร่ พร้อมปุ่ม <span class="b">ตัดเท่าที่มี N ชิ้น</span> กดปุ่มนั้นเพื่อตัดเท่าที่เหลือทันที ถ้าของหมดเกลี้ยง จะมีลิงก์ไป <em>รับล็อตใหม่เข้าคลัง</em> หรือ <em>เปิดใบสั่งพิเศษ RX</em> ให้เลือกแทน</p>
+  </div>
+</section>
+
+<!-- ================================================================ 5 ==== -->
+
+<section class="screen" id="s5">
+  <h2 class="h"><span class="num">5</span> ใบสั่งตัด RX <span class="where">/rx</span></h2>
+
+  <p class="lede">เลนส์ที่ร้านไม่ได้สต็อก สั่งเฉพาะราย ของยังไม่มาแต่ต้องบันทึกไว้ก่อน</p>
+
+  <!--SHOT:rx|หน้าใบสั่งตัด RX-->
+
+  <p class="body">หน้านี้เป็น<strong>สมุดใบสั่ง</strong> ไม่ใช่แคตตาล็อก คำถามที่คนเปิดหน้านี้มาถามคือ &ldquo;สั่งเลนส์ของลูกค้าคนนี้ไปหรือยัง ค่าเท่าไร ใบกำกับมาหรือยัง&rdquo;</p>
+
+  <h3>เปิดใบสั่งใหม่ — สามขั้น</h3>
+
+  <p class="body">กด <span class="b b--go">+ เปิดใบสั่งใหม่</span> มุมบนขวา กล่องจะถามทีละขั้น ① เลนส์ที่สั่ง ② ค่าสายตา ③ ใบสั่งและราคา</p>
+
+  <p class="body"><strong>ใบสั่งเป็น &ldquo;ใบ&rdquo; ไม่ใช่การไปเลือกสินค้าจากแคตตาล็อก</strong> — แต่ละใบต่างกันหมด คนละลูกค้า คนละค่าสายตา บ่อยครั้งคนละราคา จึงเขียนเลนส์ลงบนใบเลย</p>
+
+  <div class="scroll">
+  <table>
+    <thead><tr><th>ขั้น</th><th>ถามอะไร</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>① เลนส์ที่สั่ง</td>
+        <td>
+          <strong>เริ่มจากเลนส์ที่เคยสั่ง</strong> — ช่องค้นหาด้านบน เลือกใบเก่าที่ใกล้ที่สุด แล้วแบรนด์ รุ่น Coating Index ราคา และค่าสายตาจะถูกเติมลงช่องด้านล่างให้ เหลือแก้เฉพาะส่วนที่ต่างจริง เว้นไว้ก็ได้ถ้าจะกรอกเองทั้งใบ<br>
+          จากนั้นกรอก <strong>แบรนด์ · รุ่น · Coating · Index</strong> อย่างน้อยหนึ่งช่อง ทุกช่องเป็นช่องค้นหาได้ พิมพ์ค่าใหม่ก็ได้ ด้านล่างบอกว่า <em>ใบนี้จะถูกบันทึกเป็น</em> ชื่ออะไร
+        </td>
+      </tr>
+      <tr>
+        <td>② ค่าสายตา</td>
+        <td>ข้างตา · SPH · CYL · AXIS · ADD — <strong>ค่าของลูกค้ารายนี้</strong> ไม่ใช่ของตัวเลนส์ สั่งรุ่นเดียวกันคนละค่าได้โดยไม่ต้องสร้างสินค้าใหม่ · SPH กับ CYL เริ่มที่ 0.00</td>
+      </tr>
+      <tr>
+        <td>③ ใบสั่งและราคา</td>
+        <td>เลขที่ใบสั่ง (ระบบออกให้เอง พิมพ์ทับได้) · ต้นทุนจากผู้ขาย · ราคาขายให้ลูกค้า · หมายเหตุ</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p class="body">กด <span class="b b--go">เปิดใบสั่ง RX</span> ที่ขั้นสุดท้าย ระบบ<strong>ไม่แตะยอดสต็อก</strong> เพราะของยังไม่เคยอยู่ในคลัง</p>
+
+  <div class="note note--tip">
+    <p class="note__t">สั่งเลนส์เดียวกันสองใบ ไม่ทำให้แคตตาล็อกบวม</p>
+    <p>ระบบประกอบชื่อจากสิ่งที่กรอก แล้วหารุ่นที่ชื่อตรงกัน ถ้ามีอยู่แล้วใช้ตัวเดิม ถ้ายังไม่มีสร้างให้ในครั้งเดียวกัน — แคตตาล็อกจึงมีรุ่นละแถว ไม่ใช่ใบละแถว แต่ค่าสายตา ราคาขาย และต้นทุนยังอยู่บนใบแต่ละใบตามเดิม</p>
+  </div>
+
+  <div class="note note--role">
+    <p class="note__t">ราคาขายกับต้นทุน คนละสิทธิ์กัน</p>
+    <p><strong>ราคาขายให้ลูกค้า</strong> ใครเปิดใบก็กรอกได้ เพราะเป็นราคาที่ตกลงกันตรงหน้าเคาน์เตอร์ · <strong>ต้นทุนจากผู้ขาย</strong> เฉพาะเจ้าของร้านกับฝ่ายบัญชี และพนักงานหน้าร้าน<strong>ไม่เห็นตัวเลขนี้เลย</strong> ไม่ใช่แค่กรอกไม่ได้</p>
+  </div>
+
+  <h3>ตาราง &ldquo;รอลงต้นทุน&rdquo; ด้านล่าง</h3>
+  <p class="body">คือคิวงานของฝ่ายบัญชี ใบสั่งที่ยังไม่รู้ต้นทุนจะค้างอยู่ตรงนี้ พอใบกำกับมาถึง กด <span class="b b--go">ลงต้นทุน</span> ที่ท้ายแถว ใส่ตัวเลข แล้วบันทึก แถวนั้นจะหายออกจากคิว</p>
+
+  <div class="note note--role">
+    <p class="note__t">พนักงานหน้าร้านเห็นว่ามีใบค้างอยู่ แต่ไม่เห็นตัวเลขต้นทุน</p>
+    <p>รู้ได้ว่ามีงานค้างของบัญชีกี่ใบ แต่ตัวเลขเงินฝั่งซื้อไม่ถูกส่งมาให้เลย</p>
+  </div>
+</section>
+
+<!-- ================================================================ 6 ==== -->
+
+<section class="screen" id="s6">
+  <h2 class="h"><span class="num">6</span> สินค้าและภาพรวม <span class="where">/products</span></h2>
+
+  <p class="lede">ดัชนีสินค้าทั้งหมด เป็นหน้าไว้ดู ไม่ใช่หน้าไว้ทำงาน</p>
+
+  <!--SHOT:products|หน้าสินค้า — สี่ตัวเลขสรุปด้านบน แล้วตาราง-->
+
+  <h3>สี่กล่องตัวเลขด้านบน</h3>
+  <div class="scroll">
+  <table>
+    <thead><tr><th>กล่อง</th><th>บอกอะไร</th></tr></thead>
+    <tbody>
+      <tr><td>สินค้าทั้งหมด</td><td>จำนวนรายการในแคตตาล็อก</td></tr>
+      <tr><td>คงคลังรวม</td><td>จำนวนชิ้นที่มีอยู่จริง และมาจากกี่ล็อต</td></tr>
+      <tr><td>มูลค่าต้นทุนคงเหลือ</td><td>เงินที่จมอยู่ในคลัง นับเฉพาะล็อตที่รู้ต้นทุน · <strong>พนักงานหน้าร้านไม่เห็นกล่องนี้</strong></td></tr>
+      <tr><td>ล็อตรอใบกำกับ</td><td>ถ้าเป็นเลขแดง แปลว่ามีงานค้างของฝ่ายบัญชี</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>ตัวกรองและการเรียง</h3>
+
+  <p class="body">ชิปทั้งหมดอยู่แถวเดียว คั่นเป็นสองกลุ่มด้วยเส้นบาง ๆ</p>
+
+  <p class="body"><strong>กลุ่มซ้าย — สถานะสต็อก</strong> <span class="b b--chip">ทั้งหมด</span> <span class="b b--chip">มีของ</span> <span class="b b--chip">รอต้นทุน</span> <span class="b b--chip">ใกล้หมดอายุ</span> <span class="b b--chip">ต่ำกว่าขั้นต่ำ</span> <span class="b b--chip">หมดสต็อก</span> ทุกชิปมีตัวเลขกำกับ สามอันที่เป็น<strong>งานค้าง</strong> — รอต้นทุน ใกล้หมดอายุ ต่ำกว่าขั้นต่ำ — จะติดสีส้มเฉพาะตอนตัวเลขมากกว่าศูนย์ ไม่มีงานค้างก็เป็นชิปธรรมดา</p>
+
+  <p class="body"><strong>กลุ่มขวา — ชนิดสินค้า</strong> <span class="b b--chip">ทุกชนิด</span> <span class="b b--chip">เลนส์</span> <span class="b b--chip">กรอบแว่น</span> <span class="b b--chip">แว่นกันแดด</span> <span class="b b--chip">คอนแทคเลนส์</span> <span class="b b--chip">อุปกรณ์เสริม</span> กด <span class="b b--chip">เลนส์</span> แล้วแถวชิปสีม่วงจะโผล่มาอีกแถว — Index · ชนิดเลนส์ · Coating</p>
+
+  <p class="body">ช่อง <em>เรียงตาม</em> อยู่แถวบน มีสเปกเลนส์ให้เรียงครบ — Index · ชนิดเลนส์ · Coating · ค่าสายตา SPH</p>
+
+  <h3>คอลัมน์ขั้นต่ำ</h3>
+
+  <p class="body">ถัดจาก <em>คงเหลือ</em> คือ <em>ขั้นต่ำ</em> — จำนวนที่ควรมีติดคลังไว้เสมอ กดดินสอแก้ได้ทุกแถว ยังไม่ได้ตั้งจะขึ้นขีด</p>
+
+  <p class="body">เหลือ<strong>น้อยกว่า</strong>ขั้นต่ำเมื่อไร เลขคงเหลือเปลี่ยนเป็นสีแดง สถานะท้ายแถวขึ้น <span class="b b--chip">ต่ำกว่าขั้นต่ำ</span> และชิปกรองด้านบนนับให้ · เว้นว่างหรือใส่ 0 = ไม่เตือน · สินค้าสั่งตัด RX ไม่มีขั้นต่ำ เพราะไม่มีสต็อกให้ต่ำ</p>
+
+  <p class="body">ช่อง <em>ราคาขาย</em> ก็แก้ตรงแถวได้เหมือนกัน ยังไม่ได้ตั้งราคาจะขึ้นเป็นปุ่ม <span class="b">ตั้งราคา</span> แทนเลข 0.00</p>
+
+  <h3>คลิกที่แถว — ลิ้นชักสินค้า</h3>
+
+  <!--SHOT:stock-drawer|ลิ้นชักที่เปิดจากการคลิกแถวสินค้า-->
+
+  <div class="scroll">
+  <table>
+    <thead><tr><th>ในลิ้นชัก</th><th>ทำอะไรได้</th></tr></thead>
+    <tbody>
+      <tr><td>สามกล่องบน</td><td>คงเหลือ · มูลค่าต้นทุน · ราคาขาย</td></tr>
+      <tr><td><span class="b b--go">เบิก / ตัดสต็อก</span></td><td>กระโดดไปหน้าแรกพร้อมสินค้านี้</td></tr>
+      <tr><td><span class="b">รับของเข้าคลัง</span></td><td>กระโดดไปหน้ารับของ</td></tr>
+      <tr><td><span class="b">เปิดใบสั่ง RX</span></td><td>กระโดดไปหน้า RX</td></tr>
+      <tr><td>ตารางล็อตในคลัง</td><td>ทุกล็อตของสินค้านี้ เรียงตามคิว FIFO</td></tr>
+      <tr><td>ประวัติ</td><td>ทุกครั้งที่ของตัวนี้ขยับ</td></tr>
+      <tr><td><span class="b">แก้ไขสินค้า</span></td><td>เปิดฟอร์มแก้สเปก — เจ้าของร้านกับฝ่ายบัญชีเท่านั้น</td></tr>
+      <tr><td><span class="b b--danger">ลบสินค้า</span></td><td>ทำได้เฉพาะของที่ไม่เคยมีล็อตและไม่เคยเคลื่อนไหว มีขั้นยืนยันอีกชั้น</td></tr>
+      <tr><td><span class="b">ปิด</span></td><td>ปิดลิ้นชัก</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<!-- ================================================================ 7 ==== -->
+
+<section class="screen" id="s7">
+  <h2 class="h"><span class="num">7</span> ล็อตสต็อก <span class="where">/lots</span></h2>
+
+  <!--SHOT:lots|หน้าล็อต — ปุ่มกรองมีตัวเลขกำกับ-->
+
+  <p class="body"><strong>ล็อตล่าสุดอยู่บนสุด</strong> เหมือนทุกตารางในระบบ กดหัวคอลัมน์ <em>วันที่</em> หนึ่งครั้งเพื่อสลับเป็นลำดับ FIFO (เก่าสุดขึ้นก่อน) ปุ่มกรองด้านบน<strong>มีตัวเลขกำกับ</strong> บอกว่าแต่ละกลุ่มมีกี่ล็อต ไม่ต้องกดเข้าไปดูก่อน</p>
+
+  <p class="body">ตารางเหลือ 5 คอลัมน์ — <strong>ผู้ขาย</strong>อยู่ใต้เลขล็อตที่ส่งมา <strong>จำนวนที่รับเข้า</strong>อยู่ใต้ยอดคงเหลือ และ<strong>มูลค่า</strong>อยู่ใต้ต้นทุนต่อชิ้นที่คำนวณมาจากมัน ทั้งสามยังเรียงได้จากช่อง <em>เรียงตาม</em> เหนือตาราง</p>
+
+  <div class="scroll">
+  <table>
+    <thead><tr><th>ปุ่ม</th><th>เห็นอะไร</th></tr></thead>
+    <tbody>
+      <tr><td><span class="b b--chip">ทั้งหมด</span></td><td>ทุกล็อต</td></tr>
+      <tr><td><span class="b b--chip">มีของ</span></td><td>ล็อตที่ยังเหลือ</td></tr>
+      <tr><td><span class="b b--chip">หมดแล้ว</span></td><td>ตัดหมดแล้ว เก็บไว้เป็นประวัติ</td></tr>
+      <tr><td><span class="b b--chip">ยังไม่มีต้นทุน</span></td><td>รับของแล้วแต่ใบกำกับยังไม่มา — <strong>งานที่ต้องตามเก็บ</strong></td></tr>
+      <tr><td><span class="b b--chip">ใกล้หมดอายุ</span></td><td>หมดอายุภายใน 120 วัน</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p class="body">ช่องค้นหาหาได้จากเลขล็อต SKU หรือชื่อสินค้า</p>
+</section>
+
+<!-- ================================================================ 8 ==== -->
+
+<section class="screen" id="s8">
+  <h2 class="h"><span class="num">8</span> ความเคลื่อนไหว <span class="where">/movements</span></h2>
+
+  <!--SHOT:movements|สมุดสต็อก — ทุกครั้งที่ของขยับ-->
+
+  <p class="body">สมุดสต็อก ทุกอย่างที่เคยเกิดขึ้นอยู่ที่นี่และ<strong>ลบไม่ได้</strong> ปุ่มกรองมีตัวเลขกำกับเหมือนหน้าล็อต</p>
+
+  <div class="scroll">
+  <table>
+    <thead><tr><th>ปุ่ม</th><th>คือรายการแบบไหน</th></tr></thead>
+    <tbody>
+      <tr><td><span class="b b--chip">รับเข้า</span></td><td>ล็อตใหม่จากผู้ขาย</td></tr>
+      <tr><td><span class="b b--chip">จ่ายออก</span></td><td>ขายหรือเบิกใช้</td></tr>
+      <tr><td><span class="b b--chip">ตัดเสีย</span></td><td>ของพัง ไม่นับเป็นต้นทุนขาย</td></tr>
+      <tr><td><span class="b b--chip">รับคืน</span></td><td>ของกลับเข้าคลัง</td></tr>
+      <tr><td><span class="b b--chip">ปรับยอด</span></td><td>แก้ตัวเลขให้ตรงกับของจริง</td></tr>
+      <tr><td><span class="b b--chip">สั่งตัด RX</span></td><td>ใบสั่งเฉพาะราย</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p class="body">มีแถวปุ่มกรอง <em>ใครเบิก</em> เพิ่มอีกแถว และช่องค้นหาที่หาได้จาก<strong>เลขที่เอกสาร</strong> SKU ชื่อสินค้า หรือเลขล็อต — ถ้าอยากรู้ว่างานเลขนี้ตัดของอะไรไปบ้าง พิมพ์เลขนั้นตรงนี้</p>
+
+  <p class="body">ตารางเหลือ 6 คอลัมน์ — <strong>เลขที่เอกสาร</strong>กับหมายเหตุอยู่ใต้ป้ายประเภทที่มันสั่งให้ทำ และ<strong>ราคาขาย/ชิ้น</strong>อยู่ใต้ต้นทุน/ชิ้นที่เอาไว้เทียบกัน (คนที่ไม่มีสิทธิ์เห็นต้นทุนจะเห็นคอลัมน์ราคาขายเดี่ยว ๆ ไม่ใช่ช่องว่าง) เรียงตามเอกสารได้จากช่อง <em>เรียงตาม</em> เหนือตาราง</p>
+</section>
+
+<!-- ================================================================ 9 ==== -->
+
+<section class="screen" id="s9">
+  <h2 class="h"><span class="num">9</span> แดชบอร์ด <span class="where">/dashboard</span></h2>
+
+  <!--SHOT:dashboard|แดชบอร์ด — เลือกช่วงวันแล้วดูสรุป-->
+
+  <p class="body">ปุ่มช่วงเวลาที่ใช้บ่อย — <span class="b b--chip">วันนี้</span> <span class="b b--chip">เมื่อวาน</span> <span class="b b--chip">7 วันล่าสุด</span> <span class="b b--chip">30 วันล่าสุด</span> <span class="b b--chip">เดือนนี้</span> <span class="b b--chip">เดือนที่แล้ว</span> หรือเลือกวันเองจากช่องวันที่ทั้งสอง</p>
+
+  <p class="body">ด้านล่างเป็นกราฟรายวัน — ของเข้า–ออก · ของเสีย · ต้นทุนขาย — แล้วต่อด้วย <em>สินค้าขายดี</em> (สูงสุด 10 รายการ ใต้ชื่อบอกว่าเหลือเท่าไรและต่ำกว่าขั้นต่ำหรือยัง) กับ <em>ใครเบิกมากที่สุด</em> (นับทั้งเบิกและตัดของเสีย)</p>
+
+  <h3>ค้างสต๊อกนาน</h3>
+
+  <p class="body">ตารางล่างสุด — ของที่<strong>ยังมีอยู่ในคลัง</strong> แต่ไม่ได้จ่ายออกมานาน บอกคงเหลือ เงินที่จมอยู่ จ่ายออกครั้งสุดท้ายเมื่อไร และค้างมาแล้วกี่เดือน ของที่<strong>ยังไม่เคยขายเลย</strong>ตั้งแต่รับเข้าจะขึ้นป้ายแดง เลือกเกณฑ์ได้ว่า 1 · 3 · 6 · 12 เดือน</p>
+
+  <div class="note note--tip">
+    <p class="note__t">ส่วนนี้ไม่ขึ้นกับช่วงวันที่ด้านบน</p>
+    <p>ทุกอย่างบนหน้านี้อ่านตามช่วงวันที่ที่เลือก ยกเว้นตารางนี้ — ของที่นิ่งมาตั้งแต่มกราไม่ได้สดขึ้นเพราะไปมองเดือนมีนาคม ถ้าผูกกับช่วงวันที่ คำตอบจะเปลี่ยนไปตามว่าใครบังเอิญเปิดดูเดือนไหน</p>
+  </div>
+
+  <p class="body">ปุ่ม <span class="b">ดูความเคลื่อนไหวรายการ</span> มุมบนขวาพาไปดูรายการดิบทีละแถว — เดิมตารางนั้นอยู่ท้ายหน้านี้ ย้ายออกไปเพราะมันคือตัวเลขชุดเดียวกับกราฟที่อยู่เหนือมัน</p>
+
+  <div class="note note--role">
+    <p class="note__t">พนักงานหน้าร้านเห็นแดชบอร์ด แต่ไม่เห็นตัวเลขเงิน</p>
+    <p>กล่องและคอลัมน์ที่เป็นต้นทุนหรือกำไรจะหายไปทั้งอัน ไม่ได้ขึ้นเป็นขีดว่าง — ขีดว่างอ่านแล้วเหมือนข้อมูลหาย</p>
+  </div>
+</section>
+
+<!-- =============================================================== 10 ==== -->
+
+<section class="screen" id="s10">
+  <h2 class="h"><span class="num">10</span> สาขาและค้างรับ <span class="where">/branches · /settlements</span></h2>
+
+  <p class="lede">สาขาอื่นมาเบิกของ ต่างจากการเบิกปกติตรงที่ <strong>ของออกวันหนึ่ง เงินเข้าอีกวันหนึ่ง</strong></p>
+
+  <h3>วันที่เบิก</h3>
+  <ol class="steps">
+    <li>ที่หน้าแรก เลือกสินค้า แล้วกด <span class="b b--chip">สาขาอื่นมาเบิก</span></li>
+    <li>เลือก <strong>สาขาที่มาเบิก</strong> จากรายการ</li>
+    <li>พิมพ์ <strong>ชื่อคนที่มารับของ</strong> — ช่องนี้บังคับ</li>
+    <li>กด <span class="b b--go">บันทึกสาขาเบิก</span></li>
+  </ol>
+
+  <p class="body">ระบบตัดสต็อกและลงต้นทุนวันนี้ แต่<strong>ยังไม่ลงกำไร</strong> รายการจะไปโผล่ที่หน้าค้างรับ</p>
+
+  <h3>วันที่เงินเข้า</h3>
+
+  <!--SHOT:settlements|หน้าค้างรับจากสาขา — ที่ยังค้างอยู่บนสุดเสมอ-->
+
+  <p class="body">ปุ่มกรอง <span class="b b--chip">ค้างรับ</span> <span class="b b--chip">รับเงินแล้ว</span> <span class="b b--chip">ตัดหนี้สูญ</span> <span class="b b--chip">ยกเลิก</span> <span class="b b--chip">ทั้งหมด</span> — อะไรที่ยังค้างจะเรียงขึ้นบนสุดเสมอ ไม่ว่าจะเรียงคอลัมน์ไหน</p>
+
+  <p class="body">ตารางเหลือ 6 คอลัมน์ — <strong>จำนวนชิ้น</strong>อยู่ใต้ชื่อสินค้า ส่วนต้นทุน รับเงิน และกำไรยังแยกคอลัมน์กันอยู่ เพราะหน้านี้อ่านด้วยการเทียบสามตัวนี้ ตัวเลขที่เอามาเทียบกันต้องอยู่ตรงกัน · <em>เรียงตาม</em> เหนือตารางมีวันที่เบิก ผู้รับของ และวันที่รับเงินเพิ่มมาด้วย</p>
+
+  <div class="scroll">
+  <table>
+    <thead><tr><th>ปุ่มท้ายแถว</th><th>ทำอะไร</th></tr></thead>
+    <tbody>
+      <tr><td><span class="b b--go">บันทึกรับเงิน</span></td><td>ใส่จำนวนเงินที่ได้จริงกับวันที่ กำไรจะถูกลงในวันนั้น <strong>รับน้อยกว่าทุนได้</strong> กำไรติดลบตามจริง ไม่ใช่ error</td></tr>
+      <tr><td><span class="b b--danger">ตัดหนี้สูญ</span></td><td>ยอมรับว่าจะไม่ได้เงิน ต่างจากรับเงิน 0 บาท — อันนั้นคือได้เงินมาจริงศูนย์บาท</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>หน้าสาขา</h3>
+
+  <!--SHOT:branches|หน้าสาขา-->
+
+  <p class="body">กด <span class="b b--go">เพิ่มสาขา</span> เพื่อเปิดฟอร์ม — ชื่อสาขา (บังคับ) ผู้ติดต่อ หมายเหตุ · <span class="b">แก้ไข</span> ท้ายแถวเพื่อแก้ · การตั้งสถานะเป็น <em>ปิด</em> ทำให้เบิกใหม่ไม่ได้ แต่ประวัติเดิมยังอยู่ครบ</p>
+
+  <div class="note note--role">
+    <p class="note__t">พนักงานหน้าร้านเห็นชื่อสาขา แต่ไม่เห็นยอดค้าง</p>
+    <p>ต้องใช้ชื่อสาขาเวลาบันทึกการเบิก แต่ตัวเลขเงินไม่ใช่งานของตำแหน่งนั้น หน้าค้างรับจึงปิดทั้งหน้า ไม่ใช่ปิดเป็นคอลัมน์</p>
+  </div>
+</section>
+
+<!-- =============================================================== 11 ==== -->
+
+<section class="screen" id="s11">
+  <h2 class="h"><span class="num">11</span> จัดการผู้ใช้ <span class="where">เจ้าของร้านเท่านั้น</span></h2>
+
+  <!--SHOT:users|หน้าจัดการผู้ใช้-->
+
+  <p class="body">กด <span class="b b--go">เพิ่มผู้ใช้</span> แล้วกรอกชื่อผู้ใช้ รหัสผ่าน ชื่อที่แสดง ตำแหน่งงาน และบทบาท · <span class="b">แก้ไข</span> ท้ายแถวเพื่อเปลี่ยนชื่อ ตำแหน่ง บทบาท หรือปิดการใช้งานบัญชี · ในฟอร์มแก้ไขมีปุ่ม <span class="b">ตั้งรหัสผ่านใหม่</span> แยกต่างหาก</p>
+
+  <p class="body">ตารางเหลือ 5 คอลัมน์ — <strong>ชื่อผู้ใช้</strong>อยู่ใต้ชื่อที่แสดง <strong>ตำแหน่งงาน</strong>อยู่ใต้บทบาท และ<strong>เข้าล่าสุด</strong>อยู่ใต้จำนวนรายการที่ทำ ทั้งสามยังเรียงได้จากช่อง <em>เรียงตาม</em> เหนือตาราง หน้าสาขาก็ย้าย<strong>ช่องติดต่อ</strong>ไปไว้ใต้ชื่อสาขาแบบเดียวกัน</p>
+
+  <p class="body">ในฟอร์ม <span class="b">แก้</span> ของแต่ละสาขา มีปุ่ม <span class="b b--danger">🗑 ลบสาขานี้</span> อยู่ใต้ปุ่มบันทึก · <strong>ลบได้เฉพาะสาขาที่ยังไม่เคยเบิกของ</strong> — สาขาที่เคยเบิกแล้วจะถูกปฏิเสธพร้อมบอกว่ามีกี่รายการ ให้<strong>ปิดใช้งาน</strong>แทน เพราะแถวของสาขาคือสิ่งที่ทำให้ใบเบิกเก่าอ่านออกว่าเป็นของใคร · ลบได้เฉพาะเจ้าของร้าน</p>
+
+  <div class="scroll">
+  <table>
+    <thead><tr><th>บทบาท</th><th>ทำอะไรได้</th></tr></thead>
+    <tbody>
+      <tr><td>เจ้าของร้าน</td><td>ทุกอย่าง และเป็นบทบาทเดียวที่จัดการผู้ใช้กับสาขาได้</td></tr>
+      <tr><td>ฝ่ายบัญชี</td><td>ลงต้นทุน แก้แคตตาล็อก และเห็นตัวเลขเงินทั้งหมด</td></tr>
+      <tr><td>พนักงานหน้าร้าน</td><td>ดูคลังและบันทึกความเคลื่อนไหวสต็อกได้ ไม่เห็นต้นทุน</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>ตารางสิทธิ์ฉบับเต็มอยู่ในแอป</h3>
+
+  <!--SHOT:help|เมนู คู่มือการใช้งาน ในแอป — มีตารางสิทธิ์ที่อ่านค่าจากกฎจริง-->
+
+  <p class="body">เมนู <em>คู่มือการใช้งาน</em> ในแถบซ้ายมีตารางสิทธิ์ฉบับเต็ม ซึ่งอ่านค่าจากกฎที่ระบบใช้บังคับจริง ไม่ใช่ตารางที่พิมพ์ไว้ — แก้กฎในโค้ดแล้วตารางนั้นเปลี่ยนตามทันที ถ้าคู่มือเล่มนี้กับตารางในแอปไม่ตรงกัน ให้เชื่อในแอป</p>
+</section>
+
+<!-- =============================================================== 12 ==== -->
+
+<section class="screen" id="s12">
+  <h2 class="h"><span class="num">12</span> ปุ่มที่บางคนไม่เห็น</h2>
+
+  <p class="body">ถ้าอ่านคู่มือแล้วหาปุ่มไม่เจอ ให้เช็คบทบาทของบัญชีตัวเองก่อน ระบบ<strong>เอาปุ่มออกทั้งปุ่ม</strong> ไม่ได้ทำให้กดไม่ได้แล้วปล่อยไว้ให้เห็น</p>
+
+  <div class="scroll">
+  <table>
+    <thead><tr><th>สิ่งที่หายไป</th><th>เจ้าของร้าน</th><th>ฝ่ายบัญชี</th><th>พนักงานหน้าร้าน</th></tr></thead>
+    <tbody>
+      <tr><td>คอลัมน์ต้นทุน · มูลค่าคลัง</td><td>เห็น</td><td>เห็น</td><td class="muted">ไม่เห็น</td></tr>
+      <tr><td>ช่องต้นทุนตอนรับของ</td><td>กรอกได้</td><td>กรอกได้</td><td class="muted">กรอกไม่ได้</td></tr>
+      <tr><td>ต้นทุนบนใบสั่ง RX</td><td>เห็นและกรอกได้</td><td>เห็นและกรอกได้</td><td class="muted">ไม่เห็นเลย</td></tr>
+      <tr><td><strong>ราคาขายบนใบสั่ง RX</strong></td><td>กรอกได้</td><td>กรอกได้</td><td><strong>กรอกได้</strong></td></tr>
+      <tr><td>ปุ่มแก้ไข / ลบสินค้า</td><td>เห็น</td><td>เห็น</td><td class="muted">ไม่เห็น</td></tr>
+      <tr><td>หน้าค้างรับจากสาขา</td><td>เข้าได้</td><td>เข้าได้</td><td class="muted">เข้าไม่ได้</td></tr>
+      <tr><td>ปุ่มเพิ่ม / แก้ไขสาขา</td><td>เห็น</td><td class="muted">ไม่เห็น</td><td class="muted">ไม่เห็น</td></tr>
+      <tr><td>เมนูจัดการผู้ใช้</td><td>เห็น</td><td class="muted">ไม่เห็น</td><td class="muted">ไม่เห็น</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="note note--warn">
+    <p class="note__t">สิ่งที่ระบบจะไม่ยอมให้ทำ ไม่ว่าบทบาทไหน</p>
+    <p><strong>ลบสินค้าที่เคยเคลื่อนไหว</strong> — มันเป็นประวัติของร้าน · <strong>เปลี่ยนสินค้าที่ยังมีสต็อกให้เป็นสั่งตัด</strong> — สต็อกจะค้างอยู่โดยไม่มีใครตัดได้ · <strong>ตัดของเกินที่มี</strong> — จะเสนอให้ตัดเท่าที่มีแทน · <strong>ใส่วันหมดอายุก่อนวันรับเข้า</strong></p>
+  </div>
+</section>
+
+<footer class="foot">
+  <p>คู่มือนี้เขียนจากหน้าจอจริงของระบบ ณ 31 สิงหาคม 2026 ถ้าปุ่มในแอปเปลี่ยนไปจากที่เห็นในรูป ให้เชื่อหน้าจอ แล้วบอกให้อัปเดตคู่มือ</p>
+  <p>รูปประกอบบางรูปยังเป็นของรอบก่อน — ถ่ายใหม่ได้ด้วย <code>.\capture-docs.ps1</code> แล้วประกอบใหม่ด้วย <code>.\build-manual.ps1</code></p>
+</footer>
+
+</div>
+</main>
+</div>

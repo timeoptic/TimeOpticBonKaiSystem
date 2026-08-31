@@ -1,0 +1,13 @@
+.env
+
+node_modules/
+.next/
+out/
+build/
+
+*.log
+.DS_Store
+Thumbs.db
+
+# Session files live here, one per signed-in browser.
+api/var/
