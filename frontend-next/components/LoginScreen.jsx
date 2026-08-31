@@ -7,6 +7,7 @@
  */
 import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext.jsx';
+import { Field, Stack } from './ui.jsx';
 
 export function LoginScreen() {
   const { login } = useAuth();
@@ -28,41 +29,43 @@ export function LoginScreen() {
   }
 
   return (
-    <div className="stack" style={{ maxWidth: 380, margin: '12vh auto', padding: '0 16px' }}>
-      <div style={{ textAlign: 'center', marginBottom: 8 }}>
-        <div style={{ fontSize: 34 }}>👓</div>
+    <div style={{ maxWidth: 380, margin: '12vh auto', padding: '0 16px' }}>
+      <div style={{ textAlign: 'center', marginBottom: 14 }}>
+        <div style={{ fontSize: 30, letterSpacing: 2 }}>◎◎</div>
         <h1 style={{ margin: '6px 0 2px', fontSize: 20 }}>TimeOptic</h1>
         <p className="muted" style={{ margin: 0 }}>เข้าสู่ระบบเพื่อใช้งาน</p>
       </div>
 
-      <form className="card stack" onSubmit={submit}>
-        <label className="field">
-          <span>ชื่อผู้ใช้</span>
-          <input
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            autoComplete="username"
-            autoFocus
-            required
-          />
-        </label>
-        <label className="field">
-          <span>รหัสผ่าน</span>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete="current-password"
-            required
-          />
-        </label>
+      <div className="card">
+        <form className="card-body" onSubmit={submit}>
+          <Stack>
+            <Field label="ชื่อผู้ใช้">
+              <input
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                autoComplete="username"
+                autoFocus
+                required
+              />
+            </Field>
+            <Field label="รหัสผ่าน">
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="current-password"
+                required
+              />
+            </Field>
 
-        {error ? <p style={{ color: 'var(--danger, #c0392b)', margin: 0 }}>{error}</p> : null}
+            {error ? <div className="empty" style={{ color: 'var(--danger)' }}>{error}</div> : null}
 
-        <button type="submit" className="btn btn-primary" disabled={busy}>
-          {busy ? 'กำลังเข้าสู่ระบบ…' : 'เข้าสู่ระบบ'}
-        </button>
-      </form>
+            <button type="submit" className="btn btn-primary btn-lg" disabled={busy}>
+              {busy ? 'กำลังเข้าสู่ระบบ…' : 'เข้าสู่ระบบ'}
+            </button>
+          </Stack>
+        </form>
+      </div>
 
       <p className="muted" style={{ textAlign: 'center', fontSize: 12 }}>
         ใช้บัญชีเดียวกับระบบคลังและต้นทุน

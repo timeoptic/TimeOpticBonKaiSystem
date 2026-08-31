@@ -25,10 +25,18 @@ final class Db
 {
     private static ?PDO $pdo = null;
 
+    /** @var (callable(): PDO)|null */
+    private static $factory = null;
+
     public static function conn(): PDO
     {
         if (self::$pdo instanceof PDO) {
             return self::$pdo;
+        }
+
+        // A host application's own connection, asked for only when it is needed.
+        if (self::$factory !== null) {
+            return self::$pdo = (self::$factory)();
         }
 
         $c = Env::database();
@@ -58,6 +66,24 @@ final class Db
     public static function setConn(?PDO $pdo): void
     {
         self::$pdo = $pdo;
+    }
+
+    /**
+     * How a host application hands this module its connection.
+     *
+     * A callable rather than the connection itself, because the handover
+     * happens while the request is being set up and most requests never reach
+     * the database at all — asking for it eagerly turns "is anyone signed in?"
+     * into a database round trip, and turns a database that is merely switched
+     * off into a twenty-three second wait ending in 500 where the honest answer
+     * was "nobody is signed in", available instantly from the session.
+     *
+     * @param (callable(): PDO)|null $factory
+     */
+    public static function setConnFactory(?callable $factory): void
+    {
+        self::$factory = $factory;
+        self::$pdo = null;
     }
 
     /**
