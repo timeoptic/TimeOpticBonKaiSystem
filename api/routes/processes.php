@@ -68,10 +68,12 @@ function processMissing(array $c): array
         $order && (float) ($order['total_price'] ?? 0) <= 0 ? 'ราคารวม' : null,
     ]));
 
+    /* PD อย่างเดียวที่บังคับ — เลนส์สั่งตัดไม่ได้ถ้าไม่รู้ระยะรูม่านตา
+       ส่วน FH / FRAME BOX / มุมและระยะสวมใส่ ไม่บังคับ: งานหลายแบบไม่ต้องใช้
+       (เปลี่ยนเลนส์กรอบเดิม ชั้นเดียว ฯลฯ) กรอกได้ถ้ามี ไม่มีก็ปิดขั้นตอนได้ */
     $m['centering'] = array_values(array_filter([
         !$ce ? 'ค่า Center' : null,
         $ce && empty($ce['pd_total']) ? 'PD' : null,
-        $ce && (empty($ce['r_height']) || empty($ce['l_height'])) ? 'FH (ความสูง)' : null,
     ]));
 
     $m['payment'] = array_values(array_filter([
@@ -405,9 +407,8 @@ function caseStageMap(array $caseIds): array
     ));
     $centering = $flat(Db::all(
         "SELECT case_id,
-                MAX(pd_total IS NOT NULL AND pd_total <> ''
-                    AND r_height IS NOT NULL AND r_height <> ''
-                    AND l_height IS NOT NULL AND l_height <> '') AS done,
+                -- เกณฑ์เดียวกับ processMissing(): PD เท่านั้น FH ไม่บังคับ
+                MAX(pd_total IS NOT NULL AND pd_total <> '') AS done,
                 COUNT(*) AS n
            FROM centerings WHERE case_id IN ($in) GROUP BY case_id",
         ...$ids

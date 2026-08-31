@@ -15,7 +15,12 @@ GET('/api/cases', function (array $req) {
         $where[] = 'stage_group = ?';
         $args[]  = $group;
     }
-    if (str_or($q['open'] ?? null) !== '0') {
+    /* สามแบบ: คิวที่ยังทำอยู่ (ปกติ) · เฉพาะเคสที่จบแล้ว (closed=1) ·
+       ทั้งสองอย่างรวมกัน (open=0) — กระดานงานเคยมีแต่แบบที่สาม */
+    $closedOnly = str_or($q['closed'] ?? null) === '1';
+    if ($closedOnly) {
+        $where[] = 'is_terminal = 1';
+    } elseif (str_or($q['open'] ?? null) !== '0') {
         $where[] = 'is_terminal = 0';
     }
     if (($q['rush'] ?? null) === '1') {
@@ -50,9 +55,13 @@ GET('/api/cases', function (array $req) {
     $sqlWhere = $where ? 'WHERE ' . implode(' AND ', $where) : '';
     $args[] = min(int_or($q['limit'] ?? null, 300), 1000);
 
+    /* เคสที่จบแล้วไม่มีคิวให้เรียง — สิ่งที่อยากเห็นก่อนคือ "เพิ่งปิดไปเมื่อไหร่" */
+    $order = $closedOnly
+        ? 'closed_at IS NULL, closed_at DESC, opened_at DESC'
+        : 'is_rush DESC, status_order, opened_at';
+
     $rows = Db::all(
-        "SELECT * FROM v_case_board $sqlWhere
-          ORDER BY is_rush DESC, status_order, opened_at LIMIT ?",
+        "SELECT * FROM v_case_board $sqlWhere ORDER BY $order LIMIT ?",
         ...$args
     );
 

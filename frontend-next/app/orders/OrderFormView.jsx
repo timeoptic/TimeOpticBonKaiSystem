@@ -11,8 +11,9 @@
  * (read-only once a case is known, pickable via <Picker> for a standalone
  * order), which prescription becomes final_prescription_id, the three
  * <StockPicker> selections (frame / lens R / lens L), and the four price
- * fields + discount, which are kept live so the Total / Net Total mirror
- * what the server (Task 2's orderVals()) will compute and validate.
+ * fields, which are kept live so the Total / Net Total mirror what the server
+ * (Task 2's orderVals()) will compute and validate. The stored discount rides
+ * along in the same live state even though nothing here can edit it any more.
  */
 import { useState } from 'react';
 import Link from 'next/link';
@@ -62,7 +63,8 @@ function SellingPrice({ label, value, onChange }) {
 
 function ItemDetails({ picked, rows, children }) {
   const [open, setOpen] = useState(false);
-  if (!picked) return <div style={{ marginTop: 10 }}>{children}</div>;
+  /* กรอบไม่มีช่องกรอกเองแล้ว ไม่มี children ก็ไม่ต้องเว้นที่ไว้เปล่า ๆ */
+  if (!picked) return children ? <div style={{ marginTop: 10 }}>{children}</div> : null;
   return (
     <div style={{ marginTop: 10 }}>
       <button type="button" className="btn btn-sm btn-light" onClick={() => setOpen((v) => !v)}>
@@ -205,6 +207,8 @@ export function OrderFormView({
 
   const total = n(p.frame_price) + n(p.lens_od_price) + n(p.lens_os_price) + n(p.options_price);
   const netTotal = total - n(p.discount);
+  /* ตั้งส่วนลดที่นี่ไม่ได้แล้ว เหลือไว้เตือนอย่างเดียวว่าค่าเดิมกินเกินราคารวม
+     ห้ามใช้บล็อกการบันทึก ไม่งั้นออเดอร์นั้นจะแก้อะไรไม่ได้เลย */
   const discountTooHigh = n(p.discount) > total;
 
   const chooseCustomer = async (r) => {
@@ -219,8 +223,6 @@ export function OrderFormView({
 
   const save = async (body) => {
     if (!customerId) return err('กรุณาเลือกลูกค้าก่อน');
-    if (discountTooHigh) return err('ส่วนลดห้ามมากกว่ายอดรวม');
-
     body.customer_id = customerId;
     body.case_id = caseId;
     body.final_prescription_id = rxId;
@@ -240,6 +242,15 @@ export function OrderFormView({
       fill('frame_color', picked.frame.color);
       fill('frame_size', picked.frame.size);
       fill('frame_sku', picked.frame.sku);
+    } else if (editing) {
+      /* ไม่มีช่องกรอกกรอบเองในฟอร์มแล้ว ออเดอร์เก่าที่พิมพ์ชื่อกรอบไว้เองจึงไม่มีอะไร
+         ส่งค่ามา — ต้องส่งของเดิมกลับไป ไม่งั้น PUT เขียนทับจนชื่อกรอบหายทั้งระบบ */
+      fill('frame_name', o.frame_name);
+      fill('frame_brand', o.frame_brand);
+      fill('frame_model', o.frame_model);
+      fill('frame_color', o.frame_color);
+      fill('frame_size', o.frame_size);
+      fill('frame_sku', o.frame_sku);
     }
     /* ชื่อกับ SKU แยกข้าง — ออเดอร์ที่สองตาคนละรุ่นเคยเก็บได้แค่ชื่อเดียว
        ช่องในฟอร์มชนะเสมอ (คนขายพิมพ์ทับได้) ถ้าไม่มีค่อยเอาชื่อของชิ้นที่เลือก */
@@ -417,7 +428,7 @@ export function OrderFormView({
         </Card>
 
         <Card title="กรอบแว่น — Frame">
-          <p className="hint">ถ้ายังไม่มีของในคลัง ให้ข้ามการเลือกสต็อกไปก่อน แล้วกรอกแค่รายละเอียดกรอบ</p>
+          <p className="hint">เลือกกรอบจากสต็อก แล้วใส่ราคาขายของออเดอร์นี้</p>
           <StockPicker
             type="Frame"
             picked={picked.frame}
@@ -443,33 +454,7 @@ export function OrderFormView({
               ['คงเหลือในคลัง', picked.frame?.remaining_qty != null ? `${picked.frame.remaining_qty} ชิ้น` : '—'],
               picked.frame?.location ? ['ตำแหน่งเก็บ', picked.frame.location] : null,
             ].filter(Boolean)}
-          >
-            <FormGrid>
-              <Field label="ชื่อกรอบ / Frame name">
-                <input
-                  key={'fn' + (picked.frame?.id ?? '0')}
-                  name="frame_name"
-                  defaultValue={picked.frame ? stockLabel(picked.frame) : (o.frame_name || '')}
-                  placeholder="เช่น Coach 5191 / กรอบลูกค้า"
-                />
-              </Field>
-              <Field label="ยี่ห้อ / Brand">
-                <input key={'fb' + (picked.frame?.id ?? '0')} name="frame_brand" defaultValue={picked.frame?.brand || o.frame_brand || ''} />
-              </Field>
-              <Field label="รุ่น / Model">
-                <input key={'fm' + (picked.frame?.id ?? '0')} name="frame_model" defaultValue={picked.frame?.model || o.frame_model || ''} />
-              </Field>
-              <Field label="สี / Color">
-                <input key={'fc' + (picked.frame?.id ?? '0')} name="frame_color" defaultValue={picked.frame?.color || o.frame_color || ''} />
-              </Field>
-              <Field label="ไซส์ / Size">
-                <input key={'fs' + (picked.frame?.id ?? '0')} name="frame_size" defaultValue={picked.frame?.size || o.frame_size || ''} />
-              </Field>
-              <Field label="SKU">
-                <input key={'fk' + (picked.frame?.id ?? '0')} name="frame_sku" defaultValue={picked.frame?.sku || o.frame_sku || ''} />
-              </Field>
-            </FormGrid>
-          </ItemDetails>
+          />
         </Card>
 
         <Card title="เลนส์ — Lens">
@@ -533,7 +518,7 @@ export function OrderFormView({
           </Split>
         </Card>
 
-        <Card title="ราคา & ส่วนลด">
+        <Card title="ราคา">
           {/* ราคากรอบ/เลนส์ กรอกอยู่ข้างสินค้าแต่ละชิ้นด้านบน ส่งค่าไปกับฟอร์มผ่านช่องซ่อน
               จะได้ไม่ต้องมีช่องราคาเดียวกันสองที่ให้สับสนว่าอันไหนจริง */}
           <input type="hidden" name="frame_price" value={p.frame_price} readOnly />
@@ -544,28 +529,25 @@ export function OrderFormView({
           <input type="hidden" name="options_price" value={p.options_price} readOnly />
           <input type="hidden" name="deposit" value={p.deposit} readOnly />
           <input type="hidden" name="deposit_pay_type" value={o.deposit_pay_type || 'Cash'} readOnly />
+          {/* ส่วนลดไม่ได้ตั้งที่ขั้นนี้แล้ว ค่าที่เคยบันทึกไว้ยังส่งไปกับฟอร์มเหมือน
+              ค่าออพชั่น/มัดจำ จะได้ไม่ถูกล้างทิ้งตอนกลับมาแก้ออเดอร์ */}
+          <input type="hidden" name="discount" value={p.discount} readOnly />
 
-          <FormGrid>
-            <Field
-              label="ส่วนลด / Discount"
-              hint={discountTooHigh ? 'ส่วนลดห้ามมากกว่ายอดรวม' : ''}
-            >
-              <input
-                name="discount" type="number" step="1" min="0"
-                value={p.discount} onChange={(e) => setP({ discount: e.target.value })}
-                aria-invalid={discountTooHigh}
-              />
-            </Field>
-          </FormGrid>
-
+          {/* เหลือใบเดียว — ยอดสุทธิคือตัวเลขที่ลูกค้าจ่ายจริง อีกใบเป็นแค่ทางผ่าน
+              ที่มาของยอดยกไปอยู่บรรทัดล่างแทน จะได้ยังทานกับราคาที่กรอกข้างบนได้ */}
           <div style={{ marginTop: 10 }}>
             <Kpis>
-              <Kpi label="ราคารวม (Total)" value={money(total)} sub="กรอบ + เลนส์ขวา + เลนส์ซ้าย" />
               <Kpi
                 label="ยอดสุทธิ (Net Total)"
                 value={money(netTotal)}
                 kind={discountTooHigh ? 'danger' : 'accent'}
-                sub={discountTooHigh ? 'ห้ามติดลบ — แก้ส่วนลดก่อนบันทึก' : 'ราคารวม − ส่วนลด'}
+                sub={
+                  discountTooHigh
+                    ? `ส่วนลดเดิม ${money(n(p.discount))} มากกว่าราคารวม ${money(total)}`
+                    : n(p.discount)
+                      ? `ราคารวม ${money(total)} − ส่วนลด ${money(n(p.discount))}`
+                      : 'กรอบ + เลนส์ขวา + เลนส์ซ้าย'
+                }
               />
             </Kpis>
           </div>
@@ -578,7 +560,7 @@ export function OrderFormView({
             placeholder="รายละเอียดเพิ่มเติม เช่น สีเลนส์ ทรงกรอบ การปรับขาแว่น"
           />
           <FormActions style={{ marginTop: 14 }}>
-            <button className="btn btn-lg" type="submit" disabled={discountTooHigh}>
+            <button className="btn btn-lg" type="submit">
               <Icon name="save" /> {editing ? 'บันทึกการแก้ไข' : 'เปิดออเดอร์'}
             </button>
             {!embedded && <Link className="btn btn-light" href={cancelHref}>ยกเลิก</Link>}

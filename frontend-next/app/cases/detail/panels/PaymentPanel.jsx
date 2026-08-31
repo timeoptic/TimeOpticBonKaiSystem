@@ -11,7 +11,7 @@
  * attached to the payment row it proves (case_photos.payment_id), never loose
  * on the case, so a row and its evidence cannot drift apart.
  */
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { api } from '../../../../lib/apiClient.js';
 import { useAsync, readForm } from '../../../../lib/hooks.js';
@@ -21,7 +21,9 @@ import { Badge, Card, Field, FormGrid, Row, Split } from '../../../../components
 import { EmployeeSelect } from '../../../../components/Selects.jsx';
 import { Icon } from '../../../../components/Icon.jsx';
 import { useMeta } from '../../../../contexts/MetaContext.jsx';
-import { custName, fmtDate, fmtDateTime, money, nowLocal, toStamp } from '../../../../lib/format.js';
+import {
+  custName, dateOnly, fmtDate, fmtDateTime, money, nowLocal, todayISO, toStamp,
+} from '../../../../lib/format.js';
 
 /* "จ่ายบางส่วน" ออกแล้ว — มันกับ "มัดจำ" ตอบคำถามเดียวกัน (จ่ายมาไม่ครบ) ต่างกันแค่
    ว่าเป็นก้อนแรกหรือไม่ ซึ่งระบบดูจากประวัติเองได้ ตัวเลือกที่ต้องหยุดคิดว่าจะเลือก
@@ -39,6 +41,95 @@ const METHOD_ICON = {
 
 const SLIP_KIND = 'payment_slip';
 const ACCEPT = 'image/jpeg,image/png,image/webp,application/pdf';
+
+/**
+ * วันนัดรับ — ของออเดอร์ ไม่ใช่ของเงินก้อนใดก้อนหนึ่ง
+ *
+ * ลูกค้าจ่ายกี่รอบก็ได้ แต่วันที่มารับแว่นมีวันเดียว ค่าจึงเขียนลง
+ * custom_orders.appointment_date ไม่ใช่แถวใน payments — เปิดหน้าใหม่วันหลังจึง
+ * เห็นวันเดิม และกดแก้ทับได้ตลอด (PUT /api/orders/:id/appointment แตะคอลัมน์เดียว
+ * PUT /api/orders/:id เขียนทับทั้งใบ ห้ามใช้ที่นี่)
+ *
+ * ไม่บังคับกรอก และไม่ผูกกับยอดค้าง — ค้างเงินอยู่ก็นัดวันรับแล้วไปขั้นถัดไปได้
+ * ปุ่มลัดมีเพราะร้านนัดเป็น "อีกกี่วัน" ไม่ใช่ "วันที่เท่าไหร่"
+ */
+const QUICK_DAYS = [['วันนี้', 0], ['+3 วัน', 3], ['+7 วัน', 7], ['+14 วัน', 14]];
+
+function PickupDateCard({ c, reload }) {
+  const { ok, err } = useToast();
+  const saved = dateOnly(c.order?.appointment_date);
+  const [date, setDate] = useState(saved);
+  const [saving, setSaving] = useState(false);
+
+  /* ค่าอาจเปลี่ยนมาจากที่อื่น (หน้าออเดอร์ หรืออีกแท็บ) — reload แล้วช่องต้องตาม */
+  useEffect(() => { setDate(saved); }, [saved]);
+
+  if (!c.order) {
+    return (
+      <Card title="วันนัดรับ">
+        <p className="muted">วันนัดรับผูกกับออเดอร์ — เปิดออเดอร์ที่ขั้น “ขาย” ก่อน</p>
+      </Card>
+    );
+  }
+
+  const dirty = date !== saved;
+
+  const save = async (value) => {
+    setSaving(true);
+    try {
+      await api.put(`/api/orders/${c.order.id}/appointment`, {
+        appointment_date: value || null,
+      });
+      ok(value ? `นัดรับ ${fmtDate(value)}` : 'ล้างวันนัดรับแล้ว');
+      reload();
+    } catch (ex) { err(ex); } finally { setSaving(false); }
+  };
+
+  return (
+    <Card title="วันนัดรับ" right={<span className="muted">ไม่บังคับ — ข้ามได้</span>}>
+      <div className="pickup">
+        <label htmlFor="pickup-date"><Icon name="calendar" /> วันนัดรับ</label>
+        <input
+          id="pickup-date"
+          className="pickup-input"
+          type="date"
+          value={date}
+          disabled={saving}
+          onChange={(e) => setDate(e.target.value)}
+        />
+        <button type="button" className="btn" disabled={!dirty || saving} onClick={() => save(date)}>
+          <Icon name="check" /> บันทึก
+        </button>
+        {saved ? (
+          <button type="button" className="btn btn-light" disabled={saving} onClick={() => save('')}>
+            <Icon name="x" /> ล้าง
+          </button>
+        ) : null}
+      </div>
+
+      <Row style={{ gap: 6, marginTop: 10 }}>
+        {QUICK_DAYS.map(([label, days]) => (
+          <button
+            type="button"
+            key={label}
+            className={`chip-btn ${date && date === todayISO(days) ? 'active' : ''}`}
+            onClick={() => setDate(todayISO(days))}
+          >
+            {label}
+          </button>
+        ))}
+      </Row>
+
+      <p className={`pickup-now ${dirty ? 'dirty' : ''}`}>
+        {dirty
+          ? <>ยังไม่ได้บันทึก — กด “บันทึก” เพื่อเก็บ {date ? <b>{fmtDate(date)}</b> : 'การล้างวันนัด'}</>
+          : saved
+            ? <>บันทึกไว้แล้ว <b>{fmtDate(saved)}</b> · แก้ไขภายหลังได้</>
+            : <>ยังไม่ได้กำหนด <b>—</b> · ไปขั้นถัดไปได้โดยไม่ต้องกรอก</>}
+      </p>
+    </Card>
+  );
+}
 
 export function PaymentPanel({ c, reload }) {
   const { ok, err } = useToast();
@@ -149,6 +240,8 @@ export function PaymentPanel({ c, reload }) {
 
       <Split className="aside">
       <div className="stack">
+
+      <PickupDateCard c={c} reload={reload} />
 
       <Card title="รับเงินเข้ามาใหม่">
         <form onSubmit={add}>

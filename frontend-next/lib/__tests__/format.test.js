@@ -23,8 +23,13 @@ test('fmtDateTime: adds HH:MM', () => {
   assert.equal(fmtDateTime('2026-08-25 14:05:00'), '25/08/2026 14:05');
 });
 
-test('custName: joins first+last, falls back when both blank', () => {
+test('custName: joins first+mid+last, falls back when all blank', () => {
   assert.equal(custName({ first_name: 'สม', last_name: 'ชาย' }), 'สม ชาย');
+  assert.equal(custName({ first_name: 'สม', mid_name: 'ศรี', last_name: 'ชาย' }), 'สม ศรี ชาย');
+  /* แถวที่ไม่มีคอลัมน์ mid_name เลย ต้องได้ชื่อเหมือนเดิม ไม่ใช่มีช่องว่างเกิน */
+  assert.equal(custName({ first_name: 'สม', mid_name: null, last_name: 'ชาย' }), 'สม ชาย');
+  assert.equal(custName({ first_name: 'สม', mid_name: '', last_name: 'ชาย' }), 'สม ชาย');
+  assert.equal(custName({ mid_name: 'ศรี' }), 'ศรี');
   assert.equal(custName({}), '(ไม่มีชื่อ)');
 });
 

@@ -24,6 +24,7 @@ import {
   Badge, Card, Kpi, Kpis, Kv, Loading, PageHead, Row, Split, Stack,
 } from '../../../components/ui.jsx';
 import { QueryParamPage } from '../../../components/QueryParamPage.jsx';
+import { useToast } from '../../../components/Toast.jsx';
 import { StatusChip } from '../../../components/StatusChip.jsx';
 import { CaseStepper } from '../../../components/CaseStepper.jsx';
 import { ProcessShell } from '../../../components/ProcessShell.jsx';
@@ -81,6 +82,47 @@ function ItemCard({ title, name, sub, price, inStock }) {
         ]}
       />
     </Card>
+  );
+}
+
+/**
+ * ปุ่มติ๊ก "งานด่วน" — is_rush ถูกอ่านอยู่หลายที่ (ป้ายบนกระดาน/ส่งมอบ, ตัวกรอง
+ * "ด่วนเท่านั้น", ลำดับ ORDER BY is_rush DESC) แต่ไม่เคยมีที่ให้ติ๊ก อยู่บนหัวเคส
+ * จึงกดได้จากทุกขั้นตอน ไม่ต้องเดินไปหาขั้นตอนที่ "เป็นเจ้าของ" ค่านี้
+ *
+ * PUT /api/cases/:id เขียนทับทุกคอลัมน์ในคำสั่งเดียว ไม่ใช่ patch ทีละช่อง —
+ * ต้องส่ง {...c} ไปด้วยเสมอ ไม่งั้น received_by / case_type / notes จะถูกล้าง
+ * (รูปแบบเดียวกับที่ ReceptionPanel ใช้)
+ */
+function RushToggle({ c, reload }) {
+  const { ok, err } = useToast();
+  const [busy, setBusy] = useState(false);
+  const rush = !!Number(c.is_rush);
+
+  const toggle = async () => {
+    setBusy(true);
+    try {
+      await api.put('/api/cases/' + c.id, { ...c, is_rush: rush ? 0 : 1 });
+      ok(rush ? 'เอาออกจากงานด่วนแล้ว' : 'ตั้งเป็นงานด่วนแล้ว');
+      reload();
+    } catch (e) {
+      err(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      className={`rush-toggle ${rush ? 'on' : ''}`}
+      onClick={toggle}
+      disabled={busy}
+      aria-pressed={rush}
+      title={rush ? 'กดเพื่อเอาออกจากงานด่วน' : 'กดเพื่อตั้งเป็นงานด่วน'}
+    >
+      <Icon name="flame" /> {rush ? 'งานด่วน' : 'ตั้งเป็นงานด่วน'}
+    </button>
   );
 }
 
@@ -328,7 +370,7 @@ function CaseDetailInner() {
         <div className="card-body">
           <Row style={{ gap: 14, alignItems: 'center', marginBottom: 12 }}>
             <StatusChip row={c} />
-            {Number(c.is_rush) ? <Badge kind="danger"><Icon name="flame" /> งานด่วน</Badge> : null}
+            <RushToggle c={c} reload={reload} />
             {Number(c.is_waiting) ? <Badge kind="warn">สถานะรอ</Badge> : null}
             {c.order ? <Badge kind={pay.kind}><Icon name="card" /> {pay.label}</Badge> : null}
             <span className="muted">{`เปิดเมื่อ ${fmtDateTime(c.opened_at)}`}</span>

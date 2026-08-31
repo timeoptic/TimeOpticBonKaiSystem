@@ -36,25 +36,101 @@ import { NATIONALITIES } from '../../../lib/constants.js';
 import { custName, fmtDate } from '../../../lib/format.js';
 import { Icon } from '../../../components/Icon.jsx';
 
-/** the new-customer half of step 1 — saves the customer, hands it back */
+/** ลูกค้าที่ระบบสงสัยว่าเป็นคนเดียวกัน — เลือกใช้ใบเดิม หรือยืนยันว่าคนละคน */
+function DuplicateWarning({ matches, onUse, onForce, onEdit, busy }) {
+  return (
+    <Card>
+      <div className="dup-warn">
+        <p className="dup-head">
+          <Icon name="warning" />
+          {` มี ${matches.length} รายชื่อในระบบที่อาจเป็นคนเดียวกัน — เช็คก่อนสร้างใบใหม่`}
+        </p>
+        <ul className="dup-list">
+          {matches.map((m) => (
+            <li key={m.id}>
+              <div className="dup-who">
+                <b>{custName(m)}</b>
+                <span className="muted">{[m.phone, m.line_id, m.email].filter(Boolean).join(' · ') || 'ไม่มีเบอร์/LINE'}</span>
+                <span className="dup-why">
+                  {m.why.map((w) => (
+                    <Badge key={w} kind={m.strong ? 'danger' : 'warn'}>{w}</Badge>
+                  ))}
+                </span>
+              </div>
+              <button type="button" className="btn btn-sm" disabled={busy} onClick={() => onUse(m)}>
+                <Icon name="check" /> ใช้ลูกค้ารายนี้
+              </button>
+            </li>
+          ))}
+        </ul>
+        <Row style={{ gap: 8, flexWrap: 'wrap' }}>
+          <button type="button" className="btn btn-light" disabled={busy} onClick={onEdit}>
+            <Icon name="pencil" /> กลับไปแก้ข้อมูล
+          </button>
+          <button type="button" className="btn btn-light" disabled={busy} onClick={onForce}>
+            ยืนยันว่าเป็นคนละคน — สร้างใบใหม่
+          </button>
+        </Row>
+      </div>
+    </Card>
+  );
+}
+
+/**
+ * the new-customer half of step 1 — saves the customer, hands it back
+ *
+ * ก่อนจะสร้างใบใหม่ต้องถามระบบก่อนว่าคนนี้มีอยู่แล้วหรือยัง เพราะกรณีที่เกิดจริง
+ * คือเซลล์ค้นหาไม่เจอ (พิมพ์ชื่อผิด เบอร์ใส่ขีดไม่เหมือนเดิม) แล้วกดสร้างใหม่
+ * — ลูกค้าคนเดียวเลยมีสองใบ ประวัติค่าสายตาแยกกันคนละใบ ตามกลับมารวมทีหลังยาก
+ *
+ * เตือนแล้วให้คนตัดสินใจ ไม่ได้ห้าม — ชื่อซ้ำกันจริง ๆ ก็มี ปุ่ม "ใช้ลูกค้ารายนี้"
+ * คือทางลัดที่อยากให้กดมากที่สุด แต่ "เป็นคนละคน" ต้องกดได้เสมอ
+ */
 function NewCustomerForm({ onCreated }) {
   const { ok, err } = useToast();
   const [busy, setBusy] = useState(false);
+  const [dupes, setDupes] = useState(null);   // { matches, values } ระหว่างรอคนตัดสินใจ
 
-  const save = async (e) => {
-    e.preventDefault();
+  const create = async (values) => {
     setBusy(true);
     try {
-      const saved = await api.post('/api/customers', readForm(e.currentTarget));
+      const saved = await api.post('/api/customers', values);
       ok(`บันทึกลูกค้า ${custName(saved)} แล้ว`);
+      setDupes(null);
       onCreated(saved);
     } catch (ex) { err(ex); } finally { setBusy(false); }
   };
+
+  const save = async (e) => {
+    e.preventDefault();
+    const values = readForm(e.currentTarget);
+    setBusy(true);
+    try {
+      const { matches } = await api.post('/api/customers/duplicates', values);
+      if (matches?.length) { setDupes({ matches, values }); return; }
+    } catch {
+      /* เช็คซ้ำไม่ได้ก็ไม่ควรบล็อกการเปิดเคส — ปล่อยให้บันทึกต่อ ดีกว่าค้างอยู่ตรงนี้ */
+    } finally { setBusy(false); }
+    await create(values);
+  };
+
+  if (dupes) {
+    return (
+      <DuplicateWarning
+        matches={dupes.matches}
+        busy={busy}
+        onUse={(m) => { setDupes(null); onCreated(m); }}
+        onForce={() => create(dupes.values)}
+        onEdit={() => setDupes(null)}
+      />
+    );
+  }
 
   return (
     <form onSubmit={save}>
       <FormGrid>
         <Field label="ชื่อ / First name"><input name="first_name" required /></Field>
+        <Field label="ชื่อกลาง / Mid name"><input name="mid_name" /></Field>
         <Field label="นามสกุล / Last name"><input name="last_name" /></Field>
         <Field label="เบอร์โทร / Phone"><input name="phone" /></Field>
         {/* ช่องเดียวรับทั้งสองอย่าง — ลูกค้าต่างชาติทักมาทาง WhatsApp คนไทยทาง LINE

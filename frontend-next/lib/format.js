@@ -60,8 +60,14 @@ export const hhmm = (t) => String(t || '').slice(0, 5);
 /** datetime-local value -> the 'YYYY-MM-DD HH:mm' the API expects */
 export const toStamp = (v) => (v || '').replace('T', ' ');
 
+/**
+ * ชื่อลูกค้าที่ใช้แสดงทั้งระบบ — ชื่อกลางอยู่ตรงกลางถ้ามี
+ *
+ * แถวที่ไม่มีคอลัมน์ mid_name (เช่นแถวจาก view เก่า) จะได้ชื่อ-สกุลเหมือนเดิม
+ * เพราะ undefined ถูก filter ทิ้ง ไม่ต้องแยกทางเรียก
+ */
 export const custName = (r) =>
-  [r?.first_name, r?.last_name].filter(Boolean).join(' ') || '(ไม่มีชื่อ)';
+  [r?.first_name, r?.mid_name, r?.last_name].filter(Boolean).join(' ') || '(ไม่มีชื่อ)';
 
 export const bookingName = (b) =>
   [b?.first_name, b?.last_name].filter(Boolean).join(' ') || '(ไม่ระบุชื่อ)';

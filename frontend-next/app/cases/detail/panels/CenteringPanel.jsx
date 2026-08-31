@@ -56,9 +56,14 @@ function Measure({ label, unit, value, onChange, placeholder, hint, readOnly = f
   );
 }
 
-const Group = ({ icon, title, cols = 0, children }) => (
+/* `optional` ไม่ได้เปลี่ยนพฤติกรรมอะไร แค่บอกให้เห็นบนจอว่ากลุ่มนี้ว่างไว้ได้
+   เกณฑ์จริงอยู่ที่ processMissing() ฝั่ง API — PD อย่างเดียวที่บังคับ */
+const Group = ({ icon, title, cols = 0, optional = false, children }) => (
   <section className="measure-panel">
-    <h4><Icon name={icon} /> {title}</h4>
+    <h4>
+      <Icon name={icon} /> {title}
+      {optional ? <span className="opt-tag">ไม่บังคับ</span> : null}
+    </h4>
     <div className={`measure-grid${cols ? ` cols-${cols}` : ''}`}>{children}</div>
   </section>
 );
@@ -157,19 +162,19 @@ export function CenteringPanel({ c, reload }) {
             <Measure label="PD รวม" unit="mm" value={pdTotal} readOnly hint="ขวา + ซ้าย" />
           </Group>
 
-          <Group icon="eye" title="FH" cols={2}>
+          <Group icon="eye" title="FH" cols={2} optional>
             <Measure label="FH ขวา (R)" unit="mm" value={form.r_height} onChange={set('r_height')} placeholder="18.5" />
             <Measure label="FH ซ้าย (L)" unit="mm" value={form.l_height} onChange={set('l_height')} placeholder="18.5" />
           </Group>
 
-          <Group icon="glasses" title="FRAME BOX" cols={4}>
+          <Group icon="glasses" title="FRAME BOX" cols={4} optional>
             <Measure label="A" unit="mm" value={fit.frame_box_a} onChange={setF('frame_box_a')} placeholder="52.0" />
             <Measure label="B" unit="mm" value={fit.frame_box_b} onChange={setF('frame_box_b')} placeholder="18.0" />
             <Measure label="DBL" unit="mm" value={fit.dbl} onChange={setF('dbl')} placeholder="18.0" />
             <Measure label="ED" unit="mm" value={fit.ed} onChange={setF('ed')} placeholder="60.0" />
           </Group>
 
-          <Group icon="tag" title="มุมและระยะสวมใส่" cols={2}>
+          <Group icon="tag" title="มุมและระยะสวมใส่" cols={2} optional>
             <Measure label="CVD" unit="mm" value={form.vertex_distance} onChange={set('vertex_distance')} placeholder="12.0" />
             <Measure label="Panto" unit="°" value={form.pantoscopic_tilt} onChange={set('pantoscopic_tilt')} placeholder="8.0" />
           </Group>

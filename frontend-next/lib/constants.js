@@ -25,6 +25,7 @@ export const ACTION_LABEL = {
   order_filled: 'เติมของเข้าออเดอร์',
   order_closed: 'ปิดการขาย',
   order_reopened: 'เปิดออเดอร์อีกครั้ง',
+  appointment_set: 'กำหนดวันนัดรับ',
   payment: 'รับเงิน',
   payment_deleted: 'ลบรายการรับเงิน',
   centering_saved: 'บันทึกจุดศูนย์กลาง',

@@ -25,11 +25,16 @@ require __DIR__ . '/core/Lookups.php';
 
 require __DIR__ . '/services/Booking.php';
 require __DIR__ . '/services/Telegram.php';
+require __DIR__ . '/services/StockClient.php';
+require __DIR__ . '/services/CaseStock.php';
 require __DIR__ . '/services/Migrate.php';
 require __DIR__ . '/services/Scheduler.php';
 
 Db::configure($config['db']);
 Telegram::configure($config['telegram']);
+StockClient::configure($config['stock_api']);
+/* ถ้าวันหนึ่งสองระบบอยู่เครื่องเดียวกันแล้ว คุกกี้ของคนที่กดจะถูกส่งต่อแทนบัญชีกลาง */
+StockClient::forward($_COOKIE['optic_session'] ?? null);
 
 /* route files — one per resource group, loaded in the order they appear
    in the UI. Adding a resource means adding a file here, nothing else. */

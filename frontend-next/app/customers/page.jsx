@@ -49,6 +49,9 @@ function CustomerListInner() {
             columns={[
               { label: 'ID', key: 'id', cls: 'mono' },
               { label: 'ชื่อ', key: 'first_name' },
+              /* ตารางนี้แยกคอลัมน์อยู่แล้ว ชื่อกลางจึงเป็นคอลัมน์ของตัวเอง
+                 ไม่ใช่เอา custName มายัดรวม — คนกวาดตาหาสกุลจะได้อยู่ตำแหน่งเดิม */
+              { label: 'ชื่อกลาง', key: 'mid_name' },
               { label: 'นามสกุล', key: 'last_name' },
               { label: 'เพศ', key: 'sex' },
               { label: 'สัญชาติ', key: 'nationality' },

@@ -109,8 +109,58 @@ GET('/api/delivery', function (array $req) {
         $out[] = $r;
     }
 
+    /* ตัวเลขบนการ์ดนับจากคิวที่ยังไม่ส่ง เสมอ — ไม่ว่ากำลังเปิดดูถังไหนอยู่ */
+    $summary = ['ready' => 0, 'waiting_customer' => 0, 'not_ready' => 0, 'done_today' => 0];
+    foreach ($out as $r) {
+        $summary[$r['bucket']]++;
+    }
+    $summary['done_today'] = (int) (Db::get(
+        'SELECT COUNT(*) n FROM case_deliveries WHERE DATE(delivered_at) = ?',
+        today()
+    )['n'] ?? 0);
+
     $bucket = str_or($q['bucket'] ?? null);
     $term   = mb_strtolower(str_or($q['q'] ?? null));
+
+    /* ถังที่ห้า "ส่งมอบแล้ว" — เคสที่ปิดไปแล้ว จึงไม่อยู่ในลิสต์ข้างบน (d.delivered_at
+       IS NULL ตัดออก) ต้องถามใหม่คนละคำถาม: ย้อนดูของที่ส่งไปแล้วช่วงไหน */
+    if ($bucket === 'delivered') {
+        $span  = str_or($q['span'] ?? null) ?: 'today';
+        $since = '';
+        $args  = [];
+        if ($span === 'today') {
+            $since = 'AND DATE(d.delivered_at) = ?';
+            $args[] = today();
+        } elseif (ctype_digit($span)) {
+            $since = 'AND d.delivered_at >= DATE_SUB(NOW(), INTERVAL ? DAY)';
+            $args[] = (int) $span;
+        }
+
+        $done = Db::all(
+            "SELECT b.*,
+                    d.id AS delivery_id, d.delivered_at, d.note AS delivery_note,
+                    d.received_by_customer_name,
+                    CONCAT_WS(' ', e.first_name, e.last_name) AS handed_over_name
+               FROM v_case_board b
+               JOIN case_deliveries d ON d.case_id = b.id
+               LEFT JOIN employees e ON e.id = d.handed_over_by
+              WHERE d.delivered_at IS NOT NULL
+                {$since}
+                {$book}
+              ORDER BY d.delivered_at DESC",
+            ...$args
+        );
+        foreach ($done as &$r) {
+            $r['bucket'] = 'delivered';
+            $r['reason'] = trim((string) ($r['received_by_customer_name'] ?? '')) !== ''
+                ? 'ผู้รับ: ' . $r['received_by_customer_name']
+                : '';
+        }
+        unset($r);
+        $out = $done;
+        $bucket = '';   /* กรองด้วย SQL ไปแล้ว เหลือแค่คำค้น */
+    }
+
     $filtered = array_values(array_filter($out, function ($r) use ($bucket, $term) {
         if ($bucket !== '' && $r['bucket'] !== $bucket) {
             return false;
@@ -126,15 +176,6 @@ GET('/api/delivery', function (array $req) {
         }
         return true;
     }));
-
-    $summary = ['ready' => 0, 'waiting_customer' => 0, 'not_ready' => 0, 'done_today' => 0];
-    foreach ($out as $r) {
-        $summary[$r['bucket']]++;
-    }
-    $summary['done_today'] = (int) (Db::get(
-        'SELECT COUNT(*) n FROM case_deliveries WHERE DATE(delivered_at) = ?',
-        today()
-    )['n'] ?? 0);
 
     return ['summary' => $summary, 'rows' => $filtered];
 });

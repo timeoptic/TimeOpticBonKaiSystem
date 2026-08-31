@@ -10,14 +10,124 @@ GET('/api/customers', function (array $req) {
     if ($term === '') {
         return Db::all('SELECT * FROM customers ORDER BY id DESC LIMIT ?', $limit);
     }
+    /* ค้นชื่อกลางด้วย — เซลล์ที่จำได้แต่ชื่อกลางแล้วหาไม่เจอ คือต้นทางของใบซ้ำ */
     $p = like($term);
     return Db::all(
         'SELECT * FROM customers
-          WHERE first_name LIKE ? OR last_name LIKE ? OR phone LIKE ?
+          WHERE first_name LIKE ? OR mid_name LIKE ? OR last_name LIKE ? OR phone LIKE ?
              OR email LIKE ? OR line_id LIKE ? OR notes LIKE ? OR CAST(id AS CHAR) = ?
           ORDER BY id DESC LIMIT ?',
-        $p, $p, $p, $p, $p, $p, $term, $limit
+        $p, $p, $p, $p, $p, $p, $p, $term, $limit
     );
+});
+
+/**
+ * "คนนี้มีอยู่ในระบบแล้วหรือยัง" — ถามก่อนสร้างลูกค้าใหม่
+ *
+ * ปัญหาที่แก้: เซลล์ค้นหาไม่เจอ (พิมพ์ชื่อผิด เว้นวรรคไม่เหมือนเดิม เบอร์ใส่ขีด)
+ * แล้วกดสร้างใหม่ — ลูกค้าคนเดียวเลยมีสองใบ ประวัติค่าสายตาแยกกันอยู่คนละใบ
+ *
+ * ต้องเทียบแบบ "ปรับรูปแบบให้เหมือนกันก่อน" ไม่ใช่เทียบตรง ๆ เพราะข้อมูลเดิมกับ
+ * ข้อมูลที่เพิ่งพิมพ์แทบไม่เคยอยู่ในรูปเดียวกัน:
+ *   เบอร์โทร   ตัดทุกอย่างที่ไม่ใช่ตัวเลขออก   081-234-5678 = 0812345678
+ *   อีเมล/LINE ตัดช่องว่างหัวท้าย + ตัวพิมพ์เล็ก
+ *   ชื่อ        ยุบช่องว่างซ้ำ + ตัวพิมพ์เล็ก แล้วเทียบสองแบบ (นับ/ไม่นับชื่อกลาง)
+ *
+ * ตอบเป็นรายชื่อ + เหตุผลที่คิดว่าซ้ำ ไม่ได้ตัดสินใจแทน — ชื่อซ้ำกันจริง ๆ ก็มี
+ * ฝั่งหน้าจอเอาไปให้คนเลือกว่าจะใช้ใบเดิมหรือยืนยันว่าเป็นคนละคน
+ *
+ * ต้องลงทะเบียนก่อน GET /api/customers/:id — Router เอาเส้นทางแรกที่ตรง
+ * ไม่งั้น "duplicates" จะถูกอ่านเป็น id
+ */
+function normPhone(?string $v): string
+{
+    return preg_replace('/\D+/', '', (string) $v) ?? '';
+}
+
+function normText(?string $v): string
+{
+    return mb_strtolower(trim((string) $v));
+}
+
+/** ชื่อเต็มในรูปที่เทียบกันได้ — ยุบช่องว่างซ้ำ ตัวพิมพ์เล็ก */
+function normName(?string $first, ?string $mid, ?string $last): string
+{
+    $joined = trim(implode(' ', array_filter([
+        trim((string) $first), trim((string) $mid), trim((string) $last),
+    ], fn ($x) => $x !== '')));
+    return mb_strtolower(preg_replace('/\s+/u', ' ', $joined));
+}
+
+POST('/api/customers/duplicates', function (array $req) {
+    $b = $req['body'];
+
+    $phone = normPhone($b['phone'] ?? null);
+    $email = normText($b['email'] ?? null);
+    $line  = normText($b['line_id'] ?? null);
+    $birth = trim((string) ($b['birth_date'] ?? ''));
+    $full  = normName($b['first_name'] ?? null, $b['mid_name'] ?? null, $b['last_name'] ?? null);
+    $short = normName($b['first_name'] ?? null, null, $b['last_name'] ?? null);
+    $skip  = int_or($b['exclude_id'] ?? null);
+
+    if ($full === '' && $phone === '' && $email === '' && $line === '') {
+        return ['matches' => []];
+    }
+
+    /* ดึงมาเฉพาะแถวที่มีโอกาสซ้ำ แล้วค่อยหาเหตุผลใน PHP — ตารางลูกค้าของร้านเดียว
+       ไม่ได้ใหญ่ แต่ก็ไม่ควรกวาดทั้งตารางทุกครั้งที่มีคนกดบันทึก */
+    $rows = Db::all(
+        "SELECT * FROM customers
+          WHERE (? <> '' AND REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                   COALESCE(phone,''),' ',''),'-',''),'(',''),')',''),'+','') = ?)
+             OR (? <> '' AND LOWER(TRIM(COALESCE(email,''))) = ?)
+             OR (? <> '' AND LOWER(TRIM(COALESCE(line_id,''))) = ?)
+             OR (? <> '' AND LOWER(TRIM(COALESCE(first_name,''))) = ?)
+             OR (? <> '' AND LOWER(TRIM(COALESCE(last_name,''))) = ?)
+          ORDER BY id DESC LIMIT 50",
+        $phone, $phone,
+        $email, $email,
+        $line, $line,
+        normText($b['first_name'] ?? null), normText($b['first_name'] ?? null),
+        normText($b['last_name'] ?? null), normText($b['last_name'] ?? null)
+    );
+
+    $out = [];
+    foreach ($rows as $r) {
+        if ($skip && (int) $r['id'] === $skip) {
+            continue;
+        }
+        $rFull  = normName($r['first_name'], $r['mid_name'], $r['last_name']);
+        $rShort = normName($r['first_name'], null, $r['last_name']);
+        $why    = [];
+
+        if ($phone !== '' && normPhone($r['phone']) === $phone) {
+            $why[] = 'เบอร์โทรตรงกัน';
+        }
+        if ($email !== '' && normText($r['email']) === $email) {
+            $why[] = 'อีเมลตรงกัน';
+        }
+        if ($line !== '' && normText($r['line_id']) === $line) {
+            $why[] = 'LINE ID ตรงกัน';
+        }
+        if ($full !== '' && $rFull === $full) {
+            $why[] = 'ชื่อ-นามสกุลตรงกัน';
+        } elseif ($short !== '' && $rShort === $short) {
+            $why[] = 'ชื่อ-นามสกุลตรงกัน (ชื่อกลางต่างกัน)';
+        }
+        if ($birth !== '' && substr((string) $r['birth_date'], 0, 10) === substr($birth, 0, 10)) {
+            $why[] = 'วันเกิดตรงกัน';
+        }
+
+        if ($why) {
+            $r['why'] = $why;
+            /* เบอร์/อีเมล/LINE ชี้ตัวคนได้จริง ชื่อซ้ำอย่างเดียวยังเป็นแค่ "น่าสงสัย" */
+            $r['strong'] = (bool) array_intersect($why, ['เบอร์โทรตรงกัน', 'อีเมลตรงกัน', 'LINE ID ตรงกัน']);
+            $out[] = $r;
+        }
+    }
+
+    usort($out, fn ($a, $b2) => (int) $b2['strong'] <=> (int) $a['strong']);
+    return ['matches' => array_slice($out, 0, 10)];
 });
 
 /**

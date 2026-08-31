@@ -32,3 +32,10 @@ frontend-next/.env.local
 
 # uploaded case photos/files (local disk only)
 api/uploads/
+
+# UI/UX Pro Max skill (vendored, 9MB) - reinstall from github.com/nextlevelbuilder/ui-ux-pro-max-skill
+.claude/skills/
+
+# เศษไฟล์ชั่วคราวจากตอนพอร์ตแอป Node เก่ามา Next.js (ส.ค. 2026) — ไม่ใช่ส่วนของระบบ
+_dom.html
+_legacy-work-assessment.md

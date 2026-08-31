@@ -244,6 +244,42 @@ PUT('/api/orders/:id', function (array $req) {
     return orderDetail($id);
 });
 
+/**
+ * วันนัดรับ — คอลัมน์เดียวของออเดอร์ ไม่ใช่ทั้งใบ
+ *
+ * PUT /api/orders/:id เขียนทับทุกคอลัมน์ใน ORDER_COLS ยิงมาแค่วันนัดรับเส้นนั้น
+ * จะล้างราคา/สินค้า/ส่วนลดทิ้งหมด ขั้น "ชำระเงิน" จึงต้องมีเส้นที่แตะแค่ช่องเดียว
+ *
+ * ค่าว่างแปลว่า "ยังไม่กำหนด" (ล้างวันนัด) ไม่ใช่ "ไม่เปลี่ยน" — ฟิลด์นี้ไม่บังคับ
+ * กรอก และไม่เกี่ยวกับว่าจ่ายครบหรือยัง เคสที่ค้างเงินก็นัดวันรับได้ตามปกติ
+ */
+PUT('/api/orders/:id/appointment', function (array $req) {
+    $id = int_or($req['params']['id']);
+    $o  = Db::get('SELECT id, case_id FROM custom_orders WHERE id = ?', $id);
+    if (!$o) {
+        missing();
+    }
+    $date = nul($req['body']['appointment_date'] ?? null);
+    if ($date !== null) {
+        $date = substr($date, 0, 10);
+        [$y, $m, $d] = array_pad(explode('-', $date), 3, '');
+        if (!checkdate((int) $m, (int) $d, (int) $y)) {
+            bad('วันนัดรับไม่ถูกต้อง');
+        }
+    }
+    Db::tx(function (Tx $q) use ($id, $o, $date, $req) {
+        $q->run('UPDATE custom_orders SET appointment_date=? WHERE id=?', $date, $id);
+        logEvent($q, int_or($o['case_id']), [
+            'action'      => 'appointment_set',
+            'entity'      => 'custom_order',
+            'entity_id'   => $id,
+            'employee_id' => int_or($req['body']['employee_id'] ?? null),
+            'note'        => $date ?? 'ล้างวันนัดรับ',
+        ]);
+    });
+    return orderDetail($id);
+});
+
 POST('/api/orders/:id/fill', function (array $req) {
     $id   = int_or($req['params']['id']);
     $body = $req['body'];

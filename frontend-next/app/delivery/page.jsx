@@ -18,18 +18,29 @@ import { Badge, Card, Loading, PageHead } from '../../components/ui.jsx';
 import { DataTable } from '../../components/DataTable.jsx';
 import { Icon } from '../../components/Icon.jsx';
 import { CaseTags } from '../../components/CaseTags.jsx';
-import { custName, fmtDate, money } from '../../lib/format.js';
+import { custName, fmtDate, fmtDateTime, money } from '../../lib/format.js';
 
 const BUCKET = {
   ready: { label: 'พร้อมส่งมอบ', kind: 'ok', row: 'ok' },
   waiting_customer: { label: 'รอลูกค้ามารับ', kind: 'blue', row: 'blue' },
   not_ready: { label: 'ยังไม่พร้อม', kind: 'gray', row: 'gray' },
+  delivered: { label: 'ส่งมอบแล้ว', kind: 'ok', row: 'ok' },
 };
 
+/* [คีย์ถัง, ป้าย, ไอคอน, สี, คำอธิบาย, คีย์ตัวเลขใน summary] */
 const CARDS = [
-  ['ready', 'พร้อมส่งมอบ', 'checkCircle', 'ok', 'QC ผ่านแล้ว รอส่งให้ลูกค้า'],
-  ['waiting_customer', 'รอลูกค้ามารับ', 'clock', 'blue', 'แจ้งลูกค้าแล้ว รอเข้ามารับ'],
-  ['not_ready', 'ยังไม่พร้อม', 'warning', 'warn', 'ติดผลิต / QC / ออเดอร์'],
+  ['ready', 'พร้อมส่งมอบ', 'checkCircle', 'ok', 'QC ผ่านแล้ว รอส่งให้ลูกค้า', 'ready'],
+  ['waiting_customer', 'รอลูกค้ามารับ', 'clock', 'blue', 'แจ้งลูกค้าแล้ว รอเข้ามารับ', 'waiting_customer'],
+  ['not_ready', 'ยังไม่พร้อม', 'warning', 'warn', 'ติดผลิต / QC / ออเดอร์', 'not_ready'],
+  /* ใบนี้ออกจากคิว — กดแล้วตารางเปลี่ยนไปเป็นของที่ส่งไปแล้ว ย้อนดูได้ตามช่วงเวลา */
+  ['delivered', 'ส่งมอบวันนี้', 'box', '', 'ปิดงานส่งมอบไปแล้ววันนี้ — กดเพื่อดูรายชื่อ', 'done_today'],
+];
+
+const SPANS = [
+  ['today', 'วันนี้'],
+  ['7', '7 วันล่าสุด'],
+  ['30', '30 วันล่าสุด'],
+  ['all', 'ทั้งหมด'],
 ];
 
 const BOOKS = [
@@ -58,19 +69,21 @@ export default function DeliveryListPage() {
   const [term, setTerm] = useState('');
   const [bucket, setBucket] = useState('');
   const [client, setClient] = useState('');
+  const [span, setSpan] = useState('today');
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(10);
   const q = useDebounced(term, 250);
+  const done = bucket === 'delivered';
 
   const { data, loading, error } = useAsync(
-    () => api.get('/api/delivery', { q: q.trim(), bucket, client }),
-    [q, bucket, client],
+    () => api.get('/api/delivery', { q: q.trim(), bucket, client, span: done ? span : '' }),
+    [q, bucket, client, done ? span : ''],
   );
 
   const summary = data?.summary || {};
   const rows = useMemo(() => data?.rows || [], [data]);
 
-  useEffect(() => { setPage(1); }, [q, bucket, client, perPage]);
+  useEffect(() => { setPage(1); }, [q, bucket, client, span, perPage]);
 
   const total = rows.length;
   const pages = Math.max(1, Math.ceil(total / perPage));
@@ -92,30 +105,21 @@ export default function DeliveryListPage() {
       />
 
       <div className="stat-cards">
-        {CARDS.map(([key, label, icon, kind, desc]) => (
+        {CARDS.map(([key, label, icon, kind, desc, statKey]) => (
           <button
             type="button"
             key={key}
             className={`stat-card ${kind} ${bucket === key ? 'active' : ''}`}
-            onClick={() => setBucket(bucket === key ? '' : key)}
+            onClick={() => { setBucket(bucket === key ? '' : key); setSpan('today'); }}
           >
             <span className="stat-ic"><Icon name={icon} /></span>
             <span className="stat-body">
               <span className="stat-label">{label}</span>
-              <span className="stat-value"><b>{summary[key] ?? 0}</b><span>เคส</span></span>
+              <span className="stat-value"><b>{summary[statKey] ?? 0}</b><span>เคส</span></span>
               <span className="stat-desc">{desc}</span>
             </span>
           </button>
         ))}
-        {/* ใบนี้เป็นตัวเลขอ่านอย่างเดียว — เคสที่ส่งไปแล้วไม่อยู่ในตารางข้างล่าง */}
-        <div className="stat-card static">
-          <span className="stat-ic"><Icon name="box" /></span>
-          <span className="stat-body">
-            <span className="stat-label">ส่งมอบวันนี้</span>
-            <span className="stat-value"><b>{summary.done_today ?? 0}</b><span>เคส</span></span>
-            <span className="stat-desc">ปิดงานส่งมอบไปแล้ววันนี้</span>
-          </span>
-        </div>
       </div>
 
       <div className="filter-bar">
@@ -131,15 +135,24 @@ export default function DeliveryListPage() {
         <select value={client} onChange={(e) => setClient(e.target.value)}>
           {BOOKS.map(([k, label]) => <option key={k || 'all'} value={k}>{label}</option>)}
         </select>
-        <select value={bucket} onChange={(e) => setBucket(e.target.value)}>
+        <select
+          value={bucket}
+          onChange={(e) => { setBucket(e.target.value); setSpan('today'); }}
+        >
           <option value="">ความพร้อม — ทั้งหมด</option>
           {Object.entries(BUCKET).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
         </select>
+        {/* ช่วงเวลามีความหมายเฉพาะกับของที่ส่งไปแล้ว — คิวที่ยังไม่ส่งไม่มีวันที่ให้ย้อน */}
+        {done && (
+          <select value={span} onChange={(e) => setSpan(e.target.value)}>
+            {SPANS.map(([k, label]) => <option key={k} value={k}>{`ส่งมอบเมื่อ — ${label}`}</option>)}
+          </select>
+        )}
         <button
           type="button"
           className="btn btn-light"
           disabled={!hasFilter}
-          onClick={() => { setTerm(''); setBucket(''); setClient(''); }}
+          onClick={() => { setTerm(''); setBucket(''); setClient(''); setSpan('today'); }}
         >
           <Icon name="refresh" /> รีเซ็ต
         </button>
@@ -211,7 +224,12 @@ export default function DeliveryListPage() {
                     : <Badge kind="ok dot">ชำระครบ</Badge>;
                 },
               },
-              {
+              /* คิวที่ยังไม่ส่งสนใจ "นัดวันไหน" ส่วนของที่ส่งไปแล้วสนใจ "ส่งเมื่อไหร่" */
+              done ? {
+                label: 'ส่งมอบเมื่อ',
+                cls: 'nowrap',
+                render: (r) => (r.delivered_at ? fmtDateTime(r.delivered_at) : '—'),
+              } : {
                 label: 'นัดรับ',
                 cls: 'nowrap',
                 render: (r) => (r.appointment_date ? fmtDate(r.appointment_date) : '—'),

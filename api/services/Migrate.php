@@ -133,6 +133,41 @@ final class Migrate
                The handover used to be written onto production_jobs.pickup_at,
                which meant a case could not be handed over without a production
                job; the bench room is gone, the handover is not. */
+            /* สมุดว่าเคสนี้ตัดอะไรออกจากคลังไปแล้วบ้าง — ของจริงอยู่ที่ inventory_logs
+               ของฝั่งคลัง ตารางนี้เก็บ "สำเนาของเลขอ้างอิง ณ เวลาที่ของเคลื่อน"
+               ไว้สองเรื่อง: กันตัดซ้ำเมื่อกดยืนยันการขายใหม่ และเก็บ idem_key ไว้ใช้
+               เป็น reverses_key ตอนคืนของ
+
+               ห้ามมี foreign key ไป stock_lots — สมุดสต็อกเป็นบันทึกประวัติ ไม่ใช่
+               ตัวชี้ที่ยังมีชีวิต ผูกเป็น FK แล้วจะได้ผลแย่สองทาง: ลบล็อตไม่ได้เพราะ
+               ฝั่งเราค้ำอยู่ หรือประวัติถูก cascade ลบตามไป · lot_id จึงเป็น int เปล่า ๆ */
+            'case_stock_issues' => "CREATE TABLE IF NOT EXISTS case_stock_issues (
+                id               int(10) unsigned NOT NULL AUTO_INCREMENT,
+                case_id          int(10) unsigned NOT NULL,
+                order_id         int(10) unsigned NOT NULL,
+                slot             varchar(16) NOT NULL COMMENT 'frame | lensR | lensL',
+                kind             varchar(10) NOT NULL DEFAULT 'issue' COMMENT 'issue | rx',
+                sku              varchar(100) NOT NULL,
+                product_name     varchar(255) DEFAULT NULL,
+                lot_id           int(10) unsigned DEFAULT NULL COMMENT 'ล็อตที่ฟอร์มเลือก อ้างอิงเฉย ๆ ไม่ใช่ FK',
+                quantity         int(11) NOT NULL DEFAULT 1,
+                idem_key         varchar(120) NOT NULL,
+                reference_doc    varchar(100) DEFAULT NULL,
+                unit_cost        decimal(12,2) DEFAULT NULL COMMENT 'null = บัญชีที่เชื่อมเป็น staff จึงไม่ได้รับต้นทุน',
+                total_cost       decimal(12,2) DEFAULT NULL,
+                response         longtext DEFAULT NULL,
+                employee_id      int(10) unsigned DEFAULT NULL,
+                issued_at        datetime NOT NULL DEFAULT current_timestamp(),
+                reversed_at      datetime DEFAULT NULL,
+                reverse_idem_key varchar(120) DEFAULT NULL,
+                reverse_note     varchar(255) DEFAULT NULL,
+                PRIMARY KEY (id),
+                UNIQUE KEY uq_csi_idem (idem_key),
+                KEY idx_csi_case (case_id),
+                KEY idx_csi_order_slot (order_id, slot),
+                CONSTRAINT fk_csi_case FOREIGN KEY (case_id) REFERENCES cases (id) ON DELETE CASCADE
+              ) $c",
+
             'case_deliveries' => "CREATE TABLE IF NOT EXISTS case_deliveries (
                 id                        int(10) unsigned NOT NULL AUTO_INCREMENT,
                 case_id                   int(10) unsigned NOT NULL,
@@ -248,7 +283,7 @@ final class Migrate
                        c.referral_source, c.referral_note,
                        s.stage_no, s.label_th AS status_label_th, s.label_en AS status_label_en,
                        s.stage_group, s.sort_order AS status_order, s.is_waiting, s.is_terminal,
-                       cu.first_name, cu.last_name, cu.phone, cu.line_id,
+                       cu.first_name, cu.mid_name, cu.last_name, cu.phone, cu.line_id,
                        e.employee_name AS received_by_name,
                        o.id AS order_id, o.invoice_code, o.lens_type, o.frame_name, o.lens_name,
                        o.appointment_date, o.appointment_time, o.total_price, o.discount,
@@ -404,6 +439,11 @@ final class Migrate
         /* ช่องทางรับเงินที่ร้านใช้จริง — ถุงเงิน (กรุงไทย) เป็นช่องทางหนึ่ง ไม่ใช่ "อื่น ๆ"
            แถวเดิมที่ยังชื่อ Other ไม่มีใครใช้ จึงเปลี่ยนเป็นถุงเงินได้โดยไม่กระทบข้อมูลเก่า */
         $added = array_merge(
+            /* หน้าไหนเป็นคนสร้างรายการรับเงินนี้ — ขั้น "ชำระเงิน" หรือขั้น "ส่งมอบ"
+               มีไว้ตรวจย้อนอย่างเดียว ไม่มีตรรกะไหนอ่าน แถวเก่าเป็น null ได้ */
+            self::addColumns('payments', [
+                'source' => "varchar(20) DEFAULT NULL COMMENT 'payment | delivery'",
+            ]),
             self::addColumns('custom_orders', [
                 /* ราคาขายของออเดอร์นี้ ไม่ใช่ราคาใน products — ตั้งแยกได้ทีละชิ้น
                    lens_od_price = เลนส์ขวา (R) · lens_os_price = เลนส์ซ้าย (L)

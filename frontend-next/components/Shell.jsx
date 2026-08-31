@@ -20,8 +20,9 @@ const NAV = [
     ['📅', 'ปฏิทินจองคิว', '/bookings'],
     ['🗂', 'กระดานงาน', '/cases'],
   ]],
-  /* รับลูกค้าไม่มีหน้ารวมของตัวเอง — "เปิดเคสใหม่" บนกระดานงานคือขั้นนั้น */
+  /* ครบ 6 ขั้นตามหัวข้อ — ขั้นแรกไม่มีหน้ารวมของตัวเอง จึงชี้ไปที่ "เปิดเคสใหม่" */
   ['ขั้นตอนงาน 6 ขั้น', [
+    ['🛎', 'รับลูกค้า', '/cases/new'],
     ['👁', 'วัดสายตา', '/exam'],
     ['🛍', 'ขาย-เลือกกรอบ', '/case-sales'],
     ['💳', 'ชำระเงิน', '/case-payments'],
@@ -49,6 +50,9 @@ const NAV = [
     ['⚙️', 'ตั้งค่า/แจ้งเตือน', '/settings'],
   ]],
 ];
+
+/** ทุก href ในเมนู — ใช้ตัดสินว่าหน้านี้มีเมนูตรง ๆ หรือควรไฮไลต์เมนูของกลุ่ม */
+const NAV_PATHS = new Set(NAV.flatMap(([, items]) => items.map(([, , to]) => to)));
 
 function Clock() {
   const [now, setNow] = useState(() => new Date());
@@ -90,6 +94,10 @@ export function Shell({ children }) {
   }, [crumb, pathname]);
 
   const base = '/' + (pathname.split('/')[1] || '');
+  /* trailingSlash ทำให้ path เป็น "/cases/new/" — ตัดทิ้งก่อนเทียบกับ href ในเมนู */
+  const here = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname;
+  /* หน้าที่มีเมนูของตัวเอง (เช่น /cases/new) ไฮไลต์เมนูนั้น ไม่ใช่เมนูของกลุ่ม (/cases) */
+  const isActive = (to) => (NAV_PATHS.has(here) ? here === to : to === base);
 
   return (
     <div className="app" id="app">
@@ -103,7 +111,7 @@ export function Shell({ children }) {
             <Fragment key={group}>
               <div className="nav-group">{group}</div>
               {items.map(([icon, label, to]) => (
-                <Link key={to} href={to} className={to === base ? 'active' : ''}>
+                <Link key={to} href={to} className={isActive(to) ? 'active' : ''}>
                   <span className="ic"><Icon name={icon} /></span>{label}
                 </Link>
               ))}

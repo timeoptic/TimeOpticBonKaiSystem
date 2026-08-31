@@ -51,8 +51,8 @@ POST('/api/payments', function (array $req) {
     $id = Db::tx(function (Tx $q) use ($body, $amount, $kind, $method) {
         $r = $q->run(
             'INSERT INTO payments (case_id, order_id, sale_id, kind, method, amount,
-               reference, received_by, paid_at, notes)
-             VALUES (?,?,?,?,?,?,?,?,?,?)',
+               reference, received_by, paid_at, notes, source)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?)',
             int_or($body['case_id'] ?? null),
             int_or($body['order_id'] ?? null),
             int_or($body['sale_id'] ?? null),
@@ -62,7 +62,9 @@ POST('/api/payments', function (array $req) {
             nul($body['reference'] ?? null),
             int_or($body['received_by'] ?? null),
             str_or($body['paid_at'] ?? null) ?: nowStamp(),
-            nul($body['notes'] ?? null)
+            nul($body['notes'] ?? null),
+            /* ขั้นที่กดรับเงิน — ค่าอื่นที่ไม่รู้จักไม่เก็บ จะได้ไม่กลายเป็นช่องข้อความอิสระ */
+            in_array($body['source'] ?? null, ['payment', 'delivery'], true) ? $body['source'] : null
         );
         if (int_or($body['order_id'] ?? null) && $kind === 'deposit') {
             $q->run(

@@ -45,9 +45,17 @@ const FULL_COLS = [
   ['sphere', 'SPH'], ['cylinder', 'CYL'], ['axis', 'AXIS'], ['add', 'ADD'],
   ['va', 'VA'], ['prism', 'PRISM'], ['base', 'BASE'],
 ];
+/* แว่นเดิมมี PD ให้กรอกเองได้ — เป็นค่าที่วัดจากแว่นที่ลูกค้าใส่มา ไม่ใช่ค่าที่จะตัดแว่นใหม่
+   จึงไม่เกี่ยวกับขั้น "วัด Center" และเก็บไว้กับแถว kind='old' ของรอบนี้ */
 const OLD_COLS = [
   ['sphere', 'SPH'], ['cylinder', 'CYL'], ['axis', 'AXIS'], ['add', 'ADD'], ['va', 'VA'],
+  ['pd', 'PD'],
 ];
+/* ตารางค่าสายตาแสดง PD ต่อข้างไว้ท้ายแถวด้วย — อ่านอย่างเดียว ค่ามาจากขั้น "วัด Center"
+   เท่านั้น จึงไม่อยู่ใน FULL_COLS ที่ใช้ตอนบันทึกและตอนคัดลอกค่าไป Adjusted */
+const SHOWN_COLS = [...FULL_COLS, ['pd', 'PD']];
+/* คอลัมน์ที่แก้ไม่ได้แม้ตารางจะกรอกได้ */
+const LOCKED_COLS = ['pd'];
 
 /** ค่าที่ Final ต้องมีครบทั้งสองตา ถึงจะยืนยันได้ — ADD / PRISM / BASE ไม่บังคับ */
 const FINAL_REQUIRED = [['sphere', 'SPH'], ['cylinder', 'CYL'], ['axis', 'AXIS'], ['va', 'VA']];
@@ -73,12 +81,14 @@ const FINAL_SOURCES = [
  *
  * `missing` marks the cells a save is waiting on, so "กรุณากรอก SPH" points at
  * a box rather than leaving the reader to hunt for which of eight it meant. */
-function RxGrid({ cols, get, set, readOnly = false, missing = null }) {
+function RxGrid({ cols, get, set, readOnly = false, lockedCols = [], missing = null }) {
   const eye = (k) => (
     <tr key={k}>
       <th scope="row">{EYE_LABEL[k]}</th>
       {cols.map(([f]) => {
         const bad = !!missing?.[`${k}_${f}`];
+        /* ล็อกไว้แต่ยังเป็น <input> ตัวเดียวกัน คอลัมน์จะได้กว้างและวางตัวเลขตรงกับช่องอื่น */
+        const locked = lockedCols.includes(f);
         return (
           <td key={f}>
             {readOnly
@@ -88,8 +98,11 @@ function RxGrid({ cols, get, set, readOnly = false, missing = null }) {
                   aria-label={`${EYE_LABEL[k]} ${f}`}
                   aria-invalid={bad || undefined}
                   className={bad ? 'rx-missing' : undefined}
-                  value={get(k, f)}
-                  onChange={(e) => set(k, f, e.target.value)}
+                  disabled={locked || undefined}
+                  readOnly={locked || undefined}
+                  title={locked ? 'มาจากขั้น “วัด Center” — แก้ที่นี่ไม่ได้' : undefined}
+                  value={locked ? (get(k, f) || '—') : get(k, f)}
+                  onChange={locked ? undefined : (e) => set(k, f, e.target.value)}
                 />
               )}
           </td>
@@ -237,9 +250,8 @@ export function ExamPanel({ c, reload }) {
 
   /* PD มาจากขั้น "วัด Center" ที่เดียว — ที่นี่อ่านอย่างเดียว ห้ามมีที่กรอกซ้ำ */
   const centering = c.centering || null;
-  const pdFromCenter = centering?.pd_total
-    || [centering?.r_pd, centering?.l_pd].filter(Boolean).join(' / ')
-    || '';
+  /** PD ของตาข้างเดียว สำหรับคอลัมน์ PD ในตาราง Final — ว่างไว้ถ้ายังไม่ได้วัด Center */
+  const pdOf = (k) => (centering?.[`${k}_pd`] ?? '') === '' ? '' : String(centering[`${k}_pd`]);
   const setOld = (name, value) => { touch(); setOldForm((f) => ({ ...f, [name]: value })); };
   const field = (name, label, placeholder) => (
     <Field label={label}>
@@ -414,11 +426,14 @@ export function ExamPanel({ c, reload }) {
     return () => register({});
   }, [register]);
 
-  // คอลัมน์ = ค่าสายตาแต่ละช่อง, แถว = ที่มาของค่า อ่านเทียบ เก่า -> วัดได้ -> ที่ใช้จริง ได้ทีละบรรทัด
+  /* คอลัมน์ = ค่าสายตาแต่ละช่อง, แถว = ที่มาของค่า อ่านเทียบ เก่า -> วัดได้ -> ที่ใช้จริง ได้ทีละบรรทัด
+     เรียงตาม "ค่า" ก่อน แล้วค่อยแยกตา (SPH ทั้งคู่ แล้วค่อย CYL ทั้งคู่) ให้ลำดับตรงกับ
+     ตาราง MEASURED / FINAL ข้างบนที่ไล่ SPH → CYL → ... ไม่ใช่จับกลุ่มตาขวาให้หมดก่อน
+     — คนอ่านกวาดตาลงมาจากตารางบนแล้วเจอค่าเดียวกันเรียงลำดับเดิม */
   const compareCols = [
     ['R SPH', oldForm.r_sphere, form.r_sphere, shownFinal.r.sphere],
-    ['R CYL', oldForm.r_cylinder, form.r_cylinder, shownFinal.r.cylinder],
     ['L SPH', oldForm.l_sphere, form.l_sphere, shownFinal.l.sphere],
+    ['R CYL', oldForm.r_cylinder, form.r_cylinder, shownFinal.r.cylinder],
     ['L CYL', oldForm.l_cylinder, form.l_cylinder, shownFinal.l.cylinder],
   ];
   const compareRows = [['OLD GLASSES', 1], ['MEASURED', 2], ['FINAL', 3]];
@@ -588,17 +603,12 @@ export function ExamPanel({ c, reload }) {
               onChange={(e) => set('test_date', e.target.value)}
             />
           </Field>
-          <Field label="PD" hint="วัดที่ขั้น “วัด Center” — ที่นี่อ่านอย่างเดียว">
-            <div className="pd-readonly">
-              {pdFromCenter
-                ? <><b>{pdFromCenter}</b><span className="muted"> mm · จาก วัด Center</span></>
-                : <span className="muted">— ยังไม่มีข้อมูล Center —</span>}
-            </div>
-          </Field>
         </FormGrid>
+        {/* PD ไม่มีช่องรวมตรงนี้แล้ว — เป็นคอลัมน์ท้ายตาราง แยกตาม R / L และอ่านอย่างเดียว */}
         <RxGrid
-          cols={FULL_COLS}
-          get={(k, f) => form[`${k}_${f}`] ?? ''}
+          cols={SHOWN_COLS}
+          lockedCols={LOCKED_COLS}
+          get={(k, f) => (f === 'pd' ? pdOf(k) : form[`${k}_${f}`] ?? '')}
           set={(k, f, v) => set(`${k}_${f}`, v)}
         />
       </Section>
@@ -606,6 +616,7 @@ export function ExamPanel({ c, reload }) {
       <Section n="5" title="FINAL PRESCRIPTION" sub="ค่าสายตาที่ใช้จริงในเคสนี้" hint="เลือกว่าจะใช้ค่าชุดไหน ระบบจะคัดลอกค่าเก็บเป็นของรอบนี้ — ปรับตรงนี้ไม่กระทบค่าที่วัดได้">
         {/* "ใช้สำหรับ" อยู่ที่นี่ ไม่ใช่ที่ Measured — มันบอกว่าค่าชุดที่ตัดสินใจใช้แล้วนี้
             ถูกสั่งไว้ให้ใช้ทำอะไร ซึ่งเป็นการตัดสินใจ ไม่ใช่ผลการวัด */}
+        {/* PD ไม่มีช่องรวมตรงนี้แล้ว — อยู่เป็นคอลัมน์ท้ายตารางข้างล่าง แยกตาม R / L */}
         <FormGrid two>
           <Field label="ใช้สำหรับ / Test For">
             <ListSelect
@@ -615,13 +626,6 @@ export function ExamPanel({ c, reload }) {
               onChange={(e) => set('test_for', e.target.value)}
               blank="— เลือกการใช้งาน —"
             />
-          </Field>
-          <Field label="PD" hint="วัดที่ขั้น “วัด Center” — ที่นี่อ่านอย่างเดียว">
-            <div className="pd-readonly">
-              {pdFromCenter
-                ? <><b>{pdFromCenter}</b><span className="muted"> mm · จาก วัด Center</span></>
-                : <span className="muted">— ยังไม่มีข้อมูล Center —</span>}
-            </div>
           </Field>
         </FormGrid>
 
@@ -650,12 +654,15 @@ export function ExamPanel({ c, reload }) {
         </Row>
 
         <RxGrid
-          cols={FULL_COLS}
+          cols={SHOWN_COLS}
+          lockedCols={LOCKED_COLS}
           readOnly={confirmed || finalSource !== 'adjusted'}
           missing={confirmed ? null : missingFinal.cells}
-          get={(k, f) => (confirmed
-            ? (shownFinal[k][f] || '')
-            : finalSource === 'adjusted' ? (finalRx[`${k}_${f}`] ?? '') : (finalValues[k][f] || ''))}
+          get={(k, f) => (f === 'pd'
+            ? pdOf(k)
+            : confirmed
+              ? (shownFinal[k][f] || '')
+              : finalSource === 'adjusted' ? (finalRx[`${k}_${f}`] ?? '') : (finalValues[k][f] || ''))}
           set={(k, f, v) => { touch(); setFinalRx((x) => ({ ...x, [`${k}_${f}`]: v })); }}
         />
 
