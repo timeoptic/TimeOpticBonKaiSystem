@@ -1,53 +1,66 @@
 <?php
 /**
- * Inventory. Real stock lives in `products` (SKU-level) + `stock_lots`
- * (each receiving batch, with initial_qty/remaining_qty) — see lib/migrate.js.
- * This route group's paths and response shapes stay identical to the old
- * `stock` table so the frontend needs no changes; expandLots() (Helpers.php)
- * turns lot rows back into per-unit rows wherever the frontend expects
- * "amount=N -> N separately listed items" (list endpoint only).
+ * คลังสินค้า — ฝั่งหน้าร้าน.
+ *
+ * ของจริงอยู่ใน `products` (ระดับ SKU) กับ `stock_lots` (ล็อตที่รับเข้าแต่ละครั้ง
+ * มี initial_qty/remaining_qty) และ `inventory_logs` (สมุดการเคลื่อนไหว)
+ *
+ * **อ่านทำที่นี่ได้ เขียนไม่ได้** — ทุกเส้นที่เขียนส่งต่อให้บริการฝั่งคลังใน
+ * `stock/api/src/Service/` ทั้งหมด เพราะการเขียนหนึ่งครั้งไม่ใช่ SQL หนึ่งประโยค:
+ * รับของเข้าต้องออกเลขล็อต ลงสมุดคู่กัน และเคารพกฎว่า remaining_qty ของล็อตต้อง
+ * เท่ากับผลรวม inventory_logs ของล็อตนั้นเสมอ เขียนเองจะได้ยอดที่ถูกแต่สมุดที่
+ * กระทบยอดไม่ได้ แล้วรู้ตัวตอนปิดเดือน
+ *
+ * ก่อนหน้านี้ไฟล์นี้เขียนสามตารางนั้นเองจริง ๆ และพังไปแล้วสามแบบ:
+ *   · ลบล็อตทั้งที่มีแถวในสมุดชี้อยู่ — FK เป็น RESTRICT จึงขึ้น error 1451
+ *   · แก้ล็อตแล้วเขียน `attributes` ทับทั้งก้อนจากรายชื่อช่องที่ไม่มีค่าสายตา
+ *     ทำให้ sph/cyl/axis/add ของเลนส์หายทุกครั้งที่กดบันทึก
+ *   · ลด `initial_qty` ซึ่งคือจำนวนที่รับเข้ามาจริง ย้อนหลังไม่ได้ตามนิยาม
+ *
+ * path กับรูปร่างคำตอบยังเหมือนเดิมทุกอย่าง หน้าเว็บไม่ต้องแก้
+ * expandLots() (Helpers.php) ยังแตกล็อตกลับเป็นรายชิ้นให้หน้าคลังเหมือนเดิม
  */
 declare(strict_types=1);
 
 const STOCK_ATTR_FIELDS = ['model', 'color', 'size', 'lens_design', 'lens_index',
     'coating', 'tint', 'addons', 'product_line', 'vendor_name'];
 
-function stockAttributes(array $b): string
+/**
+ * รายละเอียดสินค้าที่ฟอร์มนี้ส่งมา ทับลงบนของเดิม
+ *
+ * ทับเฉพาะช่องที่ส่งมาจริง ๆ — ฝั่งคลังเก็บค่าสายตา (sph/cyl/axis/add) ไว้ในก้อน
+ * เดียวกัน ฟอร์มนี้ไม่มีช่องพวกนั้น ถ้าประกอบก้อนใหม่จากรายชื่อข้างบน ค่าสายตา
+ * ของเลนส์จะหายทุกครั้งที่มีคนมาแก้สีกรอบ
+ */
+function stockAttrs(array $b, array $current = []): array
 {
-    $out = [];
+    $out = $current;
     foreach (STOCK_ATTR_FIELDS as $f) {
-        $out[$f] = nul($b[$f] ?? null);
-    }
-    return json_encode($out, JSON_UNESCAPED_UNICODE);
-}
-
-/** Find an existing product by sku (adding stock for an existing SKU = a new lot
- *  under the same product), or create a new one — matches the old behavior where
- *  each "add to stock" submission was conceptually a new physical item, ported
- *  from lib/api.js's findOrCreateProduct (lib/api.js:623-642). */
-function findOrCreateProduct(Tx $q, array $b): int
-{
-    $sku = nul($b['sku'] ?? null);
-    if ($sku) {
-        $existing = $q->get('SELECT id FROM products WHERE sku = ?', $sku);
-        if ($existing) {
-            return (int) $existing['id'];
+        if (array_key_exists($f, $b)) {
+            $out[$f] = nul($b[$f] ?? null);
         }
     }
-    $productType = str_or($b['product_type'] ?? null, 'Frame') ?: 'Frame';
-    $cat = $q->get('SELECT id FROM categories WHERE code = ?', $productType);
-    if (!$cat) {
-        bad("ไม่รู้จักประเภทสินค้า: $productType");
+    return $out;
+}
+
+/** คนที่ล็อกอินอยู่ ในรูปที่บริการฝั่งคลังรับ — [role, id] */
+function stockActor(): array
+{
+    $a = StockModule::actor();
+    if ($a === null) {
+        throw new HttpError(401, 'ต้องเข้าสู่ระบบก่อน');
     }
-    $finalSku = $sku ?: ('SKU-' . strtoupper(uniqid()));
-    $r = $q->run(
-        'INSERT INTO products (sku, category_id, product_type, name, brand,
-           base_selling_price, is_custom_made, attributes)
-         VALUES (?,?,?,?,?,?,0,?)',
-        $finalSku, (int) $cat['id'], $productType, str_or($b['product_name'] ?? null),
-        nul($b['brand'] ?? null), num($b['product_price'] ?? null), stockAttributes($b)
-    );
-    return $r['insertId'];
+    return [(string) $a['role'], (int) $a['id']];
+}
+
+/** ฝั่งคลังรับ category_id ไม่ใช่ชื่อชนิดสินค้า */
+function stockCategoryId(string $type): int
+{
+    $cat = Db::get('SELECT id FROM categories WHERE code = ?', $type);
+    if (!$cat) {
+        bad("ไม่รู้จักประเภทสินค้า: $type");
+    }
+    return (int) $cat['id'];
 }
 
 GET('/api/stock', function (array $req) {
@@ -168,60 +181,91 @@ GET('/api/stock/:id', function (array $req) {
 
 POST('/api/stock', function (array $req) {
     $body = $req['body'];
-    if (str_or($body['product_name'] ?? null) === '') {
-        bad('กรุณากรอกชื่อสินค้า');
+    [$role, $actorId] = stockActor();
+
+    $amount = min(max(int_or($body['amount'] ?? null, 1) ?? 1, 1), 500);
+    /* ฟอร์มส่งมาเป็น datetime ส่วนวันที่รับเข้าเป็นวัน ไม่ใช่เวลา */
+    $date   = substr((string) (str_or($body['stock_date'] ?? null) ?: nowStamp()), 0, 10);
+
+    /* SKU เดิม = ล็อตใหม่ของสินค้าตัวเดิม ไม่ใช่สินค้าตัวใหม่ */
+    $sku      = trim((string) ($body['sku'] ?? ''));
+    $existing = $sku !== '' ? Db::get('SELECT sku FROM products WHERE sku = ?', $sku) : null;
+
+    if ($existing === null) {
+        if (str_or($body['product_name'] ?? null) === '') {
+            bad('กรุณากรอกชื่อสินค้า');
+        }
+        $type = str_or($body['product_type'] ?? null, 'Frame') ?: 'Frame';
+        $made = \Optic\Service\Catalog::createProduct([
+            'sku'                => $sku,
+            'product_type'       => $type,
+            'category_id'        => stockCategoryId($type),
+            'name'               => str_or($body['product_name'] ?? null),
+            'brand'              => nul($body['brand'] ?? null),
+            'base_selling_price' => (string) (num($body['product_price'] ?? null) ?? ''),
+            'attributes'         => stockAttrs($body),
+            'is_custom_made'     => false,
+        ], $role);
+        $sku = (string) $made['sku'];
+    } else {
+        $sku = (string) $existing['sku'];
     }
-    $amount    = min(max(int_or($body['amount'] ?? null, 1) ?? 1, 1), 500);
-    $stockDate = str_or($body['stock_date'] ?? null) ?: nowStamp();
 
-    $lotId = Db::tx(function (Tx $q) use ($body, $amount, $stockDate) {
-        $productId = findOrCreateProduct($q, $body);
-        $r = $q->run(
-            'INSERT INTO stock_lots (lot_number, product_id, supplier_id, cost_per_unit,
-               initial_qty, remaining_qty, received_date, notes)
-             VALUES (?,?,?,?,?,?,DATE(?),?)',
-            'LOT-' . strtoupper(uniqid()), $productId, int_or($body['supplier_id'] ?? null),
-            num($body['product_expense'] ?? null), $amount, $amount, $stockDate,
-            nul($body['notes'] ?? null)
-        );
-        $q->run(
-            "INSERT INTO inventory_logs (product_id, lot_id, action_type, quantity, notes)
-             VALUES (?,?,'IN',?,'รับเข้าคลัง')",
-            $productId, $r['insertId'], $amount
-        );
-        return $r['insertId'];
-    });
+    $lot = \Optic\Service\Receiving::receive([
+        'sku'           => $sku,
+        'quantity'      => $amount,
+        'cost_per_unit' => num($body['product_expense'] ?? null),
+        'received_date' => $date,
+        'supplier_id'   => int_or($body['supplier_id'] ?? null),
+        'note'          => nul($body['notes'] ?? null),
+    ], $role, $actorId);
 
-    // Old behavior returned one id per individual item; now every unit in this
-    // batch shares the one lot id — StockForm.jsx's success toast
-    // (`ids[0]${count>1 ? '–'+ids.at(-1) : ''}`) still renders sensibly with a
-    // single-element ids array (it just won't show a range for amount>1 anymore,
-    // a cosmetic difference StockForm.jsx doesn't need to change for).
-    return ['ok' => true, 'ids' => [$lotId], 'count' => $amount];
+    /* เดิมคืน id ทีละชิ้น ตอนนี้ทั้งล็อตใช้ id เดียว — StockForm.jsx แสดงผลได้อยู่ */
+    return ['ok' => true, 'ids' => [$lot['lotId']], 'count' => $amount];
 });
 
 PUT('/api/stock/:id', function (array $req) {
     $id  = int_or($req['params']['id']);
-    $lot = Db::get('SELECT * FROM stock_lots WHERE id = ?', $id);
+    $lot = Db::get(
+        'SELECT l.id, l.product_id, p.sku, p.attributes, p.is_custom_made
+           FROM stock_lots l JOIN products p ON p.id = l.product_id WHERE l.id = ?',
+        $id
+    );
     if (!$lot) {
         missing();
     }
     $body = $req['body'];
+    [$role, $actorId] = stockActor();
 
-    Db::tx(function (Tx $q) use ($id, $lot, $body) {
-        $q->run(
-            'UPDATE products SET product_type=?, name=?, brand=?, base_selling_price=?, attributes=?
-               WHERE id = (SELECT product_id FROM stock_lots WHERE id = ?)',
-            str_or($body['product_type'] ?? null, 'Frame') ?: 'Frame',
-            str_or($body['product_name'] ?? null), nul($body['brand'] ?? null),
-            num($body['product_price'] ?? null), stockAttributes($body), $id
-        );
-        $q->run(
-            'UPDATE stock_lots SET supplier_id=?, cost_per_unit=?, notes=? WHERE id = ?',
-            int_or($body['supplier_id'] ?? null), num($body['product_expense'] ?? null),
-            nul($body['notes'] ?? null), $id
-        );
-    });
+    $type    = str_or($body['product_type'] ?? null, 'Frame') ?: 'Frame';
+    $current = json_decode((string) $lot['attributes'], true);
+
+    \Optic\Service\Catalog::updateProduct((int) $lot['product_id'], [
+        'sku'                => $lot['sku'],
+        'product_type'       => $type,
+        'category_id'        => stockCategoryId($type),
+        'name'               => str_or($body['product_name'] ?? null),
+        'brand'              => nul($body['brand'] ?? null),
+        'base_selling_price' => (string) (num($body['product_price'] ?? null) ?? ''),
+        'attributes'         => stockAttrs($body, is_array($current) ? $current : []),
+        'is_custom_made'     => (bool) $lot['is_custom_made'],
+    ], $role);
+
+    /* ต้นทุนกับผู้ขายอยู่ที่ล็อต ไม่ใช่ที่สินค้า และต้นทุนเป็นสิทธิ์คนละใบ —
+       ฝั่งคลังเช็กให้เอง ที่นี่ส่งต่อเฉพาะช่องที่ฟอร์มส่งมาจริง */
+    $patch = [];
+    if (array_key_exists('product_expense', $body)) {
+        $patch['cost_per_unit'] = num($body['product_expense']);
+    }
+    if (array_key_exists('supplier_id', $body)) {
+        $patch['supplier_id'] = int_or($body['supplier_id']);
+    }
+    if (array_key_exists('notes', $body)) {
+        $patch['note'] = nul($body['notes']);
+    }
+    if ($patch) {
+        \Optic\Service\Catalog::updateLot($id, $patch, $role, $actorId);
+    }
 
     return Db::get('SELECT s.* FROM v_stock_lot s WHERE s.id = ?', $id);
 });
@@ -235,21 +279,22 @@ DELETE('/api/stock/:id', function (array $req) {
     if (!(int) $lot['remaining_qty']) {
         bad('ลบไม่ได้ — สินค้าล็อตนี้ขายหมดแล้ว');
     }
-    Db::tx(function (Tx $q) use ($id, $lot) {
-        $q->run(
-            "INSERT INTO inventory_logs (product_id, lot_id, action_type, quantity, notes)
-             VALUES (?,?,'ADJUST',-1,'ลบออกจากหน้าคลัง')",
-            (int) $lot['product_id'], $id
-        );
-        if ((int) $lot['initial_qty'] <= 1) {
-            $q->run('DELETE FROM stock_lots WHERE id = ?', $id);
-        } else {
-            $q->run(
-                'UPDATE stock_lots SET initial_qty = initial_qty - 1, remaining_qty = remaining_qty - 1
-                   WHERE id = ?',
-                $id
-            );
-        }
-    });
+    [$role, $actorId] = stockActor();
+
+    /* ล็อตที่ยังไม่มีใครแตะและมีชิ้นเดียว = คีย์ผิด ลบทิ้งได้ทั้งใบ
+       ที่เหลือคือของหายไปหนึ่งชิ้นจากล็อตที่ยังมีของ = การปรับยอด ซึ่งต้องมีแถวใน
+       สมุดกำกับ ไม่ใช่ลด remaining_qty เงียบ ๆ (และห้ามลด initial_qty เพราะนั่น
+       คือจำนวนที่รับเข้ามาจริง) */
+    if ((int) $lot['initial_qty'] <= 1 && (int) $lot['remaining_qty'] === (int) $lot['initial_qty']) {
+        \Optic\Service\Catalog::deleteLot($id, $role);
+        return ['ok' => true];
+    }
+
+    \Optic\Service\Catalog::updateLot(
+        $id,
+        ['remaining_qty' => (int) $lot['remaining_qty'] - 1],
+        $role,
+        $actorId
+    );
     return ['ok' => true];
 });

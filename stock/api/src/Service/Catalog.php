@@ -188,6 +188,9 @@ final class Catalog
         $cost = self::costOrKeep($req, 'cost_per_unit');
         $expiry = array_key_exists('expiry_date', $req) ? self::date($req['expiry_date']) : false;
         $note = array_key_exists('note', $req) ? self::optional($req['note'], 500) : false;
+        /* ผู้ขายเป็นป้ายกำกับ ไม่ใช่ตัวเลขในสมุด — แก้ได้โดยไม่ต้องลงรายการเคลื่อนไหว
+           แต่ยังต้องเข้าประตูเดียวกับที่เหลือ ไม่งั้นจะมีคนเขียน stock_lots ตรง ๆ อีกที */
+        $supplier = array_key_exists('supplier_id', $req) ? self::supplierOrNull($req['supplier_id']) : false;
 
         if ($cost !== false) {
             Roles::require(Roles::enterRxCost($role), 'แก้ต้นทุน');
@@ -225,7 +228,7 @@ final class Catalog
 
         $delta = $newRemaining - (int) $lot['remaining_qty'];
 
-        Db::tx(static function (PDO $pdo) use ($lotId, $lot, $newRemaining, $cost, $expiry, $note, $delta, $actorId, $initial, $reason): void {
+        Db::tx(static function (PDO $pdo) use ($lotId, $lot, $newRemaining, $cost, $expiry, $note, $supplier, $delta, $actorId, $initial, $reason): void {
             $sets = ['remaining_qty = ?'];
             $args = [$newRemaining];
 
@@ -240,6 +243,10 @@ final class Catalog
             if ($note !== false) {
                 $sets[] = 'notes = ?';
                 $args[] = $note;
+            }
+            if ($supplier !== false) {
+                $sets[] = 'supplier_id = ?';
+                $args[] = $supplier;
             }
             $args[] = $lotId;
 
@@ -319,6 +326,22 @@ final class Catalog
         });
 
         return ['id' => $lotId, 'lotNumber' => $lot['lot_number']];
+    }
+
+    /** null clears the supplier; anything else has to be a supplier that exists. */
+    private static function supplierOrNull(mixed $v): ?int
+    {
+        if ($v === null || $v === '') {
+            return null;
+        }
+        if (!is_numeric($v)) {
+            throw ApiError::badRequest('supplier_id ต้องเป็นตัวเลข', 'bad_supplier');
+        }
+        $id = (int) $v;
+        if (Db::value('SELECT id FROM suppliers WHERE id = ?', [$id]) === null) {
+            throw ApiError::badRequest('ไม่พบผู้ขายรายนี้', 'unknown_supplier');
+        }
+        return $id;
     }
 
     /** Whether a string is one of the five product types this system knows. */
