@@ -1,0 +1,41 @@
+# dependencies
+node_modules/
+frontend/node_modules/
+
+# build output
+frontend/dist/
+dist/
+
+# local config & secrets
+.env
+.env.local
+*.local
+
+# logs
+*.log
+npm-debug.log*
+
+# editor / OS
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+backups/
+
+# subagent-driven-development scratch workspace
+.superpowers/
+
+frontend-next/node_modules
+frontend-next/.next
+frontend-next/out
+frontend-next/.env.local
+
+# uploaded case photos/files (local disk only)
+api/uploads/
+
+# UI/UX Pro Max skill (vendored, 9MB) - reinstall from github.com/nextlevelbuilder/ui-ux-pro-max-skill
+.claude/skills/
+
+# เศษไฟล์ชั่วคราวจากตอนพอร์ตแอป Node เก่ามา Next.js (ส.ค. 2026) — ไม่ใช่ส่วนของระบบ
+_dom.html
+_legacy-work-assessment.md

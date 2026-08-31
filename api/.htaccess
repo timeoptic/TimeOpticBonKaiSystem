@@ -1,0 +1,26 @@
+# Send every request under this directory to the front controller.
+# Used when Apache serves the API; the built-in dev server uses router.php.
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # a real file (none exist here today, but keep the escape hatch) wins
+    RewriteCond %{REQUEST_FILENAME} -f [OR]
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteRule ^ - [L]
+
+    RewriteRule ^ index.php [QSA,L]
+</IfModule>
+
+# never serve the source of these directly
+<FilesMatch "\.(php)$">
+    <IfModule mod_authz_core.c>
+        Require all granted
+    </IfModule>
+</FilesMatch>
+
+<Files "config.php">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+</Files>

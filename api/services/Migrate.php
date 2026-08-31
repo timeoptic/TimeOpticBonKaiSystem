@@ -1,0 +1,562 @@
+<?php
+/**
+ * Additive migrations. These only CREATE TABLE IF NOT EXISTS — nothing in the
+ * original 27-table Access-derived schema is altered or dropped.
+ */
+declare(strict_types=1);
+
+final class Migrate
+{
+    private const CHARSET = 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci';
+
+    private const DEFAULT_SETTINGS = [
+        'telegram_enabled'         => '0',
+        'telegram_bot_token'       => '',
+        'telegram_chat_id'         => '',
+        'reminder_default_minutes' => '10',
+        'shop_name'                => 'TIME OPTIC',
+        'shop_open_time'           => '10:00',
+        'shop_close_time'          => '20:00',
+        'slot_minutes'             => '30',
+    ];
+
+    private static function tables(): array
+    {
+        $c = self::CHARSET;
+        return [
+            /* key/value settings (Telegram bot config, shop defaults) */
+            'app_settings' => "CREATE TABLE IF NOT EXISTS app_settings (
+                `key`      varchar(64) NOT NULL,
+                `value`    text DEFAULT NULL,
+                updated_at datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+                PRIMARY KEY (`key`)
+              ) $c",
+
+            /* advance queue bookings (จองคิวล่วงหน้า) */
+            'bookings' => "CREATE TABLE IF NOT EXISTS bookings (
+                id               int(10) unsigned NOT NULL AUTO_INCREMENT,
+                booking_code     varchar(40) NOT NULL,
+                customer_id      int(10) unsigned DEFAULT NULL,
+                case_id          int(10) unsigned DEFAULT NULL,
+                first_name       varchar(100) DEFAULT NULL,
+                last_name        varchar(100) DEFAULT NULL,
+                phone            varchar(40)  DEFAULT NULL,
+                line_id          varchar(80)  DEFAULT NULL,
+                booking_date     date NOT NULL,
+                booking_time     time NOT NULL,
+                duration_min     smallint(6) NOT NULL DEFAULT 30,
+                service_type     varchar(60) NOT NULL DEFAULT 'eye_exam',
+                channel          varchar(30) NOT NULL DEFAULT 'phone',
+                status           varchar(20) NOT NULL DEFAULT 'booked',
+                assigned_to      int(10) unsigned DEFAULT NULL,
+                reminder_minutes smallint(6) NOT NULL DEFAULT 10,
+                reminder_sent_at datetime DEFAULT NULL,
+                confirmed_at     datetime DEFAULT NULL,
+                arrived_at       datetime DEFAULT NULL,
+                cancelled_reason varchar(255) DEFAULT NULL,
+                intake_note      text DEFAULT NULL,
+                notes            text DEFAULT NULL,
+                created_by       int(10) unsigned DEFAULT NULL,
+                created_at       datetime NOT NULL DEFAULT current_timestamp(),
+                updated_at       datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+                PRIMARY KEY (id),
+                UNIQUE KEY uq_booking_code (booking_code),
+                KEY idx_booking_day (booking_date, booking_time),
+                KEY idx_booking_status (status, booking_date),
+                KEY idx_booking_reminder (reminder_sent_at, booking_date),
+                KEY fk_booking_customer (customer_id),
+                KEY fk_booking_case (case_id),
+                KEY fk_booking_emp (assigned_to),
+                KEY fk_booking_creator (created_by),
+                CONSTRAINT fk_booking_customer FOREIGN KEY (customer_id) REFERENCES customers (id) ON DELETE SET NULL,
+                CONSTRAINT fk_booking_case     FOREIGN KEY (case_id)     REFERENCES cases (id)     ON DELETE SET NULL,
+                CONSTRAINT fk_booking_emp      FOREIGN KEY (assigned_to) REFERENCES employees (id) ON DELETE SET NULL,
+                CONSTRAINT fk_booking_creator  FOREIGN KEY (created_by)  REFERENCES employees (id) ON DELETE SET NULL
+              ) $c",
+
+            /* บันทึกเบื้องต้นทีละขั้นตอน — one row per question/answer captured */
+            'booking_notes' => "CREATE TABLE IF NOT EXISTS booking_notes (
+                id          int(10) unsigned NOT NULL AUTO_INCREMENT,
+                booking_id  int(10) unsigned NOT NULL,
+                case_id     int(10) unsigned DEFAULT NULL,
+                step        varchar(40) NOT NULL DEFAULT 'intake',
+                question    varchar(200) DEFAULT NULL,
+                note        text NOT NULL,
+                recorded_by int(10) unsigned DEFAULT NULL,
+                created_at  datetime NOT NULL DEFAULT current_timestamp(),
+                PRIMARY KEY (id),
+                KEY idx_bn_booking (booking_id, created_at),
+                KEY fk_bn_case (case_id),
+                KEY fk_bn_emp (recorded_by),
+                CONSTRAINT fk_bn_booking FOREIGN KEY (booking_id)  REFERENCES bookings (id)  ON DELETE CASCADE,
+                CONSTRAINT fk_bn_case    FOREIGN KEY (case_id)     REFERENCES cases (id)     ON DELETE SET NULL,
+                CONSTRAINT fk_bn_emp     FOREIGN KEY (recorded_by) REFERENCES employees (id) ON DELETE SET NULL
+              ) $c",
+
+            /* every Telegram (or other) message we tried to send */
+            'notification_log' => "CREATE TABLE IF NOT EXISTS notification_log (
+                id         int(10) unsigned NOT NULL AUTO_INCREMENT,
+                channel    varchar(20) NOT NULL DEFAULT 'telegram',
+                kind       varchar(40) NOT NULL DEFAULT 'booking_reminder',
+                booking_id int(10) unsigned DEFAULT NULL,
+                target     varchar(120) DEFAULT NULL,
+                message    text DEFAULT NULL,
+                ok         tinyint(1) NOT NULL DEFAULT 0,
+                error      varchar(255) DEFAULT NULL,
+                created_at datetime NOT NULL DEFAULT current_timestamp(),
+                PRIMARY KEY (id),
+                KEY idx_nl_created (created_at),
+                KEY fk_nl_booking (booking_id),
+                CONSTRAINT fk_nl_booking FOREIGN KEY (booking_id) REFERENCES bookings (id) ON DELETE SET NULL
+              ) $c",
+
+            /* one row per (case, process) — the 6-process workflow's own status
+               axis, written only by an explicit action on that process. A case
+               with no rows still reports a status; it is derived from its data
+               (api/routes/processes.php). */
+            'case_processes' => "CREATE TABLE IF NOT EXISTS case_processes (
+                id           int(10) unsigned NOT NULL AUTO_INCREMENT,
+                case_id      int(10) unsigned NOT NULL,
+                process      varchar(20) NOT NULL,
+                status       varchar(20) NOT NULL DEFAULT 'not_started',
+                started_at   datetime DEFAULT NULL,
+                completed_at datetime DEFAULT NULL,
+                note         varchar(500) DEFAULT NULL,
+                created_at   datetime NOT NULL DEFAULT current_timestamp(),
+                updated_at   datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+                PRIMARY KEY (id),
+                UNIQUE KEY uq_cp_case_process (case_id, process),
+                CONSTRAINT fk_cp_case FOREIGN KEY (case_id) REFERENCES cases (id) ON DELETE CASCADE
+              ) $c",
+
+            /* ส่งมอบ — one row per case, the last step of the 6-step flow.
+               The handover used to be written onto production_jobs.pickup_at,
+               which meant a case could not be handed over without a production
+               job; the bench room is gone, the handover is not. */
+            /* สมุดว่าเคสนี้ตัดอะไรออกจากคลังไปแล้วบ้าง — ของจริงอยู่ที่ inventory_logs
+               ของฝั่งคลัง ตารางนี้เก็บ "สำเนาของเลขอ้างอิง ณ เวลาที่ของเคลื่อน"
+               ไว้สองเรื่อง: กันตัดซ้ำเมื่อกดยืนยันการขายใหม่ และเก็บ idem_key ไว้ใช้
+               เป็น reverses_key ตอนคืนของ
+
+               ห้ามมี foreign key ไป stock_lots — สมุดสต็อกเป็นบันทึกประวัติ ไม่ใช่
+               ตัวชี้ที่ยังมีชีวิต ผูกเป็น FK แล้วจะได้ผลแย่สองทาง: ลบล็อตไม่ได้เพราะ
+               ฝั่งเราค้ำอยู่ หรือประวัติถูก cascade ลบตามไป · lot_id จึงเป็น int เปล่า ๆ */
+            'case_stock_issues' => "CREATE TABLE IF NOT EXISTS case_stock_issues (
+                id               int(10) unsigned NOT NULL AUTO_INCREMENT,
+                case_id          int(10) unsigned NOT NULL,
+                order_id         int(10) unsigned NOT NULL,
+                slot             varchar(16) NOT NULL COMMENT 'frame | lensR | lensL',
+                kind             varchar(10) NOT NULL DEFAULT 'issue' COMMENT 'issue | rx',
+                sku              varchar(100) NOT NULL,
+                product_name     varchar(255) DEFAULT NULL,
+                lot_id           int(10) unsigned DEFAULT NULL COMMENT 'ล็อตที่ฟอร์มเลือก อ้างอิงเฉย ๆ ไม่ใช่ FK',
+                quantity         int(11) NOT NULL DEFAULT 1,
+                idem_key         varchar(120) NOT NULL,
+                reference_doc    varchar(100) DEFAULT NULL,
+                unit_cost        decimal(12,2) DEFAULT NULL COMMENT 'null = บัญชีที่เชื่อมเป็น staff จึงไม่ได้รับต้นทุน',
+                total_cost       decimal(12,2) DEFAULT NULL,
+                response         longtext DEFAULT NULL,
+                employee_id      int(10) unsigned DEFAULT NULL,
+                issued_at        datetime NOT NULL DEFAULT current_timestamp(),
+                reversed_at      datetime DEFAULT NULL,
+                reverse_idem_key varchar(120) DEFAULT NULL,
+                reverse_note     varchar(255) DEFAULT NULL,
+                PRIMARY KEY (id),
+                UNIQUE KEY uq_csi_idem (idem_key),
+                KEY idx_csi_case (case_id),
+                KEY idx_csi_order_slot (order_id, slot),
+                CONSTRAINT fk_csi_case FOREIGN KEY (case_id) REFERENCES cases (id) ON DELETE CASCADE
+              ) $c",
+
+            'case_deliveries' => "CREATE TABLE IF NOT EXISTS case_deliveries (
+                id                        int(10) unsigned NOT NULL AUTO_INCREMENT,
+                case_id                   int(10) unsigned NOT NULL,
+                order_id                  int(10) unsigned DEFAULT NULL,
+                delivered_at              datetime DEFAULT NULL,
+                handed_over_by            int(10) unsigned DEFAULT NULL,
+                received_by_customer_name varchar(120) DEFAULT NULL,
+                note                      varchar(500) DEFAULT NULL,
+                created_at                datetime NOT NULL DEFAULT current_timestamp(),
+                updated_at                datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+                PRIMARY KEY (id),
+                UNIQUE KEY uq_cd_case (case_id),
+                CONSTRAINT fk_cd_case FOREIGN KEY (case_id) REFERENCES cases (id) ON DELETE CASCADE
+              ) $c",
+
+            /* every stock item pulled for a case's production — the initial
+               pickLot() calls at "เริ่มผลิต" and any later "เบิกเพิ่ม" */
+            'production_withdrawals' => "CREATE TABLE IF NOT EXISTS production_withdrawals (
+                id                int(10) unsigned NOT NULL AUTO_INCREMENT,
+                case_id           int(10) unsigned NOT NULL,
+                production_job_id int(10) unsigned DEFAULT NULL,
+                item_type         varchar(20) NOT NULL,
+                stock_lot_id      int(10) unsigned DEFAULT NULL,
+                is_extra          tinyint(1) NOT NULL DEFAULT 0,
+                reason            varchar(255) DEFAULT NULL,
+                withdrawn_by      int(10) unsigned DEFAULT NULL,
+                withdrawn_at      datetime NOT NULL DEFAULT current_timestamp(),
+                PRIMARY KEY (id),
+                KEY idx_pw_case (case_id),
+                KEY fk_pw_job (production_job_id),
+                KEY fk_pw_lot (stock_lot_id),
+                KEY fk_pw_emp (withdrawn_by),
+                CONSTRAINT fk_pw_case FOREIGN KEY (case_id) REFERENCES cases (id) ON DELETE CASCADE,
+                CONSTRAINT fk_pw_job  FOREIGN KEY (production_job_id) REFERENCES production_jobs (id) ON DELETE SET NULL,
+                CONSTRAINT fk_pw_lot  FOREIGN KEY (stock_lot_id) REFERENCES stock_lots (id) ON DELETE SET NULL,
+                CONSTRAINT fk_pw_emp  FOREIGN KEY (withdrawn_by) REFERENCES employees (id) ON DELETE SET NULL
+              ) $c",
+
+            /* ขั้น "เลนส์" จองของไว้ให้เคส แต่ยังไม่ตัดสต็อก — ของยังอยู่บนชั้น
+               แต่เคสอื่นหยิบไม่ได้ ยอดที่ขายได้จริงคือ
+               remaining_qty − SUM(qty ของการจองที่ยัง active) */
+            'stock_reservations' => "CREATE TABLE IF NOT EXISTS stock_reservations (
+                id           int(10) unsigned NOT NULL AUTO_INCREMENT,
+                case_id      int(10) unsigned NOT NULL,
+                order_id     int(10) unsigned DEFAULT NULL,
+                item_type    varchar(20) NOT NULL,
+                product_id   int(10) unsigned DEFAULT NULL,
+                stock_lot_id int(10) unsigned DEFAULT NULL,
+                qty          int(11) NOT NULL DEFAULT 1,
+                status       varchar(20) NOT NULL DEFAULT 'active',
+                note         varchar(255) DEFAULT NULL,
+                reserved_at  datetime NOT NULL DEFAULT current_timestamp(),
+                reserved_by  int(10) unsigned DEFAULT NULL,
+                released_at  datetime DEFAULT NULL,
+                released_by  int(10) unsigned DEFAULT NULL,
+                consumed_at  datetime DEFAULT NULL,
+                PRIMARY KEY (id),
+                KEY idx_sr_case (case_id, item_type, status),
+                KEY idx_sr_lot (stock_lot_id, status),
+                KEY idx_sr_product (product_id, status),
+                KEY fk_sr_emp (reserved_by),
+                CONSTRAINT fk_sr_case FOREIGN KEY (case_id)      REFERENCES cases (id)      ON DELETE CASCADE,
+                CONSTRAINT fk_sr_lot  FOREIGN KEY (stock_lot_id) REFERENCES stock_lots (id) ON DELETE SET NULL,
+                CONSTRAINT fk_sr_emp  FOREIGN KEY (reserved_by)  REFERENCES employees (id)  ON DELETE SET NULL
+              ) $c",
+
+            /* สถานะรายชิ้นของเคส — กรอบ / เลนส์ขวา / เลนส์ซ้าย
+               is_required = 0 คือ "งานข้างเดียว" ไม่ต้องใช้ชิ้นนี้
+               ส่วนการสั่งของกับซัพพลายเออร์เก็บที่นี่ด้วย เพราะ lens_jobs
+               เป็นรายเคส (ทั้งคู่รวมกัน) ไม่ใช่รายชิ้น */
+            'case_item_fulfillment' => "CREATE TABLE IF NOT EXISTS case_item_fulfillment (
+                id               int(10) unsigned NOT NULL AUTO_INCREMENT,
+                case_id          int(10) unsigned NOT NULL,
+                order_id         int(10) unsigned DEFAULT NULL,
+                item_type        varchar(20) NOT NULL,
+                is_required      tinyint(1) NOT NULL DEFAULT 1,
+                status           varchar(20) NOT NULL DEFAULT 'not_chosen',
+                supplier_id      int(10) unsigned DEFAULT NULL,
+                order_no         varchar(60) DEFAULT NULL,
+                ordered_at       datetime DEFAULT NULL,
+                expected_arrival date DEFAULT NULL,
+                received_at      datetime DEFAULT NULL,
+                note             varchar(255) DEFAULT NULL,
+                updated_by       int(10) unsigned DEFAULT NULL,
+                created_at       datetime NOT NULL DEFAULT current_timestamp(),
+                updated_at       datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+                PRIMARY KEY (id),
+                UNIQUE KEY uq_cif_case_item (case_id, item_type),
+                KEY fk_cif_supplier (supplier_id),
+                KEY fk_cif_emp (updated_by),
+                CONSTRAINT fk_cif_case     FOREIGN KEY (case_id)     REFERENCES cases (id)     ON DELETE CASCADE,
+                CONSTRAINT fk_cif_supplier FOREIGN KEY (supplier_id) REFERENCES suppliers (id) ON DELETE SET NULL,
+                CONSTRAINT fk_cif_emp      FOREIGN KEY (updated_by)  REFERENCES employees (id) ON DELETE SET NULL
+              ) $c",
+        ];
+    }
+
+    /**
+     * Views that must be kept in step with the code. Re-created on every run —
+     * CREATE OR REPLACE is idempotent and the definitions live here rather than
+     * in a dump nobody reads.
+     */
+    private static function views(): array
+    {
+        return [
+            /* One row per case. The original joined custom_orders on case_id, so
+               a case with two orders came back twice and the board drew it twice
+               — pick the latest instead. (It also carried four lens_jobs columns
+               for the ติดตามเลนส์ screen; that screen and its step are gone.) */
+            'v_case_board' => "CREATE OR REPLACE VIEW v_case_board AS
+                SELECT c.id, c.case_code, c.status, c.is_rush, c.opened_at, c.closed_at,
+                       c.customer_id, c.notes, c.case_type, c.customer_category,
+                       c.referral_source, c.referral_note,
+                       s.stage_no, s.label_th AS status_label_th, s.label_en AS status_label_en,
+                       s.stage_group, s.sort_order AS status_order, s.is_waiting, s.is_terminal,
+                       cu.first_name, cu.mid_name, cu.last_name, cu.phone, cu.line_id,
+                       e.employee_name AS received_by_name,
+                       o.id AS order_id, o.invoice_code, o.lens_type, o.frame_name, o.lens_name,
+                       o.appointment_date, o.appointment_time, o.total_price, o.discount,
+                       o.total_price - o.discount AS net_price,
+                       COALESCE(p.paid, 0) AS paid,
+                       o.total_price - o.discount - COALESCE(p.paid, 0) AS balance,
+                       TIMESTAMPDIFF(DAY, c.opened_at, CURRENT_TIMESTAMP()) AS age_days
+                  FROM cases c
+                  JOIN case_statuses s ON s.code = c.status
+                  JOIN customers cu    ON cu.id = c.customer_id
+                  LEFT JOIN employees e ON e.id = c.received_by
+                  LEFT JOIN custom_orders o
+                         ON o.id = (SELECT MAX(o2.id) FROM custom_orders o2 WHERE o2.case_id = c.id)
+                  LEFT JOIN (SELECT order_id, SUM(amount) paid FROM payments
+                              WHERE order_id IS NOT NULL AND cancelled_at IS NULL
+                              GROUP BY order_id) p ON p.order_id = o.id",
+        ];
+    }
+
+    /**
+     * The 6-step case flow, spelled out as rows of case_statuses.
+     *
+     *   รับลูกค้า → วัดสายตา → ขาย/เลือกกรอบ → ชำระเงิน → วัด Center → ส่งมอบ
+     *
+     * `stage_group` is the step; `code` is the one status a case sits on inside
+     * it. Two rules the rest of the app leans on, so they are enforced here
+     * rather than left to whoever edits the table next:
+     *
+     *   1. sort_order never crosses back into an earlier group. advanceCaseStatus()
+     *      compares sort_order to decide "don't drag the case backwards", so a
+     *      sales-group row sorting after a payment-group row would let a case
+     *      bounce. This is why นัดหมาย/เอกสาร sits in delivery, not sales.
+     *   2. every non-terminal group has at least one row, because
+     *      entryStatusOfGroup() takes the first of them by sort_order.
+     *
+     * Declared in full and reconciled on every boot: a code that is not in this
+     * list is not part of the flow, and any case still parked on one is moved to
+     * the delivery step (everything cut — เลนส์, ผลิต, QC, แพ็คสินค้า — happened
+     * after วัด Center and before the customer collected).
+     */
+    private const CASE_STATUS_ROWS = [
+        // code,               stage_no, stage_group, label_th, label_en, sort, waiting, terminal
+        ['reception',      '1', 'reception', 'รับลูกค้า / ลงข้อมูล', 'Reception',            10, 0, 0],
+        ['old_rx',         '1', 'reception', 'บันทึกค่าสายตาเดิม',   'Old prescription',     20, 0, 0],
+        ['waiting_exam',   '2', 'exam',      'รอวัดสายตา',           'Waiting for exam',     30, 1, 0],
+        ['exam',           '2', 'exam',      'กำลังวัดสายตา',        'Eye examination',      40, 0, 0],
+        ['rx_decision',    '2', 'exam',      'ตัดสินใจค่าสายตา',     'Prescription decision', 50, 0, 0],
+        ['waiting_sales',  '3', 'sales',     'รอฝ่ายขาย',            'Waiting for sales',    60, 1, 0],
+        ['sales',          '3', 'sales',     'ขาย / เลือกกรอบ',      'Sales',                70, 0, 0],
+        ['order_confirm',  '3', 'sales',     'ยืนยันออเดอร์',        'Order confirmation',   80, 0, 0],
+        ['payment',        '4', 'payment',   'ชำระเงิน',             'Payment',              90, 0, 0],
+        ['centering',      '5', 'centering', 'วัดจุดศูนย์กลาง',      'Centering',           100, 0, 0],
+        ['frame_fitting',  '5', 'centering', 'วัดกรอบ / ฟิตติ้ง',    'Frame & fitting',     110, 0, 0],
+        ['appointment',    '6', 'delivery',  'นัดหมายรับของ',        'Appointment',         120, 0, 0],
+        ['ready_notify',   '6', 'delivery',  'พร้อมแจ้งลูกค้า',      'Ready to notify',     130, 1, 0],
+        ['notified',       '6', 'delivery',  'แจ้งลูกค้าแล้ว',       'Customer notified',   140, 0, 0],
+        ['waiting_pickup', '6', 'delivery',  'รอลูกค้ามารับ',        'Waiting for pickup',  150, 1, 0],
+        ['pickup',         '6', 'delivery',  'ส่งมอบ',               'Pickup',              160, 0, 0],
+        ['completed',      '—', 'done',      'ปิดเคสแล้ว',           'Completed',           900, 0, 1],
+        ['cancelled',      '—', 'done',      'ยกเลิกเคส',            'Cancelled',           910, 0, 1],
+    ];
+
+    /** where a case goes when the status it is sitting on is no longer in the flow */
+    private const DEAD_STATUS_LANDING = 'appointment';
+
+    private static function reshapeCaseStatuses(): void
+    {
+        $codes = [];
+        foreach (self::CASE_STATUS_ROWS as $r) {
+            $codes[] = $r[0];
+            Db::run(
+                'INSERT INTO case_statuses
+                   (code, stage_no, stage_group, label_th, label_en, sort_order, is_waiting, is_terminal)
+                 VALUES (?,?,?,?,?,?,?,?)
+                 ON DUPLICATE KEY UPDATE
+                   stage_no = VALUES(stage_no), stage_group = VALUES(stage_group),
+                   label_th = VALUES(label_th), label_en = VALUES(label_en),
+                   sort_order = VALUES(sort_order), is_waiting = VALUES(is_waiting),
+                   is_terminal = VALUES(is_terminal)',
+                $r[0], $r[1], $r[2], $r[3], $r[4], $r[5], $r[6], $r[7]
+            );
+        }
+        $in = implode(',', array_fill(0, count($codes), '?'));
+        /* move the cases first: v_case_board INNER JOINs case_statuses, so a case
+           left pointing at a deleted code would vanish off the board entirely */
+        Db::run(
+            "UPDATE cases SET status = ? WHERE status NOT IN ($in)",
+            self::DEAD_STATUS_LANDING,
+            ...$codes
+        );
+        Db::run("DELETE FROM case_statuses WHERE code NOT IN ($in)", ...$codes);
+    }
+
+    /**
+     * ย้าย "ใครเป็นลูกค้า" ออกจาก "งานนี้คืองานอะไร".
+     *
+     * `case_type` เคยรับสองหน้าที่: SIGHTFIRST กับ ลูกค้าใหม่ ปนอยู่กับ ตัดแว่นใหม่ /
+     * เปลี่ยนเลนส์ / ซ่อม ทั้งที่คนละคำถาม — เคส SIGHTFIRST หนึ่งใบจึงบอกไม่ได้เลยว่า
+     * เป็นงานตัดแว่นใหม่หรือเปลี่ยนเลนส์ เพราะช่องถูกใช้ไปแล้ว
+     *
+     * เดินครั้งเดียวก็พอ แต่เขียนให้รันซ้ำได้ไม่เสียหาย: แถวที่มี customer_category
+     * แล้วจะไม่ถูกแตะ และค่าที่ไม่ใช่ประเภทงานจริงจะถูกล้างออกจาก case_type
+     */
+    private static function splitCustomerCategoryOutOfCaseType(): void
+    {
+        Db::run(
+            "UPDATE cases SET customer_category = 'sight_first'
+              WHERE customer_category IS NULL AND case_type = 'SIGHTFIRST'"
+        );
+        Db::run("UPDATE cases SET customer_category = 'customer' WHERE customer_category IS NULL");
+        /* ค่าที่ตอบคำถาม "ใครเป็นลูกค้า" ไม่ใช่ "งานอะไร" — ย้ายความหมายไปแล้ว ล้างทิ้ง */
+        Db::run(
+            "UPDATE cases SET case_type = NULL
+              WHERE case_type IN ('SIGHTFIRST', 'ลูกค้าใหม่', 'ลูกค้าเก่า', 'ลูกค้าร้าน')"
+        );
+    }
+
+    /** @return string[] "table.column" names actually added this run */
+    private static function addColumns(string $table, array $columns): array
+    {
+        $added = [];
+        foreach ($columns as $name => $ddl) {
+            $exists = Db::get(
+                'SELECT COUNT(*) n FROM information_schema.columns
+                  WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?',
+                $table,
+                $name
+            );
+            if (!(int) ($exists['n'] ?? 0)) {
+                Db::pdo()->exec("ALTER TABLE `$table` ADD COLUMN `$name` $ddl");
+                $added[] = "$table.$name";
+            }
+        }
+        return $added;
+    }
+
+    /** @return string[] names of tables that were created on this run */
+    public static function run(): array
+    {
+        $created = [];
+        foreach (self::tables() as $name => $sql) {
+            $existing = Db::get(
+                'SELECT COUNT(*) n FROM information_schema.tables
+                  WHERE table_schema = DATABASE() AND table_name = ?',
+                $name
+            );
+            if (!(int) ($existing['n'] ?? 0)) {
+                Db::pdo()->exec($sql);
+                $created[] = $name;
+            }
+        }
+
+        /* ช่องทางรับเงินที่ร้านใช้จริง — ถุงเงิน (กรุงไทย) เป็นช่องทางหนึ่ง ไม่ใช่ "อื่น ๆ"
+           แถวเดิมที่ยังชื่อ Other ไม่มีใครใช้ จึงเปลี่ยนเป็นถุงเงินได้โดยไม่กระทบข้อมูลเก่า */
+        $added = array_merge(
+            /* หน้าไหนเป็นคนสร้างรายการรับเงินนี้ — ขั้น "ชำระเงิน" หรือขั้น "ส่งมอบ"
+               มีไว้ตรวจย้อนอย่างเดียว ไม่มีตรรกะไหนอ่าน แถวเก่าเป็น null ได้ */
+            self::addColumns('payments', [
+                'source' => "varchar(20) DEFAULT NULL COMMENT 'payment | delivery'",
+            ]),
+            self::addColumns('custom_orders', [
+                /* ราคาขายของออเดอร์นี้ ไม่ใช่ราคาใน products — ตั้งแยกได้ทีละชิ้น
+                   lens_od_price = เลนส์ขวา (R) · lens_os_price = เลนส์ซ้าย (L)
+                   ชื่อคอลัมน์ยัง od/os ตาม schema เดิม ส่วนที่ผู้ใช้เห็นเป็น R/L */
+                'frame_price'    => 'decimal(10,2) NOT NULL DEFAULT 0',
+                'lens_od_price'  => 'decimal(10,2) NOT NULL DEFAULT 0',
+                'lens_os_price'  => 'decimal(10,2) NOT NULL DEFAULT 0',
+                'options_price'  => 'decimal(10,2) NOT NULL DEFAULT 0',
+                /* ชื่อกับ SKU ของเลนส์แยกข้าง — เดิมมี lens_name ใบเดียวใช้ร่วมกันทั้งสอง
+                   ตา ซึ่งบอกไม่ได้ว่าข้างไหนเป็นรุ่นอะไรเมื่อสั่งคนละรุ่น เก็บเป็น snapshot
+                   ตอนขาย ไม่ใช่ join ทีหลัง เพราะสินค้าใน master เปลี่ยนชื่อได้ */
+                'lens_r_name'    => 'varchar(200) DEFAULT NULL',
+                'lens_r_sku'     => 'varchar(80) DEFAULT NULL',
+                'lens_l_name'    => 'varchar(200) DEFAULT NULL',
+                'lens_l_sku'     => 'varchar(80) DEFAULT NULL',
+            ]),
+            self::addColumns('frame_fittings', [
+                'frame_box_a' => 'decimal(6,2) DEFAULT NULL',
+                'frame_box_b' => 'decimal(6,2) DEFAULT NULL',
+            ]),
+            self::addColumns('qc_checks', [
+                'check_lens_od' => 'tinyint(1) NOT NULL DEFAULT 0',
+                'check_lens_os' => 'tinyint(1) NOT NULL DEFAULT 0',
+            ]),
+            self::addColumns('payments', [
+                'cancelled_at'  => 'datetime DEFAULT NULL',
+                'cancelled_by'  => 'int(10) unsigned DEFAULT NULL',
+                'cancel_reason' => 'varchar(255) DEFAULT NULL',
+            ]),
+            self::addColumns('production_jobs', [
+                'status'                    => "varchar(30) NOT NULL DEFAULT 'WAITING_FOR_ITEMS'",
+                'started_at'                => 'datetime DEFAULT NULL',
+                'started_by'                => 'int(10) unsigned DEFAULT NULL',
+                'received_by_customer_name' => 'varchar(120) DEFAULT NULL',
+                /* ปิดงานผลิต — คนละเรื่องกับส่งมอบ (pickup_at) */
+                'completed_at'              => 'datetime DEFAULT NULL',
+                'completed_by'              => 'int(10) unsigned DEFAULT NULL',
+                /* หยุดรอสินค้า: รออะไร เพราะอะไร ใครสั่งหยุด เมื่อไหร่ */
+                'waiting_item'              => 'varchar(20) DEFAULT NULL',
+                'waiting_reason'            => 'varchar(255) DEFAULT NULL',
+                'paused_at'                 => 'datetime DEFAULT NULL',
+                'paused_by'                 => 'int(10) unsigned DEFAULT NULL',
+            ]),
+            self::addColumns('cases', [
+                'closed_by' => 'int(10) unsigned DEFAULT NULL',
+                /* ประเภท "งาน" — ตัดแว่นใหม่ / เปลี่ยนเลนส์ / ซ่อม / ตรวจสายตา
+                   ตัวเลือกล็อกไว้ที่ Lookups::lists() ไม่ได้อ่านจากค่าที่เคยพิมพ์แล้ว */
+                'case_type'     => 'varchar(40) DEFAULT NULL',
+                /* ประเภท "ลูกค้า" — sight_first / customer. เคยปนอยู่ใน case_type
+                   ซึ่งทำให้ตอบสองคำถามด้วยช่องเดียว: เคส SIGHTFIRST เลยบอกไม่ได้ว่า
+                   เป็นงานตัดแว่นใหม่หรือเปลี่ยนเลนส์ ตอนนี้เป็นคนละแกนกัน และ
+                   ตัวแบ่งสมุดงาน SightFirst / ลูกค้าร้าน อ่านจากช่องนี้ */
+                'customer_category' => 'varchar(20) DEFAULT NULL',
+                /* ช่องทางที่รู้จักร้าน เลือก "อื่น ๆ" แล้วพิมพ์เองได้ */
+                'referral_note' => 'varchar(255) DEFAULT NULL',
+            ]),
+            /* ขั้นวัด Center บันทึกว่าเมื่อไหร่ และใครเป็นคนกรอก แยกจากใครเป็นคนวัด */
+            /* ช่องทางที่เลิกใช้แล้วต้องหายจากตัวเลือก แต่ป้ายชื่อยังต้องอยู่
+               ไม่งั้นรายการเก่าจะโชว์เป็นรหัสดิบ */
+            self::addColumns('list_pay_type', [
+                'is_active' => 'tinyint(1) NOT NULL DEFAULT 1',
+            ]),
+            /* กุญแจกันตัดซ้ำเวลาเปลี่ยนไปตัดสต็อกผ่าน API ของคลัง —
+               ค่าคงที่ต่อรายการเบิก ไม่ใช่ uuid ที่เปลี่ยนทุกครั้งที่ retry */
+            self::addColumns('production_withdrawals', [
+                'idem_key' => 'varchar(80) DEFAULT NULL',
+            ]),
+            self::addColumns('centerings', [
+                'measured_at' => 'datetime DEFAULT NULL',
+            ]),
+            /* แว่นเดิมบนใบกระดาษมีแค่ SPH/ADD/VA/PD มาแต่เดิม ของจริงต้องอ่าน
+               CYL/AXIS จากเลนส์เก่าด้วย และใบจากภายนอกต้องรู้ว่ามาจากที่ไหนเมื่อไร */
+            self::addColumns('prescriptions', [
+                'old_r_cylinder'       => 'varchar(20) DEFAULT NULL',
+                'old_r_axis'           => 'varchar(20) DEFAULT NULL',
+                'old_l_cylinder'       => 'varchar(20) DEFAULT NULL',
+                'old_l_axis'           => 'varchar(20) DEFAULT NULL',
+                'health_eye_disease'   => 'tinyint(1) NOT NULL DEFAULT 0',
+                'health_drug_allergy'  => 'tinyint(1) NOT NULL DEFAULT 0',
+                'health_medication'    => 'tinyint(1) NOT NULL DEFAULT 0',
+                'external_place'       => 'varchar(120) DEFAULT NULL',
+                'external_date'        => 'date DEFAULT NULL',
+            ])
+        );
+        /* Views come after addColumns, not before: v_case_board selects columns that
+           addColumns() is what puts there, so on a database that has not seen this
+           release yet, building the view first fails on its own migration. */
+        foreach (self::views() as $sql) {
+            Db::pdo()->exec($sql);
+        }
+
+        self::reshapeCaseStatuses();
+        self::splitCustomerCategoryOutOfCaseType();
+        /* พร้อมเพย์ / QR ไม่ได้ใช้แล้ว — ซ่อนจากตัวเลือก แต่แถวยังอยู่ให้ประวัติอ่านออก */
+        Db::run("UPDATE list_pay_type SET is_active = 0 WHERE code = 'QR'");
+
+        if (Db::get("SELECT COUNT(*) n FROM list_pay_type WHERE code = 'ThungNgern'")['n'] == 0) {
+            $usedOther = (int) Db::get("SELECT COUNT(*) n FROM payments WHERE method = 'Other'")['n'];
+            if ($usedOther === 0) {
+                Db::run("DELETE FROM list_pay_type WHERE code = 'Other'");
+            }
+            Db::run(
+                "INSERT INTO list_pay_type (code, label_th, sort_order) VALUES (?,?,?)",
+                'ThungNgern',
+                'ถุงเงิน',
+                5
+            );
+        }
+
+        $created = array_merge($created, $added);
+        foreach (self::DEFAULT_SETTINGS as $key => $value) {
+            Db::run('INSERT IGNORE INTO app_settings (`key`, `value`) VALUES (?, ?)', $key, $value);
+        }
+        return $created;
+    }
+}

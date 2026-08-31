@@ -1,0 +1,16 @@
+{
+  "name": "timeoptic-frontend-next",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "test": "node --test \"lib/__tests__/**/*.test.js\""
+  },
+  "dependencies": {
+    "next": "^15.5.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  }
+}
