@@ -17,6 +17,33 @@ final class Http
     /** @var list<array{method:string,parts:list<string>,handler:callable}> */
     private static array $routes = [];
 
+    /**
+     * The URL prefix this API answers on when a host application owns the port.
+     *
+     * Empty when it runs as its own server, which is how it was written and how
+     * `api/public/index.php` still starts on its own. Mounted inside the
+     * shop-floor API, both halves sit behind one origin and both would like to
+     * be called `/api`, so this half moves aside: `/stock-api/products` on the
+     * wire, `/api/products` in the route table. The routes themselves do not
+     * change, so neither does anything that calls a handler directly.
+     */
+    private static string $mount = '';
+
+    /**
+     * Whether this class answers CORS itself.
+     *
+     * The host application already did when mounted, and two
+     * `Access-Control-Allow-Origin` headers are worse than none — browsers
+     * reject the pair outright, which reads as the API being down.
+     */
+    private static bool $ownsCors = true;
+
+    public static function mountUnder(string $prefix): void
+    {
+        self::$mount = rtrim($prefix, '/');
+        self::$ownsCors = false;
+    }
+
     public static function route(string $method, string $path, callable $handler): void
     {
         self::$routes[] = [
@@ -127,15 +154,24 @@ final class Http
 
     public static function dispatch(): void
     {
-        self::cors();
+        if (self::$ownsCors) {
+            self::cors();
 
-        if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'OPTIONS') {
-            http_response_code(204);
-            exit;
+            if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'OPTIONS') {
+                http_response_code(204);
+                exit;
+            }
         }
 
         $method = strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET');
         $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
+
+        // Mounted: the prefix comes off and `/api` goes on, so the route table
+        // reads the same whether this is a server or a guest inside one.
+        if (self::$mount !== '' && str_starts_with($path, self::$mount)) {
+            $path = '/api' . substr($path, strlen(self::$mount));
+        }
+
         $parts = array_values(array_filter(explode('/', trim($path, '/')), strlen(...)));
 
         try {

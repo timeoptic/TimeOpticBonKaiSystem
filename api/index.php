@@ -63,6 +63,19 @@ if ($base !== '' && $base !== '/' && str_starts_with($path, $base)) {
 if ($path === '' || $path[0] !== '/') {
     $path = '/' . $path;
 }
+/* ระบบคลังและต้นทุน — ตารางเส้นทางของมันเอง ต่อท้ายพอร์ตเดียวกันนี้
+   ทั้งสองฝั่งอยากใช้ /api เหมือนกัน ฝั่งคลังจึงหลบมาอยู่ใต้ /stock-api
+
+   ต้องมาก่อนสองอย่างข้างล่าง: ก่อนบรรทัดที่เติม /api ให้อัตโนมัติ ไม่งั้นจะ
+   กลายเป็น /api/stock-api/... แล้วไม่ตรงกับอะไรเลย · และก่อนประตูตรวจ session
+   เพราะฝั่งคลังตรวจสิทธิ์เองทุกเส้นและตอบ reason ที่หน้าเว็บแยกแยะได้ */
+if ($path === '/stock-api' || str_starts_with($path, '/stock-api/')) {
+    StockModule::boot();
+    \Optic\Http::mountUnder('/stock-api');
+    require __DIR__ . '/../stock/api/public/index.php'; // ลงทะเบียนเส้นทางแล้ว dispatch เอง
+    exit;                                              // เผื่อวันที่ dispatch เลิก exit เอง
+}
+
 // an Alias pointing at api/ means the incoming path lacks the /api prefix
 if (!str_starts_with($path, '/api/') && $path !== '/api') {
     $path = '/api' . ($path === '/' ? '' : $path);

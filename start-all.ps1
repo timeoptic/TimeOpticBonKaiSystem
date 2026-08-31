@@ -3,11 +3,11 @@
   Starts both halves of the merged project: the storefront and the stock module.
 
 .DESCRIPTION
-  Four servers, four ports, chosen so this folder can run at the same time as
+  Three servers, three ports, chosen so this folder can run at the same time as
   the two standalone checkouts next to it (which use 3000/8080 and 3005/8090):
 
-    storefront UI   http://localhost:3010    storefront API   :8095
-    stock UI        http://localhost:3011    stock API        :8085
+    storefront UI   http://localhost:3010    API (both halves)  :8095
+    stock UI        http://localhost:3011
 
   The database lives on another machine on the shop LAN. Turn that machine on
   before running this, or every screen will show a connection error - the ports
@@ -66,15 +66,13 @@ Stop-Ours
 Write-Host "`nStarting" -ForegroundColor Cyan
 Start-Process php -ArgumentList '-S', '0.0.0.0:8095', '-t', "$root\api", "$root\api\router.php" `
   -WorkingDirectory $root -WindowStyle Minimized
-Start-Process php -ArgumentList '-S', '0.0.0.0:8085', '-t', "$root\stock\api\public", "$root\stock\api\public\index.php" `
-  -WorkingDirectory "$root\stock" -WindowStyle Minimized
 Start-Process cmd -ArgumentList '/k', 'npm run dev -- -p 3010 --hostname 0.0.0.0' `
   -WorkingDirectory "$root\frontend-next" -WindowStyle Minimized
 Start-Process cmd -ArgumentList '/k', 'npm run dev -- -p 3011 --hostname 0.0.0.0' `
   -WorkingDirectory "$root\stock\web" -WindowStyle Minimized
 
 Write-Host "  waiting for the two web servers to compile"
-foreach ($port in 8095, 8085, 3010, 3011) {
+foreach ($port in 8095, 3010, 3011) {
   $ok = $false
   foreach ($try in 1..40) {
     if (Test-NetConnection 127.0.0.1 -Port $port -InformationLevel Quiet -WarningAction SilentlyContinue) { $ok = $true; break }

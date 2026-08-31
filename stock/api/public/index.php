@@ -10,7 +10,7 @@ declare(strict_types=1);
  * caller cannot — and the shop-floor system is going to be a direct caller.
  */
 
-require __DIR__ . '/../src/bootstrap.php';
+require_once __DIR__ . '/../src/bootstrap.php';
 
 use Optic\ApiError;
 use Optic\Auth;
