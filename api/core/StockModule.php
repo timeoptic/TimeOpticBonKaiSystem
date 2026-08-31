@@ -45,4 +45,47 @@ final class StockModule
         self::boot();
         return \Optic\Auth::actor();
     }
+
+    /**
+     * ชื่อช่องที่แปลว่า "ของนี้เราซื้อมาเท่าไร" ไม่ใช่ "ขายเท่าไร"
+     *
+     * ราคาขายเปิดให้ทุกคนเห็น เพราะการบอกราคาลูกค้าคืองาน ส่วนราคาซื้อไม่ใช่
+     * `product_expense` คือชื่อที่ v_stock_lot ตั้งให้ stock_lots.cost_per_unit
+     */
+    private const COST_FIELDS = [
+        'product_expense', 'cost_per_unit',
+        'unit_cost', 'unitCost',
+        'total_cost', 'totalCost',
+    ];
+
+    /**
+     * ตัดตัวเลขต้นทุนออกจากคำตอบ ถ้าคนที่ถามไม่มีสิทธิ์เห็น
+     *
+     * ทำที่ทางออกทางเดียว ไม่ใช่ไล่แก้ทีละ query — `SELECT *` จาก `v_stock_lot`
+     * มีอยู่หกจุดในโปรเจกต์นี้ และจุดที่เจ็ดจะถูกเขียนขึ้นวันหนึ่งโดยคนที่ไม่รู้
+     * เรื่องนี้ · เป็น null ไม่ใช่ 0 เพราะศูนย์เป็นตัวเลขที่อ่านว่า "ฟรี"
+     *
+     * ตัดตอนตอบ ไม่ใช่ตอนบันทึก — `case_stock_issues` ยังเก็บต้นทุนไว้ครบตามเดิม
+     * แม้คนที่กดขายจะเป็นพนักงานหน้าร้าน ไม่งั้นบัญชีจะมีรูตามคนที่บังเอิญกดปุ่ม
+     */
+    public static function redactCost(mixed $value, ?array $actor): mixed
+    {
+        if ($actor !== null && \Optic\Roles::seeCost((string) $actor['role'])) {
+            return $value;
+        }
+        return self::blankCosts($value);
+    }
+
+    private static function blankCosts(mixed $value): mixed
+    {
+        if (!is_array($value)) {
+            return $value;
+        }
+        foreach ($value as $key => $item) {
+            $value[$key] = (is_string($key) && in_array($key, self::COST_FIELDS, true))
+                ? null
+                : self::blankCosts($item);
+        }
+        return $value;
+    }
 }

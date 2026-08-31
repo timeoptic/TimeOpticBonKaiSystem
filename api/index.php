@@ -81,7 +81,9 @@ try {
     // null is a real answer here ("this case has no fitting row yet"), so it is
     // passed through rather than turned into an ok-envelope
     $result = Router::dispatch($method, $path, $_GET, $body);
-    Http::json(200, $result);
+    /* ต้นทุนออกจากที่นี่ได้เฉพาะคนที่มีสิทธิ์เห็น — ตัดที่ทางออก ไม่ใช่ซ่อนในหน้าเว็บ
+       หน้าจอที่แค่ไม่วาดตัวเลข ก็ยังได้รับตัวเลขนั้นไปแล้ว เปิด DevTools ก็เห็น */
+    Http::json(200, StockModule::redactCost($result, StockModule::actor()));
 } catch (HttpError $e) {
     Http::json($e->status, ['error' => $e->getMessage()]);
 } catch (\Optic\ApiError $e) {

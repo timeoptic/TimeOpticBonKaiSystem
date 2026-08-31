@@ -53,6 +53,23 @@ function stockActor(): array
     return [(string) $a['role'], (int) $a['id']];
 }
 
+/**
+ * ตัวเลขเงินที่ยังไม่ได้กรอก ต้องเป็น null ไม่ใช่ 0
+ *
+ * `num()` คืน 0.0 เมื่อช่องว่าง ซึ่งใช้ไม่ได้กับสองเรื่องนี้:
+ *   · ต้นทุนที่ยังไม่มา ฝั่งคลังเก็บเป็น null แปลว่า "รอใบกำกับจากผู้ขาย"
+ *     ถ้าส่ง 0 ไป จะกลายเป็นของที่ได้มาฟรี แล้วกำไรทั้งเดือนจะพองขึ้นเงียบ ๆ
+ *   · และเพราะ 0 เป็นตัวเลข ฝั่งคลังจะถือว่ามีการกรอกต้นทุน ซึ่งเป็นสิทธิ์คนละใบ
+ *     พนักงานหน้าร้านจะรับของไม่ได้เลย ทั้งที่ไม่ได้ตั้งใจกรอกอะไร
+ *
+ * คืนเป็นข้อความ เพราะฝั่งคลังตรวจรูปแบบทศนิยมด้วย regex ไม่ได้แปลงเป็น float ก่อน
+ */
+function stockMoney(mixed $v): ?string
+{
+    $s = str_or($v);
+    return ($s === '' || !is_numeric($s)) ? null : $s;
+}
+
 /** ฝั่งคลังรับ category_id ไม่ใช่ชื่อชนิดสินค้า */
 function stockCategoryId(string $type): int
 {
@@ -202,7 +219,7 @@ POST('/api/stock', function (array $req) {
             'category_id'        => stockCategoryId($type),
             'name'               => str_or($body['product_name'] ?? null),
             'brand'              => nul($body['brand'] ?? null),
-            'base_selling_price' => (string) (num($body['product_price'] ?? null) ?? ''),
+            'base_selling_price' => stockMoney($body['product_price'] ?? null) ?? '',
             'attributes'         => stockAttrs($body),
             'is_custom_made'     => false,
         ], $role);
@@ -214,7 +231,7 @@ POST('/api/stock', function (array $req) {
     $lot = \Optic\Service\Receiving::receive([
         'sku'           => $sku,
         'quantity'      => $amount,
-        'cost_per_unit' => num($body['product_expense'] ?? null),
+        'cost_per_unit' => stockMoney($body['product_expense'] ?? null),
         'received_date' => $date,
         'supplier_id'   => int_or($body['supplier_id'] ?? null),
         'note'          => nul($body['notes'] ?? null),
@@ -246,7 +263,7 @@ PUT('/api/stock/:id', function (array $req) {
         'category_id'        => stockCategoryId($type),
         'name'               => str_or($body['product_name'] ?? null),
         'brand'              => nul($body['brand'] ?? null),
-        'base_selling_price' => (string) (num($body['product_price'] ?? null) ?? ''),
+        'base_selling_price' => stockMoney($body['product_price'] ?? null) ?? '',
         'attributes'         => stockAttrs($body, is_array($current) ? $current : []),
         'is_custom_made'     => (bool) $lot['is_custom_made'],
     ], $role);
@@ -255,7 +272,7 @@ PUT('/api/stock/:id', function (array $req) {
        ฝั่งคลังเช็กให้เอง ที่นี่ส่งต่อเฉพาะช่องที่ฟอร์มส่งมาจริง */
     $patch = [];
     if (array_key_exists('product_expense', $body)) {
-        $patch['cost_per_unit'] = num($body['product_expense']);
+        $patch['cost_per_unit'] = stockMoney($body['product_expense']);
     }
     if (array_key_exists('supplier_id', $body)) {
         $patch['supplier_id'] = int_or($body['supplier_id']);

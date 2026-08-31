@@ -93,16 +93,37 @@ try {
 
     echo "\nความถูกต้องของข้อมูล\n";
 
-    $mine = "'categories','suppliers','products','stock_lots','inventory_logs','admins'";
-    $cross = (int) Db::value(
-        "SELECT COUNT(*) FROM information_schema.key_column_usage
-         WHERE table_schema = DATABASE() AND referenced_table_name IS NOT NULL
-           AND ((table_name IN ({$mine}) AND referenced_table_name NOT IN ({$mine}))
-             OR (table_name NOT IN ({$mine}) AND referenced_table_name IN ({$mine})))"
+    /*
+     * ตารางของระบบนี้ทั้งหมด — `rx_orders` `branches` `branch_issues`
+     * `stock_requests` เคยตกหล่นจากรายชื่อนี้ ทำให้ `fk_rx_log` ซึ่งเป็น
+     * ของเราชี้หาของเราเอง ถูกนับเป็น FK ข้ามระบบมาตลอด
+     */
+    $mine = "'categories','suppliers','products','stock_lots','inventory_logs','admins',"
+          . "'rx_orders','branches','branch_issues','stock_requests'";
+
+    /*
+     * FK ข้ามระบบที่ตั้งใจให้มี — หน้าร้านจองของและเบิกของไปผลิต ทั้งสองอย่าง
+     * ชี้มาที่ล็อตของเรา และควรชี้ เพราะการลบล็อตทิ้งทั้งที่มีคนจองไว้คือบั๊ก
+     * เส้นที่ไม่ได้อยู่ในรายชื่อนี้ต่างหากที่เป็นเรื่องต้องดู
+     */
+    $agreed = "'fk_pw_lot','fk_sr_lot','fk_cif_supplier'";
+
+    $unexpected = Db::all(
+        "SELECT DISTINCT constraint_name AS c, table_name AS t, referenced_table_name AS rt
+           FROM information_schema.key_column_usage
+          WHERE table_schema = DATABASE() AND referenced_table_name IS NOT NULL
+            AND constraint_name NOT IN ({$agreed})
+            AND ((table_name IN ({$mine}) AND referenced_table_name NOT IN ({$mine}))
+              OR (table_name NOT IN ({$mine}) AND referenced_table_name IN ({$mine})))"
     );
-    line('FK ข้ามไปหาระบบหน้าร้าน', $cross === 0 ? 'ไม่มี' : "{$cross} เส้น", $cross === 0);
+    $cross = count($unexpected);
+    line(
+        'FK ข้ามระบบที่ไม่ได้ตกลงกันไว้',
+        $cross === 0 ? 'ไม่มี' : implode(', ', array_map(fn($r) => "{$r['t']}->{$r['rt']}", $unexpected)),
+        $cross === 0,
+    );
     if ($cross > 0) {
-        $problems[] = 'มี foreign key ข้ามระบบโผล่กลับมา — น่าจะมาจาก migration ของอีกฝั่ง';
+        $problems[] = 'มี foreign key ข้ามระบบที่ไม่ได้ตกลงกันไว้ — น่าจะมาจาก migration ของอีกฝั่ง';
     }
 
     $drift = Db::all(
