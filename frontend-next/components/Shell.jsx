@@ -9,6 +9,15 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { crumbFor } from '../lib/crumb.js';
 import { Icon } from './Icon.jsx';
+import { useAuth } from '../contexts/AuthContext.jsx';
+
+/**
+ * ระบบคลังและต้นทุนเป็นอีกหน้าเว็บหนึ่ง คนละเมนู คนละหน้าตา
+ *
+ * ตั้งใจไม่ยุบสองเมนูเข้าด้วยกัน — คนละงาน คนละคนใช้ ยุบแล้วเมนูจะยาวจนหาไม่เจอ
+ * ทั้งสองฝั่ง มีแค่ปุ่มเดินข้ามไปมา และล็อกอินใบเดียวกันจึงไม่ต้องล็อกอินซ้ำ
+ */
+const STOCK_APP = process.env.NEXT_PUBLIC_STOCK_APP_URL || 'http://localhost:3000';
 
 export { crumbFor };
 
@@ -68,6 +77,24 @@ function Clock() {
   );
 }
 
+/** ใครล็อกอินอยู่ กับปุ่มออก — มุมขวาบน ที่เดียวกับทุกระบบ */
+function WhoAmI() {
+  const { actor, logout } = useAuth();
+  if (!actor) {
+    return null;
+  }
+  return (
+    <span className="row" style={{ gap: 8, alignItems: "center" }}>
+      <span className="muted lbl" style={{ fontSize: 12 }}>
+        {actor.displayName || actor.username} · {actor.roleLabel}
+      </span>
+      <button type="button" className="btn btn-ghost" onClick={logout} title="ออกจากระบบ">
+        ออก
+      </button>
+    </span>
+  );
+}
+
 export function Shell({ children }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
@@ -117,6 +144,10 @@ export function Shell({ children }) {
               ))}
             </Fragment>
           ))}
+          <div className="nav-group">ระบบอื่น</div>
+          <a href={STOCK_APP} target="_blank" rel="noreferrer">
+            <span className="ic"><Icon name="📦" /></span>คลังและต้นทุน ↗
+          </a>
         </nav>
         <div className="sidebar-foot"><Clock /></div>
       </aside>
@@ -140,6 +171,7 @@ export function Shell({ children }) {
           <div className="crumb" id="crumb">{crumb}</div>
           <div className="spacer" />
           <Link className="btn btn-ghost" href="/"><Icon name="home" /> <span className="lbl">เมนูหลัก</span></Link>
+          <WhoAmI />
         </header>
         <div className="content" id="view">{children}</div>
       </main>

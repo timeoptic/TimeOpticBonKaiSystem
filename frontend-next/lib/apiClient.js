@@ -25,6 +25,9 @@ async function request(method, path, body, signal) {
     headers: body ? { 'content-type': 'application/json' } : undefined,
     body: body ? JSON.stringify(body) : undefined,
     signal,
+    /* คุกกี้ optic_session ต้องไปด้วยทุกครั้ง ไม่งั้น API ตอบ 401 ทั้งที่ล็อกอินแล้ว
+       — หน้าเว็บกับ API อยู่คนละพอร์ต เบราว์เซอร์จึงไม่แนบให้เองถ้าไม่บอก */
+    credentials: 'include',
   });
   let data = null;
   try {
@@ -37,7 +40,7 @@ async function request(method, path, body, signal) {
 }
 
 async function upload(path, formData) {
-  const res = await fetch(apiOrigin() + path, { method: 'POST', body: formData });
+  const res = await fetch(apiOrigin() + path, { method: 'POST', body: formData, credentials: 'include' });
   let data = null;
   try {
     data = await res.json();

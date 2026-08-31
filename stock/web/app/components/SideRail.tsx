@@ -119,6 +119,15 @@ const MONEY: Item[] = [
   { href: "/branches", label: "สาขา", hint: "รายชื่อสาขาที่มาเบิกของได้", icon: ICON.shops },
 ];
 
+/**
+ * หน้าร้านเป็นอีกเว็บหนึ่ง คนละเมนู คนละหน้าตา
+ *
+ * ตั้งใจไม่ยุบสองเมนูเข้าด้วยกัน — คนละงาน คนละคนใช้ ยุบแล้วเมนูจะยาวจนหาไม่เจอ
+ * ทั้งสองฝั่ง มีแค่ปุ่มเดินข้ามไปมา และล็อกอินใบเดียวกันจึงไม่ต้องล็อกอินซ้ำ
+ */
+const FRONTDESK =
+  process.env.NEXT_PUBLIC_FRONTDESK_APP_URL ?? "http://localhost:3005";
+
 const ADMIN: Item[] = [
   { href: "/users", label: "จัดการผู้ใช้", hint: "บัญชี สิทธิ์ และตำแหน่งงาน", icon: ICON.people },
 ];
@@ -178,6 +187,24 @@ export default function SideRail({
           <Group title="เงินและสาขา" items={MONEY} pathname={pathname} />
         ) : null}
         {actor.role === "owner" ? <Group title="ระบบ" items={ADMIN} pathname={pathname} /> : null}
+
+        <div className="rail-group">
+          <p className="rail-group__title">ระบบอื่น</p>
+          <ul className="rail-list">
+            <li>
+              <a
+                href={FRONTDESK}
+                target="_blank"
+                rel="noreferrer"
+                className="rail-item"
+                title="เคส ลูกค้า วัดสายตา และการขายหน้าร้าน"
+              >
+                {ICON.shops}
+                <span>หน้าร้าน ↗</span>
+              </a>
+            </li>
+          </ul>
+        </div>
       </div>
 
       <div className="rail-foot">
