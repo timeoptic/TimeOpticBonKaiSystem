@@ -84,22 +84,79 @@ export default function Select({
   // to keep, and none of the suggestions is "current" until one is picked.
   const typed = free ? value : query;
   const q = typed.trim().toLowerCase();
+
+  /**
+   * ข้อความที่ตรงกับตัวเลือกอยู่แล้ว ไม่ใช่คำค้น
+   *
+   * ช่องที่มีค่าอยู่แล้วจะกรองรายการด้วยค่าของตัวเอง — เปิดรายการตอนช่องเขียนว่า
+   * "0.00" แล้วเหลือให้เลือกสามบรรทัด (-10.00, 0.00, +10.00) เพราะทั้งสามมี
+   * "0.00" อยู่ในตัว · คนที่กดเปิดรายการทั้งที่ช่องมีค่าอยู่แล้ว กำลังจะ
+   * "เปลี่ยน" ค่า ไม่ใช่ "ค้นหา" ค่าที่ตัวเองเห็นอยู่ จึงต้องเห็นรายการเต็ม
+   *
+   * กรองต่อเมื่อสิ่งที่พิมพ์ยังไม่ตรงกับตัวเลือกไหนเลย ซึ่งคือตอนกำลังพิมพ์จริง ๆ
+   */
+  const exact = q !== "" && options.some((o) => o.value.trim().toLowerCase() === q);
   const shown =
-    q === ""
+    q === "" || exact
       ? options
       : options.filter((o) => `${o.label} ${o.keywords ?? ""}`.toLowerCase().includes(q));
 
-  // Keyboard moves the highlight; the highlight has to stay on screen for that
-  // to mean anything once the list is longer than its own box.
+  /**
+   * ตอนเปิด รายการหยุดตรงค่าที่ช่องถืออยู่ — แล้วอยู่นิ่ง
+   *
+   * บันไดค่าสายตายาว 97 ขั้น (CYL 49) เปิดมาเจอ -12.00 ทั้งที่ช่องเขียนว่า
+   * 0.00 คือให้ไล่เลื่อนเกือบห้าสิบบรรทัดก่อนจะเจอที่ที่ตัวเองยืนอยู่ — และ
+   * คนที่เห็นแต่ครึ่งลบก็สรุปว่าค่าบวกหายไป
+   *
+   * เลื่อน "ครั้งเดียวตอนเปิด" เท่านั้น ไม่ใช่ทุกครั้งที่รายการเปลี่ยน — รอบ
+   * ก่อนผูกไว้กับความยาวรายการด้วย รายการจึงกระโดดเองระหว่างพิมพ์ ซึ่งอ่านเป็น
+   * "ดรอปดาวน์เลื่อนเอง" · ระหว่างพิมพ์คนกำลังอ่านรายการอยู่ อย่าไปขยับมัน
+   *
+   * ลองสามเฟรมเพราะความสูงสูงสุดของกล่องถูกเขียนหลังเปิดหนึ่งเฟรม (ดู
+   * dropbox.ts) เฟรมแรกจึงยังไม่มีอะไรล้นให้เลื่อน
+   */
+  const placed = useRef(false);
+
   useEffect(() => {
-    if (!open || at < 0) return;
+    if (!open) {
+      placed.current = false;
+      return;
+    }
+    if (placed.current) return;
+
+    let frame = 0;
+    let tries = 0;
+
+    const put = () => {
+      const el = list.current;
+      const row = el?.children[options.findIndex((o) => o.value === value)] as HTMLElement | undefined;
+      if (el && row && el.scrollHeight > el.clientHeight) {
+        const above = row.offsetTop - el.clientHeight / 2 + row.offsetHeight / 2;
+        el.scrollTop = Math.max(0, Math.min(above, el.scrollHeight - el.clientHeight));
+        placed.current = true;
+        return;
+      }
+      if (++tries < 4) {
+        frame = requestAnimationFrame(put);
+      }
+    };
+
+    put();
+    return () => cancelAnimationFrame(frame);
+  }, [open, options, value]);
+
+  /* ลูกศรขึ้นลงพาไฮไลต์ไปไหน รายการต้องตามไปด้วย — แค่ให้เห็น ไม่ต้องจัดกลาง */
+  useEffect(() => {
+    if (!open || at < 0 || !placed.current) return;
     list.current?.children[at]?.scrollIntoView({ block: "nearest" });
-  }, [open, at]);
+  }, [at]);
 
   function show() {
     if (disabled || open) return;
     setQuery("");
-    setAt(free ? -1 : options.findIndex((o) => o.value === value));
+    /* ช่องพิมพ์เองที่มีค่าตรงกับตัวเลือกอยู่แล้ว ให้ไฮไลต์ค่านั้นไว้ รายการจะได้
+       เลื่อนไปหยุดตรงค่าปัจจุบัน ไม่ใช่เริ่มที่บรรทัดแรกของบันไดที่ยาว 97 ขั้น */
+    setAt(options.findIndex((o) => o.value === value));
     setOpen(true);
   }
 

@@ -155,6 +155,11 @@ try {
 } catch (\Optic\ApiError $e) {
     /* ฝั่งคลังตอบเป็น reason ที่โค้ดแตกเงื่อนไขได้ ส่งต่อทั้งคู่ ไม่ยุบเหลือข้อความ */
     Http::json($e->status, ['error' => $e->getMessage()] + $e->payload());
+} catch (StockApiError $e) {
+    /* คำปฏิเสธของฝั่งคลังที่เดินผ่าน StockClient มา — มันห่อ ApiError ไว้อีกชั้น
+       ถ้าไม่ดักตรงนี้จะไปตกที่ Throwable ข้างล่างแล้วกลายเป็น 500 ทั้งที่เป็นเรื่อง
+       ที่คนกดแก้ได้เอง เช่น "ต้องระบุรุ่นเลนส์ที่จะสั่ง" */
+    Http::json($e->status ?: 400, ['error' => $e->getMessage(), 'reason' => $e->reason] + $e->payload);
 } catch (Throwable $e) {
     error_log(sprintf('[%s %s] %s', $method, $path, $e->getMessage()));
     Http::json(500, ['error' => $e->getMessage()]);

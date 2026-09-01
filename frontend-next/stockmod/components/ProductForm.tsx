@@ -219,13 +219,20 @@ const RX_FIELDS: Spec[] = [
   },
 ];
 
-/** Said before the choice is made, so nobody picks a type and then discovers it. */
+/**
+ * บอกล่วงหน้าว่าเลือกชนิดนี้แล้วต้องกรอกอะไร
+ *
+ * บรรทัดนี้เคยไล่ชื่อช่องของทุกชนิด ซึ่งเลิกจริงไปแล้วตั้งแต่ชนิดอื่นไม่ถูกถาม
+ * สเปกอีก · เขียนใหม่ให้ตรงกับสิ่งที่จะเกิดขึ้นจริงหลังกด — สี่ชนิดบอกว่าเอาแค่
+ * ชื่อกับราคา เลนส์บอกว่ายังมีสเปกให้กรอกต่อ · การ์ดที่มีแต่ชื่อลอย ๆ ทำให้หน้า
+ * โล่งจนอ่านไม่ออกว่าแต่ละใบต่างกันตรงไหน
+ */
 const TYPE_ASKS: Record<string, string> = {
-  Lens: "ชนิดเลนส์ · Index · Coating · ข้างตา · SPH CYL AXIS ADD",
-  Frame: "สี · ขนาด · วัสดุ · ไลน์สินค้า",
-  Sunglass: "สี · ขนาด · วัสดุ · สีเลนส์ · โพลาไรซ์",
-  ContactLen: "BC · DIA · จำนวนต่อกล่อง · รอบการใส่ · ข้างตา",
-  Accessory: "ประเภท (กล่อง น้ำยา สาย ผ้า) · แล้วแต่ประเภทที่เลือก",
+  Lens: "ถามสเปกต่อ — ชนิดเลนส์ · Index · Coating · ข้างตา · SPH CYL AXIS ADD",
+  Frame: "กรอบสำเร็จรูปที่ขายเป็นชิ้น — กรอกแค่ชื่อกับราคา",
+  Sunglass: "แว่นกันแดดสำเร็จรูป — กรอกแค่ชื่อกับราคา",
+  ContactLen: "คอนแทคเลนส์ทั้งกล่อง — กรอกแค่ชื่อกับราคา",
+  Accessory: "กล่อง · น้ำยา · สาย · ผ้าเช็ด — กรอกแค่ชื่อกับราคา",
 };
 
 /** Every key this form owns, so a value cleared here is truly removed. */
@@ -282,6 +289,8 @@ export default function ProductForm({
   make,
   presetType,
   onUseExisting,
+  initialQty = "1",
+  askQty = true,
 }: {
   product?: ProductDetail;
   onSaved: (id: number, lot?: CreatedLot) => void;
@@ -316,6 +325,22 @@ export default function ProductForm({
    * making someone find the lot form for the thing they are holding.
    */
   receive?: boolean;
+  /**
+   * จำนวนตั้งต้นของล็อตแรก
+   *
+   * หน้ารับของตั้ง 1 เพราะคนกรอกถือของอยู่จริง · หน้าร้านตั้ง 0 เพราะที่นั่นสินค้า
+   * ใหม่มักเกิดตอนลูกค้าสั่งของที่ร้านยังไม่มี ของยังไม่มาถึง ยอดจึงควรเริ่มที่
+   * ศูนย์แล้วติดลบตอนตัดขาย ไม่ใช่ขึ้นหนึ่งชิ้นที่ไม่มีอยู่จริงบนชั้น
+   */
+  initialQty?: string;
+  /**
+   * ถามจำนวนที่รับเข้าหรือไม่
+   *
+   * หน้ารับของถาม เพราะคนกรอกกำลังนับของอยู่ · หน้าร้านไม่ถาม เพราะคนเปิดออเดอร์
+   * ไม่ได้ถือของ ตัวเลขที่กรอกได้จึงมีแต่ทางผิด: ใส่เกินไปหนึ่งก็กลายเป็นของบน
+   * ชั้นที่ไม่มีจริง แล้วไปกลบยอดค้างที่หน้า "สินค้ารอสั่ง" ต้องเห็นพอดี
+   */
+  askQty?: boolean;
 }) {
   const actor = useActor();
   const mayCost = can.enterCost(actor);
@@ -498,15 +523,17 @@ export default function ProductForm({
         })}`,
   );
 
+  /* ตั้งชื่อให้เองเฉพาะเลนส์ — ชนิดอื่นไม่ได้ถามสเปกแล้ว ชื่อที่ประกอบจากช่อง
+     ว่างจะเหลือแค่แบรนด์ ซึ่งแย่กว่าปล่อยให้คนพิมพ์เอง */
   useEffect(() => {
-    if (autoName && composed.status === "ready") setName(composed.data.name);
-  }, [autoName, composed.status, composed.data]);
+    if (type === "Lens" && autoName && composed.status === "ready") setName(composed.data.name);
+  }, [type, autoName, composed.status, composed.data]);
 
   /* ------------------------------------------------------------ first lot */
 
   const suppliers = useApi<{ suppliers: Supplier[] }>(receive ? "/suppliers" : null);
 
-  const [qty, setQty] = useState("1");
+  const [qty, setQty] = useState(initialQty);
   const [supplierId, setSupplierId] = useState("");
   const [cost, setCost] = useState("");
   const [received, setReceived] = useState(today);
@@ -540,19 +567,20 @@ export default function ProductForm({
    * corrected from the product's own drawer, not from here.
    */
   /**
-   * The spec is always a stop, whatever is being added.
+   * ถามรายละเอียดเฉพาะเลนส์ ชนิดอื่นเอาแค่ชื่อ
    *
-   * It used to be skipped for everything but a lens while receiving: a frame's
-   * colour was worth recording but not worth standing at the counter for with
-   * the delivery waiting, so it was left to the catalogue screen.
+   * เคยถามทุกชนิด ด้วยเหตุผลว่าชื่อสินค้าถูกประกอบจากสเปก ข้ามแล้วกรอบจะถูกตั้ง
+   * ชื่อว่า "Hitop" เฉย ๆ แล้วกรอบ Hitop ตัวถัดไปก็ชื่อเดียวกันอีก
    *
-   * That stopped being true when the name began to be composed from the spec.
-   * Skipping it now files a frame called "Hitop" and nothing else — and the
-   * next Hitop frame is called "Hitop" too. The stop that was costing fifteen
-   * seconds was the stop that makes the row identifiable, so it is always
-   * asked, and every field on it may still be left blank.
+   * แต่ชื่อเป็นช่องบังคับอยู่แล้วตั้งแต่หน้าแรก (ดู `blocking`) คนที่พิมพ์ชื่อ
+   * เต็ม ๆ ว่า "Hitop AC5028 ดำด้าน 54-16-145" ก็ได้แถวที่แยกออกจากตัวอื่นแล้ว
+   * โดยไม่ต้องกรอกอีกห้าช่องที่จะถูกใช้ประกอบเป็นชื่อเดียวกันนั้น · คนหน้าร้าน
+   * ที่ยืนรับของอยู่ไม่ได้อยากกรอกสี ขนาด วัสดุ ไลน์สินค้า ทีละกล่อง
+   *
+   * เลนส์ต่างออกไปจริง — ค่าสายตา Index Coating ข้างตา ไม่ใช่คำอธิบายของชื่อ
+   * แต่เป็นตัวสินค้าเอง เลนส์ -2.00 กับ -2.25 คนละ SKU กัน ระบบจึงต้องรู้
    */
-  const wantSpec = true;
+  const wantSpec = type === "Lens";
 
   const steps = [
     "ข้อมูลหลัก",
@@ -809,7 +837,7 @@ export default function ProductForm({
           {PRODUCT_TYPES.map((t) => (
             <button key={t} type="button" className="typecard" onClick={() => setType(t)}>
               <span className="typecard__name">{PRODUCT_TYPE_LABEL[t]}</span>
-              <span className="typecard__asks">{TYPE_ASKS[t]}</span>
+              {TYPE_ASKS[t] ? <span className="typecard__asks">{TYPE_ASKS[t]}</span> : null}
             </button>
           ))}
         </div>
@@ -907,7 +935,11 @@ export default function ProductForm({
             >
               {i < at ? "✓" : i + 1}
             </span>
-            <span className="wizard__name">{s}</span>
+            {/* ชื่อขั้นบนแถบเดินหน้าเรียกตามสิ่งที่หน้านั้นทำจริง — หน้าร้านไม่ได้
+                รับของเข้า มันเปิดล็อตเปล่าไว้รอของ */}
+            <span className="wizard__name">
+              {s === "ล็อตแรกที่รับเข้า" && !askQty ? "ล็อตที่รอของเข้ามา" : s}
+            </span>
           </li>
         ))}
       </ol>
@@ -977,9 +1009,19 @@ export default function ProductForm({
               }}
               disabled={locked}
               autoComplete="off"
-              placeholder={autoName ? "ตั้งให้เองจากสเปกด้านล่าง" : undefined}
+              placeholder={
+                type === "Lens" && autoName
+                  ? "ตั้งให้เองจากสเปกด้านล่าง"
+                  : "เช่น Hitop AC5028 ดำด้าน 54-16-145"
+              }
             />
-            {autoName ? (
+            {type !== "Lens" ? (
+              /* ชนิดอื่นไม่ได้ถามสเปกแล้ว ชื่อจึงเป็นสิ่งเดียวที่แยกสินค้าออกจาก
+                 กันในรายการ — บอกไปตรง ๆ ว่าเขียนให้ครบพอที่จะจำได้ */
+              <span className="field__help">
+                ชื่อนี้คือสิ่งเดียวที่ใช้แยกสินค้าตัวนี้ออกจากตัวอื่น — ใส่รุ่น สี ขนาด เท่าที่จำเป็นได้เลย
+              </span>
+            ) : autoName ? (
               <span className="field__help">
                 ตั้งให้เองจาก แบรนด์ · รุ่น · สเปก — พิมพ์ทับได้ถ้าจะใช้ชื่ออื่น
               </span>
@@ -1097,19 +1139,26 @@ export default function ProductForm({
 
       {steps[at] === "ล็อตแรกที่รับเข้า" ? (
         <fieldset className="pform__set">
-          <legend className="pform__legend">ล็อตแรกที่รับเข้า</legend>
+          <legend className="pform__legend">{askQty ? "ล็อตแรกที่รับเข้า" : "ล็อตที่รอของเข้ามา"}</legend>
           <p className="field__help">
-            ของที่ถืออยู่ตรงหน้าเข้าคลังพร้อมกับสินค้าใหม่นี้เลย — ไม่ต้องบันทึกแล้วไปหาฟอร์มรับของอีกรอบ
+            {askQty
+              ? "ของที่ถืออยู่ตรงหน้าเข้าคลังพร้อมกับสินค้าใหม่นี้เลย — ไม่ต้องบันทึกแล้วไปหาฟอร์มรับของอีกรอบ"
+              : "หน้าร้านไม่ต้องกรอกจำนวน — ของยังไม่มาถึง ล็อตนี้เปิดไว้ที่ศูนย์ ตัดขายแล้วยอดจะติดลบไปขึ้นหน้า “สินค้ารอสั่ง” แล้วหักกลบเองเมื่อของเข้า"}
           </p>
           <div className="pform__grid">
-            <QtyField
-              id="pf-qty"
-              value={qty}
-              onChange={setQty}
-              disabled={busy}
-              label="จำนวนที่รับเข้า"
-              help="กดบวกลบได้ หรือพิมพ์เองถ้ารับมาเยอะ"
-            />
+            {/* หน้าร้านไม่มีช่องจำนวน — คนเปิดออเดอร์ไม่ได้ถือของอยู่ ตัวเลขที่
+                กรอกตรงนี้จะเป็นของบนชั้นที่ไม่มีอยู่จริง แล้วไปกลบยอดค้างที่หน้า
+                สินค้ารอสั่งต้องเห็น */}
+            {askQty ? (
+              <QtyField
+                id="pf-qty"
+                value={qty}
+                onChange={setQty}
+                disabled={busy}
+                label="จำนวนที่รับเข้า"
+                help="กดบวกลบได้ หรือพิมพ์เองถ้ารับมาเยอะ"
+              />
+            ) : null}
             <div className="field">
               <label className="field__label" htmlFor="pf-sup">ผู้ขาย</label>
               <Select
@@ -1203,7 +1252,7 @@ export default function ProductForm({
                 : product
                   ? "บันทึกการแก้ไข"
                   : wantLot
-                    ? "เพิ่มสินค้าและรับเข้าคลัง"
+                    ? (askQty ? "เพิ่มสินค้าและรับเข้าคลัง" : "เพิ่มสินค้าและเปิดล็อตรอของ")
                     : "เพิ่มสินค้า"}
           </button>
         ) : (

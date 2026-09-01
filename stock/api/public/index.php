@@ -367,7 +367,7 @@ Http::post('/api/rx/{id}/cost', static function (array $p): array {
         throw ApiError::badRequest('id ต้องเป็นตัวเลข');
     }
     $body = Http::body();
-    return ['order' => Rx::setCost((int) $p['id'], $body['unit_cost'] ?? null, $actor['role'])];
+    return ['order' => Rx::setCost((int) $p['id'], $body['unit_cost'] ?? null, $actor['role'], (int) $actor['id'])];
 });
 
 /* -------------------------------------------------------------- receiving */

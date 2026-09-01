@@ -10,6 +10,17 @@ import SideRail from "./SideRail";
 const ActorContext = createContext<Actor | null>(null);
 
 /**
+ * ผู้ใช้ที่ล็อกอินอยู่ สำหรับหน้าที่ไม่ได้อยู่ใน AppShell
+ *
+ * หน้าฝัง (`/stock/embed/*`) ใช้ฟอร์มตัวเดียวกับหน้าคลัง แต่ไม่มีเมนูซ้ายและ
+ * ไม่มีโครงของ AppShell — ฟอร์มยังต้องรู้ว่าใครกำลังกรอกอยู่เพื่อตัดสินว่าจะ
+ * โชว์ช่องต้นทุนไหม จึงต้องมีที่จ่าย actor ให้แยกต่างหาก
+ */
+export function ActorProvider({ actor, children }: { actor: Actor; children: React.ReactNode }) {
+  return <ActorContext.Provider value={actor}>{children}</ActorContext.Provider>;
+}
+
+/**
  * The signed-in person, for screens that show or hide by permission.
  *
  * Hiding a control the API would refuse is a courtesy, not a security boundary —

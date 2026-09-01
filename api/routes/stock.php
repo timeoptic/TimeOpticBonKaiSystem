@@ -117,24 +117,56 @@ GET('/api/stock', function (array $req) {
        not have to choose between two identical lines to do that.
        group=lot keeps one row per receiving batch, for when the batch matters. */
     if ($group === 'product') {
+        /*
+         * ของหมดแล้วก็ยังต้องเลือกได้
+         *
+         * เดิมข้ามล็อตที่ยอดไม่เป็นบวก สินค้าที่ขายหมดจึงหายไปจากรายการทั้งตัว
+         * คนขายที่ลูกค้าสั่งเลนส์รุ่นเดิมซ้ำจึงหาไม่เจอ แล้วต้องสร้างสินค้าใหม่
+         * ชื่อซ้ำกับของเดิม · ตอนนี้ขายเกินของที่มีได้ (ยอดติดลบเป็นค้างส่ง)
+         * รายการจึงต้องแสดงต่อ พร้อมยอดจริงซึ่งอาจเป็นศูนย์หรือติดลบ
+         *
+         * ล็อตค้างส่ง (`SHORT-`) นับรวมในยอด แต่ไม่ถูกเลือกเป็นตัวแทน — มันไม่ใช่
+         * กล่องที่หยิบได้ · ตัวแทนคือล็อตเก่าสุดที่ยังมีของ ถ้าไม่มีเลยก็ใช้ล็อต
+         * จริงใบใดใบหนึ่ง เพื่อให้ออเดอร์มีอะไรให้ชี้
+         */
         $byProduct = [];
         foreach ($lots as $l) {
             $left = (int) $l['remaining_qty'];
-            if ($left <= 0) {
-                continue;
-            }
+            $isShort = str_starts_with((string) ($l['lot_number'] ?? ''), 'SHORT-');
             $key = $l['product_id'] ?? ('name:' . $l['product_name']);
+
             if (!isset($byProduct[$key])) {
+                if ($isShort) {
+                    continue; // รอเจอล็อตจริงก่อน ค่อยเอายอดค้างไปรวม
+                }
                 $byProduct[$key] = $l + ['lot_count' => 0, 'sold' => 0];
                 $byProduct[$key]['remaining_qty'] = 0;
+                $byProduct[$key]['pick_id'] = null;
             }
+
             $byProduct[$key]['remaining_qty'] += $left;
-            $byProduct[$key]['lot_count']     += 1;
-            /* oldest lot still holding stock wins — smaller id = received earlier */
-            if ((int) $l['id'] < (int) $byProduct[$key]['id']) {
+            if ($isShort) {
+                continue;
+            }
+            if ($left > 0) {
+                $byProduct[$key]['lot_count'] += 1;
+                /* oldest lot still holding stock wins — smaller id = received earlier */
+                if ($byProduct[$key]['pick_id'] === null || (int) $l['id'] < (int) $byProduct[$key]['pick_id']) {
+                    $byProduct[$key]['pick_id'] = $l['id'];
+                }
+            }
+            /* ไม่มีล็อตไหนเหลือของเลย — ชี้ไปที่ล็อตจริงใบล่าสุดไว้ก่อน */
+            if ($byProduct[$key]['pick_id'] === null) {
                 $byProduct[$key]['id'] = $l['id'];
             }
         }
+        foreach ($byProduct as &$row) {
+            if ($row['pick_id'] !== null) {
+                $row['id'] = $row['pick_id'];
+            }
+            unset($row['pick_id']);
+        }
+        unset($row);
         $rows = array_values($byProduct);
         usort($rows, fn($a, $b) => strcmp((string) $a['product_name'], (string) $b['product_name']));
         return array_slice($rows, 0, min(int_or($q['limit'] ?? null, 300), 2000));
@@ -183,6 +215,17 @@ GET('/api/stock/names', function (array $req) {
     );
 });
 
+/**
+ * ล็อตหนึ่งใบ — แต่ "เหลือกี่ชิ้น" ตอบเป็นยอดของสินค้าทั้งตัว
+ *
+ * ออเดอร์เก็บ id ของล็อต หน้าจอจึงอ่านแถวนี้มาแสดงของที่เลือกไว้ · ถ้าตอบยอดของ
+ * ล็อตนั้นตรง ๆ คนขายจะเห็น "เหลือ 2 ชิ้น" ทั้งที่สินค้าตัวนั้นมีอยู่ 14 ชิ้นใน
+ * อีกล็อต แล้วไปบอกลูกค้าว่าของใกล้หมด · ตอนตัดจริงฝั่งคลังก็รับ SKU แล้วเลือก
+ * ล็อตเองตาม FIFO ไม่ได้ตัดจากล็อตที่ออเดอร์ชี้อยู่ดี ตัวเลขที่ตรงกับสิ่งที่
+ * ระบบจะทำจึงเป็นยอดรวมของ SKU ไม่ใช่ยอดของกล่องใดกล่องหนึ่ง
+ *
+ * `lot_remaining_qty` กับ `lot_count` ยังส่งไปด้วย สำหรับหน้าจอที่สนใจกล่อง
+ */
 GET('/api/stock/:id', function (array $req) {
     $s = Db::get(
         'SELECT s.*, l.location FROM v_stock_lot s
@@ -193,14 +236,43 @@ GET('/api/stock/:id', function (array $req) {
     if (!$s) {
         missing();
     }
+
+    $total = Db::get(
+        'SELECT COALESCE(SUM(remaining_qty), 0) AS on_hand,
+                SUM(CASE WHEN remaining_qty > 0 THEN 1 ELSE 0 END) AS lots
+           FROM stock_lots WHERE product_id = ?',
+        (int) $s['product_id']
+    );
+
+    $s['lot_remaining_qty'] = (int) $s['remaining_qty'];
+    $s['remaining_qty']     = (int) ($total['on_hand'] ?? 0);
+    $s['lot_count']         = (int) ($total['lots'] ?? 0);
+
     return $s;
+});
+
+/**
+ * เปิดใบสั่งตัดเลนส์ (RX) จากหน้าร้าน
+ *
+ * เลนส์สั่งตัดไม่มีของบนชั้นให้เลือก — มันถูกสั่งทำเฉพาะราย ค่าสายตาอยู่บนใบสั่ง
+ * ไม่ใช่บนตัวสินค้า · เดิมหน้าร้านเปิดใบสั่งเองไม่ได้เลย ต้องรอให้ระบบเปิดให้ตอน
+ * ยืนยันการขาย ซึ่งช้ากว่าความจริงหนึ่งขั้น: คนที่วัดสายตาเสร็จรู้ค่าตั้งแต่ตอน
+ * นั้นแล้ว และร้านอยากสั่งของทันที ไม่ใช่รอปิดการขายก่อน
+ *
+ * ตัวงานทั้งหมดเป็นของฝั่งคลัง (`Optic\Service\Rx`) ที่นี่แค่ส่งต่อ — สิทธิ์
+ * ต้นทุน การออกเลขใบสั่ง และการสร้างรุ่นเลนส์ที่ยังไม่มีในแคตตาล็อก อยู่ที่นั่น
+ * ที่เดียว ไม่มีสำเนากฎมาไว้ฝั่งนี้
+ */
+POST('/api/rx', function (array $req) {
+    return StockClient::post('/rx', $req['body']);
 });
 
 POST('/api/stock', function (array $req) {
     $body = $req['body'];
     [$role, $actorId] = stockActor();
 
-    $amount = min(max(int_or($body['amount'] ?? null, 1) ?? 1, 1), 500);
+    /* 0 ได้ = ลงชื่อสินค้าไว้ก่อน ของยังไม่มา · ขายต่อได้เลย ยอดจะเป็นค้างส่ง */
+    $amount = min(max(int_or($body['amount'] ?? null, 1) ?? 1, 0), 500);
     /* ฟอร์มส่งมาเป็น datetime ส่วนวันที่รับเข้าเป็นวัน ไม่ใช่เวลา */
     $date   = substr((string) (str_or($body['stock_date'] ?? null) ?: nowStamp()), 0, 10);
 

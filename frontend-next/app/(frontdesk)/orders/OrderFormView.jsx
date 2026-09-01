@@ -29,6 +29,7 @@ import { StockPicker, stockLabel } from '../../../components/StockPicker.jsx';
 import { RxSets } from '../../../components/RxSets.jsx';
 import { EyewearHistory } from '../../../components/EyewearHistory.jsx';
 import { EmployeeSelect } from '../../../components/Selects.jsx';
+import { StockEmbedModal } from '../../../components/StockEmbedModal.jsx';
 import { RX_KIND_LABEL } from '../../../lib/constants.js';
 import {
   custName, fmtDateTime, money, power, rxNum,
@@ -125,6 +126,13 @@ export function OrderFormView({
   const [rxIdState, setRxId] = useState(undefined);
   const [items, setItems] = useState(undefined);
   const [prices, setPrices] = useState(undefined);
+  /* ติ๊ก "กรอบเดิมของลูกค้า" เป็น state ที่ตั้งค่าจากออเดอร์ทีหลัง (ดู useEffect
+     ใต้ตัวแปร o) — ตั้งตรงนี้เลยไม่ได้เพราะ o ยังไม่มีค่าในบรรทัดนี้ */
+  const [oldFrame, setOldFrame] = useState(false);
+  /** ข้างที่กำลังเปิดใบสั่งตัดอยู่ ('r' | 'l') หรือ null เมื่อไม่ได้เปิด */
+  const [rxFor, setRxFor] = useState(null);
+  /** ใบสั่งตัดที่เพิ่งเปิดในหน้านี้ แยกตามข้าง — ไม่มีล็อตให้ผูก จึงเก็บเอง */
+  const [rxLens, setRxLens] = useState({});
 
   /* ประวัติแว่นเดิม — ยิงแยกจากตัวออเดอร์เพราะลูกค้าเปลี่ยนได้ทีหลัง เมื่อคนขายเลือก
      จาก Picker ในโหมดออเดอร์ลอย (ไม่มีเคส) ต้องโหลดประวัติของคนใหม่ตามไปด้วย
@@ -184,6 +192,12 @@ export function OrderFormView({
     lensOd: o.left_lens || null,
     lensOs: o.right_lens || null,
   };
+
+  /* ออเดอร์เก่าที่มีชื่อกรอบแต่ไม่ได้ผูกกับของในคลัง คือกรอบเดิมของลูกค้า —
+     ติ๊กให้เองตอนเปิดมาแก้ ไม่งั้นกดบันทึกซ้ำแล้วชื่อกรอบจะหาย · `items` เป็น
+     null แปลว่ายังไม่มีใครแตะฟอร์ม จึงยังอ่านสถานะจากออเดอร์ได้ */
+  const oldFrameFromOrder = Boolean(o.frame_name) && !o.frame_product_id && !o.frame;
+  const usesOldFrame = items === undefined ? oldFrame || oldFrameFromOrder : oldFrame;
   /* Picking a stock item is a statement of fact about the order: it fills in
      that item's own details and its price, instead of leaving staff to retype
      what the system already knows. The fields stay editable afterwards. */
@@ -226,7 +240,9 @@ export function OrderFormView({
     body.customer_id = customerId;
     body.case_id = caseId;
     body.final_prescription_id = rxId;
-    body.frame_product_id = picked.frame?.id ?? null;
+    /* กรอบเดิมของลูกค้า = ไม่มีของออกจากคลัง ชื่อกรอบยังถูกบันทึกตามที่พิมพ์
+       และเดินไปกับใบสั่งเหมือนกรอบที่ขายจริง */
+    body.frame_product_id = usesOldFrame ? null : (picked.frame?.id ?? null);
     body.lens_product_id = picked.lensOd?.id ?? null;
     body.right_lens_product_id = picked.lensOs?.id ?? null;
 
@@ -235,7 +251,11 @@ export function OrderFormView({
     const fill = (field, value) => {
       if (!body[field] && value) body[field] = value;
     };
-    if (picked.frame) {
+    if (usesOldFrame) {
+      /* คำเดียวกันทุกใบ ไม่ให้พิมพ์เอง — กรอบของลูกค้าไม่ใช่สินค้าของร้าน
+         ถ้าปล่อยให้พิมพ์ จะได้สิบคำในสิบใบแล้วนับทีหลังไม่ได้ว่ากี่ใบใช้กรอบเดิม */
+      body.frame_name = 'oldframe';
+    } else if (picked.frame) {
       fill('frame_name', stockLabel(picked.frame));
       fill('frame_brand', picked.frame.brand);
       fill('frame_model', picked.frame.model);
@@ -429,13 +449,44 @@ export function OrderFormView({
 
         <Card title="กรอบแว่น — Frame">
           <p className="hint">เลือกกรอบจากสต็อก แล้วใส่ราคาขายของออเดอร์นี้</p>
-          <StockPicker
-            type="Frame"
-            picked={picked.frame}
-            onPick={(r) => setPicked({ frame: r })}
-            onClear={() => setItems({ ...picked, frame: null })}
-            selectedId={picked.frame?.id ?? null}
-          />
+
+          {/* ลูกค้าเอากรอบเดิมมาเปลี่ยนเลนส์ — งานที่ร้านทำทุกวัน แต่ไม่มีของ
+              ออกจากคลังสักชิ้น · ติ๊กแล้วออเดอร์บันทึกว่าใช้กรอบเดิม ชื่อกรอบ
+              ไปโผล่ในใบสั่งและในประวัติพร้อมเลขออเดอร์เหมือนกรอบที่ขายจริง
+              ต่างกันตรงไม่มี frame_product_id จึงไม่มีอะไรถูกตัดจากสต็อก */}
+          <label className={`toggle-card ${usesOldFrame ? 'on' : ''}`}>
+            <input
+              type="checkbox"
+              name="uses_old_frame"
+              checked={usesOldFrame}
+              onChange={(e) => {
+                setOldFrame(e.target.checked);
+                if (e.target.checked) {
+                  setItems({ ...picked, frame: null });
+                  setP({ frame_price: 0 });
+                }
+              }}
+            />
+            <span className="toggle-card__text">
+              <b>ใช้กรอบเก่าของลูกค้า</b>
+              <small>ลูกค้าเอากรอบเดิมมาเปลี่ยนเลนส์ — ไม่มีของออกจากคลัง</small>
+            </span>
+          </label>
+
+          {usesOldFrame ? (
+            /* ไม่มีช่องให้พิมพ์ชื่อ — กรอบของลูกค้าไม่ใช่สินค้าของร้าน ชื่อที่
+               พิมพ์เองจะกลายเป็นสิบแบบในสิบใบ แล้วค้นหาทีหลังไม่เจอ · ใบสั่งและ
+               ประวัติเขียนคำเดียวกันทุกใบว่า oldframe */
+            <p className="hint">บันทึกในใบสั่งว่า <b>oldframe</b> · ไม่ตัดของออกจากคลัง</p>
+          ) : (
+            <StockPicker
+              type="Frame"
+              picked={picked.frame}
+              onPick={(r) => setPicked({ frame: r })}
+              onClear={() => setItems({ ...picked, frame: null })}
+              selectedId={picked.frame?.id ?? null}
+            />
+          )}
           <SellingPrice
             label="ราคาขายกรอบ / Selling Price"
             value={p.frame_price}
@@ -477,6 +528,20 @@ export function OrderFormView({
                     onClear={() => setItems({ ...picked, [slot]: null })}
                     selectedId={item?.id ?? null}
                   />
+                  {/* เลนส์สั่งตัดไม่มีของบนชั้นให้เลือก จึงไม่ได้อยู่ในรายการ
+                      ข้างบน — ปุ่มนี้เปิดใบสั่งจากค่าสายตาที่เพิ่งวัดได้เลย
+                      ผลที่ได้คือชื่อกับ SKU ไม่ใช่ล็อต ตอนยืนยันการขายจึงไม่มี
+                      อะไรถูกตัดจากคลังซ้ำอีกรอบ */}
+                  {!item ? (
+                    <button
+                      type="button"
+                      className="btn btn-light btn-sm"
+                      style={{ marginBottom: 10 }}
+                      onClick={() => setRxFor(side)}
+                    >
+                      <Icon name="glasses" /> สั่งตัดเลนส์ RX ({side.toUpperCase()})
+                    </button>
+                  ) : null}
                   <SellingPrice
                     label={`ราคาขาย${legend.replace(/ \(.\)$/, '')} / Selling Price (${side.toUpperCase()})`}
                     value={p[priceKey]}
@@ -495,28 +560,52 @@ export function OrderFormView({
                     ]}
                   >
                     <FormGrid>
+                      {/* ใบสั่งตัดที่เพิ่งเปิดชนะค่าที่บันทึกไว้ — `key` มีเลข
+                          ใบสั่งอยู่ด้วย ช่องจึงถูกวาดใหม่พร้อมค่าใหม่ ไม่ใช่ค้าง
+                          ค่าเดิมแบบที่ defaultValue เป็นตามปกติ */}
                       <Field label={`ชื่อเลนส์ (${side.toUpperCase()})`}>
                         <input
-                          key={`ln${side}${item?.id ?? '0'}`}
+                          key={`ln${side}${item?.id ?? rxLens[side]?.referenceDoc ?? '0'}`}
                           name={nameKey}
-                          defaultValue={item ? stockLabel(item) : (savedName || '')}
+                          defaultValue={
+                            item ? stockLabel(item) : (rxLens[side]?.name || savedName || '')
+                          }
                           placeholder="เช่น Crizal Easy Pro 1.56"
                         />
                       </Field>
                       <Field label={`SKU (${side.toUpperCase()})`}>
                         <input
-                          key={`lk${side}${item?.id ?? '0'}`}
+                          key={`lk${side}${item?.id ?? rxLens[side]?.referenceDoc ?? '0'}`}
                           name={skuKey}
-                          defaultValue={item?.sku || savedSku || ''}
+                          defaultValue={item?.sku || rxLens[side]?.sku || savedSku || ''}
                         />
                       </Field>
                     </FormGrid>
+                    {rxLens[side] ? (
+                      <p className="hint">
+                        เปิดใบสั่งตัดแล้ว — {rxLens[side].referenceDoc} · เลนส์นี้ไม่ถูกตัดจากคลัง
+                      </p>
+                    ) : null}
                   </ItemDetails>
                 </Fieldset>
               );
             })}
           </Split>
         </Card>
+
+        {/* กล่องเปิดใบสั่งตัดตัวจริงของฝั่งคลัง ฝังมาเป็น iframe — เลขใบสั่ง
+            สิทธิ์กรอกต้นทุน และการเลือกรุ่นเลนส์ ทำงานเหมือนเปิดจากหน้าคลังทุกอย่าง */}
+        {rxFor ? (
+          <StockEmbedModal
+            what="rx"
+            title={`สั่งตัดเลนส์ ${rxFor === 'r' ? 'ขวา (R)' : 'ซ้าย (L)'}`}
+            onClose={() => setRxFor(null)}
+            onRx={(order) => {
+              setRxLens((m) => ({ ...m, [rxFor]: order }));
+              setRxFor(null);
+            }}
+          />
+        ) : null}
 
         <Card title="ราคา">
           {/* ราคากรอบ/เลนส์ กรอกอยู่ข้างสินค้าแต่ละชิ้นด้านบน ส่งค่าไปกับฟอร์มผ่านช่องซ่อน

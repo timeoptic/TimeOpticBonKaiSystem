@@ -7,6 +7,7 @@ use Optic\Repo\Inventory;
 use Optic\Repo\Reports;
 use Optic\Roles;
 use Optic\Service\Branches;
+use Optic\Service\Receiving;
 use Optic\Service\Settlement;
 use Optic\Service\Stock;
 
@@ -636,11 +637,25 @@ test('รายการสินค้าไม่ส่งต้นทุน�
             ok(is_int($r['onHand']), "ยอดคงเหลือของ {$r['sku']} ต้องยังเห็นได้");
         }
 
-        // The same rows, for someone who is allowed, must actually carry numbers
-        // — otherwise this test would pass on a query that simply returns none.
-        $owner = Inventory::products([], Roles::seeCost(Roles::OWNER))['rows'];
-        $withCost = array_filter($owner, fn($r) => $r['nextCost'] !== null || $r['stockValue'] > 0);
-        ok(count($withCost) > 0, 'เจ้าของร้านต้องเห็นต้นทุนจริง ไม่ใช่ null ทั้งหมด');
+        /* The same row, for someone who is allowed, must actually carry numbers
+           — otherwise this test would pass on a query that simply returns none.
+           สร้างของที่มีต้นทุนขึ้นมาเองแทนที่จะหวังว่าหน้าแรกของรายการจะมีสักตัว:
+           เดิมเทสต์นี้อ่านหน้าแรกเฉย ๆ แล้วตกทันทีที่ร้านเพิ่มสินค้าใหม่หลายตัว
+           ติดกันโดยยังไม่ลงต้นทุน ซึ่งเป็นเรื่องปกติของหน้างาน ไม่ใช่ความผิดพลาด */
+        $sku = skuWithLots(1);
+        Receiving::receive(
+            ['sku' => $sku, 'quantity' => 1, 'cost_per_unit' => '123.00', 'received_date' => date('Y-m-d')],
+            Roles::OWNER,
+            1,
+        );
+
+        $owner = Inventory::products(['q' => $sku], Roles::seeCost(Roles::OWNER))['rows'];
+        ok(count($owner) > 0, 'ต้องหาสินค้าที่เพิ่งรับเข้าเจอ');
+        $row = $owner[0];
+        ok(
+            $row['nextCost'] !== null || $row['stockValue'] > 0,
+            'เจ้าของร้านต้องเห็นต้นทุนจริง ไม่ใช่ null ทั้งหมด',
+        );
     });
 });
 
@@ -1210,8 +1225,10 @@ test('ตัวกรอง rx คืนเฉพาะสินค้าสั�
         ok(count($rows) > 0, 'ต้องมีของให้สั่งพิเศษอย่างน้อยหนึ่งรายการ');
 
         foreach ($rows as $r) {
+            /* ติดลบก็คือหมดสต็อก — และเป็นเหตุผลที่หนักกว่าเดิมที่จะสั่งพิเศษ
+               มีลูกค้ารอของอยู่แล้ว ไม่ใช่แค่ชั้นว่าง */
             ok(
-                $r['isCustomMade'] || $r['onHand'] === 0,
+                $r['isCustomMade'] || $r['onHand'] <= 0,
                 "{$r['sku']} ต้องเป็นสินค้าสั่งตัด หรือหมดสต็อก — ได้ onHand {$r['onHand']}",
             );
         }

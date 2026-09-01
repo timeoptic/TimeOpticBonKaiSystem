@@ -39,12 +39,18 @@ export function ladder(from: number, to: number, step = 0.25): string[] {
 export const SPH_LADDER = ladder(-12, 12);
 
 /**
- * The cylinder.
+ * ค่าสายตาเอียง — ติดลบเท่านั้น
  *
- * Both signs: most of the trade writes minus-cyl, some of it does not, and a
- * list that offered only one would send the other half back to typing.
+ * เคยให้เลือกทั้งสองเครื่องหมาย ด้วยเหตุผลว่าบางที่เขียน plus-cyl · ร้านนี้ไม่
+ * เขียนแบบนั้น ค่าบวกจึงเป็นตัวเลือกที่ไม่มีวันถูกเลือก และดันค่าที่ใช้จริงให้
+ * ลงไปอยู่ครึ่งล่างของรายการ
+ *
+ * 0.00 ยังอยู่ เพราะ "ไม่มีสายตาเอียง" เป็นค่าจริงค่าหนึ่ง ไม่ใช่การเว้นว่าง
+ *
+ * ช่องนี้ยังพิมพ์เองได้เหมือนทุกช่องในไฟล์นี้ — ถ้าวันหนึ่งมีใบสั่งเขียนมาเป็น
+ * บวกจริง ๆ ก็พิมพ์ลงไปได้ รายการเป็นข้อเสนอ ไม่ใช่รั้ว
  */
-export const CYL_LADDER = ladder(-6, 6);
+export const CYL_LADDER = ladder(-6, 0);
 
 /** The near-vision addition, which only a Progressive or a Bifocal carries. */
 export const ADD_LADDER = ladder(0.75, 3.5);

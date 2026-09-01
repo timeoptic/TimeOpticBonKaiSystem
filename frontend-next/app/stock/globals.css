@@ -313,30 +313,40 @@ code {
   box-shadow: none;
 }
 
+/* ปุ่มหลักเป็นแผ่นเรียบ ไม่ใช่ปุ่มนูนมีขอบล่างเหมือนธีมเดิม
+   ตอนนั้นสีเน้นเป็นสีอ่อน ปุ่มจึงต้องมีขอบล่างเข้มไว้บอกว่ามันกดได้ · ตอนนี้
+   สีเน้นเป็นครามเข้มบนกระดาษอ่อน ตัวมันเองก็ดังพอแล้ว ขอบล่างจึงเหลือแค่เสียงรบกวน
+   การกดบอกด้วยการขยับตัวเอง ไม่ใช่ด้วยขอบที่ยุบ */
 .btn--primary {
   background: var(--color-accent);
   color: var(--color-accent-ink);
-  box-shadow: 0 2px 0 var(--color-accent-deep), var(--shadow-rest);
+  border-color: var(--color-accent);
+  box-shadow: var(--shadow-rest);
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .btn--primary:hover { background: var(--color-accent); box-shadow: 0 3px 0 var(--color-accent-deep), var(--shadow-lift); }
+  .btn--primary:hover {
+    background: var(--color-accent-deep);
+    border-color: var(--color-accent-deep);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-lift);
+  }
 }
 
-.btn--primary:active { box-shadow: 0 1px 0 var(--color-accent-deep); }
+.btn--primary:active { transform: translateY(0); box-shadow: var(--shadow-rest); }
 /* The secondary button. It used to be bare text in a pill — no fill, no edge —
    which read as a link that had lost its underline rather than as something to
    press. A tinted surface with a real edge makes it a button; the pear primary
    is still the loudest thing on the screen. */
 .btn--quiet {
-  background: var(--tint-cyan);
-  border: 1px solid var(--color-rule-2);
-  color: var(--color-cyan-ink);
+  background: var(--color-paper-2);
+  border: 1px solid var(--color-rule);
+  color: var(--color-ink-2);
   box-shadow: none;
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .btn--quiet:hover { background: var(--tint-lav); border-color: var(--color-accent-2); box-shadow: var(--shadow-rest); }
+  .btn--quiet:hover { background: var(--color-paper-3); border-color: var(--color-rule-2); box-shadow: var(--shadow-rest); }
 }
 
 .btn--quiet:active { box-shadow: none; }
@@ -641,6 +651,12 @@ code {
 /* Adjust keeps the neutral chip: it is a correction, not an event in the shop,
    and giving it an accent would make housekeeping look like trade. */
 .tag--adjust   { background: var(--veil-ink);   color: var(--color-ink-2);     font-weight: 500; }
+/* Money keyed in after the fact — the cost of an RX job, the cash a branch
+   finally paid. Nothing moved on the shelf, so neither wears a goods colour:
+   they share one outline chip that reads as bookkeeping beside the traded ones. */
+.tag--cost,
+.tag--settle   { background: transparent; color: var(--color-ink-2); font-weight: 500;
+                 box-shadow: inset 0 0 0 1px var(--color-rule); }
 
 .status--stock   { background: var(--color-mint); color: var(--color-ink); }
 .status--rx      { background: var(--color-lavender); color: var(--color-ink); }
@@ -1919,7 +1935,7 @@ kbd {
 .wizard__dot--now {
   border-color: var(--color-accent-deep);
   background: var(--color-accent);
-  color: var(--color-ink);
+  color: var(--color-accent-ink);
 }
 
 .wizard__dot--done {
@@ -2513,7 +2529,7 @@ kbd {
   cursor: pointer;
 }
 
-.inline-edit__ok { background: var(--color-accent); border-color: var(--color-accent); font-weight: 700; }
+.inline-edit__ok { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-accent-ink); font-weight: 700; }
 .inline-edit__problem { color: var(--color-error); font-size: var(--text-xs); }
 
 /* --------------------------------------------------------------------------
@@ -2564,3 +2580,21 @@ kbd {
    lots that have stock. */
 .lotline--spent { background: transparent; color: var(--color-muted); }
 .lotline--spent .inline-edit__value { color: var(--color-muted); }
+
+/* ── ชิปที่ถูกเลือก ─────────────────────────────────────────────────────────
+   สีเน้นเปลี่ยนจากสีอ่อน (ธีมเดิม) เป็นครามเข้ม ตัวหนังสือบนชิปที่ถูกเลือกจึง
+   ต้องเป็นสีกระดาษ ไม่ใช่หมึก · รวมถึงตัวเลขนับที่อยู่ในชิปเดียวกัน ซึ่งเมื่อก่อน
+   ตั้งเป็นหมึกไว้เพราะพื้นหลังตอนนั้นสว่าง
+   ประกาศไว้ท้ายไฟล์เพื่อให้ชนะลำดับแน่นอน ไม่ต้องไปแข่งความจำเพาะกับกฎอื่น */
+.chip[aria-current="true"],
+.chip[aria-pressed="true"] {
+  background: var(--color-accent);
+  color: var(--color-accent-ink);
+  font-weight: 600;
+}
+
+.chip[aria-current="true"] .chip__count,
+.chip[aria-pressed="true"] .chip__count {
+  color: var(--color-accent-ink);
+  opacity: 0.85;
+}

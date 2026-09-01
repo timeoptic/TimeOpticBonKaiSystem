@@ -130,7 +130,7 @@ final class Rx
      *
      * @return array<string,mixed>
      */
-    public static function setCost(int $logId, mixed $rawCost, string $role): array
+    public static function setCost(int $logId, mixed $rawCost, string $role, ?int $actorId = null): array
     {
         Roles::require(Roles::enterRxCost($role), 'กรอกต้นทุน');
 
@@ -140,7 +140,7 @@ final class Rx
         }
 
         $log = Db::one(
-            'SELECT g.id, g.unit_cost, g.reference_doc, p.sku, p.name
+            'SELECT g.id, g.product_id, g.quantity, g.unit_cost, g.reference_doc, p.sku, p.name
              FROM inventory_logs g JOIN products p ON p.id = g.product_id
              WHERE g.id = ? AND g.action_type = \'RX_ORDER\'',
             [$logId],
@@ -156,7 +156,38 @@ final class Rx
             );
         }
 
-        Db::run('UPDATE inventory_logs SET unit_cost = ? WHERE id = ? AND unit_cost IS NULL', [$cost, $logId]);
+        /**
+         * ต้นทุนไปอยู่สองที่: บนใบสั่งเดิม และเป็นรายการของวันที่กรอก
+         *
+         * บนใบสั่งเดิม เพราะทุกที่ที่คิดกำไรของงานนั้นอ่านต้นทุนจากแถวนั้น และงาน
+         * นั้นเกิดวันที่สั่ง ไม่ใช่วันที่ใบกำกับมาถึง
+         *
+         * และเป็นแถวใหม่ลงวันนี้ เพราะการกรอกตัวเลขเงินคือเหตุการณ์ที่เกิดวันนี้
+         * — เดิมมันเงียบสนิท: ตัวเลขไปโผล่กลางเดือนที่ปิดไปแล้ว โดยไม่มีบรรทัด
+         * ไหนบอกว่าใครกรอกเมื่อไร ตรวจย้อนหลังไม่ได้เลยว่าเดือนที่ปิดไปแล้ว
+         * เปลี่ยนตัวเลขเพราะอะไร
+         *
+         * แถวใหม่มี `quantity` เป็นศูนย์ — ไม่มีของเคลื่อนที่ตอนกรอกราคา กฎที่ว่า
+         * ยอดคงเหลือของล็อตเท่ากับผลรวมในสมุดจึงไม่กระทบ และทุกที่ที่คิดมูลค่า
+         * เป็น `quantity * unit_cost` ก็ได้ศูนย์ ไม่นับซ้ำกับใบสั่งที่มันอ้างถึง
+         */
+        Db::tx(static function (\PDO $pdo) use ($cost, $logId, $log, $actorId): void {
+            $pdo->prepare('UPDATE inventory_logs SET unit_cost = ? WHERE id = ? AND unit_cost IS NULL')
+                ->execute([$cost, $logId]);
+
+            $pdo->prepare(
+                'INSERT INTO inventory_logs
+                   (product_id, lot_id, action_type, quantity, unit_cost,
+                    reference_doc, notes, created_by, created_by_kind, created_at)
+                 VALUES (?, NULL, \'COST\', 0, ?, ?, ?, ?, \'user\', NOW())'
+            )->execute([
+                (int) $log['product_id'],
+                $cost,
+                $log['reference_doc'],
+                'ลงต้นทุนใบสั่งตัด RX ' . ($log['reference_doc'] ?? '') . " — {$cost} บาท/ชิ้น",
+                $actorId,
+            ]);
+        });
 
         return [
             'id'           => (int) $log['id'],

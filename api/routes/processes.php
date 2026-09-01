@@ -291,6 +291,18 @@ POST('/api/cases/:id/processes/:process/complete', function (array $req) {
     }
     $note = nul($req['body']['note'] ?? null);
 
+    /* ยืนยันขั้น "ขาย" = ของออกจากคลังจริง
+       ตรวจแผนก่อนแตะฐานข้อมูล เพราะ plan() อ่านอย่างเดียว ไม่ยิงเน็ต — ใบที่มี
+       ช่องซึ่งหา SKU ไม่เจอ ควรถูกปฏิเสธตั้งแต่ยังไม่ได้บันทึกอะไรเลย ดีกว่าไป
+       ตายกลางทางแล้วต้องถอนคืน */
+    if ($process === 'sales') {
+        foreach (CaseStock::plan($c) as $line) {
+            if ($line['missing']) {
+                bad($line['missing']);
+            }
+        }
+    }
+
     Db::tx(function (Tx $q) use ($id, $process, $note, $c) {
         saveProcess($q, $id, $process, [
             'status'       => 'completed',
@@ -314,6 +326,34 @@ POST('/api/cases/:id/processes/:process/complete', function (array $req) {
         }
         advanceCaseStatus($q, $c, caseDetail($id)['processes']);
     });
+
+    /*
+     * ตัดของออกจากคลังจริง — นอก transaction ข้างบนโดยตั้งใจ
+     *
+     * การตัดสต็อกยิงข้าม HTTP ไปที่บริการของฝั่งคลัง ทีละบรรทัด · ถือ transaction
+     * ค้างไว้ข้ามการยิงเน็ตหลายรอบจะได้ lock timeout ไม่ใช่ความปลอดภัย
+     *
+     * ถ้าตัดไม่สำเร็จ ขั้นตอนถูกเปิดกลับเป็น "กำลังทำ" แล้วโยนสาเหตุกลับไปให้คน
+     * กดเห็น · ปล่อยให้ขั้นตอนค้างเป็น "เสร็จแล้ว" ทั้งที่ของไม่ได้ออกจากคลัง คือ
+     * บั๊กเดิมในรูปใหม่: ระบบบอกว่าขายแล้ว แต่จำนวนในคลังไม่ลด
+     *
+     * CaseStock กันตัดซ้ำเองด้วย idem_key ต่อช่องต่อสินค้า กดยืนยันซ้ำจึงไม่ตัดสองรอบ
+     */
+    if ($process === 'sales') {
+        try {
+            CaseStock::issueForCase(caseDetail($id), int_or($req['body']['employee_id'] ?? null));
+        } catch (Throwable $e) {
+            Db::tx(function (Tx $q) use ($id, $e) {
+                saveProcess($q, $id, 'sales', ['status' => 'in_progress', 'completed_at' => null]);
+                logEvent($q, $id, [
+                    'action' => 'stock_issue_failed', 'entity' => 'case_process',
+                    'note'   => mb_substr($e->getMessage(), 0, 250),
+                ]);
+            });
+            throw $e;
+        }
+    }
+
     return caseDetail($id)['processes'];
 });
 
@@ -323,6 +363,13 @@ POST('/api/cases/:id/processes/:process/reopen', function (array $req) {
     $process = assertProcess((string) $req['params']['process']);
     caseDetail($id);
     $note = nul($req['body']['note'] ?? null);
+
+    /* เปิดขั้น "ขาย" กลับมาแก้ = ของที่ตัดไปแล้วต้องกลับเข้าคลัง
+       คืนก่อนเปิดขั้นตอน เพราะถ้าคืนไม่สำเร็จ ขั้นตอนต้องยังเป็น "เสร็จแล้ว" อยู่
+       ให้ตรงกับของที่ยังออกไปจากคลังจริง ๆ */
+    if ($process === 'sales') {
+        CaseStock::returnForCase(caseDetail($id), 'เปิดขั้นการขายกลับมาแก้');
+    }
 
     Db::tx(function (Tx $q) use ($id, $process, $note) {
         saveProcess($q, $id, $process, [

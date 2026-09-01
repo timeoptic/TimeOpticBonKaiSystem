@@ -104,6 +104,8 @@ final class Receiving
                 "รับเข้าคลัง {$lotNumber}", $actorId,
             ]);
 
+            self::settleShortfall($pdo, (int) $p['id'], $id, $lotNumber, $qty, $cost, $actorId);
+
             return $id;
         });
 
@@ -119,6 +121,68 @@ final class Receiving
     }
 
     /* -------------------------------------------------------------- helpers */
+
+    /**
+     * ของที่เพิ่งมาถึง หักกลบกับที่ขายค้างไว้ก่อนหน้า
+     *
+     * ขายของที่ยังไม่มีได้ (ดู `Stock::plan`) ส่วนที่เกินไปกองอยู่บนล็อตค้างส่ง
+     * เป็นยอดติดลบ · พอของมาถึง ของกล่องใหม่ต้องถูกกันไว้จ่ายหนี้ก้อนนั้นก่อน
+     * ไม่งั้นมันจะถูกขายซ้ำอีกรอบ แล้วยอดติดลบก็จะค้างอยู่ตลอดไป
+     *
+     * ย้ายด้วยสองแถวในสมุด ไม่ใช่แก้ตัวเลขเงียบ ๆ — ออกจากล็อตใหม่หนึ่งแถว เข้า
+     * ล็อตค้างส่งหนึ่งแถว · ยอดคงเหลือของทุกล็อตจึงยังเท่ากับผลรวมในสมุด ซึ่งเป็น
+     * ข้อที่ `doctor` ตรวจ · แถวขาออกถือต้นทุนของล็อตใหม่ไปด้วย การขายที่ตอนนั้น
+     * ยังไม่รู้ต้นทุนจึงได้ต้นทุนของมันที่นี่ ในวันที่รู้จริง
+     */
+    private static function settleShortfall(
+        PDO $pdo,
+        int $productId,
+        int $newLotId,
+        string $newLotNumber,
+        int $qty,
+        /* ต้นทุนเดินทางมาเป็นสตริงจากฟอร์ม (decimal ไม่ใช่ float ในฐานข้อมูล)
+           ที่นี่แค่ส่งต่อลงสมุด จึงรับตามที่มันเป็น ไม่แปลงให้เสียความละเอียด */
+        float|string|null $cost,
+        ?int $actorId,
+    ): void {
+        $st = $pdo->prepare(
+            'SELECT id, lot_number, remaining_qty FROM stock_lots
+             WHERE product_id = ? AND remaining_qty < 0 FOR UPDATE'
+        );
+        $st->execute([$productId]);
+        $short = $st->fetch();
+        if ($short === false) {
+            return;
+        }
+
+        $owed = -(int) $short['remaining_qty'];
+        $pay  = min($owed, $qty);
+        if ($pay <= 0) {
+            return;
+        }
+
+        $pdo->prepare('UPDATE stock_lots SET remaining_qty = remaining_qty - ? WHERE id = ?')
+            ->execute([$pay, $newLotId]);
+        $pdo->prepare('UPDATE stock_lots SET remaining_qty = remaining_qty + ? WHERE id = ?')
+            ->execute([$pay, $short['id']]);
+
+        $log = $pdo->prepare(
+            'INSERT INTO inventory_logs
+               (product_id, lot_id, action_type, quantity, unit_cost,
+                reference_doc, notes, created_by, created_by_kind, created_at)
+             VALUES (?, ?, \'ADJUST\', ?, ?, ?, ?, ?, \'user\', NOW())'
+        );
+        $doc = 'GRN-' . $newLotNumber;
+
+        $log->execute([
+            $productId, $newLotId, -$pay, $cost, $doc,
+            "กันไว้จ่ายของที่ขายค้างไว้ {$pay} ชิ้น", $actorId,
+        ]);
+        $log->execute([
+            $productId, (int) $short['id'], $pay, $cost, $doc,
+            "หักกลบค้างส่งด้วยของจากล็อต {$newLotNumber} {$pay} ชิ้น", $actorId,
+        ]);
+    }
 
     /** @param array<string,mixed> $req */
     /**
@@ -174,6 +238,13 @@ final class Receiving
     }
 
     /** @param array<string,mixed> $req */
+    /**
+     * จำนวนที่รับเข้า — 0 ได้ แปลว่า "ลงชื่อไว้ก่อน ของยังไม่มา"
+     *
+     * คนขายเจอเลนส์รุ่นที่ร้านยังไม่เคยลงระบบ ลูกค้ายืนอยู่ตรงหน้า ของจะมา
+     * สัปดาห์หน้า · เดิมต้องใส่อย่างน้อย 1 ซึ่งเป็นการโกหกว่ามีของอยู่บนชั้น
+     * ลงเป็น 0 แล้วขายต่อได้เลย ยอดจะติดลบเป็นค้างส่ง ซึ่งตรงกับความจริง
+     */
     private static function qty(array $req): int
     {
         $v = $req['quantity'] ?? null;
@@ -181,8 +252,8 @@ final class Receiving
             throw ApiError::badRequest('จำนวนต้องเป็นจำนวนเต็ม', 'bad_quantity');
         }
         $n = (int) $v;
-        if ($n < 1 || $n > 999999) {
-            throw ApiError::badRequest('จำนวนต้องอยู่ระหว่าง 1 ถึง 999999', 'bad_quantity');
+        if ($n < 0 || $n > 999999) {
+            throw ApiError::badRequest('จำนวนต้องอยู่ระหว่าง 0 ถึง 999999', 'bad_quantity');
         }
         return $n;
     }

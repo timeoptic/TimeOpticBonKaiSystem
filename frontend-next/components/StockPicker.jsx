@@ -14,7 +14,7 @@
 import { useState } from 'react';
 import { Picker } from './Picker.jsx';
 import { Icon } from './Icon.jsx';
-import { NewProductModal } from './NewProductModal.jsx';
+import { StockEmbedModal } from './StockEmbedModal.jsx';
 import { api } from '../lib/apiClient.js';
 
 /** product_name usually already starts with the brand — don't say it twice */
@@ -91,11 +91,15 @@ export function StockPicker({ type, onPick, selectedId = null, picked = null, on
         )}
       </div>
 
+      {/* ฟอร์มตัวจริงของฝั่งคลัง ฝังมาเป็น iframe — ฟอร์มเดียวกับที่หน้ารับของ
+          ใช้ ไม่ใช่ของที่หน้าตาคล้ายกัน · เหตุผลที่ต้องฝังอยู่ใน StockEmbedModal */}
       {adding && (
-        <NewProductModal
+        <StockEmbedModal
+          what="product"
           type={type || 'Frame'}
+          title={type === 'Lens' ? 'เพิ่มเลนส์เข้าคลัง' : 'เพิ่มสินค้าเข้าคลัง'}
           onClose={() => setAdding(false)}
-          onCreated={afterCreate}
+          onProduct={afterCreate}
         />
       )}
     </>
