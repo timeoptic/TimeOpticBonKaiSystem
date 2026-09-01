@@ -57,7 +57,14 @@ export default function EmbedLayout({ children }: { children: React.ReactNode })
     <ActorProvider actor={actor}>
       {/* พื้นของเอกสารนี้ต้องใส — หน้าที่ฝังเรามีฉากมืดของมันเองอยู่แล้ว ถ้า
           ปล่อยให้ทาสีพื้นจะได้สี่เหลี่ยมสว่างรอบกล่อง เห็นขอบ iframe ชัด ๆ */}
-      <style>{"body{background:transparent}"}</style>
+      {/* พื้นของเอกสารนี้ต้องใส และฉากมืดของกล่องก็ต้องดับด้วย
+          `<dialog>` ทาฉากมืดของมันเองผ่าน `::backdrop` ซึ่งในเอกสารที่ถูกฝัง
+          จะเต็มแค่กรอบ iframe ไม่ใช่เต็มจอ — ได้สี่เหลี่ยมเทาขอบคมรอบกล่อง
+          ซ้อนอยู่บนฉากมืดของหน้าแม่อีกที · หน้าแม่มีฉากมืดของมันอยู่แล้ว
+          ที่นี่จึงเหลือแค่ตัวกล่อง */}
+      {/* `.drawer::backdrop` ไม่ใช่ `dialog::backdrop` — คลาสชนะตัวเลือกธาตุ
+          เขียนผิดชั้นแล้วฉากมืดยังอยู่ครบ เห็นเป็นแผ่นเทาเต็มกรอบ iframe */}
+      <style>{"body{background:transparent}.drawer::backdrop{background:transparent}"}</style>
       <ToastProvider>{children}</ToastProvider>
     </ActorProvider>
   );
