@@ -219,13 +219,16 @@ const RX_FIELDS: Spec[] = [
   },
 ];
 
-/** Said before the choice is made, so nobody picks a type and then discovers it. */
+/**
+ * บอกล่วงหน้าว่าเลือกชนิดนี้แล้วต้องกรอกอะไร — เหลือเฉพาะเลนส์
+ *
+ * ชนิดอื่นกรอกไม่กี่ช่องและเดาได้จากชื่อ การเขียนไว้ให้ครบทุกใบทำให้หน้าเลือก
+ * กลายเป็นกำแพงตัวหนังสือที่ต้องอ่านก่อนกด ทั้งที่คนกดรู้อยู่แล้วว่าจะเพิ่มอะไร
+ * เลนส์ต่างออกไปตรงที่มีค่าสายตาและสเปกยาวกว่าชนิดอื่นหลายเท่า คนที่ไม่เคยเพิ่ม
+ * เลนส์มาก่อนควรได้เห็นก่อนกด ไม่ใช่ไปเจอตอนฟอร์มเปิดแล้ว
+ */
 const TYPE_ASKS: Record<string, string> = {
   Lens: "ชนิดเลนส์ · Index · Coating · ข้างตา · SPH CYL AXIS ADD",
-  Frame: "สี · ขนาด · วัสดุ · ไลน์สินค้า",
-  Sunglass: "สี · ขนาด · วัสดุ · สีเลนส์ · โพลาไรซ์",
-  ContactLen: "BC · DIA · จำนวนต่อกล่อง · รอบการใส่ · ข้างตา",
-  Accessory: "ประเภท (กล่อง น้ำยา สาย ผ้า) · แล้วแต่ประเภทที่เลือก",
 };
 
 /** Every key this form owns, so a value cleared here is truly removed. */
@@ -809,7 +812,7 @@ export default function ProductForm({
           {PRODUCT_TYPES.map((t) => (
             <button key={t} type="button" className="typecard" onClick={() => setType(t)}>
               <span className="typecard__name">{PRODUCT_TYPE_LABEL[t]}</span>
-              <span className="typecard__asks">{TYPE_ASKS[t]}</span>
+              {TYPE_ASKS[t] ? <span className="typecard__asks">{TYPE_ASKS[t]}</span> : null}
             </button>
           ))}
         </div>
