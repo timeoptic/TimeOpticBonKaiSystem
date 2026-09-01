@@ -76,7 +76,7 @@ function actorWithRole(string $role): array
 }
 
 $owner = actorWithRole('owner');
-$staff = actorWithRole('staff');
+$staff = actorWithRole('sales');
 
 $pdo = Db::pdo();
 $pdo->beginTransaction();
