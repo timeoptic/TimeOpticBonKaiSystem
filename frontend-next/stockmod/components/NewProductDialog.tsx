@@ -24,6 +24,7 @@ export default function NewProductDialog({
   presetType,
   onUseExisting,
   initialQty,
+  askQty,
 }: {
   onClose: () => void;
   onSaved: (id: number, lot?: CreatedLot) => void;
@@ -38,6 +39,8 @@ export default function NewProductDialog({
   receive?: boolean;
   /** จำนวนตั้งต้นของล็อตแรก — หน้าร้านส่ง "0" มา เพราะของยังไม่มาถึง */
   initialQty?: string;
+  /** ถามจำนวนที่รับเข้าไหม — หน้าร้านไม่ถาม คนเปิดออเดอร์ไม่ได้ถือของอยู่ */
+  askQty?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => ref.current?.showModal(), []);
@@ -71,6 +74,7 @@ export default function NewProductDialog({
             make={make}
             presetType={presetType}
             initialQty={initialQty}
+            askQty={askQty}
             onUseExisting={onUseExisting}
             onSaved={onSaved}
             onCancel={() => ref.current?.close()}

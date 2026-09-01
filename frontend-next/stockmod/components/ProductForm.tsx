@@ -290,6 +290,7 @@ export default function ProductForm({
   presetType,
   onUseExisting,
   initialQty = "1",
+  askQty = true,
 }: {
   product?: ProductDetail;
   onSaved: (id: number, lot?: CreatedLot) => void;
@@ -332,6 +333,14 @@ export default function ProductForm({
    * ศูนย์แล้วติดลบตอนตัดขาย ไม่ใช่ขึ้นหนึ่งชิ้นที่ไม่มีอยู่จริงบนชั้น
    */
   initialQty?: string;
+  /**
+   * ถามจำนวนที่รับเข้าหรือไม่
+   *
+   * หน้ารับของถาม เพราะคนกรอกกำลังนับของอยู่ · หน้าร้านไม่ถาม เพราะคนเปิดออเดอร์
+   * ไม่ได้ถือของ ตัวเลขที่กรอกได้จึงมีแต่ทางผิด: ใส่เกินไปหนึ่งก็กลายเป็นของบน
+   * ชั้นที่ไม่มีจริง แล้วไปกลบยอดค้างที่หน้า "สินค้ารอสั่ง" ต้องเห็นพอดี
+   */
+  askQty?: boolean;
 }) {
   const actor = useActor();
   const mayCost = can.enterCost(actor);
@@ -926,7 +935,11 @@ export default function ProductForm({
             >
               {i < at ? "✓" : i + 1}
             </span>
-            <span className="wizard__name">{s}</span>
+            {/* ชื่อขั้นบนแถบเดินหน้าเรียกตามสิ่งที่หน้านั้นทำจริง — หน้าร้านไม่ได้
+                รับของเข้า มันเปิดล็อตเปล่าไว้รอของ */}
+            <span className="wizard__name">
+              {s === "ล็อตแรกที่รับเข้า" && !askQty ? "ล็อตที่รอของเข้ามา" : s}
+            </span>
           </li>
         ))}
       </ol>
@@ -1126,19 +1139,26 @@ export default function ProductForm({
 
       {steps[at] === "ล็อตแรกที่รับเข้า" ? (
         <fieldset className="pform__set">
-          <legend className="pform__legend">ล็อตแรกที่รับเข้า</legend>
+          <legend className="pform__legend">{askQty ? "ล็อตแรกที่รับเข้า" : "ล็อตที่รอของเข้ามา"}</legend>
           <p className="field__help">
-            ของที่ถืออยู่ตรงหน้าเข้าคลังพร้อมกับสินค้าใหม่นี้เลย — ไม่ต้องบันทึกแล้วไปหาฟอร์มรับของอีกรอบ
+            {askQty
+              ? "ของที่ถืออยู่ตรงหน้าเข้าคลังพร้อมกับสินค้าใหม่นี้เลย — ไม่ต้องบันทึกแล้วไปหาฟอร์มรับของอีกรอบ"
+              : "หน้าร้านไม่ต้องกรอกจำนวน — ของยังไม่มาถึง ล็อตนี้เปิดไว้ที่ศูนย์ ตัดขายแล้วยอดจะติดลบไปขึ้นหน้า “สินค้ารอสั่ง” แล้วหักกลบเองเมื่อของเข้า"}
           </p>
           <div className="pform__grid">
-            <QtyField
-              id="pf-qty"
-              value={qty}
-              onChange={setQty}
-              disabled={busy}
-              label="จำนวนที่รับเข้า"
-              help="กดบวกลบได้ หรือพิมพ์เองถ้ารับมาเยอะ"
-            />
+            {/* หน้าร้านไม่มีช่องจำนวน — คนเปิดออเดอร์ไม่ได้ถือของอยู่ ตัวเลขที่
+                กรอกตรงนี้จะเป็นของบนชั้นที่ไม่มีอยู่จริง แล้วไปกลบยอดค้างที่หน้า
+                สินค้ารอสั่งต้องเห็น */}
+            {askQty ? (
+              <QtyField
+                id="pf-qty"
+                value={qty}
+                onChange={setQty}
+                disabled={busy}
+                label="จำนวนที่รับเข้า"
+                help="กดบวกลบได้ หรือพิมพ์เองถ้ารับมาเยอะ"
+              />
+            ) : null}
             <div className="field">
               <label className="field__label" htmlFor="pf-sup">ผู้ขาย</label>
               <Select
@@ -1232,7 +1252,7 @@ export default function ProductForm({
                 : product
                   ? "บันทึกการแก้ไข"
                   : wantLot
-                    ? "เพิ่มสินค้าและรับเข้าคลัง"
+                    ? (askQty ? "เพิ่มสินค้าและรับเข้าคลัง" : "เพิ่มสินค้าและเปิดล็อตรอของ")
                     : "เพิ่มสินค้า"}
           </button>
         ) : (

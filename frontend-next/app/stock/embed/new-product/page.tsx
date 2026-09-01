@@ -27,6 +27,7 @@ export default function EmbeddedNewProduct() {
          ตัดขายจบที่ศูนย์แทนที่จะติดลบไปขึ้นหน้า "สินค้ารอสั่ง" · พิมพ์ทับได้
          ถ้าของอยู่ตรงหน้าจริง */
       initialQty="0"
+      askQty={false}
       title="เพิ่มสินค้าใหม่แล้วรับเข้าเลย"
       onClose={() => sendToParent({ kind: "cancel" })}
       /* ส่งกลับแค่ id ของสินค้า — กล่องคืนเลขล็อตมาเป็นชื่อ ไม่ใช่ id และหน้าร้าน
