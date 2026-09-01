@@ -48,7 +48,18 @@ foreach ([
     require __DIR__ . "/routes/$group.php";
 }
 
-Http::cors($config['cors_origins']);
+/* CORS ของทั้งพอร์ต — ฝั่งคลังยกให้ host ตอบตอน mountUnder เพราะสอง
+   Access-Control-Allow-Origin แย่กว่าไม่มีเลย เบราว์เซอร์ทิ้งทั้งคู่
+
+   เครื่องอื่นในวง LAN (iPad ที่ร้าน เครื่องหลังร้าน) เข้ามาด้วย origin เป็นเลข IP
+   ที่เปลี่ยนตาม DHCP จึงใช้กฎเดียวกับฝั่งคลัง: ที่อยู่ในวงส่วนตัวและเป็น http
+   เท่านั้น เปิดด้วย API_ALLOW_LAN=1 · ยังต้องมีคุกกี้ session อยู่ดีจึงจะเห็นอะไร */
+$corsOrigins = $config['cors_origins'];
+$origin      = $_SERVER['HTTP_ORIGIN'] ?? '';
+if ($origin !== '' && \Optic\Http::isLanOrigin($origin)) {
+    $corsOrigins[] = $origin;
+}
+Http::cors($corsOrigins);
 
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $path   = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';

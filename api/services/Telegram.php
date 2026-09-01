@@ -137,6 +137,28 @@ final class Telegram
         return $data['result'];
     }
 
+    /**
+     * ชุดใบรับรองที่ใช้ตรวจ https ของ Telegram — คืน null เมื่อ PHP มีของตัวเองแล้ว
+     *
+     * PHP บน Windows ไม่ได้มาพร้อมชุด CA และไม่ได้อ่านคลังใบรับรองของ Windows
+     * เครื่องที่มีแอนตี้ไวรัสหรือพร็อกซีดักอ่าน TLS จะยิ่งชัด เพราะใบที่ยื่นมาเป็น
+     * ของตัวกลาง ซึ่งมีอยู่ในคลังของ Windows แต่ PHP ไม่เห็น ผลคือ curl error 19
+     * "self-signed certificate in certificate chain" ตอนกดปุ่มทดสอบ Telegram
+     *
+     * ตั้ง `CA_BUNDLE` ใน .env ชี้ไปที่ไฟล์ .pem ที่ส่งออกจากคลังของ Windows
+     * **ห้ามแก้ด้วยการปิด CURLOPT_SSL_VERIFYPEER** นั่นคือยอมรับใบอะไรก็ได้
+     * รวมถึงของคนที่แอบสวมเป็น Telegram แล้วอ่าน bot token ที่ส่งไปกับ URL
+     */
+    private static function caBundle(): ?string
+    {
+        foreach ([getenv('CA_BUNDLE'), ini_get('curl.cainfo'), ini_get('openssl.cafile')] as $path) {
+            if (is_string($path) && $path !== '' && is_readable($path)) {
+                return $path;
+            }
+        }
+        return null;
+    }
+
     /** @return array{0: ?string, 1: int, 2: ?string} body, status, curl error */
     private static function post(string $url, ?string $json): array
     {
@@ -146,6 +168,10 @@ final class Telegram
             CURLOPT_TIMEOUT        => 12,
             CURLOPT_CONNECTTIMEOUT => 8,
         ]);
+        $ca = self::caBundle();
+        if ($ca !== null) {
+            curl_setopt($ch, CURLOPT_CAINFO, $ca);
+        }
         if ($json !== null) {
             curl_setopt_array($ch, [
                 CURLOPT_POST       => true,
@@ -159,6 +185,9 @@ final class Telegram
         curl_close($ch);
         if ($err !== null && str_contains(strtolower($err), 'timed out')) {
             $err = 'หมดเวลาเชื่อมต่อ Telegram';
+        } elseif ($err !== null && str_contains(strtolower($err), 'certificate')) {
+            $err = 'ตรวจใบรับรองของ Telegram ไม่ผ่าน — ตั้ง CA_BUNDLE ใน .env '
+                 . 'ให้ชี้ไปที่ไฟล์ .pem ที่ส่งออกจากคลังใบรับรองของ Windows';
         }
         return [is_string($body) ? $body : null, $code, $err];
     }
