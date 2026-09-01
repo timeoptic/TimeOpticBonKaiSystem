@@ -289,6 +289,7 @@ export default function ProductForm({
   make,
   presetType,
   onUseExisting,
+  initialQty = "1",
 }: {
   product?: ProductDetail;
   onSaved: (id: number, lot?: CreatedLot) => void;
@@ -323,6 +324,14 @@ export default function ProductForm({
    * making someone find the lot form for the thing they are holding.
    */
   receive?: boolean;
+  /**
+   * จำนวนตั้งต้นของล็อตแรก
+   *
+   * หน้ารับของตั้ง 1 เพราะคนกรอกถือของอยู่จริง · หน้าร้านตั้ง 0 เพราะที่นั่นสินค้า
+   * ใหม่มักเกิดตอนลูกค้าสั่งของที่ร้านยังไม่มี ของยังไม่มาถึง ยอดจึงควรเริ่มที่
+   * ศูนย์แล้วติดลบตอนตัดขาย ไม่ใช่ขึ้นหนึ่งชิ้นที่ไม่มีอยู่จริงบนชั้น
+   */
+  initialQty?: string;
 }) {
   const actor = useActor();
   const mayCost = can.enterCost(actor);
@@ -515,7 +524,7 @@ export default function ProductForm({
 
   const suppliers = useApi<{ suppliers: Supplier[] }>(receive ? "/suppliers" : null);
 
-  const [qty, setQty] = useState("1");
+  const [qty, setQty] = useState(initialQty);
   const [supplierId, setSupplierId] = useState("");
   const [cost, setCost] = useState("");
   const [received, setReceived] = useState(today);

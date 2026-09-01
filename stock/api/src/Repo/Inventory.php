@@ -60,6 +60,20 @@ final class Inventory
         AND (SELECT COALESCE(SUM(l2.remaining_qty), 0)
              FROM stock_lots l2 WHERE l2.product_id = p.id) < p.min_stock";
 
+    /**
+     * ของที่ขายไปแล้วแต่ยังไม่มีในคลัง — ยอดรวมของ SKU ติดลบ
+     *
+     * ยอดติดลบไปกองอยู่บนล็อตค้างส่ง (`SHORT-<sku>`) ใบเดียวต่อสินค้า แต่เงื่อนไข
+     * ถามที่ยอดรวม ไม่ใช่ที่ชื่อล็อต: ล็อตจริงอาจยังเหลือของอยู่บ้างพร้อมกับยอด
+     * ค้าง แล้วรวมกันแล้วไม่ติดลบ — แบบนั้นไม่ต้องสั่งของ · ผูกกับชื่อล็อตจะได้
+     * รายการที่สั่งของซ้ำกับที่มีอยู่บนชั้น
+     *
+     * ไม่มี join เหมือนเงื่อนไขอื่นในนี้ จึงใช้กับ `COUNT(*)` ที่แบ่งหน้าได้ด้วย
+     */
+    private const BACKORDER = "p.is_custom_made = 0
+        AND (SELECT COALESCE(SUM(l2.remaining_qty), 0)
+             FROM stock_lots l2 WHERE l2.product_id = p.id) < 0";
+
     public const ACTION_LABEL = [
         'IN'       => 'รับเข้า',
         'OUT'      => 'จ่ายออก',
@@ -238,6 +252,8 @@ final class Inventory
             // the whole point of the figure is to be told before the shelf is
             // empty rather than after.
             $where[] = self::LOW_STOCK;
+        } elseif ($state === 'backorder') {
+            $where[] = self::BACKORDER;
         }
 
         return [implode(' AND ', $where), $args];
@@ -944,6 +960,7 @@ final class Inventory
                               SELECT 1 FROM stock_lots l2
                               WHERE l2.product_id = p.id AND l2.remaining_qty > 0)'),
             'low' => $of(self::LOW_STOCK),
+            'backorder' => $of(self::BACKORDER),
         ];
     }
 

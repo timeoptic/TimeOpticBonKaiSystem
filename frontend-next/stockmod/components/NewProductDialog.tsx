@@ -23,6 +23,7 @@ export default function NewProductDialog({
   make,
   presetType,
   onUseExisting,
+  initialQty,
 }: {
   onClose: () => void;
   onSaved: (id: number, lot?: CreatedLot) => void;
@@ -35,6 +36,8 @@ export default function NewProductDialog({
   onUseExisting?: (id: number) => void;
   /** Also take the delivery's first lot in, in the same save. */
   receive?: boolean;
+  /** จำนวนตั้งต้นของล็อตแรก — หน้าร้านส่ง "0" มา เพราะของยังไม่มาถึง */
+  initialQty?: string;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => ref.current?.showModal(), []);
@@ -67,6 +70,7 @@ export default function NewProductDialog({
             receive={receive}
             make={make}
             presetType={presetType}
+            initialQty={initialQty}
             onUseExisting={onUseExisting}
             onSaved={onSaved}
             onCancel={() => ref.current?.close()}

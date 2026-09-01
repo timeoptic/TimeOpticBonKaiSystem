@@ -93,6 +93,15 @@ const ICON = {
       <path d="M6.5 12h.01M17.5 12h.01" />
     </svg>
   ),
+  /* ตะกร้าที่ยังว่าง กับป้ายลบ — ของที่ต้องสั่ง ไม่ใช่ของที่มี */
+  cart: (
+    <svg className="rail-icon" viewBox="0 0 24 24" aria-hidden="true" {...stroke}>
+      <path d="M3 5h2l2.2 9.2a1.6 1.6 0 0 0 1.6 1.3h7.6a1.6 1.6 0 0 0 1.6-1.2L20 8H6" />
+      <circle cx="9.5" cy="19" r="1.3" />
+      <circle cx="16.5" cy="19" r="1.3" />
+      <path d="M11 11h4" />
+    </svg>
+  ),
   shops: (
     <svg className="rail-icon" viewBox="0 0 24 24" aria-hidden="true" {...stroke}>
       <path d="M4 10v9h16v-9" />
@@ -110,6 +119,9 @@ const DAILY: Item[] = [
   { href: "/", label: "เบิก / ตัดสต็อก", hint: "ตัดของออกจากคลัง ขาย เบิก ของเสีย", icon: ICON.out },
   { href: "/products", label: "สินค้าและสต็อก", hint: "สินค้า ล็อต ต้นทุน และรับของเข้า", icon: ICON.boxes },
   { href: "/rx", label: "ใบสั่งตัด RX", hint: "สั่งเลนส์เฉพาะราย และลงต้นทุน", icon: ICON.lens },
+  /* ของที่ขายไปแล้วแต่ยังไม่มีในคลัง — งานประจำวัน ไม่ใช่รายงาน: รายการนี้คือของ
+     ที่ต้องสั่งวันนี้ และหายไปเองเมื่อรับของเข้า */
+  { href: "/backorders", label: "สินค้ารอสั่ง", hint: "ขายไปแล้วของยังไม่เข้า ยอดติดลบ", icon: ICON.cart },
 ];
 
 const STOCK: Item[] = [
