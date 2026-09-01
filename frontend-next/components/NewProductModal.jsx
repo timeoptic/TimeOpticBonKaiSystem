@@ -39,7 +39,17 @@ export function NewProductModal({ type, onClose, onCreated }) {
   const { ok, err } = useToast();
   const isLens = type === 'Lens';
   const fields = isLens ? LENS_FIELDS : FRAME_FIELDS;
-  const [form, setForm] = useState({ amount: '1' });
+  /**
+   * ลงชื่อสินค้าไว้ก่อน ของยังไม่มา — จึงไม่ถามจำนวน
+   *
+   * คนขายเปิดกล่องนี้ตอนลูกค้ายืนอยู่ตรงหน้าและสินค้าที่เขาเลือกยังไม่มีในระบบ
+   * ซึ่งเกือบทุกครั้งแปลว่าของยังไม่ได้เข้าร้านด้วย · ถามจำนวนแล้วค่าปริยาย 1
+   * คือชวนให้ตอบว่ามีของหนึ่งชิ้นทั้งที่ยังไม่มี แล้วคลังก็จะเชื่อตามนั้น
+   *
+   * ลงเป็นล็อตศูนย์ชิ้นแทน พอยืนยันการขาย ยอดจะกลายเป็นติดลบเท่าที่ค้างส่ง และ
+   * กลับเป็นบวกเองในวันที่รับของเข้าจริง (ดู Receiving::settleShortfall)
+   */
+  const [form, setForm] = useState({ amount: '0' });
   const [busy, setBusy] = useState(false);
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -69,6 +79,10 @@ export function NewProductModal({ type, onClose, onCreated }) {
     <div className="modal-back" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="modal wide">
         <h3>{isLens ? 'เพิ่มเลนส์เข้าคลัง' : 'เพิ่มกรอบเข้าคลัง'}</h3>
+        <p className="hint">
+          ลงชื่อไว้ก่อน ของยังไม่มา — พอยืนยันการขาย ยอดจะขึ้นเป็นค้างส่ง
+          แล้วกลับเป็นบวกเองในวันที่รับของเข้าจริง
+        </p>
         {/* ไม่ใช้ <form> ที่นี่ — โมดัลนี้ถูก render อยู่ข้างในฟอร์มออเดอร์ และ HTML
             ซ้อนฟอร์มไม่ได้ เบราว์เซอร์จะทิ้งฟอร์มชั้นในทิ้ง ปุ่ม submit ของโมดัลก็จะ
             กลายเป็นปุ่มบันทึกออเดอร์แทน (กดเพิ่มสินค้าแล้วออเดอร์ถูกบันทึกไปเฉย ๆ)
@@ -89,12 +103,6 @@ export function NewProductModal({ type, onClose, onCreated }) {
                   />
                 </Field>
               ))}
-              <Field label="จำนวนที่รับเข้า" hint="ตัดออกจากคลังเมื่อเลือกเข้าออเดอร์">
-                <input
-                  name="amount" type="number" min="1" step="1"
-                  value={form.amount ?? '1'} onChange={set('amount')}
-                />
-              </Field>
               <Field label="ราคาทุน / Cost" hint="ไม่กรอกก็ได้">
                 <input name="product_expense" type="number" min="0" step="1"
                   value={form.product_expense ?? ''} onChange={set('product_expense')} />
