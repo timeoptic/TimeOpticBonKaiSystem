@@ -10,20 +10,25 @@
 /**
  * Where the API lives.
  *
+ * Both halves of the merged project are served by one PHP app on port 8095:
+ * this half answers under the /stock-api prefix, the storefront under /api.
+ * The origin comes from NEXT_PUBLIC_API_ORIGIN, the same variable the
+ * storefront half reads, so there is one origin to set rather than one each.
+ *
  * With nothing configured, it is assumed to be on the same machine that served
- * this page, on port 8080. That is what makes the shop LAN work without anyone
- * editing a config file: the till opens http://192.168.1.108:3000 and its API
- * calls go to http://192.168.1.108:8080 by themselves. Hard-coding localhost
+ * this page, on port 8095. That is what makes the shop LAN work without anyone
+ * editing a config file: the till opens http://192.168.1.108:3010 and its API
+ * calls go to http://192.168.1.108:8095 by themselves. Hard-coding localhost
  * would send every other device looking for an API on its own machine.
  *
  * Computed per call rather than once at import, because this module is also
  * evaluated during server rendering where there is no window to ask.
  */
 function apiBase(): string {
-  const configured = process.env.NEXT_PUBLIC_API_BASE;
-  if (configured) return configured;
-  if (typeof window === "undefined") return "http://localhost:8080/api";
-  return `${window.location.protocol}//${window.location.hostname}:8080/api`;
+  const origin = process.env.NEXT_PUBLIC_API_ORIGIN;
+  if (origin) return `${origin}/stock-api`;
+  if (typeof window === "undefined") return "http://localhost:8095/stock-api";
+  return `${window.location.protocol}//${window.location.hostname}:8095/stock-api`;
 }
 
 /** The shape every refusal from the API takes. */

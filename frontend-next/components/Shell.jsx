@@ -16,8 +16,12 @@ import { useAuth } from '../contexts/AuthContext.jsx';
  *
  * ตั้งใจไม่ยุบสองเมนูเข้าด้วยกัน — คนละงาน คนละคนใช้ ยุบแล้วเมนูจะยาวจนหาไม่เจอ
  * ทั้งสองฝั่ง มีแค่ปุ่มเดินข้ามไปมา และล็อกอินใบเดียวกันจึงไม่ต้องล็อกอินซ้ำ
+ *
+ * ตอนนี้อยู่เว็บเดียวกันแล้ว ใต้ /stock — ต้องเป็น <a> ไม่ใช่ <Link> เพราะสอง
+ * ฝั่ง import CSS คนละชุดที่ layout ของกลุ่มตัวเอง เดินข้ามแบบ client-side
+ * จะได้สไตล์สองชุดทับกันในหน้าเดียว
  */
-const STOCK_APP = process.env.NEXT_PUBLIC_STOCK_APP_URL || 'http://localhost:3000';
+const STOCK_APP = process.env.NEXT_PUBLIC_STOCK_APP_URL || '/stock/';
 
 export { crumbFor };
 
@@ -145,8 +149,8 @@ export function Shell({ children }) {
             </Fragment>
           ))}
           <div className="nav-group">ระบบอื่น</div>
-          <a href={STOCK_APP} target="_blank" rel="noreferrer">
-            <span className="ic"><Icon name="📦" /></span>คลังและต้นทุน ↗
+          <a href={STOCK_APP}>
+            <span className="ic"><Icon name="📦" /></span>คลังและต้นทุน
           </a>
         </nav>
         <div className="sidebar-foot"><Clock /></div>

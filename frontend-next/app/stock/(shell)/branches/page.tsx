@@ -181,7 +181,7 @@ function BranchRowView({
           {branch.pendingCount === 0 ? (
             <span className="grid__muted">—</span>
           ) : (
-            <Link href={`/settlements?branch=${branch.id}`} className="grid__link">
+            <Link href={`/stock/settlements?branch=${branch.id}`} className="grid__link">
               {count(branch.pendingCount)} รายการ
             </Link>
           )}

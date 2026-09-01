@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api, type ProductRow } from "@/stockmod/lib/api";
 import { count, money } from "@/stockmod/lib/format";
+import { stockHref } from "@/stockmod/lib/paths";
 
 type Item =
   | { kind: "page"; label: string; hint: string; href: string }
@@ -104,7 +105,7 @@ export default function CommandPalette({ onOpenProduct }: { onOpenProduct?: (id:
   function choose(item: Item) {
     setOpen(false);
     if (item.kind === "page") {
-      router.push(item.href);
+      router.push(stockHref(item.href));
       return;
     }
     if (onOpenProduct) {
@@ -112,7 +113,7 @@ export default function CommandPalette({ onOpenProduct }: { onOpenProduct?: (id:
     } else {
       // From another screen there is no drawer to open, so land on the index
       // filtered to that one product instead of doing nothing.
-      router.push(`/products?q=${encodeURIComponent(item.product.sku)}`);
+      router.push(stockHref(`/products?q=${encodeURIComponent(item.product.sku)}`));
     }
   }
 

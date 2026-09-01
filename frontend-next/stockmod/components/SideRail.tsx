@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { Actor } from "@/stockmod/lib/api";
+import { stockHref, trimSlash } from "@/stockmod/lib/paths";
 
 /**
  * N3 side-rail — the app's one navigation surface.
@@ -124,17 +125,22 @@ const MONEY: Item[] = [
  *
  * ตั้งใจไม่ยุบสองเมนูเข้าด้วยกัน — คนละงาน คนละคนใช้ ยุบแล้วเมนูจะยาวจนหาไม่เจอ
  * ทั้งสองฝั่ง มีแค่ปุ่มเดินข้ามไปมา และล็อกอินใบเดียวกันจึงไม่ต้องล็อกอินซ้ำ
+ *
+ * ตอนนี้อยู่เว็บเดียวกันแล้ว หน้าร้านอยู่ที่ราก — ต้องเป็น <a> ไม่ใช่ <Link>
+ * เพราะสองฝั่ง import CSS คนละชุด เดินข้ามแบบ client-side จะได้สไตล์ทับกัน
  */
-const FRONTDESK =
-  process.env.NEXT_PUBLIC_FRONTDESK_APP_URL ?? "http://localhost:3005";
+const FRONTDESK = process.env.NEXT_PUBLIC_FRONTDESK_APP_URL ?? "/";
 
 const ADMIN: Item[] = [
   { href: "/users", label: "จัดการผู้ใช้", hint: "บัญชี สิทธิ์ และตำแหน่งงาน", icon: ICON.people },
 ];
 
 /** `/` matches only itself; every other section owns its subtree. */
-const isCurrent = (pathname: string, href: string) =>
-  href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
+const isCurrent = (pathname: string, href: string) => {
+  const here = trimSlash(pathname);
+  const there = trimSlash(stockHref(href));
+  return href === "/" ? here === there : here === there || here.startsWith(`${there}/`);
+};
 
 function Group({ title, items, pathname }: { title: string; items: Item[]; pathname: string }) {
   return (
@@ -144,7 +150,7 @@ function Group({ title, items, pathname }: { title: string; items: Item[]; pathn
         {items.map((item) => (
           <li key={item.href}>
             <Link
-              href={item.href}
+              href={stockHref(item.href)}
               className="rail-item"
               aria-current={isCurrent(pathname, item.href) ? "page" : undefined}
               title={item.hint}
@@ -194,13 +200,11 @@ export default function SideRail({
             <li>
               <a
                 href={FRONTDESK}
-                target="_blank"
-                rel="noreferrer"
                 className="rail-item"
                 title="เคส ลูกค้า วัดสายตา และการขายหน้าร้าน"
               >
                 {ICON.shops}
-                <span>หน้าร้าน ↗</span>
+                <span>หน้าร้าน</span>
               </a>
             </li>
           </ul>

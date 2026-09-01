@@ -9,6 +9,7 @@ import LensDetail from "./LensDetail";
 import { IconClose, IconTrash } from "./Icon";
 import backdropClose from "./backdrop";
 import { count, date, money } from "@/stockmod/lib/format";
+import { stockHref } from "@/stockmod/lib/paths";
 
 /**
  * One product: what it is, what is left of it, and what has happened to it.
@@ -302,7 +303,7 @@ lot={l}
                 ))}
               </ul>
               <p className="field__help">
-                <Link href={`/movements?q=${encodeURIComponent(detail.sku)}`} className="grid__link">
+                <Link href={stockHref(`/movements?q=${encodeURIComponent(detail.sku)}`)} className="grid__link">
                   ดูความเคลื่อนไหวทั้งหมดของ {detail.sku}
                 </Link>
               </p>

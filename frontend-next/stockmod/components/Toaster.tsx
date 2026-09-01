@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { IconAlert, IconCheck, IconClose } from "./Icon";
+import { stockHref } from "@/stockmod/lib/paths";
 
 type Tone = "ok" | "error";
 
@@ -111,7 +112,7 @@ function ToastCard({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }
         <p className="toast__text">{toast.text}</p>
         {toast.detail ? <p className="toast__detail">{toast.detail}</p> : null}
         {toast.link ? (
-          <Link href={toast.link.href} className="toast__link" onClick={onDismiss}>
+          <Link href={stockHref(toast.link.href)} className="toast__link" onClick={onDismiss}>
             {toast.link.label}
           </Link>
         ) : null}
