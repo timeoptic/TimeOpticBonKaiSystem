@@ -43,7 +43,7 @@ StockClient::configure($config['stock_api']);
 foreach ([
     'auth', 'meta', 'dashboard', 'cases', 'customers', 'employees', 'prescriptions',
     'stock', 'locations', 'suppliers', 'orders', 'payments',
-    'workflow', 'processes', 'uploads', 'sales', 'cashflow', 'reports', 'bookings', 'settings',
+    'workflow', 'processes', 'uploads', 'sales', 'pos', 'cashflow', 'reports', 'bookings', 'settings',
 ] as $group) {
     require __DIR__ . "/routes/$group.php";
 }
@@ -98,6 +98,48 @@ $open = in_array($path, ['/api/auth/login', '/api/auth/logout', '/api/auth/me'],
 if (!$open && StockModule::actor() === null) {
     Http::json(401, ['error' => 'ต้องเข้าสู่ระบบก่อน', 'reason' => 'unauthenticated']);
     exit;
+}
+
+/* ประตูที่สอง — งานของแอดมิน
+ *
+ * เงินของร้านและข้อมูลระบบ (พนักงาน ซัพพลายเออร์ รายงาน การตั้งค่า) ไม่ใช่งาน
+ * ของคนหน้าร้าน · กันที่นี่ที่เดียวด้วยคำนำหน้าเส้นทาง ไม่ใช่ไปเติมบรรทัดตรวจสิทธิ์
+ * ในทุกเส้นของห้าไฟล์ เพราะเส้นที่ยี่สิบแปดที่ใครเขียนเพิ่มวันหน้าจะถูกกันเองโดย
+ * ไม่ต้องมีใครจำได้ · ซ่อนเมนูฝั่งหน้าเว็บเป็นแค่มารยาท ด่านจริงอยู่ตรงนี้
+ *
+ * `/api/settings` เปิดให้อ่านได้ทุกคนแต่แก้ไม่ได้ — ใบสั่งตัดแว่นพิมพ์เวลาเปิดร้าน
+ * จากที่นั่น (print/order/page.jsx) ซึ่งพนักงานขายเป็นคนกดพิมพ์ · เวลาเปิดร้าน
+ * ไม่ใช่ความลับ แต่การแก้มันเป็นเรื่องของคนดูแลระบบ
+ */
+const ADMIN_PREFIXES = [
+    '/api/income', '/api/expense',          // การเงิน
+    '/api/employees', '/api/suppliers',     // ข้อมูลระบบ
+    '/api/reports', '/api/notifications', '/api/reminders',
+];
+if (!$open) {
+    $actor    = StockModule::actor();
+    $isAdmin  = \Optic\Roles::rank((string) $actor['role']) >= \Optic\Roles::rank(\Optic\Roles::ADMIN);
+    $prefixed = static fn(string $p): bool => $path === $p || str_starts_with($path, $p . '/');
+
+    $needsAdmin = false;
+    foreach (ADMIN_PREFIXES as $p) {
+        if ($prefixed($p)) {
+            $needsAdmin = true;
+            break;
+        }
+    }
+    // การตั้งค่า: อ่านได้ทุกคน เขียนเฉพาะแอดมิน
+    if (!$needsAdmin && $prefixed('/api/settings') && $method !== 'GET') {
+        $needsAdmin = true;
+    }
+
+    if ($needsAdmin && !$isAdmin) {
+        Http::json(403, [
+            'error'  => 'เมนูนี้สำหรับผู้ดูแลระบบเท่านั้น',
+            'reason' => 'forbidden',
+        ]);
+        exit;
+    }
 }
 
 try {

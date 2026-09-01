@@ -9,8 +9,9 @@ import {
 import { DataTable } from '../../../components/DataTable.jsx';
 import { fmtDateTime } from '../../../lib/format.js';
 import { Icon } from '../../../components/Icon.jsx';
+import { AdminOnly } from '../../../components/AdminOnly.jsx';
 
-export default function SettingsPage() {
+function SettingsPageInner() {
   const { ok, err } = useToast();
   const { data, loading, error, reload } = useAsync(async () => {
     const [s, logs] = await Promise.all([
@@ -180,4 +181,10 @@ export default function SettingsPage() {
       </Card>
     </div>
   );
+}
+
+/* งานของแอดมิน — พนักงานขายที่พิมพ์ URL เข้ามาตรง ๆ จะเห็นคำอธิบาย
+   ไม่ใช่หน้าเปล่าหรือถูกเด้งกลับเงียบ ๆ */
+export default function SettingsPage() {
+  return <AdminOnly><SettingsPageInner /></AdminOnly>;
 }

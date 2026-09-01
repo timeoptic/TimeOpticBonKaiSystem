@@ -5,8 +5,9 @@ import { useMeta } from '../../../contexts/MetaContext.jsx';
 import { useToast } from '../../../components/Toast.jsx';
 import { Badge, Card, Field, FormActions, FormGrid, Loading, PageHead } from '../../../components/ui.jsx';
 import { DataTable } from '../../../components/DataTable.jsx';
+import { AdminOnly } from '../../../components/AdminOnly.jsx';
 
-export default function SupplierList() {
+function SupplierListInner() {
   const { reload: reloadMeta } = useMeta();
   const { ok, err } = useToast();
   const { data: rows, loading, reload } = useAsync(() => api.get('/api/suppliers'), []);
@@ -82,4 +83,10 @@ export default function SupplierList() {
       </Card>
     </>
   );
+}
+
+/* งานของแอดมิน — พนักงานขายที่พิมพ์ URL เข้ามาตรง ๆ จะเห็นคำอธิบาย
+   ไม่ใช่หน้าเปล่าหรือถูกเด้งกลับเงียบ ๆ */
+export default function SupplierList() {
+  return <AdminOnly><SupplierListInner /></AdminOnly>;
 }

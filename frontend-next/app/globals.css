@@ -2648,7 +2648,9 @@ table.grid.data-grid tr.row-danger td:first-child{border-left-color:var(--danger
 /* ── หน้าเลือกระบบ (/hub) ───────────────────────────────────────────────────
    สองทางเลือกเท่านั้น จึงเป็นสองการ์ดเท่ากัน ไม่ใช่รายการ — คนที่มาถึงหน้านี้
    กำลังตอบคำถามเดียว และควรตอบได้ด้วยการกดครั้งเดียวโดยไม่ต้องอ่านทั้งหน้า */
-.hub-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+/* auto-fit ไม่ใช่จำนวนคอลัมน์ตายตัว — หน้านี้เคยมีสองการ์ด ตอนนี้สาม (เพิ่ม
+   "ผู้ดูแลระบบ") และจะได้ไม่ต้องมาแก้ตัวเลขอีกถ้าวันหน้ามีระบบที่สี่ */
+.hub-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px}
 .hub-card{display:block;text-decoration:none;color:inherit;transition:transform .12s ease,box-shadow .12s ease}
 .hub-card:hover{transform:translateY(-2px);box-shadow:0 10px 24px rgba(11,45,68,.12)}
 .hub-card .card-body{text-align:center;padding:22px 18px}

@@ -1,11 +1,18 @@
 'use client';
 import { Ledger } from '../../../components/Ledger.jsx';
+import { AdminOnly } from '../../../components/AdminOnly.jsx';
 
-export default function ExpensePage() {
+function ExpensePageInner() {
   return (
     <Ledger
       title="Expense" subtitle="รายจ่าย" icon="💸"
       endpoint="/api/expense" typeKey="expense_type" typeList="expense_type" withPayType
     />
   );
+}
+
+/* งานของแอดมิน — พนักงานขายที่พิมพ์ URL เข้ามาตรง ๆ จะเห็นคำอธิบาย
+   ไม่ใช่หน้าเปล่าหรือถูกเด้งกลับเงียบ ๆ */
+export default function ExpensePage() {
+  return <AdminOnly><ExpensePageInner /></AdminOnly>;
 }

@@ -8,8 +8,9 @@ import { DataTable } from '../../../components/DataTable.jsx';
 import { ListSelect } from '../../../components/Selects.jsx';
 import { fmtDate } from '../../../lib/format.js';
 import { Icon } from '../../../components/Icon.jsx';
+import { AdminOnly } from '../../../components/AdminOnly.jsx';
 
-export default function EmployeeList() {
+function EmployeeListInner() {
   const { reload: reloadMeta } = useMeta();
   const { ok, err } = useToast();
   const { data: rows, loading, reload } = useAsync(() => api.get('/api/employees'), []);
@@ -93,4 +94,10 @@ export default function EmployeeList() {
       </Card>
     </>
   );
+}
+
+/* งานของแอดมิน — พนักงานขายที่พิมพ์ URL เข้ามาตรง ๆ จะเห็นคำอธิบาย
+   ไม่ใช่หน้าเปล่าหรือถูกเด้งกลับเงียบ ๆ */
+export default function EmployeeList() {
+  return <AdminOnly><EmployeeListInner /></AdminOnly>;
 }

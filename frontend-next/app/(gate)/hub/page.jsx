@@ -49,7 +49,8 @@ export default function HubPage() {
   }
 
   return (
-    <div style={{ maxWidth: 640, margin: '10vh auto', padding: '0 16px' }}>
+    /* กว้างขึ้นจาก 640 เพราะการ์ดเป็นสามใบแล้ว — ที่ 640 ใบที่สามตกลงไปอยู่แถวล่างคนเดียว */
+    <div style={{ maxWidth: 900, margin: '10vh auto', padding: '0 16px' }}>
       <div style={{ textAlign: 'center', marginBottom: 18 }}>
         <div style={{ fontSize: 30, letterSpacing: 2 }}>◎◎</div>
         <h1 style={{ margin: '6px 0 2px', fontSize: 20 }}>
@@ -77,6 +78,24 @@ export default function HubPage() {
             <h2 style={{ margin: '8px 0 4px', fontSize: 18 }}>คลังและต้นทุน</h2>
             <p className="muted" style={{ margin: 0 }}>
               รับของ เบิก ล็อต ต้นทุน ใบสั่งตัด RX สาขา
+            </p>
+          </div>
+        </a>
+
+        {/* งานของผู้ดูแล — เงินของร้านและข้อมูลระบบ
+            ไม่ต้องเช็คบทบาทตรงนี้: หน้า /hub เด้งคนที่ทำงานฝั่งเดียวออกไปแล้ว
+            ตั้งแต่ตอนโหลด (worksBothSides) ซึ่งเป็นเงื่อนไขเดียวกับ isAdminUp
+            ทุกคนที่มองเห็นหน้านี้อยู่จึงเป็นแอดมินขึ้นไปเสมอ
+
+            พาไปที่ "รายรับ" ซึ่งเป็นหน้าแรกของกลุ่มการเงิน — ไม่ได้ทำหน้ารวม
+            ขึ้นมาใหม่ เพราะงานหกอย่างนี้อยู่ในเมนูซ้ายของหน้าร้านครบอยู่แล้ว
+            การ์ดใบนี้มีไว้ให้เห็นตั้งแต่ล็อกอินว่าส่วนนี้มีอยู่ ไม่ใช่ที่อยู่ใหม่ของมัน */}
+        <a className="card hub-card" href="/income/">
+          <div className="card-body">
+            <div style={{ fontSize: 28 }}>🔐</div>
+            <h2 style={{ margin: '8px 0 4px', fontSize: 18 }}>ผู้ดูแลระบบ</h2>
+            <p className="muted" style={{ margin: 0 }}>
+              รายรับ รายจ่าย พนักงาน ซัพพลายเออร์ รายงาน ตั้งค่า
             </p>
           </div>
         </a>

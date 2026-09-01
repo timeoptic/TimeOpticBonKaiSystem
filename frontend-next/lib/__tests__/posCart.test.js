@@ -1,0 +1,199 @@
+// frontend-next/lib/__tests__/posCart.test.js
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+
+import {
+  addItem, removeItem, setQty, bumpQty, setPrice, setMeta, setCustomName,
+  lineTotal, totals, changeFor, paymentStatus, validateCart, validatePayment,
+  toItemsPayload, round2,
+} from '../pos/cart.js';
+
+const spray = { id: 1, sku: 'CLN-0005', name: 'สเปรย์ Hitop 60 ml', base_selling_price: 120, pos_fields: [] };
+const lens = {
+  id: 2, sku: 'CTM-0004', name: 'Maxim color', base_selling_price: 900,
+  pos_fields: [
+    { key: 'power', label: 'ค่าสายตา', required: true },
+    { key: 'color', label: 'สี', required: true },
+  ],
+};
+const other = { id: 3, sku: 'CST-0001', name: 'อื่นๆ (พิมพ์เอง)', base_selling_price: 0, pos_custom: true, pos_fields: [] };
+
+test('addItem: ใช้ราคาจากแคตตาล็อกเป็นค่าตั้งต้น', () => {
+  const c = addItem([], spray);
+  assert.equal(c.length, 1);
+  assert.equal(c[0].unit_price, 120);
+  assert.equal(c[0].quantity, 1);
+  assert.equal(c[0].sku, 'CLN-0005');
+});
+
+test('addItem: สินค้าเดิม ราคาเดิม meta เดิม -> บวกจำนวนในแถวเดิม', () => {
+  let c = addItem([], spray);
+  c = addItem(c, spray);
+  assert.equal(c.length, 1);
+  assert.equal(c[0].quantity, 2);
+});
+
+test('addItem: ราคาต่างกัน -> แยกแถว (ลดราคาให้ชิ้นเดียว)', () => {
+  let c = addItem([], spray);
+  c = addItem(c, spray, { price: 100 });
+  assert.equal(c.length, 2);
+});
+
+test('addItem: dynamic field ต่างกัน -> แยกแถว', () => {
+  let c = addItem([], lens, { meta: { power: '-2.00', color: 'Gray' } });
+  c = addItem(c, lens, { meta: { power: '-3.00', color: 'Gray' } });
+  assert.equal(c.length, 2);
+  c = addItem(c, lens, { meta: { power: '-2.00', color: 'Gray' } });
+  assert.equal(c.length, 2, 'ชุดที่ซ้ำต้องรวมกลับแถวเดิม');
+  assert.equal(c[0].quantity, 2);
+});
+
+test('addItem: สินค้า custom แยกแถวเสมอ', () => {
+  let c = addItem([], other);
+  c = addItem(c, other);
+  assert.equal(c.length, 2);
+});
+
+test('setQty / bumpQty: ต่ำกว่า 1 ไม่ได้', () => {
+  let c = addItem([], spray);
+  const k = c[0].key;
+  c = setQty(c, k, 5);
+  assert.equal(c[0].quantity, 5);
+  c = setQty(c, k, 0);
+  assert.equal(c[0].quantity, 1);
+  c = bumpQty(c, k, -3);
+  assert.equal(c[0].quantity, 1);
+  c = bumpQty(c, k, 2);
+  assert.equal(c[0].quantity, 3);
+});
+
+test('setQty: ทศนิยมถูกตัดเป็นจำนวนเต็ม', () => {
+  let c = addItem([], spray);
+  c = setQty(c, c[0].key, 2.9);
+  assert.equal(c[0].quantity, 2);
+});
+
+test('setPrice: 0 ได้ (ของแถม) แต่ติดลบไม่ได้', () => {
+  let c = addItem([], spray);
+  c = setPrice(c, c[0].key, 0);
+  assert.equal(c[0].unit_price, 0);
+  c = setPrice(c, c[0].key, -50);
+  assert.equal(c[0].unit_price, 0);
+});
+
+test('removeItem: ลบเฉพาะแถวที่ระบุ', () => {
+  let c = addItem(addItem([], spray), lens, { meta: { power: '-1' } });
+  c = removeItem(c, c[0].key);
+  assert.equal(c.length, 1);
+  assert.equal(c[0].sku, 'CTM-0004');
+});
+
+test('lineTotal / totals: จำนวน x ราคา แล้วรวมทั้งใบ', () => {
+  let c = addItem([], spray, { quantity: 2 });
+  c = addItem(c, lens, { price: 900, meta: { power: '-2.00', color: 'Gray' } });
+  assert.equal(lineTotal(c[0]), 240);
+  const t = totals(c);
+  assert.equal(t.subtotal, 1140);
+  assert.equal(t.total, 1140);
+  assert.equal(t.itemCount, 2);
+  assert.equal(t.unitCount, 3);
+});
+
+test('totals: ส่วนลดหักได้ และหักเกินยอดสินค้าไม่ได้', () => {
+  const c = addItem([], spray, { quantity: 2 });
+  assert.equal(totals(c, 40).total, 200);
+  assert.equal(totals(c, 9999).total, 0);
+});
+
+test('round2: เศษจากการคูณไม่ลอย', () => {
+  assert.equal(round2(0.1 * 3), 0.3);
+  const c = addItem([], { ...spray, base_selling_price: 33.33 }, { quantity: 3 });
+  assert.equal(totals(c).subtotal, 99.99);
+});
+
+test('changeFor: ทอนตามจริง และไม่ติดลบ', () => {
+  assert.equal(changeFor(1500, 1140), 360);
+  assert.equal(changeFor(1000, 1140), 0);
+  assert.equal(changeFor('', 100), 0);
+});
+
+test('paymentStatus: ครบ / บางส่วน / ยังไม่จ่าย และใบยอด 0', () => {
+  assert.equal(paymentStatus(1000, 1000), 'paid');
+  assert.equal(paymentStatus(1000, 500), 'partial');
+  assert.equal(paymentStatus(1000, 0), 'unpaid');
+  assert.equal(paymentStatus(0, 0), 'paid');
+});
+
+test('validateCart: ตะกร้าว่าง', () => {
+  const e = validateCart([]);
+  assert.equal(e.length, 1);
+  assert.match(e[0].message, /ยังไม่มีสินค้า/);
+});
+
+test('validateCart: dynamic field ที่บังคับต้องครบ', () => {
+  let c = addItem([], lens, { meta: { power: '-2.00' } });
+  let e = validateCart(c);
+  assert.equal(e.length, 1);
+  assert.match(e[0].message, /สี/);
+  c = setMeta(c, c[0].key, 'color', 'Gray');
+  assert.deepEqual(validateCart(c), []);
+});
+
+test('validateCart: สินค้า custom ต้องมีชื่อ', () => {
+  let c = addItem([], other);
+  assert.match(validateCart(c)[0].message, /ต้องพิมพ์ชื่อสินค้า/);
+  c = setCustomName(c, c[0].key, 'ค่าเปลี่ยนขาแว่น');
+  assert.deepEqual(validateCart(c), []);
+});
+
+test('validatePayment: จ่ายเต็มด้วยเงินสด รับเงินพอ', () => {
+  assert.deepEqual(validatePayment({
+    total: 1140, amount: 1140, method: 'cash', received: 1500, delivered: true,
+  }), []);
+});
+
+test('validatePayment: เงินสดรับมาน้อยกว่ายอด', () => {
+  const e = validatePayment({
+    total: 1000, amount: 1000, method: 'cash', received: 500, delivered: true,
+  });
+  assert.equal(e.length, 1);
+  assert.match(e[0], /น้อยกว่ายอด/);
+});
+
+test('validatePayment: จ่ายเกินยอดขาย', () => {
+  const e = validatePayment({ total: 100, amount: 200, method: 'cash', delivered: true });
+  assert.match(e[0], /เกินยอดขาย/);
+});
+
+test('validatePayment: มัดจำต้องมีชื่อหรือเบอร์', () => {
+  const base = { total: 2000, amount: 500, method: 'transfer', delivered: true };
+  assert.equal(validatePayment(base).length, 1);
+  assert.deepEqual(validatePayment({ ...base, customerPhone: '0812345678' }), []);
+  assert.deepEqual(validatePayment({ ...base, customerName: 'คุณเอ' }), []);
+});
+
+test('validatePayment: จ่ายครบแต่ยังไม่ส่งมอบ ก็ต้องมีข้อมูลลูกค้า', () => {
+  const e = validatePayment({
+    total: 1000, amount: 1000, method: 'cash', received: 1000, delivered: false,
+  });
+  assert.equal(e.length, 1);
+});
+
+test('validatePayment: ส่งมอบทั้งที่ยังค้างเงินไม่ใช่ข้อผิดพลาด', () => {
+  assert.deepEqual(validatePayment({
+    total: 300, amount: 100, method: 'cash', received: 100,
+    delivered: true, customerPhone: '0899999999',
+  }), []);
+});
+
+test('toItemsPayload: ส่งเฉพาะสิ่งที่ API ใช้ และยัดชื่อ custom ลง meta', () => {
+  let c = addItem([], spray, { quantity: 2 });
+  c = addItem(c, other);
+  c = setCustomName(c, c[1].key, 'ค่าประกอบพิเศษ');
+  const p = toItemsPayload(c);
+  assert.deepEqual(p[0], {
+    product_id: 1, custom_name: undefined, quantity: 2, unit_price: 120, item_meta: {},
+  });
+  assert.equal(p[1].custom_name, 'ค่าประกอบพิเศษ');
+  assert.equal(p[1].item_meta.custom_name, 'ค่าประกอบพิเศษ');
+});

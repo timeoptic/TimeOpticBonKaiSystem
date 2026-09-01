@@ -66,7 +66,7 @@ const RX_ROWS = [
 const EYES = [['r', 'Right'], ['l', 'Left']];
 
 /** ขั้นตอนงานหลังบ้าน — ช่างติ๊ก/เซ็นกำกับทีละช่องตามที่งานเดินไป */
-const STAGES = ['สั่งเลน', 'เจียเลน', 'QC', 'เก็บแว่น'];
+const STAGES = ['สั่งเลนส์', 'เจียร์เลนส์', 'QC', 'เก็บแว่น'];
 
 /**
  * ช่องวัดที่ช่างกรอกมือ — PD/FH มาจากการวัดบนหน้าลูกค้า ส่วน A/B/ED/DBL เป็นขนาดกรอบ
@@ -123,6 +123,29 @@ const frameLabel = (o) => o?.frame_name
 
 /** ชนิดงาน — ออเดอร์เก่ากรอก lens_type ไว้ ใบใหม่อ่านจากดีไซน์ของเลนส์ที่เลือก */
 const workType = (o) => o?.lens_type || o?.lens_design || '';
+
+/**
+ * เลนส์บนสำเนาลูกค้า — เอาแค่สี่อย่างที่ลูกค้าใช้เทียบของได้: ยี่ห้อ รุ่น โค้ตติ้ง ดัชนีหักเห
+ *
+ * ไม่ใช้ lens_name เพราะมันคือชื่อยาวที่มีค่าสายตาต่อท้ายมาด้วย
+ * ("Hitop Aspheric Blue (1.56) -1.50/-0.50") ซึ่งลูกค้าอ่านไม่ออกและซ้ำกับ
+ * ตารางค่าสายตาในสำเนาร้านอยู่แล้ว
+ *
+ * สองแหล่ง เรียงตามความน่าเชื่อ: คอลัมน์ของออเดอร์เองมาก่อน (ออเดอร์เก่ากรอกมือไว้)
+ * ไม่มีค่อยถอยไปอ่านจากล็อตสต๊อกที่ผูกไว้ — ยกเว้น "รุ่น" ที่มีอยู่ที่เดียวคือล็อต
+ * (products.attributes.model) ตาราง custom_orders ไม่มีคอลัมน์ lens_model
+ *
+ * ช่องไหนว่างก็หายไปทั้งช่อง ไม่ค้างคั่นกลางไว้ให้อ่านสะดุด
+ */
+const lensSpec = (o) => {
+  const lot = o?.left_lens || o?.right_lens || null;
+  return [
+    o?.lens_brand || lot?.brand_name || lot?.brand,
+    lot?.model,
+    o?.lens_coating || lot?.coating,
+    o?.lens_index || lot?.lens_index,
+  ].map((v) => String(v ?? '').trim()).filter(Boolean).join(' · ');
+};
 
 /**
  * หมายเหตุที่พิมพ์ลงใบ — มาจากคนละหน้าจอกัน จึงพิมพ์แยกบรรทัดพร้อมป้ายว่ามาจากขั้นไหน
@@ -284,7 +307,7 @@ function OrderSheet() {
               <F k="Name" v={name} />
               <F k="Type" v={workType(o)} />
               <F k="Frame" v={frameLabel(o)} />
-              <F k="Lens" v={o.lens_name} />
+              <F k="Lens" v={lensSpec(o)} />
             </div>
             <div className="iv-col iv-money">
               {moneyRows.map(([k, v]) => <F key={k} k={k} v={v} />)}
@@ -346,7 +369,7 @@ function OrderSheet() {
           <div className="iv-spec">
             <div className="iv-col">
               <F k="Type" v={workType(o)} />
-              <F k="LensName" v={o.lens_name} />
+              <F k="Frame" v={frameLabel(o)} />
               <F k="RightLen" v={o.lens_r_name} />
               <F k="LeftLen" v={o.lens_l_name} />
             </div>

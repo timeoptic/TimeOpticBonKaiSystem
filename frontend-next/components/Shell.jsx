@@ -10,7 +10,7 @@ import { usePathname } from 'next/navigation';
 import { crumbFor } from '../lib/crumb.js';
 import { Icon } from './Icon.jsx';
 import { useAuth } from '../contexts/AuthContext.jsx';
-import { worksBothSides } from '../lib/roles.js';
+import { isAdminPath, isAdminUp, worksBothSides } from '../lib/roles.js';
 
 /**
  * ระบบคลังและต้นทุนเป็นอีกหน้าเว็บหนึ่ง คนละเมนู คนละหน้าตา
@@ -47,7 +47,7 @@ const NAV = [
     ['👥', 'ลูกค้า', '/customers'],
     ['👁', 'วัดสายตา', '/prescriptions'],
     ['👓', 'ออเดอร์ตัดแว่น', '/orders'],
-    ['🛍', 'ขายสินค้า', '/sales'],
+    ['🛍', 'ขายสินค้า', '/pos'],
   ]],
   /* เคยมี "สต็อกสินค้า" ชี้ไป /stock ของฝั่งนี้เอง — ตอนนี้ /stock เป็นของระบบ
      คลังที่ย้ายเข้ามา และมีปุ่ม "คลังและต้นทุน" ในกลุ่ม "ระบบอื่น" อยู่แล้ว
@@ -55,16 +55,19 @@ const NAV = [
   ['คลังสินค้า', [
     ['📍', 'ตำแหน่งสินค้า', '/locations'],
   ]],
+  /* สองกลุ่มท้ายเป็นงานของแอดมิน — เงินของร้านและข้อมูลระบบไม่ใช่งานหน้าร้าน
+     ธงตัวที่สามของกลุ่มคือ adminOnly · ด่านจริงอยู่ที่ `api/index.php` ซึ่งตอบ 403
+     ให้ทุกเส้นของสองกลุ่มนี้ ตรงนี้แค่ไม่วาดปุ่มที่กดไปก็ถูกปฏิเสธอยู่ดี */
   ['การเงิน', [
     ['💰', 'รายรับ', '/income'],
     ['💸', 'รายจ่าย', '/expense'],
-  ]],
+  ], true],
   ['ข้อมูลระบบ', [
     ['🧑‍💼', 'พนักงาน', '/employees'],
     ['🏭', 'ซัพพลายเออร์', '/suppliers'],
     ['📊', 'รายงาน', '/reports'],
     ['⚙️', 'ตั้งค่า/แจ้งเตือน', '/settings'],
-  ]],
+  ], true],
 ];
 
 /** ทุก href ในเมนู — ใช้ตัดสินว่าหน้านี้มีเมนูตรง ๆ หรือควรไฮไลต์เมนูของกลุ่ม */
@@ -134,6 +137,20 @@ export function Shell({ children }) {
   /* หน้าที่มีเมนูของตัวเอง (เช่น /cases/new) ไฮไลต์เมนูนั้น ไม่ใช่เมนูของกลุ่ม (/cases) */
   const isActive = (to) => (NAV_PATHS.has(here) ? here === to : to === base);
 
+  /**
+   * โซนแอดมินเป็นฝั่งของตัวเอง เหมือนหน้าร้านกับคลัง — ไม่ใช่สองกลุ่มที่ต่อท้าย
+   * เมนูหน้าร้าน · อยู่โซนไหนก็เห็นเมนูของโซนนั้นอย่างเดียว เพราะเมนูสิบกว่ารายการ
+   * ที่ปนงานคนละแบบกันคือเมนูที่หาอะไรไม่เจอ
+   *
+   * เดินข้ามโซนด้วย "เลือกระบบ" ในกลุ่ม "ระบบอื่น" ซึ่งต่อท้ายให้ทั้งสองโซน
+   *
+   * คนที่ไม่ใช่แอดมินได้เมนูหน้าร้านเสมอ แม้จะพิมพ์ URL ของโซนแอดมินเข้ามา —
+   * เขาจะเห็นการ์ด "ไม่มีสิทธิ์" พร้อมเมนูปกติ ไม่ใช่หน้าจอที่เมนูหายไปทั้งแถบ
+   * ซึ่งอ่านได้ว่าระบบพัง
+   */
+  const inAdminZone = isAdminUp(actor) && isAdminPath(here);
+  const navGroups = NAV.filter(([, , adminOnly]) => (inAdminZone ? !!adminOnly : !adminOnly));
+
   return (
     <div className="app" id="app">
       <aside className={`sidebar ${open ? 'open' : ''}`} id="sidebar">
@@ -142,7 +159,7 @@ export function Shell({ children }) {
           <span className="brand-text"><b>TimeOptic</b><small>ระบบจัดการร้านแว่นตา</small></span>
         </div>
         <nav id="nav">
-          {NAV.map(([group, items]) => (
+          {navGroups.map(([group, items]) => (
             <Fragment key={group}>
               <div className="nav-group">{group}</div>
               {items.map(([icon, label, to]) => (

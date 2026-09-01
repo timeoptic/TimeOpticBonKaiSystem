@@ -61,3 +61,19 @@ export function homeFor(actor) {
  */
 export const mayUseFrontdesk = (actor) => rank(actor) > 0 && actor.role !== ROLE.STOCK;
 export const mayUseStock = (actor) => rank(actor) > 0 && actor.role !== ROLE.SALES;
+
+/**
+ * งานของแอดมิน — เงินของร้าน และข้อมูลระบบ
+ *
+ * เป็นแค่คำตอบสำหรับหน้าจอว่า "จะวาดเมนูนี้ไหม" · ด่านจริงอยู่ที่ `api/index.php`
+ * ซึ่งกันด้วยคำนำหน้าเส้นทางชุดเดียวกับลิสต์ข้างล่างนี้ · สองที่ต้องตรงกัน
+ * เพิ่มหน้าใหม่ในกลุ่มนี้เมื่อไหร่ ต้องเติมทั้งสองที่
+ */
+export const ADMIN_PATHS = [
+  '/income', '/expense',
+  '/employees', '/suppliers', '/reports', '/settings',
+];
+
+export const isAdminPath = (path) => ADMIN_PATHS.some(
+  (p) => path === p || path.startsWith(`${p}/`),
+);
