@@ -1,8 +1,8 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { api, ApiError, type Actor } from "@/stockmod/lib/api";
+import { homeFor, isAdminUp, mayUseStock } from "@/lib/roles.js";
 import CommandPalette from "./CommandPalette";
 import { ToastProvider } from "./Toaster";
 import SideRail from "./SideRail";
@@ -24,17 +24,23 @@ export function useActor(): Actor {
   return actor;
 }
 
+/**
+ * ทุกอย่างตั้งแต่แอดมินขึ้นไปตอบเหมือนกันหมด — เงินและแคตตาล็อกเป็นสิทธิ์ชุด
+ * เดียวกันในฝั่งนี้ · แยกเป็นคนละชื่อไว้เพราะจุดที่เรียกใช้อ่านรู้เรื่องกว่า
+ * และวันที่กฎข้อใดข้อหนึ่งแยกออกไป จะแก้ที่เดียวโดยไม่กระทบข้ออื่น
+ */
 export const can = {
-  enterCost: (a: Actor) => a.role === "owner" || a.role === "accountant",
-  editCatalog: (a: Actor) => a.role === "owner" || a.role === "accountant",
-  manageUsers: (a: Actor) => a.role === "owner",
+  enterCost: (a: Actor) => isAdminUp(a),
+  editCatalog: (a: Actor) => isAdminUp(a),
+  manageUsers: (a: Actor) => isAdminUp(a),
   /**
    * Seeing what stock cost us. The API already withholds those numbers from
    * anyone else, so this is not the guard — it is what stops a screen drawing an
    * empty column and an em dash where a staff member would read "ยังไม่มีต้นทุน".
    */
-  seeCost: (a: Actor) => a.role === "owner" || a.role === "accountant",
-  seeBranchMoney: (a: Actor) => a.role === "owner" || a.role === "accountant",
+  seeCost: (a: Actor) => isAdminUp(a),
+  seeBranchMoney: (a: Actor) => isAdminUp(a),
+  manageBranches: (a: Actor) => a.role === "owner" || a.role === "superuser",
 };
 
 /**
@@ -45,7 +51,6 @@ export const can = {
  * means the answer is fetched once per navigation rather than once per screen.
  */
 export default function AppShell({ children }: { children: React.ReactNode }) {
-  const router = useRouter();
   const [actor, setActor] = useState<Actor | null>(null);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   const [error, setError] = useState<string>("");
@@ -53,12 +58,19 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let alive = true;
 
+    /* หน้าล็อกอินกับหน้าเลือกฝั่งอยู่คนละกลุ่ม CSS จึงเดินด้วยการโหลดหน้าใหม่
+       (`location.assign`) ไม่ใช่ router — client-side จะได้สไตล์สองชุดทับกัน */
     api
       .get<{ actor: Actor | null }>("/auth/me")
       .then(({ actor }) => {
         if (!alive) return;
         if (actor === null) {
-          router.replace("/stock/login");
+          location.assign("/login/");
+          return;
+        }
+        /* พนักงานขายเดินมาฝั่งคลังก็ไม่มีอะไรให้ทำ ส่งกลับไปที่ทำงานของเขา */
+        if (!mayUseStock(actor)) {
+          location.assign(homeFor(actor));
           return;
         }
         setActor(actor);
@@ -67,7 +79,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       .catch((e: unknown) => {
         if (!alive) return;
         if (ApiError.is(e) && e.isAuth) {
-          router.replace("/stock/login");
+          location.assign("/login/");
           return;
         }
         setError(e instanceof Error ? e.message : "เกิดข้อผิดพลาดที่ไม่รู้จัก");
@@ -77,13 +89,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     return () => {
       alive = false;
     };
-  }, [router]);
+  }, []);
 
   async function signOut() {
     try {
       await api.post("/auth/logout");
     } finally {
-      router.replace("/stock/login");
+      location.assign("/login/");
     }
   }
 

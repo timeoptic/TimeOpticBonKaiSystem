@@ -135,8 +135,10 @@ export type Actor = {
   username: string | null;
   displayName: string;
   jobTitle: string | null;
-  role: "owner" | "accountant" | "staff";
+  role: "superuser" | "owner" | "admin" | "sales" | "stock";
   roleLabel: string;
+  /** หน้าแรกของบทบาทนี้ ตอบมาจาก `Roles::home` ฝั่ง API ที่เดียว */
+  home: string;
   employeeId: number | null;
 };
 

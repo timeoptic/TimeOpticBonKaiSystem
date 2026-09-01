@@ -30,7 +30,7 @@ type User = {
   username: string | null;
   displayName: string;
   jobTitle: string | null;
-  role: "owner" | "accountant" | "staff";
+  role: string;
   roleLabel: string;
   isActive: boolean;
   canSignIn: boolean;
@@ -52,11 +52,22 @@ const PICK: Record<SortKey, (u: User) => string | number | null> = {
   lastLogin: (u) => u.lastLoginAt,
 };
 
+/**
+ * บทบาททั้งหมด เรียงจากสิทธิ์มากไปน้อย
+ *
+ * `rank` ตรงกับ `Roles::RANK` ฝั่ง API และใช้กรองรายการนี้ให้เหลือเฉพาะบทบาทที่
+ * คนที่กำลังกรอกฟอร์มตั้งให้คนอื่นได้จริง — API ปฏิเสธอยู่แล้วถ้าตั้งเกินตัว
+ * แต่การโชว์ตัวเลือกที่จะถูกปฏิเสธแน่ ๆ คือการหลอกให้กดแล้วเจอ error
+ */
 const ROLES = [
-  { key: "owner", label: "เจ้าของร้าน", note: "เห็นทุกอย่าง และเป็นบทบาทเดียวที่จัดการผู้ใช้ได้" },
-  { key: "accountant", label: "ฝ่ายบัญชี", note: "ลงต้นทุนและแก้แคตตาล็อกได้" },
-  { key: "staff", label: "พนักงานหน้าร้าน", note: "ดูคลังและบันทึกความเคลื่อนไหวสต็อกได้" },
+  { key: "superuser", rank: 4, label: "ผู้ดูแลระบบ", note: "ทุกอย่างของเจ้าของร้าน บวกงานระบบ" },
+  { key: "owner", rank: 3, label: "เจ้าของร้าน", note: "เห็นและทำได้ทุกอย่างในร้าน" },
+  { key: "admin", rank: 2, label: "แอดมิน", note: "จัดการผู้ใช้ ต้นทุน แคตตาล็อก และแดชบอร์ด ทั้งสองฝั่ง" },
+  { key: "sales", rank: 1, label: "พนักงานขาย", note: "เข้าระบบแล้วอยู่หน้าร้าน ไม่เห็นต้นทุน" },
+  { key: "stock", rank: 1, label: "พนักงานคลัง", note: "เข้าระบบแล้วอยู่ฝั่งคลัง ไม่เห็นต้นทุน" },
 ] as const;
+
+const RANK_OF: Record<string, number> = Object.fromEntries(ROLES.map((r) => [r.key, r.rank]));
 
 export default function UsersPage() {
   const actor = useActor();
@@ -74,7 +85,7 @@ export default function UsersPage() {
 
   // Every hook above this line, without exception. React matches hooks by call
   // order, so one behind a return is one that vanishes for the people who hit
-  // that return — here, everybody who is not the owner.
+  // that return — here, everybody who cannot manage accounts.
   if (!can.manageUsers(actor)) {
     return (
       <main className="work-main">
@@ -82,7 +93,7 @@ export default function UsersPage() {
         <div className="empty">
           <p className="empty__title">สิทธิ์ของคุณเข้าหน้านี้ไม่ได้</p>
           <p className="empty__body">
-            เฉพาะเจ้าของร้านเท่านั้นที่จัดการบัญชีผู้ใช้ได้ ติดต่อเจ้าของร้านถ้าต้องใช้งาน
+            แอดมิน เจ้าของร้าน และผู้ดูแลระบบเท่านั้นที่จัดการบัญชีผู้ใช้ได้ ติดต่อคนใดคนหนึ่งถ้าต้องใช้งาน
           </p>
         </div>
       </main>
@@ -220,7 +231,9 @@ function UserDialog({
   const [displayName, setDisplayName] = useState(user?.displayName ?? "");
   const [jobTitle, setJobTitle] = useState(user?.jobTitle ?? "");
   const [username, setUsername] = useState(user?.username ?? "");
-  const [role, setRole] = useState<string>(user?.role ?? "staff");
+  const [role, setRole] = useState<string>(user?.role ?? "sales");
+  /* ตั้งบทบาทได้ไม่เกินของตัวเอง ตามกฎเดียวกับที่ API บังคับ (Roles::canGrant) */
+  const grantable = ROLES.filter((r) => r.rank <= (RANK_OF[actor.role] ?? 0));
   const [isActive, setIsActive] = useState(user?.isActive ?? true);
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -322,7 +335,7 @@ function UserDialog({
                 value={role}
                 onChange={setRole}
                 disabled={busy || isSelf}
-                options={ROLES.map((r) => ({ value: r.key, label: r.label }))}
+                options={grantable.map((r) => ({ value: r.key, label: r.label }))}
               />
               <span className="field__help">
                 {isSelf ? "ลดสิทธิ์ตัวเองไม่ได้" : ROLES.find((r) => r.key === role)?.note}

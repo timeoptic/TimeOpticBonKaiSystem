@@ -10,6 +10,7 @@ import { usePathname } from 'next/navigation';
 import { crumbFor } from '../lib/crumb.js';
 import { Icon } from './Icon.jsx';
 import { useAuth } from '../contexts/AuthContext.jsx';
+import { worksBothSides } from '../lib/roles.js';
 
 /**
  * ระบบคลังและต้นทุนเป็นอีกหน้าเว็บหนึ่ง คนละเมนู คนละหน้าตา
@@ -100,6 +101,7 @@ function WhoAmI() {
 }
 
 export function Shell({ children }) {
+  const { actor } = useAuth();
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
   const crumb = crumbFor(pathname);
@@ -148,10 +150,19 @@ export function Shell({ children }) {
               ))}
             </Fragment>
           ))}
-          <div className="nav-group">ระบบอื่น</div>
-          <a href={STOCK_APP}>
-            <span className="ic"><Icon name="📦" /></span>คลังและต้นทุน
-          </a>
+          {/* พนักงานขายทำงานฝั่งเดียว ปุ่มข้ามฝั่งจึงไม่ขึ้นให้เขา — กดไปก็ถูก
+              ส่งกลับมาที่เดิม */}
+          {worksBothSides(actor) ? (
+            <>
+              <div className="nav-group">ระบบอื่น</div>
+              <a href={STOCK_APP}>
+                <span className="ic"><Icon name="📦" /></span>คลังและต้นทุน
+              </a>
+              <a href="/hub/">
+                <span className="ic"><Icon name="🏠" /></span>เลือกระบบ
+              </a>
+            </>
+          ) : null}
         </nav>
         <div className="sidebar-foot"><Clock /></div>
       </aside>

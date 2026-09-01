@@ -4,6 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { Actor } from "@/stockmod/lib/api";
 import { stockHref, trimSlash } from "@/stockmod/lib/paths";
+import { worksBothSides } from "@/lib/roles.js";
+import { can } from "./AppShell";
 
 /**
  * N3 side-rail — the app's one navigation surface.
@@ -189,26 +191,36 @@ export default function SideRail({
         <Group title="คลัง" items={STOCK} pathname={pathname} />
         {/* Staff record branch withdrawals but never see what is owed, so the
             group that is entirely about money is not in their rail at all. */}
-        {actor.role === "owner" || actor.role === "accountant" ? (
+        {can.seeBranchMoney(actor) ? (
           <Group title="เงินและสาขา" items={MONEY} pathname={pathname} />
         ) : null}
-        {actor.role === "owner" ? <Group title="ระบบ" items={ADMIN} pathname={pathname} /> : null}
+        {can.manageUsers(actor) ? <Group title="ระบบ" items={ADMIN} pathname={pathname} /> : null}
 
-        <div className="rail-group">
-          <p className="rail-group__title">ระบบอื่น</p>
-          <ul className="rail-list">
-            <li>
-              <a
-                href={FRONTDESK}
-                className="rail-item"
-                title="เคส ลูกค้า วัดสายตา และการขายหน้าร้าน"
-              >
-                {ICON.shops}
-                <span>หน้าร้าน</span>
-              </a>
-            </li>
-          </ul>
-        </div>
+        {/* พนักงานคลังทำงานฝั่งเดียว ปุ่มข้ามฝั่งจึงไม่ขึ้นให้เขา — กดไปก็ถูก
+            ส่งกลับมาที่เดิม */}
+        {worksBothSides(actor) ? (
+          <div className="rail-group">
+            <p className="rail-group__title">ระบบอื่น</p>
+            <ul className="rail-list">
+              <li>
+                <a
+                  href={FRONTDESK}
+                  className="rail-item"
+                  title="เคส ลูกค้า วัดสายตา และการขายหน้าร้าน"
+                >
+                  {ICON.shops}
+                  <span>หน้าร้าน</span>
+                </a>
+              </li>
+              <li>
+                <a href="/hub/" className="rail-item" title="กลับไปหน้าเลือกระบบ">
+                  {ICON.boxes}
+                  <span>เลือกระบบ</span>
+                </a>
+              </li>
+            </ul>
+          </div>
+        ) : null}
       </div>
 
       <div className="rail-foot">

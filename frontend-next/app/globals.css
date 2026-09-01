@@ -2644,3 +2644,12 @@ table.grid.data-grid tr.row-danger td:first-child{border-left-color:var(--danger
 .dup-who b{font-size:14px}
 .dup-who .muted{font-size:12.5px}
 .dup-why{display:flex;gap:5px;flex-wrap:wrap;margin-top:2px}
+
+/* ── หน้าเลือกระบบ (/hub) ───────────────────────────────────────────────────
+   สองทางเลือกเท่านั้น จึงเป็นสองการ์ดเท่ากัน ไม่ใช่รายการ — คนที่มาถึงหน้านี้
+   กำลังตอบคำถามเดียว และควรตอบได้ด้วยการกดครั้งเดียวโดยไม่ต้องอ่านทั้งหน้า */
+.hub-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.hub-card{display:block;text-decoration:none;color:inherit;transition:transform .12s ease,box-shadow .12s ease}
+.hub-card:hover{transform:translateY(-2px);box-shadow:0 10px 24px rgba(11,45,68,.12)}
+.hub-card .card-body{text-align:center;padding:22px 18px}
+@media (max-width:640px){.hub-grid{grid-template-columns:1fr}}
