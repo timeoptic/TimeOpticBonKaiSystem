@@ -216,6 +216,9 @@ final class Auth
             'jobTitle'    => $row['job_title'],
             'role'        => $row['role'],
             'roleLabel'   => Roles::LABEL[$row['role']] ?? $row['role'],
+            /* หน้าแรกของบทบาทนี้ ตอบจากที่เดียวกับที่ตัดสินสิทธิ์ หน้าเว็บจึงไม่
+               ต้องเก็บสำเนาของกฎไว้อีกชุด แล้วลืมแก้ตอนเพิ่มบทบาท */
+            'home'        => Roles::home((string) $row['role']),
             'employeeId'  => $row['employee_id'] === null ? null : (int) $row['employee_id'],
         ];
     }

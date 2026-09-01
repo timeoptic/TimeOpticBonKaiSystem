@@ -14,16 +14,42 @@ namespace Optic;
  */
 final class Roles
 {
+    /** ผม/ผู้ดูแลระบบ — ทุกอย่างที่เจ้าของร้านทำได้ บวกงานระบบที่ร้านไม่ต้องยุ่ง */
+    public const SUPERUSER = 'superuser';
     public const OWNER = 'owner';
-    public const ACCOUNTANT = 'accountant';
-    public const STAFF = 'staff';
+    /** แอดมินของทั้งสองฝั่ง — จัดการผู้ใช้ ต้นทุน แดชบอร์ด แต่ไม่ใช่เจ้าของร้าน */
+    public const ADMIN = 'admin';
+    /** พนักงานขายหน้าร้าน — เข้าระบบแล้วอยู่ฝั่งหน้าร้าน */
+    public const SALES = 'sales';
+    /** พนักงานคลัง — เข้าระบบแล้วอยู่ฝั่งคลัง */
+    public const STOCK = 'stock';
 
-    public const ALL = [self::OWNER, self::ACCOUNTANT, self::STAFF];
+    public const ALL = [self::SUPERUSER, self::OWNER, self::ADMIN, self::SALES, self::STOCK];
 
     public const LABEL = [
-        self::OWNER      => 'เจ้าของร้าน',
-        self::ACCOUNTANT => 'ฝ่ายบัญชี',
-        self::STAFF      => 'พนักงานหน้าร้าน',
+        self::SUPERUSER => 'ผู้ดูแลระบบ',
+        self::OWNER     => 'เจ้าของร้าน',
+        self::ADMIN     => 'แอดมิน',
+        self::SALES     => 'พนักงานขาย',
+        self::STOCK     => 'พนักงานคลัง',
+    ];
+
+    /**
+     * ลำดับสิทธิ์ ใช้ตอบคำถามเดียว: ใครตั้งบทบาทให้ใครได้
+     *
+     * ไม่ได้แปลว่าบทบาทที่สูงกว่าทำได้ทุกอย่างของบทบาทที่ต่ำกว่าเสมอไป
+     * ความสามารถแต่ละอย่างยังตอบด้วยฟังก์ชันของตัวเองข้างล่าง — ตัวเลขนี้มีไว้
+     * กันการยกระดับตัวเอง: แอดมินตั้งใครเป็นเจ้าของร้านหรือผู้ดูแลระบบไม่ได้
+     * ไม่งั้นสิทธิ์ "จัดการผู้ใช้" กลายเป็นสิทธิ์ "เป็นอะไรก็ได้" ในสองคลิก
+     *
+     * พนักงานขายกับพนักงานคลังอยู่ระดับเดียวกัน — คนละงาน ไม่ใช่คนละชั้น
+     */
+    private const RANK = [
+        self::SUPERUSER => 4,
+        self::OWNER     => 3,
+        self::ADMIN     => 2,
+        self::SALES     => 1,
+        self::STOCK     => 1,
     ];
 
     public static function isRole(mixed $v): bool
@@ -31,15 +57,42 @@ final class Roles
         return is_string($v) && in_array($v, self::ALL, true);
     }
 
+    public static function rank(string $role): int
+    {
+        return self::RANK[$role] ?? 0;
+    }
+
+    /**
+     * ผู้ที่มีบทบาท `$actor` ตั้งบัญชีให้เป็นบทบาท `$target` ได้หรือไม่
+     *
+     * ตั้งได้เฉพาะบทบาทที่ต่ำกว่าตัวเอง หรือเท่ากับตัวเอง — เจ้าของร้านตั้ง
+     * เจ้าของร้านคนที่สองได้ (ร้านต้องมีคนสำรอง) แต่แอดมินตั้งเจ้าของร้านไม่ได้
+     */
+    public static function canGrant(string $actorRole, string $targetRole): bool
+    {
+        return self::isRole($targetRole) && self::rank($targetRole) <= self::rank($actorRole);
+    }
+
+    /**
+     * งานของระบบ ไม่ใช่งานของร้าน — migration, การตั้งค่าที่พังทั้งระบบได้
+     *
+     * แยกจาก manageAdmins เพราะเจ้าของร้านควรจัดการคนของตัวเองได้เต็มที่
+     * โดยไม่ต้องถือสิทธิ์ที่ทำให้ระบบล่มได้ด้วยการกดผิด
+     */
+    public static function manageSystem(string $role): bool
+    {
+        return $role === self::SUPERUSER;
+    }
+
     public static function manageAdmins(string $role): bool
     {
-        return $role === self::OWNER;
+        return $role === self::SUPERUSER || $role === self::OWNER || $role === self::ADMIN;
     }
 
     /** Anything that touches money: RX_ORDER unit_cost and a lot's cost_per_unit. */
     public static function enterRxCost(string $role): bool
     {
-        return $role === self::OWNER || $role === self::ACCOUNTANT;
+        return self::rank($role) >= self::RANK[self::ADMIN];
     }
 
     /**
@@ -55,7 +108,7 @@ final class Roles
      */
     public static function seeCost(string $role): bool
     {
-        return $role === self::OWNER || $role === self::ACCOUNTANT;
+        return self::rank($role) >= self::RANK[self::ADMIN];
     }
 
     /**
@@ -66,13 +119,13 @@ final class Roles
      */
     public static function seeBranchMoney(string $role): bool
     {
-        return $role === self::OWNER || $role === self::ACCOUNTANT;
+        return self::rank($role) >= self::RANK[self::ADMIN];
     }
 
     /** Product master data — SKU, price, category, lens spec. */
     public static function editCatalog(string $role): bool
     {
-        return $role === self::OWNER || $role === self::ACCOUNTANT;
+        return self::rank($role) >= self::RANK[self::ADMIN];
     }
 
     /**
@@ -87,7 +140,27 @@ final class Roles
     /** The list of branches stock may be lent to. Only an owner decides that. */
     public static function manageBranches(string $role): bool
     {
-        return $role === self::OWNER;
+        return $role === self::SUPERUSER || $role === self::OWNER;
+    }
+
+    /**
+     * หน้าแรกหลังล็อกอินของแต่ละบทบาท
+     *
+     * พนักงานมีงานเดียวและมีฝั่งเดียว จึงส่งเข้าไปให้ถึงที่ทำงานเลย — คนที่เปิด
+     * ระบบวันละสามสิบครั้งไม่ควรต้องเลือกเมนูเดิมทุกครั้ง · คนที่ทำงานทั้งสอง
+     * ฝั่ง (แอดมิน เจ้าของร้าน ผู้ดูแลระบบ) เดาแทนไม่ได้ว่าเปิดมาเพื่ออะไร
+     * จึงพาไปหน้าให้เลือก แล้วให้เลือกเอง
+     *
+     * เป็นเส้นทางของหน้าเว็บ ไม่ใช่ของ API — อยู่ที่นี่เพราะเป็นคำตอบของ
+     * "บทบาทนี้ทำงานฝั่งไหน" ซึ่งเป็นคำถามเดียวกับที่ทั้งไฟล์นี้ตอบ
+     */
+    public static function home(string $role): string
+    {
+        return match ($role) {
+            self::SALES => '/',
+            self::STOCK => '/stock/',
+            default     => '/hub/',
+        };
     }
 
     /**
@@ -99,7 +172,7 @@ final class Roles
      */
     public static function settleBranch(string $role): bool
     {
-        return $role === self::OWNER || $role === self::ACCOUNTANT;
+        return self::rank($role) >= self::RANK[self::ADMIN];
     }
 
     /**
@@ -169,7 +242,16 @@ final class Roles
                     ['label' => 'เพิ่ม · แก้ · ลบสินค้า · ลบล็อต', 'cap' => 'editCatalog'],
                     ['label' => 'บันทึกรับเงินจากสาขา · ตัดหนี้สูญ', 'cap' => 'settleBranch'],
                     ['label' => 'เพิ่ม · แก้สาขา', 'cap' => 'manageBranches'],
-                    ['label' => 'จัดการผู้ใช้ · ตั้งรหัสผ่าน', 'cap' => 'manageAdmins'],
+                    [
+                        'label' => 'จัดการผู้ใช้ · ตั้งรหัสผ่าน',
+                        'cap' => 'manageAdmins',
+                        'note' => 'ตั้งบทบาทได้ไม่เกินบทบาทของตัวเอง — แอดมินตั้งเจ้าของร้านไม่ได้',
+                    ],
+                    [
+                        'label' => 'งานระบบ · migration · ตั้งค่าที่กระทบทั้งระบบ',
+                        'cap' => 'manageSystem',
+                        'note' => 'แยกจากสิทธิ์จัดการผู้ใช้ เจ้าของร้านจึงจัดการคนได้โดยไม่ต้องถือสิทธิ์ที่ทำระบบล่มได้',
+                    ],
                 ],
             ],
         ];

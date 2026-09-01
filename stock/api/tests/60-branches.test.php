@@ -33,12 +33,12 @@ test('เจ้าของร้านเท่านั้นที่เพ�
 
         throwsReason(
             'forbidden',
-            fn() => Branches::create(['name' => branchName()], Roles::ACCOUNTANT),
+            fn() => Branches::create(['name' => branchName()], Roles::ADMIN),
             'ฝ่ายบัญชีเพิ่มสาขา',
         );
         throwsReason(
             'forbidden',
-            fn() => Branches::create(['name' => branchName()], Roles::STAFF),
+            fn() => Branches::create(['name' => branchName()], Roles::SALES),
             'พนักงานเพิ่มสาขา',
         );
     });
@@ -305,7 +305,7 @@ test('พนักงานหน้าร้านบันทึกรับ�
 
         throwsReason(
             'forbidden',
-            fn() => Settlement::settle($out['branch_issue_id'], ['amount' => 100], Roles::STAFF, 1),
+            fn() => Settlement::settle($out['branch_issue_id'], ['amount' => 100], Roles::SALES, 1),
             'พนักงานรับเงิน',
         );
     });
@@ -626,7 +626,7 @@ group('พนักงานหน้าร้านต้องไม่เห�
 
 test('รายการสินค้าไม่ส่งต้นทุนไปให้พนักงาน แต่ยังส่งราคาขาย', function () {
     withRollback(function () {
-        $staff = Inventory::products([], Roles::seeCost(Roles::STAFF))['rows'];
+        $staff = Inventory::products([], Roles::seeCost(Roles::SALES))['rows'];
         ok(count($staff) > 0, 'ต้องมีสินค้า');
 
         foreach ($staff as $r) {
@@ -646,13 +646,13 @@ test('รายการสินค้าไม่ส่งต้นทุน�
 
 test('ล็อตและความเคลื่อนไหวไม่ส่งต้นทุนไปให้พนักงาน', function () {
     withRollback(function () {
-        foreach (Inventory::lots([], Roles::seeCost(Roles::STAFF))['rows'] as $r) {
+        foreach (Inventory::lots([], Roles::seeCost(Roles::SALES))['rows'] as $r) {
             eq($r['costPerUnit'], null, "ต้นทุน/ชิ้นของล็อต {$r['lotNumber']}");
             eq($r['value'], null, "มูลค่าของล็อต {$r['lotNumber']}");
             ok(is_int($r['remainingQty']), 'ยอดคงเหลือต้องยังเห็นได้');
         }
 
-        foreach (Inventory::movements([], Roles::seeCost(Roles::STAFF))['rows'] as $r) {
+        foreach (Inventory::movements([], Roles::seeCost(Roles::SALES))['rows'] as $r) {
             eq($r['unitCost'], null, "ต้นทุน/ชิ้นของรายการ {$r['id']}");
             eq($r['settledAmount'], null, "ยอดรับเงินของรายการ {$r['id']}");
             eq($r['branchProfit'], null, "กำไรของรายการ {$r['id']}");
@@ -671,7 +671,7 @@ test('รายละเอียดสินค้าและค่าเร�
         $sku = skuWithLots(1);
         $id = (int) Db::value('SELECT id FROM products WHERE sku = ?', [$sku]);
 
-        $d = Inventory::product($id, Roles::seeCost(Roles::STAFF));
+        $d = Inventory::product($id, Roles::seeCost(Roles::SALES));
         eq($d['stockValue'], null, 'มูลค่าต้นทุนในหน้ารายละเอียด');
         foreach ($d['lots'] as $l) {
             eq($l['costPerUnit'], null, "ต้นทุนของล็อต {$l['lotNumber']}");
@@ -680,7 +680,7 @@ test('รายละเอียดสินค้าและค่าเร�
             eq($g['unitCost'], null, "ต้นทุนของ log {$g['id']}");
         }
 
-        $r = Inventory::receiveDefaults($sku, Roles::seeCost(Roles::STAFF));
+        $r = Inventory::receiveDefaults($sku, Roles::seeCost(Roles::SALES));
         if ($r['lastLot'] !== null) {
             eq($r['lastLot']['costPerUnit'], null, 'ต้นทุนล็อตก่อนหน้าตอนรับของ');
             ok($r['lastLot']['lotNumber'] !== null, 'แต่เลขล็อตยังต้องเติมให้ได้');
@@ -691,19 +691,19 @@ test('รายละเอียดสินค้าและค่าเร�
 
 test('ยอดรวมของคลังไม่ส่งมูลค่าต้นทุนไปให้พนักงาน', function () {
     withRollback(function () {
-        eq(Inventory::summary(Roles::seeCost(Roles::STAFF))['stockValue'], null, 'มูลค่าคลังสำหรับพนักงาน');
+        eq(Inventory::summary(Roles::seeCost(Roles::SALES))['stockValue'], null, 'มูลค่าคลังสำหรับพนักงาน');
         ok(Inventory::summary(Roles::seeCost(Roles::OWNER))['stockValue'] > 0, 'เจ้าของร้านเห็นมูลค่าจริง');
     });
 });
 
 test('พนักงานเปิดหน้าค้างรับจากสาขาไม่ได้เลย ไม่ใช่แค่เห็นเป็นค่าว่าง', function () {
     withRollback(function () {
-        throwsReason('forbidden', fn() => Settlement::list([], Roles::STAFF), 'พนักงานดูรายการค้างรับ');
-        throwsReason('forbidden', fn() => Settlement::summary(Roles::STAFF), 'พนักงานดูยอดค้างรับ');
+        throwsReason('forbidden', fn() => Settlement::list([], Roles::SALES), 'พนักงานดูรายการค้างรับ');
+        throwsReason('forbidden', fn() => Settlement::summary(Roles::SALES), 'พนักงานดูยอดค้างรับ');
 
         // The two roles that keep the books still get in.
         ok(is_array(Settlement::list([], Roles::OWNER)), 'เจ้าของร้านดูได้');
-        ok(is_array(Settlement::summary(Roles::ACCOUNTANT)), 'ฝ่ายบัญชีดูได้');
+        ok(is_array(Settlement::summary(Roles::ADMIN)), 'ฝ่ายบัญชีดูได้');
     });
 });
 
@@ -716,7 +716,7 @@ test('รายชื่อสาขาให้พนักงานเห็�
             'taken_by'  => 'สมชาย',
         ]));
 
-        $staffView = Branches::list(false, Roles::seeCost(Roles::STAFF));
+        $staffView = Branches::list(false, Roles::seeCost(Roles::SALES));
         $row = array_values(array_filter($staffView, fn($b) => $b['id'] === $branch))[0];
         eq($row['pendingCost'], null, 'ยอดเงินที่ค้าง');
         eq($row['pendingCount'], 1, 'จำนวนรายการค้าง — เป็นข้อมูลสต็อก ยังเห็นได้');
@@ -737,8 +737,8 @@ test('ค่าเริ่มต้นของสิทธิ์คือไ�
         foreach (Inventory::lots()['rows'] as $r) {
             eq($r['costPerUnit'], null, 'lots() ที่ไม่ส่งสิทธิ์');
         }
-        eq(Roles::seeCost(Roles::STAFF), false, 'พนักงานไม่เห็นต้นทุน');
-        eq(Roles::seeCost(Roles::ACCOUNTANT), true, 'ฝ่ายบัญชีเห็น');
+        eq(Roles::seeCost(Roles::SALES), false, 'พนักงานไม่เห็นต้นทุน');
+        eq(Roles::seeCost(Roles::ADMIN), true, 'ฝ่ายบัญชีเห็น');
         eq(Roles::seeCost(Roles::OWNER), true, 'เจ้าของร้านเห็น');
     });
 });
@@ -780,7 +780,7 @@ test('วันที่รูปแบบผิดหรือไม่มี�
 
 test('รายงานไม่ส่งตัวเลขเงินให้พนักงาน แต่ยังบอกจำนวนชิ้น', function () {
     withRollback(function () {
-        $r = Reports::overview(date('Y-m-01'), date('Y-m-d'), Roles::seeCost(Roles::STAFF));
+        $r = Reports::overview(date('Y-m-01'), date('Y-m-d'), Roles::seeCost(Roles::SALES));
 
         eq($r['out']['value'], null, 'มูลค่าที่จ่ายออก');
         eq($r['branch']['settledProfit'], null, 'กำไรจากสาขา');
@@ -1353,7 +1353,7 @@ test('ทุกช่องในตารางมาจากฟังก์�
     withRollback(function () {
         $p = Roles::policy();
 
-        eq(count($p['roles']), 3, 'จำนวนบทบาท');
+        eq(count($p['roles']), count(Roles::ALL), 'จำนวนบทบาท');
         eq(array_column($p['roles'], 'key'), Roles::ALL, 'รายชื่อบทบาทตรงกับ Roles::ALL');
         ok(count($p['groups']) > 0, 'ต้องมีหมวดอย่างน้อยหนึ่งหมวด');
 
@@ -1390,16 +1390,18 @@ test('ตารางบอกตรงกับสิทธิ์จริง�
 
         $cost = $row('ต้นทุน/ชิ้น');
         eq($cost['allow'][Roles::OWNER], Roles::seeCost(Roles::OWNER), 'ต้นทุน · เจ้าของร้าน');
-        eq($cost['allow'][Roles::ACCOUNTANT], Roles::seeCost(Roles::ACCOUNTANT), 'ต้นทุน · ฝ่ายบัญชี');
-        eq($cost['allow'][Roles::STAFF], Roles::seeCost(Roles::STAFF), 'ต้นทุน · พนักงาน');
-        eq($cost['allow'][Roles::STAFF], false, 'พนักงานต้องไม่เห็นต้นทุน');
+        eq($cost['allow'][Roles::ADMIN], Roles::seeCost(Roles::ADMIN), 'ต้นทุน · ฝ่ายบัญชี');
+        eq($cost['allow'][Roles::SALES], Roles::seeCost(Roles::SALES), 'ต้นทุน · พนักงาน');
+        eq($cost['allow'][Roles::SALES], false, 'พนักงานต้องไม่เห็นต้นทุน');
 
         $users = $row('จัดการผู้ใช้');
-        eq($users['allow'][Roles::ACCOUNTANT], false, 'ฝ่ายบัญชีจัดการผู้ใช้ไม่ได้');
+        eq($users['allow'][Roles::ADMIN], true, 'แอดมินจัดการผู้ใช้ได้');
+        eq($users['allow'][Roles::SALES], false, 'พนักงานขายจัดการผู้ใช้ไม่ได้');
+        eq($users['allow'][Roles::STOCK], false, 'พนักงานคลังจัดการผู้ใช้ไม่ได้');
         eq($users['allow'][Roles::OWNER], true, 'เจ้าของร้านจัดการผู้ใช้ได้');
 
         $branch = $row('เพิ่ม · แก้สาขา');
-        eq($branch['allow'][Roles::ACCOUNTANT], Roles::manageBranches(Roles::ACCOUNTANT), 'จัดการสาขา · ฝ่ายบัญชี');
+        eq($branch['allow'][Roles::ADMIN], Roles::manageBranches(Roles::ADMIN), 'จัดการสาขา · ฝ่ายบัญชี');
 
         $move = $row('เบิก · ตัดของเสีย');
         foreach (Roles::ALL as $r) {
@@ -1421,11 +1423,22 @@ test('เปลี่ยนกฎในโค้ดแล้วตาราง�
                 if ($r['always']) {
                     continue;
                 }
-                // No row may claim a role has something the owner does not —
-                // the owner is the superset by design.
-                foreach (Roles::ALL as $role) {
-                    if ($r['allow'][$role]) {
-                        eq($r['allow'][Roles::OWNER], true, "แถว '{$r['label']}': เจ้าของร้านต้องได้สิทธิ์อย่างน้อยเท่า {$role}");
+                /* ไม่มีแถวไหนที่บทบาทต่ำกว่าทำได้แล้วบทบาทสูงกว่าทำไม่ได้ —
+                   ลำดับของ Roles::rank ต้องเป็นจริงทุกช่อง ไม่งั้นหน้าจอจะบอก
+                   ว่าเจ้าของร้านทำน้อยกว่าลูกน้องของตัวเอง */
+                foreach (Roles::ALL as $lower) {
+                    if (!$r['allow'][$lower]) {
+                        continue;
+                    }
+                    foreach (Roles::ALL as $higher) {
+                        if (Roles::rank($higher) <= Roles::rank($lower)) {
+                            continue;
+                        }
+                        eq(
+                            $r['allow'][$higher],
+                            true,
+                            "แถว '{$r['label']}': {$higher} ต้องได้สิทธิ์อย่างน้อยเท่า {$lower}",
+                        );
                     }
                 }
             }
@@ -1513,12 +1526,12 @@ test('ลบสาขาได้เฉพาะเจ้าของร้า�
 
         throwsReason(
             'forbidden',
-            fn() => Branches::delete($branch, Roles::ACCOUNTANT),
+            fn() => Branches::delete($branch, Roles::ADMIN),
             'ฝ่ายบัญชีลบสาขา',
         );
         throwsReason(
             'forbidden',
-            fn() => Branches::delete($branch, Roles::STAFF),
+            fn() => Branches::delete($branch, Roles::SALES),
             'พนักงานลบสาขา',
         );
     });

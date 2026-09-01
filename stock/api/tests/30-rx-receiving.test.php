@@ -26,7 +26,7 @@ test('เปิดใบสั่ง RX ของเลนส์สั่งต�
         $sku = customSku();
         $ref = doc('RX-TEST');
 
-        $out = Rx::order(['sku' => $sku, 'reference_doc' => $ref], Roles::STAFF, 1);
+        $out = Rx::order(['sku' => $sku, 'reference_doc' => $ref], Roles::SALES, 1);
 
         eq($out['awaitingCost'], true, 'ต้องขึ้นว่ารอลงต้นทุน');
         eq($out['unitCost'], null, 'ต้นทุนต้องยังว่าง');
@@ -75,13 +75,13 @@ test('พนักงานหน้าร้านเพิ่มรุ่น�
     withRollback(function () {
         throwsReason(
             'forbidden',
-            fn() => Rx::order(['lens_name' => 'รุ่นที่ไม่เคยมี ' . bin2hex(random_bytes(3))], Roles::STAFF, 1),
+            fn() => Rx::order(['lens_name' => 'รุ่นที่ไม่เคยมี ' . bin2hex(random_bytes(3))], Roles::SALES, 1),
             'staff เพิ่มรุ่นใหม่',
         );
 
         $sku = customSku();
         $name = (string) Db::value('SELECT name FROM products WHERE sku = ?', [$sku]);
-        eq(Rx::order(['lens_name' => $name], Roles::STAFF, 1)['sku'], $sku, 'staff สั่งรุ่นที่มีอยู่ได้');
+        eq(Rx::order(['lens_name' => $name], Roles::SALES, 1)['sku'], $sku, 'staff สั่งรุ่นที่มีอยู่ได้');
     });
 });
 
@@ -93,13 +93,13 @@ test('ไม่บอกรุ่นเลนส์เลย ถูกปฏิ�
 
 test('ไม่ส่งเลขที่ใบสั่งมา ระบบออกเลขให้เอง และเลขถัดไปไม่ชนกัน', function () {
     withRollback(function () {
-        $first = Rx::order(['sku' => customSku()], Roles::STAFF, 1);
+        $first = Rx::order(['sku' => customSku()], Roles::SALES, 1);
         ok(
             (bool) preg_match('/^RX-\d{4}-\d{4}$/', $first['referenceDoc']),
             'รูปแบบเลขที่ออกให้: ' . $first['referenceDoc'],
         );
 
-        $second = Rx::order(['sku' => customSku()], Roles::STAFF, 1);
+        $second = Rx::order(['sku' => customSku()], Roles::SALES, 1);
         ok($second['referenceDoc'] !== $first['referenceDoc'], 'ใบถัดไปต้องได้เลขใหม่');
         ok($second['referenceDoc'] > $first['referenceDoc'], 'และต้องเดินหน้า ไม่ใช่ถอยหลัง');
     });
@@ -109,7 +109,7 @@ test('ส่งเลขที่ใบสั่งมาเอง ระบบ�
     withRollback(function () {
         $ref = doc('JOB-OWN');
         eq(
-            Rx::order(['sku' => customSku(), 'reference_doc' => $ref], Roles::STAFF, 1)['referenceDoc'],
+            Rx::order(['sku' => customSku(), 'reference_doc' => $ref], Roles::SALES, 1)['referenceDoc'],
             $ref,
             'เลขของร้านต้องอยู่ครบ ไม่ถูกออกเลขทับ',
         );
@@ -123,12 +123,12 @@ test('ค่าสายตาอยู่กับใบสั่ง — สอ
         $a = Rx::order([
             'sku' => $sku, 'reference_doc' => doc('RX-EYE-A'),
             'eye_side' => 'left', 'sph' => '-2.25', 'cyl' => '-0.75', 'axis' => '90', 'add' => '+2.00',
-        ], Roles::STAFF, 1);
+        ], Roles::SALES, 1);
 
         $b = Rx::order([
             'sku' => $sku, 'reference_doc' => doc('RX-EYE-B'),
             'eye_side' => 'right', 'sph' => '-8.00', 'axis' => '180',
-        ], Roles::STAFF, 1);
+        ], Roles::SALES, 1);
 
         $one = Db::one('SELECT * FROM rx_orders WHERE log_id = ?', [$a['id']]);
         eq($one['eye_side'], 'left', 'ข้างตาของใบแรก');
@@ -148,7 +148,7 @@ test('ราคาขายเก็บบนใบสั่ง และใค�
         // ต่างจากต้นทุนจากผู้ขาย ที่เป็นตัวเลขทางบัญชีและยังอยู่หลัง enterRxCost ตามเดิม
         $staff = Rx::order(
             ['sku' => customSku(), 'reference_doc' => doc('RX-SELL-STAFF'), 'sale_price' => '9500'],
-            Roles::STAFF,
+            Roles::SALES,
             1,
         );
         eq($staff['salePrice'], '9500', 'staff กรอกราคาขายได้');
@@ -157,7 +157,7 @@ test('ราคาขายเก็บบนใบสั่ง และใค�
             'forbidden',
             fn() => Rx::order(
                 ['sku' => customSku(), 'reference_doc' => doc('RX-COST-DENY'), 'unit_cost' => '4780'],
-                Roles::STAFF,
+                Roles::SALES,
                 1,
             ),
             'staff กรอกต้นทุน',
@@ -166,7 +166,7 @@ test('ราคาขายเก็บบนใบสั่ง และใค�
         $out = Rx::order([
             'sku' => customSku(), 'reference_doc' => doc('RX-SELL'),
             'unit_cost' => '4780', 'sale_price' => '9500.00',
-        ], Roles::ACCOUNTANT, 1);
+        ], Roles::ADMIN, 1);
 
         eq($out['salePrice'], '9500.00', 'ราคาขายที่บันทึก');
         eq(
@@ -194,7 +194,7 @@ test('ค่าสายตาที่กรอกผิดถูกปฏิ�
 test('สมุดใบสั่งอ่านได้ทั้งเล่ม และกรองเฉพาะที่รอต้นทุนได้', function () {
     withRollback(function () {
         $ref = doc('RX-BOOK');
-        Rx::order(['sku' => customSku(), 'reference_doc' => $ref, 'sph' => '-3.50'], Roles::STAFF, 1);
+        Rx::order(['sku' => customSku(), 'reference_doc' => $ref, 'sph' => '-3.50'], Roles::SALES, 1);
 
         $book = Rx::orders($ref, false, 1, 20);
         eq($book['total'], 1, 'ค้นด้วยเลขที่ใบสั่งต้องเจอใบเดียว');
@@ -203,7 +203,7 @@ test('สมุดใบสั่งอ่านได้ทั้งเล่�
 
         eq(Rx::orders($ref, true, 1, 20)['total'], 1, 'ตัวกรองรอต้นทุนต้องยังเห็นใบนี้');
 
-        Rx::setCost((int) $book['rows'][0]['id'], '5000', Roles::ACCOUNTANT);
+        Rx::setCost((int) $book['rows'][0]['id'], '5000', Roles::ADMIN);
         eq(Rx::orders($ref, true, 1, 20)['total'], 0, 'พอลงต้นทุนแล้วต้องหลุดจากรายการรอ');
         eq(Rx::orders($ref, false, 1, 20)['total'], 1, 'แต่ยังอยู่ในสมุดทั้งเล่ม');
     });
@@ -215,7 +215,7 @@ test('พนักงานหน้าร้านกรอกต้นทุ�
             'forbidden',
             fn() => Rx::order(
                 ['sku' => customSku(), 'reference_doc' => doc('RX-DENY'), 'unit_cost' => '7400'],
-                Roles::STAFF,
+                Roles::SALES,
                 1,
             ),
             'staff กรอกต้นทุน',
@@ -227,7 +227,7 @@ test('ฝ่ายบัญชีกรอกต้นทุนตอนเป�
     withRollback(function () {
         $out = Rx::order(
             ['sku' => customSku(), 'reference_doc' => doc('RX-ACC'), 'unit_cost' => '7400.50'],
-            Roles::ACCOUNTANT,
+            Roles::ADMIN,
             1,
         );
         eq($out['unitCost'], '7400.50', 'ต้นทุนต้องเก็บเป็นสตริง ไม่แปลงเป็น float');
@@ -287,10 +287,10 @@ group('ลงต้นทุน RX ทีหลัง');
 test('ฝ่ายบัญชีลงต้นทุนให้ใบสั่งที่ยังว่างได้', function () {
     withRollback(function () {
         $ref = doc('RX-LATE');
-        Rx::order(['sku' => customSku(), 'reference_doc' => $ref], Roles::STAFF, 1);
+        Rx::order(['sku' => customSku(), 'reference_doc' => $ref], Roles::SALES, 1);
         $id = (int) Db::value('SELECT id FROM inventory_logs WHERE reference_doc = ?', [$ref]);
 
-        $out = Rx::setCost($id, '9800.00', Roles::ACCOUNTANT);
+        $out = Rx::setCost($id, '9800.00', Roles::ADMIN);
         eq($out['unitCost'], '9800.00', 'ต้นทุนที่ลง');
 
         $stored = Db::value('SELECT unit_cost FROM inventory_logs WHERE id = ?', [$id]);
@@ -301,10 +301,10 @@ test('ฝ่ายบัญชีลงต้นทุนให้ใบสั�
 test('พนักงานหน้าร้านลงต้นทุนไม่ได้', function () {
     withRollback(function () {
         $ref = doc('RX-STAFF');
-        Rx::order(['sku' => customSku(), 'reference_doc' => $ref], Roles::STAFF, 1);
+        Rx::order(['sku' => customSku(), 'reference_doc' => $ref], Roles::SALES, 1);
         $id = (int) Db::value('SELECT id FROM inventory_logs WHERE reference_doc = ?', [$ref]);
 
-        throwsReason('forbidden', fn() => Rx::setCost($id, '100', Roles::STAFF), 'staff ลงต้นทุน');
+        throwsReason('forbidden', fn() => Rx::setCost($id, '100', Roles::SALES), 'staff ลงต้นทุน');
     });
 });
 
@@ -323,7 +323,7 @@ test('ลงต้นทุนซ้ำรายการที่มีต้�
 test('รายการที่รอต้นทุนโผล่ในรายการค้าง', function () {
     withRollback(function () {
         $ref = doc('RX-QUEUE');
-        Rx::order(['sku' => customSku(), 'reference_doc' => $ref], Roles::STAFF, 1);
+        Rx::order(['sku' => customSku(), 'reference_doc' => $ref], Roles::SALES, 1);
 
         $refs = array_column(Rx::awaitingCost(), 'referenceDoc');
         ok(in_array($ref, $refs, true), 'ต้องอยู่ในคิวรอลงต้นทุน');
@@ -384,7 +384,7 @@ test('รับของโดยยังไม่รู้ต้นทุน�
         $out = Receiving::receive([
             'sku' => $sku, 'lot_number' => $lot, 'quantity' => 3,
             'received_date' => '2026-08-10',
-        ], Roles::STAFF, 1);
+        ], Roles::SALES, 1);
 
         eq($out['awaitingCost'], true, 'ต้องขึ้นว่ารอต้นทุน');
         $stored = Db::one('SELECT cost_per_unit, notes FROM stock_lots WHERE lot_number = ?', [$lot]);
@@ -400,7 +400,7 @@ test('พนักงานหน้าร้านกรอกต้นทุ�
             fn() => Receiving::receive([
                 'sku' => skuWithLots(1), 'lot_number' => 'LOT-X' . random_int(1000, 9999),
                 'quantity' => 1, 'cost_per_unit' => '50', 'received_date' => '2026-08-01',
-            ], Roles::STAFF, 1),
+            ], Roles::SALES, 1),
             'staff กรอกต้นทุน',
         );
     });

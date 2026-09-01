@@ -30,6 +30,13 @@ final class Users
     {
         Roles::require(Roles::manageAdmins($role), 'ดูรายชื่อผู้ใช้');
 
+        /* บัญชีที่สูงกว่าคนดูไม่โผล่ในรายชื่อ — บัญชีผู้ดูแลระบบไม่ใช่เรื่องของร้าน
+           และรายชื่อที่แก้ไม่ได้อยู่ดีมีไว้ก็ชวนให้กดแล้วเจอข้อความปฏิเสธ */
+        $visible = array_values(array_filter(
+            Roles::ALL,
+            static fn(string $r): bool => Roles::rank($r) <= Roles::rank($role),
+        ));
+
         return array_map(
             static fn($r) => [
                 'id'          => (int) $r['id'],
@@ -48,7 +55,9 @@ final class Users
             Db::all(
                 'SELECT a.*, (SELECT COUNT(*) FROM inventory_logs g WHERE g.created_by = a.id) AS movements
                  FROM admins a
-                 ORDER BY a.is_active DESC, a.role ASC, a.display_name ASC'
+                 WHERE a.role IN (' . implode(', ', array_fill(0, count($visible), '?')) . ')
+                 ORDER BY a.is_active DESC, a.role ASC, a.display_name ASC',
+                $visible,
             ),
         );
     }
@@ -85,7 +94,7 @@ final class Users
         Roles::require(Roles::manageAdmins($role), 'เพิ่มผู้ใช้');
 
         $displayName = self::required($req, 'display_name', 255);
-        $newRole = self::role($req);
+        $newRole = self::role($req, $role);
         $jobTitle = self::optional($req, 'job_title', 120);
         $username = self::username($req);
         $password = self::password($req, required: $username !== null);
@@ -113,9 +122,10 @@ final class Users
         if ($target === null) {
             throw ApiError::notFound('ไม่พบผู้ใช้');
         }
+        self::requireReach($role, (string) $target['role'], 'แก้ไขบัญชีนี้');
 
         $displayName = self::required($req, 'display_name', 255);
-        $newRole = self::role($req);
+        $newRole = self::role($req, $role);
         $jobTitle = self::optional($req, 'job_title', 120);
         $isActive = (bool) ($req['is_active'] ?? true);
         $username = self::username($req);
@@ -133,8 +143,8 @@ final class Users
             if (!$isActive) {
                 throw ApiError::conflict('self_lockout', 'ปิดใช้งานบัญชีตัวเองไม่ได้');
             }
-            if ($newRole !== Roles::OWNER) {
-                throw ApiError::conflict('self_lockout', 'ลดสิทธิ์ตัวเองไม่ได้ — ให้เจ้าของร้านอีกคนทำให้');
+            if (Roles::rank($newRole) < Roles::rank($role)) {
+                throw ApiError::conflict('self_lockout', 'ลดสิทธิ์ตัวเองไม่ได้ — ให้คนที่สิทธิ์สูงกว่าทำให้');
             }
         }
 
@@ -163,10 +173,13 @@ final class Users
     {
         Roles::require(Roles::manageAdmins($role), 'ตั้งรหัสผ่าน');
 
-        $target = Db::one('SELECT id, username, display_name FROM admins WHERE id = ?', [$id]);
+        $target = Db::one('SELECT id, username, display_name, role FROM admins WHERE id = ?', [$id]);
         if ($target === null) {
             throw ApiError::notFound('ไม่พบผู้ใช้');
         }
+        /* ตั้งรหัสผ่านให้บัญชีที่สูงกว่าตัวเอง = เข้าใช้บัญชีนั้นได้ทันที
+           จึงเป็นทางลัดไปสู่สิทธิ์ที่สูงกว่า และถูกปิดด้วยกฎเดียวกับการตั้งบทบาท */
+        self::requireReach($role, (string) $target['role'], 'ตั้งรหัสผ่านให้บัญชีนี้');
         if ($target['username'] === null) {
             throw ApiError::conflict(
                 'no_username',
@@ -182,6 +195,18 @@ final class Users
     }
 
     /* -------------------------------------------------------------- helpers */
+
+    /**
+     * บัญชีที่มีบทบาทสูงกว่าตัวเอง แตะไม่ได้เลย ไม่ว่าจะแก้อะไร
+     *
+     * `manageAdmins` ตอบแค่ว่า "จัดการผู้ใช้ได้ไหม" ซึ่งจริงสำหรับแอดมินด้วย
+     * ถ้าหยุดแค่นั้น แอดมินจะแก้บัญชีเจ้าของร้านได้ — เปลี่ยนชื่อผู้ใช้แล้วตั้ง
+     * รหัสผ่านใหม่ก็เข้าเป็นเจ้าของร้านได้เลย
+     */
+    private static function requireReach(string $actorRole, string $targetRole, string $what): void
+    {
+        Roles::require(Roles::rank($targetRole) <= Roles::rank($actorRole), $what);
+    }
 
     /** @param array<string,mixed> $req */
     private static function required(array $req, string $field, int $max): string
@@ -218,11 +243,21 @@ final class Users
     }
 
     /** @param array<string,mixed> $req */
-    private static function role(array $req): string
+    private static function role(array $req, string $actorRole): string
     {
         $v = (string) ($req['role'] ?? '');
         if (!Roles::isRole($v)) {
-            throw ApiError::badRequest('บทบาทต้องเป็น owner, accountant หรือ staff', 'bad_role');
+            throw ApiError::badRequest(
+                'บทบาทต้องเป็นหนึ่งใน ' . implode(', ', Roles::ALL),
+                'bad_role',
+            );
+        }
+        /* ตั้งบทบาทที่สูงกว่าตัวเองไม่ได้ ไม่งั้นสิทธิ์ "จัดการผู้ใช้" จะกลายเป็น
+           สิทธิ์ "เป็นอะไรก็ได้" — แอดมินสร้างบัญชีเจ้าของร้านแล้วล็อกอินเข้าไป */
+        if (!Roles::canGrant($actorRole, $v)) {
+            throw ApiError::forbidden(
+                'ตั้งบทบาทที่สูงกว่าบทบาทของตัวเองไม่ได้ — ให้' . Roles::LABEL[Roles::OWNER] . 'ทำให้',
+            );
         }
         return $v;
     }

@@ -72,20 +72,50 @@ test('บัญชีที่ถูกปิดใช้งานล็อก�
 
 group('สิทธิ์');
 
-test('กฎสิทธิ์ตรงกับระบบเดิมทั้งสี่ข้อ', function () {
-    ok(Roles::manageAdmins(Roles::OWNER), 'เจ้าของจัดการแอดมินได้');
-    ok(!Roles::manageAdmins(Roles::ACCOUNTANT), 'บัญชีจัดการแอดมินไม่ได้');
-    ok(!Roles::manageAdmins(Roles::STAFF), 'พนักงานจัดการแอดมินไม่ได้');
+test('กฎสิทธิ์ของห้าบทบาท', function () {
+    ok(Roles::manageAdmins(Roles::SUPERUSER), 'ผู้ดูแลระบบจัดการผู้ใช้ได้');
+    ok(Roles::manageAdmins(Roles::OWNER), 'เจ้าของจัดการผู้ใช้ได้');
+    ok(Roles::manageAdmins(Roles::ADMIN), 'แอดมินจัดการผู้ใช้ได้');
+    ok(!Roles::manageAdmins(Roles::SALES), 'พนักงานขายจัดการผู้ใช้ไม่ได้');
+    ok(!Roles::manageAdmins(Roles::STOCK), 'พนักงานคลังจัดการผู้ใช้ไม่ได้');
 
     ok(Roles::enterRxCost(Roles::OWNER), 'เจ้าของลงต้นทุนได้');
-    ok(Roles::enterRxCost(Roles::ACCOUNTANT), 'บัญชีลงต้นทุนได้');
-    ok(!Roles::enterRxCost(Roles::STAFF), 'พนักงานลงต้นทุนไม่ได้');
+    ok(Roles::enterRxCost(Roles::ADMIN), 'แอดมินลงต้นทุนได้');
+    ok(!Roles::enterRxCost(Roles::SALES), 'พนักงานขายลงต้นทุนไม่ได้');
+    ok(!Roles::enterRxCost(Roles::STOCK), 'พนักงานคลังลงต้นทุนไม่ได้');
 
-    ok(Roles::editCatalog(Roles::ACCOUNTANT), 'บัญชีแก้แคตตาล็อกได้');
-    ok(!Roles::editCatalog(Roles::STAFF), 'พนักงานแก้แคตตาล็อกไม่ได้');
+    ok(Roles::editCatalog(Roles::ADMIN), 'แอดมินแก้แคตตาล็อกได้');
+    ok(!Roles::editCatalog(Roles::STOCK), 'พนักงานคลังแก้แคตตาล็อกไม่ได้');
+
+    // งานระบบเป็นของผู้ดูแลระบบคนเดียว เจ้าของร้านจัดการคนของตัวเองได้เต็มที่
+    // โดยไม่ต้องถือสิทธิ์ที่ทำให้ระบบล่มได้
+    ok(Roles::manageSystem(Roles::SUPERUSER), 'ผู้ดูแลระบบทำงานระบบได้');
+    ok(!Roles::manageSystem(Roles::OWNER), 'เจ้าของร้านไม่ได้ถือสิทธิ์งานระบบ');
 
     foreach (Roles::ALL as $r) {
         ok(Roles::moveStock($r), "{$r} ต้องบันทึกความเคลื่อนไหวได้");
+    }
+});
+
+test('ตั้งบทบาทได้ไม่เกินบทบาทของตัวเอง', function () {
+    ok(Roles::canGrant(Roles::OWNER, Roles::OWNER), 'เจ้าของตั้งเจ้าของคนที่สองได้');
+    ok(Roles::canGrant(Roles::OWNER, Roles::ADMIN), 'เจ้าของตั้งแอดมินได้');
+    ok(!Roles::canGrant(Roles::ADMIN, Roles::OWNER), 'แอดมินตั้งเจ้าของไม่ได้');
+    ok(!Roles::canGrant(Roles::ADMIN, Roles::SUPERUSER), 'แอดมินตั้งผู้ดูแลระบบไม่ได้');
+    ok(!Roles::canGrant(Roles::OWNER, Roles::SUPERUSER), 'เจ้าของตั้งผู้ดูแลระบบไม่ได้');
+    ok(Roles::canGrant(Roles::ADMIN, Roles::SALES), 'แอดมินตั้งพนักงานขายได้');
+    ok(Roles::canGrant(Roles::ADMIN, Roles::STOCK), 'แอดมินตั้งพนักงานคลังได้');
+    /* canGrant ตอบแค่เรื่องลำดับบทบาท ไม่ได้ตอบว่าใครจัดการผู้ใช้ได้ — พนักงาน
+       ถูกกันตั้งแต่ manageAdmins ก่อนจะมาถึงบรรทัดนี้ */
+    ok(!Roles::manageAdmins(Roles::SALES), 'พนักงานขายไม่ผ่านด่านจัดการผู้ใช้ตั้งแต่แรก');
+    ok(!Roles::canGrant(Roles::SALES, Roles::ADMIN), 'ถึงหลุดมาได้ ก็ตั้งบทบาทที่สูงกว่าไม่ได้');
+});
+
+test('หน้าแรกหลังล็อกอินตรงกับฝั่งที่ทำงาน', function () {
+    eq(Roles::home(Roles::SALES), '/', 'พนักงานขายเข้าหน้าร้าน');
+    eq(Roles::home(Roles::STOCK), '/stock/', 'พนักงานคลังเข้าฝั่งคลัง');
+    foreach ([Roles::SUPERUSER, Roles::OWNER, Roles::ADMIN] as $r) {
+        eq(Roles::home($r), '/hub/', "{$r} เลือกฝั่งเอง");
     }
 });
 
@@ -102,7 +132,7 @@ test('ตำแหน่งงานไม่มีผลต่อสิทธ�
 test('Roles::require โยน 403 เมื่อไม่มีสิทธิ์', function () {
     $e = null;
     try {
-        Roles::require(Roles::manageAdmins(Roles::STAFF), 'จัดการผู้ใช้');
+        Roles::require(Roles::manageAdmins(Roles::SALES), 'จัดการผู้ใช้');
     } catch (ApiError $x) {
         $e = $x;
     }

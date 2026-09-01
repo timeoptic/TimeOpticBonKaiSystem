@@ -112,7 +112,7 @@ test('ตัวช่วยเติมชื่อและแบรนด์ �
 
 test('พนักงานหน้าร้านเพิ่มสินค้าไม่ได้', function () {
     withRollback(function () {
-        throwsReason('forbidden', fn() => Catalog::createProduct(productArgs(), Roles::STAFF), 'staff เพิ่มสินค้า');
+        throwsReason('forbidden', fn() => Catalog::createProduct(productArgs(), Roles::SALES), 'staff เพิ่มสินค้า');
     });
 });
 
@@ -152,7 +152,7 @@ test('แก้ไขสินค้าได้', function () {
         $out = Catalog::updateProduct(
             $created['id'],
             productArgs(['sku' => $created['sku'], 'name' => 'ชื่อใหม่', 'base_selling_price' => '2500.00']),
-            Roles::ACCOUNTANT,
+            Roles::ADMIN,
         );
         eq($out['name'], 'ชื่อใหม่', 'ชื่อที่แก้');
         eq((string) Db::value('SELECT base_selling_price FROM products WHERE id = ?', [$created['id']]), '2500.00', 'ราคาใหม่');
@@ -202,7 +202,7 @@ test('ปรับยอดคงเหลือแล้วเกิด log ADJ
         $lot = Db::one('SELECT * FROM stock_lots WHERE remaining_qty > 1 ORDER BY id LIMIT 1');
         $target = (int) $lot['remaining_qty'] - 1;
 
-        $out = Catalog::updateLot((int) $lot['id'], ['remaining_qty' => $target], Roles::STAFF, 1);
+        $out = Catalog::updateLot((int) $lot['id'], ['remaining_qty' => $target], Roles::SALES, 1);
 
         eq($out['remaining'], $target, 'ยอดใหม่');
         eq($out['adjusted'], -1, 'ส่วนต่างที่ปรับ');
@@ -220,7 +220,7 @@ test('ปรับยอดคงเหลือแล้วเกิด log ADJ
 test('ปรับยอดแล้วสมุดยังตรง', function () {
     withRollback(function () {
         $lot = Db::one('SELECT * FROM stock_lots WHERE remaining_qty > 1 ORDER BY id LIMIT 1');
-        Catalog::updateLot((int) $lot['id'], ['remaining_qty' => (int) $lot['remaining_qty'] - 1], Roles::STAFF, 1);
+        Catalog::updateLot((int) $lot['id'], ['remaining_qty' => (int) $lot['remaining_qty'] - 1], Roles::SALES, 1);
 
         $bad = Db::all(
             'SELECT l.lot_number FROM stock_lots l
@@ -308,11 +308,11 @@ test('พนักงานหน้าร้านแก้ต้นทุน�
 
         throwsReason(
             'forbidden',
-            fn() => Catalog::updateLot((int) $lot['id'], ['cost_per_unit' => '55.00'], Roles::STAFF, 1),
+            fn() => Catalog::updateLot((int) $lot['id'], ['cost_per_unit' => '55.00'], Roles::SALES, 1),
             'staff แก้ต้นทุน',
         );
 
-        $out = Catalog::updateLot((int) $lot['id'], ['remaining_qty' => (int) $lot['remaining_qty'] - 1], Roles::STAFF, 1);
+        $out = Catalog::updateLot((int) $lot['id'], ['remaining_qty' => (int) $lot['remaining_qty'] - 1], Roles::SALES, 1);
         eq($out['adjusted'], -1, 'staff ปรับยอดได้');
     });
 });
