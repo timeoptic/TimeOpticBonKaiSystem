@@ -3,11 +3,13 @@
   Starts both halves of the merged project: the storefront and the stock module.
 
 .DESCRIPTION
-  Three servers, three ports, chosen so this folder can run at the same time as
-  the two standalone checkouts next to it (which use 3000/8080 and 3005/8090):
+  Two servers, two ports, chosen so this folder can run at the same time as the
+  two standalone checkouts next to it (which use 3000/8080 and 3005/8090):
 
-    storefront UI   http://localhost:3010    API (both halves)  :8095
-    stock UI        http://localhost:3011
+    web (both halves)  http://localhost:3010    API (both halves)  :8095
+
+  The stock module used to have a web server of its own on 3011. Its screens
+  now live under /stock in the same app, so there is one of each again.
 
   The database lives on another machine on the shop LAN. Turn that machine on
   before running this, or every screen will show a connection error - the ports
@@ -68,11 +70,9 @@ Start-Process php -ArgumentList '-S', '0.0.0.0:8095', '-t', "$root\api", "$root\
   -WorkingDirectory $root -WindowStyle Minimized
 Start-Process cmd -ArgumentList '/k', 'npm run dev -- -p 3010 --hostname 0.0.0.0' `
   -WorkingDirectory "$root\frontend-next" -WindowStyle Minimized
-Start-Process cmd -ArgumentList '/k', 'npm run dev -- -p 3011 --hostname 0.0.0.0' `
-  -WorkingDirectory "$root\stock\web" -WindowStyle Minimized
 
-Write-Host "  waiting for the two web servers to compile"
-foreach ($port in 8095, 3010, 3011) {
+Write-Host "  waiting for the web server to compile"
+foreach ($port in 8095, 3010) {
   $ok = $false
   foreach ($try in 1..40) {
     if (Test-NetConnection 127.0.0.1 -Port $port -InformationLevel Quiet -WarningAction SilentlyContinue) { $ok = $true; break }
@@ -85,7 +85,7 @@ foreach ($port in 8095, 3010, 3011) {
 
 Write-Host ""
 Write-Host "  Front desk        http://localhost:3010"
-Write-Host "  Stock and cost    http://localhost:3011"
+Write-Host "  Stock and cost    http://localhost:3010/stock"
 Write-Host ""
-Write-Host "  One login covers both. Stop everything with:  .\start-all.ps1 -Stop"
+Write-Host "  One web app, one login. Stop everything with:  .\start-all.ps1 -Stop"
 Write-Host ""

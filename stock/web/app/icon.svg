@@ -1,8 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <!-- The pear dot from the side rail, on its own. Next serves this as the
-       favicon automatically, which also stops the 404 the console was logging
-       on every page load. -->
-  <rect width="32" height="32" rx="8" fill="#f7f5ec"/>
-  <circle cx="16" cy="16" r="9" fill="#f6ce00"/>
-  <circle cx="16" cy="16" r="4" fill="#c49a00"/>
-</svg>
