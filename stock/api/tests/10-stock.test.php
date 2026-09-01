@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use Optic\ApiError;
 use Optic\Db;
+use Optic\Roles;
+use Optic\Service\Receiving;
 use Optic\Service\Stock;
 
 // idem() and issueReq() live in harness.php — 60-branches.test.php needs them
@@ -113,13 +115,13 @@ test('กุญแจต่างกันถือเป็นคนละเ�
 test('คำขอที่ถูกปฏิเสธไม่จองกุญแจไว้ — ยิงใหม่ได้', function () {
     withRollback(function () {
         $sku = skuWithLots(1);
-        $onHand = Stock::availability($sku)['on_hand'];
         $k = idem('retry');
 
-        // ขอเกินของที่มี → ถูกปฏิเสธ
-        throwsReason('insufficient', fn() => Stock::issue(issueReq($sku, $onHand + 5, $k)), 'ขอเกิน');
+        /* จำนวนติดลบถูกปฏิเสธก่อนแตะฐานข้อมูล — ใช้เป็นตัวอย่างของ "คำขอที่ถูก
+           ปฏิเสธ" แทน "ของไม่พอ" ซึ่งไม่ใช่การปฏิเสธอีกต่อไปแล้ว */
+        throwsReason('bad_quantity', fn() => Stock::issue(issueReq($sku, -1, $k)), 'จำนวนติดลบ');
 
-        // กุญแจเดิมต้องยังใช้ได้ เพราะ "ของไม่พอ" เปลี่ยนได้เมื่อของเข้าใหม่
+        // กุญแจเดิมต้องยังใช้ได้ คำขอที่ตายก่อนถึงฐานข้อมูลไม่ควรกินกุญแจไปด้วย
         $out = Stock::issue(issueReq($sku, 1, $k));
         eq($out['replayed'], false, 'ต้องทำงานจริง ไม่ใช่เล่นซ้ำคำปฏิเสธ');
     });
@@ -167,24 +169,22 @@ test('ตัดสองสินค้าพร้อมกันในคำ�
     });
 });
 
-test('บรรทัดเดียวของไม่พอ ทั้งตะกร้าต้องไม่ถูกตัด', function () {
+test('ตะกร้าที่มีบรรทัดของไม่พอ ยังตัดได้ทั้งใบ ส่วนที่ขาดกลายเป็นยอดค้าง', function () {
     withRollback(function () {
         [$a, $b] = twoSkus();
         $beforeA = Stock::availability($a)['on_hand'];
         $beforeB = Stock::availability($b)['on_hand'];
 
-        throwsReason(
-            'insufficient',
-            fn() => Stock::issueMany(basketReq(
-                [['sku' => $a, 'quantity' => 1], ['sku' => $b, 'quantity' => $beforeB + 10]],
-                idem('short'),
-            )),
-            'ตะกร้าที่มีบรรทัดของไม่พอ',
-        );
+        /* คู่เลนส์ต้องออกไปพร้อมกันหรือไม่ออกเลย — เดิมบรรทัดที่ของไม่พอทำให้ทั้ง
+           ใบถูกปฏิเสธ ตอนนี้ไม่มีบรรทัดไหนที่ "ทำไม่ได้" อีกแล้ว ทั้งใบจึงผ่าน
+           และข้างที่ของไม่พอกลายเป็นยอดค้างส่งแทนที่จะทำให้อีกข้างตกไปด้วย */
+        Stock::issueMany(basketReq(
+            [['sku' => $a, 'quantity' => 1], ['sku' => $b, 'quantity' => $beforeB + 2]],
+            idem('short'),
+        ));
 
-        // ตัวแรกต้องไม่ถูกตัดทิ้งไว้ — ไม่งั้นคู่เลนส์จะออกไปข้างเดียว
-        eq(Stock::availability($a)['on_hand'], $beforeA, 'ตัวแรกต้องยังอยู่ครบ');
-        eq(Stock::availability($b)['on_hand'], $beforeB, 'ตัวที่สองต้องยังอยู่ครบ');
+        eq(Stock::availability($a)['on_hand'], $beforeA - 1, 'ตัวแรกถูกตัดหนึ่งชิ้น');
+        eq(Stock::availability($b)['on_hand'], -2, 'ตัวที่สองค้างส่งสองชิ้น');
     });
 });
 
@@ -268,33 +268,88 @@ test('สินค้าสั่งตัด RX ตัดสต็อกไม�
     });
 });
 
-test('ของไม่พอ ปฏิเสธพร้อมบอกว่าเหลือเท่าไหร่', function () {
+test('ของไม่พอก็ตัดได้ ส่วนที่เกินกลายเป็นยอดค้างส่ง', function () {
     withRollback(function () {
         $sku = skuWithLots(1);
         $onHand = Stock::availability($sku)['on_hand'];
 
-        $e = throwsReason(
-            'insufficient',
-            fn() => Stock::issue(issueReq($sku, $onHand + 1, idem('short'))),
-            'ขอเกินของที่มี',
-        );
-        eq($e->status, 409, 'รหัสสถานะ');
-        eq($e->payload()['available'], $onHand, 'ต้องบอกยอดคงเหลือจริง');
-        eq($e->payload()['wanted'], $onHand + 1, 'ต้องบอกจำนวนที่ขอ');
+        $res = Stock::issue(issueReq($sku, $onHand + 2, idem('short')));
+
+        eq(array_sum(array_column($res['cuts'], 'quantity')), $onHand + 2, 'ตัดครบตามที่ขอ');
+        eq(Stock::availability($sku)['on_hand'], -2, 'ยอดคงเหลือติดลบเท่าที่ค้าง');
+
+        $short = array_values(array_filter($res['cuts'], fn($c) => ($c['shortfall'] ?? false) === true));
+        eq(count($short), 1, 'ต้องมีบรรทัดค้างส่งหนึ่งบรรทัด');
+        eq($short[0]['quantity'], 2, 'จำนวนที่ค้าง');
+        eq($short[0]['unit_cost'], null, 'ยังไม่รู้ต้นทุนจนกว่าของจะมาถึง');
     });
 });
 
-test('ของไม่พอแล้วต้องไม่ตัดอะไรเลย', function () {
+test('ของที่ค้างส่งไปกองบนล็อตของมันเอง ล็อตจริงไม่ติดลบ', function () {
     withRollback(function () {
         $sku = skuWithLots(1);
         $onHand = Stock::availability($sku)['on_hand'];
+        Stock::issue(issueReq($sku, $onHand + 3, idem('shortlot')));
 
-        try {
-            Stock::issue(issueReq($sku, $onHand + 1, idem('none')));
-        } catch (ApiError) {
-        }
+        $rows = Db::all(
+            'SELECT l.lot_number, l.remaining_qty FROM stock_lots l
+               JOIN products p ON p.id = l.product_id
+              WHERE p.sku = ? AND l.remaining_qty < 0',
+            [$sku],
+        );
+        eq(count($rows), 1, 'ล็อตที่ติดลบต้องมีใบเดียว');
+        eq($rows[0]['lot_number'], 'SHORT-' . $sku, 'และต้องเป็นล็อตค้างส่ง');
+        eq((int) $rows[0]['remaining_qty'], -3, 'ยอดค้าง');
+    });
+});
 
-        eq(Stock::availability($sku)['on_hand'], $onHand, 'ยอดต้องไม่ขยับ');
+test('ยอดคงเหลือยังเท่ากับผลรวมในสมุด แม้ตอนติดลบ', function () {
+    withRollback(function () {
+        $sku = skuWithLots(1);
+        $onHand = Stock::availability($sku)['on_hand'];
+        Stock::issue(issueReq($sku, $onHand + 2, idem('ledger')));
+
+        $drift = Db::all(
+            'SELECT l.lot_number FROM stock_lots l
+               JOIN products p ON p.id = l.product_id
+               LEFT JOIN inventory_logs g ON g.lot_id = l.id
+              WHERE p.sku = ?
+              GROUP BY l.id, l.lot_number, l.remaining_qty
+             HAVING l.remaining_qty <> COALESCE(SUM(g.quantity), 0)',
+            [$sku],
+        );
+        eq($drift, [], 'ทุกล็อตต้องมียอดตรงกับสมุด');
+    });
+});
+
+test('รับของเข้าทีหลัง หักกลบยอดที่ค้างส่งให้เอง', function () {
+    withRollback(function () {
+        $sku = skuWithLots(1);
+        $onHand = Stock::availability($sku)['on_hand'];
+        Stock::issue(issueReq($sku, $onHand + 4, idem('settle')));
+        eq(Stock::availability($sku)['on_hand'], -4, 'ค้างอยู่สี่ชิ้น');
+
+        /* ของมาถึงหกชิ้น — สี่ชิ้นถูกกันไว้จ่ายของที่ขายค้างไว้ เหลือขายได้สอง */
+        Receiving::receive(['sku' => $sku, 'quantity' => 6, 'cost_per_unit' => 100, 'received_date' => date('Y-m-d')], Roles::OWNER, 1);
+        eq(Stock::availability($sku)['on_hand'], 2, 'เหลือขายได้เท่าที่เกินจากหนี้');
+
+        $neg = (int) Db::value(
+            'SELECT COUNT(*) FROM stock_lots l JOIN products p ON p.id = l.product_id
+              WHERE p.sku = ? AND l.remaining_qty < 0',
+            [$sku],
+        );
+        eq($neg, 0, 'ไม่เหลือล็อตที่ติดลบ');
+    });
+});
+
+test('ของมาถึงน้อยกว่าที่ค้าง ก็หักกลบเท่าที่มี', function () {
+    withRollback(function () {
+        $sku = skuWithLots(1);
+        $onHand = Stock::availability($sku)['on_hand'];
+        Stock::issue(issueReq($sku, $onHand + 5, idem('partial')));
+
+        Receiving::receive(['sku' => $sku, 'quantity' => 2, 'cost_per_unit' => 100, 'received_date' => date('Y-m-d')], Roles::OWNER, 1);
+        eq(Stock::availability($sku)['on_hand'], -3, 'ยังค้างอยู่สามชิ้น');
     });
 });
 
@@ -474,18 +529,24 @@ test('หลังตัด ขาย เสีย และคืน สมุ�
     });
 });
 
-test('ยอดคงเหลือไม่มีทางติดลบ', function () {
+test('ล็อตที่รับของเข้ามาจริง ไม่มีทางติดลบ', function () {
     withRollback(function () {
         $sku = skuWithLots(1);
         $onHand = Stock::availability($sku)['on_hand'];
 
-        // ตัดจนหมดพอดี แล้วขออีกหนึ่ง
+        // ตัดจนหมดพอดี แล้วขายต่ออีกหนึ่ง — ขายได้ และไปค้างบนล็อตค้างส่ง
         Stock::issue(issueReq($sku, $onHand, idem('drain')));
         eq(Stock::availability($sku)['on_hand'], 0, 'ต้องเหลือศูนย์พอดี');
 
-        throwsReason('insufficient', fn() => Stock::issue(issueReq($sku, 1, idem('over'))), 'ขอต่อทั้งที่หมดแล้ว');
+        Stock::issue(issueReq($sku, 1, idem('over')));
+        eq(Stock::availability($sku)['on_hand'], -1, 'ขายต่อได้ ยอดติดลบหนึ่ง');
 
-        $neg = (int) Db::value('SELECT COUNT(*) FROM stock_lots WHERE remaining_qty < 0');
-        eq($neg, 0, 'ล็อตที่ยอดติดลบ');
+        /* ล็อตคือของที่มาถึงจริงเป็นกล่อง ๆ ติดลบไม่ได้ตามนิยาม · ที่ติดลบได้มี
+           ใบเดียวคือล็อตค้างส่ง ซึ่งไม่ได้มาจากการรับของ (initial_qty = 0) */
+        $neg = Db::all("SELECT lot_number, initial_qty FROM stock_lots WHERE remaining_qty < 0");
+        foreach ($neg as $l) {
+            ok(str_starts_with((string) $l['lot_number'], 'SHORT-'), "ล็อต {$l['lot_number']} ติดลบทั้งที่ไม่ใช่ล็อตค้างส่ง");
+            eq((int) $l['initial_qty'], 0, 'ล็อตค้างส่งต้องไม่มียอดรับเข้า');
+        }
     });
 });

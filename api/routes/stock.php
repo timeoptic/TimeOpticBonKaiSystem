@@ -183,6 +183,17 @@ GET('/api/stock/names', function (array $req) {
     );
 });
 
+/**
+ * ล็อตหนึ่งใบ — แต่ "เหลือกี่ชิ้น" ตอบเป็นยอดของสินค้าทั้งตัว
+ *
+ * ออเดอร์เก็บ id ของล็อต หน้าจอจึงอ่านแถวนี้มาแสดงของที่เลือกไว้ · ถ้าตอบยอดของ
+ * ล็อตนั้นตรง ๆ คนขายจะเห็น "เหลือ 2 ชิ้น" ทั้งที่สินค้าตัวนั้นมีอยู่ 14 ชิ้นใน
+ * อีกล็อต แล้วไปบอกลูกค้าว่าของใกล้หมด · ตอนตัดจริงฝั่งคลังก็รับ SKU แล้วเลือก
+ * ล็อตเองตาม FIFO ไม่ได้ตัดจากล็อตที่ออเดอร์ชี้อยู่ดี ตัวเลขที่ตรงกับสิ่งที่
+ * ระบบจะทำจึงเป็นยอดรวมของ SKU ไม่ใช่ยอดของกล่องใดกล่องหนึ่ง
+ *
+ * `lot_remaining_qty` กับ `lot_count` ยังส่งไปด้วย สำหรับหน้าจอที่สนใจกล่อง
+ */
 GET('/api/stock/:id', function (array $req) {
     $s = Db::get(
         'SELECT s.*, l.location FROM v_stock_lot s
@@ -193,6 +204,18 @@ GET('/api/stock/:id', function (array $req) {
     if (!$s) {
         missing();
     }
+
+    $total = Db::get(
+        'SELECT COALESCE(SUM(remaining_qty), 0) AS on_hand,
+                SUM(CASE WHEN remaining_qty > 0 THEN 1 ELSE 0 END) AS lots
+           FROM stock_lots WHERE product_id = ?',
+        (int) $s['product_id']
+    );
+
+    $s['lot_remaining_qty'] = (int) $s['remaining_qty'];
+    $s['remaining_qty']     = (int) ($total['on_hand'] ?? 0);
+    $s['lot_count']         = (int) ($total['lots'] ?? 0);
+
     return $s;
 });
 

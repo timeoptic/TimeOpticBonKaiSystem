@@ -95,9 +95,13 @@ final class Stock
     {
         $p = self::product($sku);
 
+        /* นับล็อตค้างส่งเข้าไปในยอดคงเหลือด้วย — ของที่ขายไปก่อนรับเข้าทำให้ยอด
+           ติดลบได้ และตัวเลขที่ติดลบคือคำตอบที่ตรงกับความจริง · ส่วน "กี่ล็อต"
+           นับเฉพาะล็อตที่มีของจริง เพราะล็อตค้างส่งไม่ใช่กล่องที่หยิบได้ */
         $row = Db::one(
-            'SELECT COALESCE(SUM(remaining_qty), 0) AS on_hand, COUNT(*) AS lots
-             FROM stock_lots WHERE product_id = ? AND remaining_qty > 0',
+            'SELECT COALESCE(SUM(remaining_qty), 0) AS on_hand,
+                    SUM(CASE WHEN remaining_qty > 0 THEN 1 ELSE 0 END) AS lots
+             FROM stock_lots WHERE product_id = ?',
             [$p['id']],
         );
 
@@ -382,11 +386,63 @@ final class Stock
         $lots = $st->fetchAll();
 
         $available = array_sum(array_map(static fn($l) => (int) $l['remaining_qty'], $lots));
-        if ($available < $qty) {
-            throw ApiError::insufficient($sku, $qty, $available);
+
+        /*
+         * ของไม่พอไม่ใช่การปฏิเสธอีกต่อไป — ส่วนที่เกินกลายเป็นยอดค้างส่ง
+         *
+         * ร้านขายกรอบที่ยังไม่เข้าอยู่แล้ว ลูกค้าสั่ง จ่ายเงิน ของมาสัปดาห์หน้า
+         * เมื่อก่อนระบบปฏิเสธ พนักงานจึงต้องเลือกระหว่างไม่บันทึกการขาย กับรับ
+         * ของเข้าลอย ๆ ก่อนเพื่อให้ตัดผ่าน · ทั้งสองทางทำให้ตัวเลขในระบบไม่ตรง
+         * กับความจริง ซึ่งแย่กว่ายอดติดลบที่บอกตรง ๆ ว่าค้างอยู่เท่าไร
+         */
+        return [
+            'product'   => $p,
+            'lots'      => $lots,
+            'available' => $available,
+            'quantity'  => $qty,
+            'shortfall' => max(0, $qty - $available),
+        ];
+    }
+
+    /**
+     * ล็อตค้างส่งของสินค้าตัวหนึ่ง — ที่เดียวที่ยอดติดลบได้
+     *
+     * ล็อตจริงคือของที่มาถึงเป็นกล่อง ติดลบไม่ได้ตามนิยาม · ของที่ขายไปก่อนของ
+     * มาถึงจึงไปกองอยู่บนล็อตนี้ หนึ่งใบต่อสินค้าหนึ่งตัว ไม่มีต้นทุนเพราะยังไม่
+     * รู้ว่าจะซื้อมาเท่าไร และไม่ถูกหยิบไปตัดรอบหน้า เพราะการตัดเลือกเฉพาะล็อตที่
+     * ยอดเป็นบวก
+     */
+    private static function shortfallLot(PDO $pdo, array $p): array
+    {
+        $number = 'SHORT-' . $p['sku'];
+
+        $st = $pdo->prepare(
+            'SELECT id, lot_number, remaining_qty, cost_per_unit FROM stock_lots
+             WHERE product_id = ? AND lot_number = ? FOR UPDATE'
+        );
+        $st->execute([$p['id'], $number]);
+        $lot = $st->fetch();
+        if ($lot !== false) {
+            return $lot;
         }
 
-        return ['product' => $p, 'lots' => $lots, 'available' => $available, 'quantity' => $qty];
+        $pdo->prepare(
+            'INSERT INTO stock_lots
+               (lot_number, product_id, supplier_id, cost_per_unit, initial_qty,
+                remaining_qty, received_date, notes)
+             VALUES (?, ?, NULL, NULL, 0, 0, CURDATE(), ?)'
+        )->execute([
+            $number,
+            $p['id'],
+            'ล็อตค้างส่ง — ของที่ขายไปก่อนรับเข้า หักกลบเองเมื่อของมาถึง',
+        ]);
+
+        return [
+            'id'            => (int) $pdo->lastInsertId(),
+            'lot_number'    => $number,
+            'remaining_qty' => 0,
+            'cost_per_unit' => null,
+        ];
     }
 
     /**
@@ -463,6 +519,47 @@ final class Stock
                 'quantity'  => $take,
                 'unit_cost' => $lot['cost_per_unit'],
             ];
+        }
+
+        /*
+         * ส่วนที่ของไม่พอ — ลงบนล็อตค้างส่ง ยอดของสินค้าจึงติดลบได้
+         *
+         * ยังต้องมีแถวในสมุดเท่าจำนวนที่ตัดจริงทั้งหมด ไม่งั้นยอดคงเหลือกับสมุด
+         * จะไม่ตรงกัน ซึ่งเป็นข้อที่ `doctor` ตรวจ · ต้นทุนของแถวนี้เป็น NULL
+         * เพราะยังไม่รู้ว่าจะซื้อของมาเท่าไร — จะรู้ตอนของมาถึงและถูกหักกลบ
+         */
+        if ($left > 0) {
+            $short = self::shortfallLot($pdo, $p);
+
+            $pdo->prepare('UPDATE stock_lots SET remaining_qty = remaining_qty - ? WHERE id = ?')
+                ->execute([$left, $short['id']]);
+
+            $pdo->prepare(
+                'INSERT INTO inventory_logs
+                   (product_id, lot_id, action_type, quantity, unit_cost,
+                    reference_doc, notes, created_by, created_by_kind,
+                    issued_to_admin_id, branch_issue_id, created_at)
+                 VALUES (?, ?, ?, ?, NULL, ?, ?, ?, \'user\', ?, ?, NOW())'
+            )->execute([
+                $p['id'],
+                $short['id'],
+                self::ACTION_LOG[$action],
+                -$left,
+                $doc,
+                trim((string) $note . ' · ขายเกินของที่มี ค้างส่ง ' . $left . ' ชิ้น'),
+                $actor,
+                $issuedTo,
+                $branchIssueId,
+            ]);
+
+            $cuts[] = [
+                'lot'       => $short['lot_number'],
+                'lot_id'    => (int) $short['id'],
+                'quantity'  => $left,
+                'unit_cost' => null,
+                'shortfall' => true,
+            ];
+            $left = 0;
         }
 
         if ($branchIssueId !== null) {
