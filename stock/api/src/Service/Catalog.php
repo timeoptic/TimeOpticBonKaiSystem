@@ -52,7 +52,8 @@ final class Catalog
     /** @param array<string,mixed> $req @return array<string,mixed> */
     public static function createProduct(array $req, string $role): array
     {
-        Roles::require(Roles::editCatalog($role), 'เพิ่มสินค้า');
+        // เพิ่มของใหม่ ไม่ใช่แก้ของที่มีอยู่ — คนละสิทธิ์ ดูเหตุผลใน Roles::addProduct
+        Roles::require(Roles::addProduct($role), 'เพิ่มสินค้า');
 
         $data = self::productFields($req);
 

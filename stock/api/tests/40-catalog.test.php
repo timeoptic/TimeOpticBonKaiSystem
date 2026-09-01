@@ -110,9 +110,32 @@ test('ตัวช่วยเติมชื่อและแบรนด์ �
     });
 });
 
-test('พนักงานหน้าร้านเพิ่มสินค้าไม่ได้', function () {
+test('พนักงานหน้าร้านเพิ่มสินค้าได้ แต่แก้กับลบไม่ได้', function () {
     withRollback(function () {
-        throwsReason('forbidden', fn() => Catalog::createProduct(productArgs(), Roles::SALES), 'staff เพิ่มสินค้า');
+        /* ของใหม่ถูกค้นพบตอนขาย ลูกค้ายืนรออยู่ — ห้ามเพิ่มแล้วพนักงานจะเลือกของ
+           ที่ใกล้เคียงที่สุดแทน ซึ่งผิดกว่าการมี SKU เกินมาหนึ่งตัว */
+        $made = Catalog::createProduct(productArgs(), Roles::SALES);
+        ok($made['id'] > 0, 'พนักงานขายเพิ่มสินค้าได้');
+
+        /* แต่ของที่มีประวัติของคนอื่นอยู่แล้ว ยังแตะไม่ได้ */
+        throwsReason(
+            'forbidden',
+            fn() => Catalog::updateProduct($made['id'], productArgs(['name' => 'เปลี่ยนชื่อ']), Roles::SALES),
+            'staff แก้สินค้า',
+        );
+        throwsReason('forbidden', fn() => Catalog::deleteProduct($made['id'], Roles::SALES), 'staff ลบสินค้า');
+
+        /* และต้นทุนยังเป็นสิทธิ์คนละใบ */
+        throwsReason(
+            'forbidden',
+            fn() => Receiving::receive([
+                'sku'           => $made['sku'],
+                'quantity'      => 1,
+                'cost_per_unit' => '100.00',
+                'received_date' => date('Y-m-d'),
+            ], Roles::SALES, 1),
+            'staff กรอกต้นทุน',
+        );
     });
 });
 
