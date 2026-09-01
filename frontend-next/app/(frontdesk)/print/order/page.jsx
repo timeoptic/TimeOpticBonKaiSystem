@@ -65,12 +65,81 @@ const RX_ROWS = [
 
 const EYES = [['r', 'Right'], ['l', 'Left']];
 
+/** ขั้นตอนงานหลังบ้าน — ช่างติ๊ก/เซ็นกำกับทีละช่องตามที่งานเดินไป */
+const STAGES = ['สั่งเลน', 'เจียเลน', 'QC', 'เก็บแว่น'];
+
+/**
+ * ช่องวัดที่ช่างกรอกมือ — PD/FH มาจากการวัดบนหน้าลูกค้า ส่วน A/B/ED/DBL เป็นขนาดกรอบ
+ * fig = รูปกำกับหัวตาราง (ดู FrameFig) ช่องที่ไม่มีรูปเว้นที่ไว้เท่ากันเพื่อให้หัวตารางตรงแนว
+ */
+const MEASURES = [
+  ['PD', null],
+  ['FH', null],
+  ['A', 'a'],
+  ['B', 'b'],
+  ['ED', 'ed'],
+  ['DBL', 'dbl'],
+];
+
+/**
+ * รูปกำกับค่าขนาดกรอบ วาดเป็น SVG ในไฟล์เลยเพื่อไม่ต้องพึ่งไฟล์รูปตอนพิมพ์
+ *   a   ความกว้างกรอบเลนส์ (เส้นวัดพาดด้านบน)
+ *   b   ความสูงกรอบเลนส์ (เส้นวัดตั้งด้านข้าง)
+ *   ed  เส้นผ่านศูนย์กลางยาวสุดของเลนส์ (เส้นทแยงผ่านกลาง)
+ *   dbl ระยะระหว่างเลนส์สองข้าง (ลูกศรตรงสะพานแว่น)
+ */
+function FrameFig({ kind }) {
+  const p = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.4, strokeLinecap: 'round' };
+  if (kind === 'a') return (
+    <svg className="iv-fig" viewBox="0 0 26 22" aria-hidden="true">
+      <ellipse cx="13" cy="14" rx="12" ry="6.5" {...p} />
+      <path d="M1 4h24M1 2v4M25 2v4" {...p} />
+    </svg>
+  );
+  if (kind === 'b') return (
+    <svg className="iv-fig" viewBox="0 0 30 22" aria-hidden="true">
+      <ellipse cx="12" cy="11" rx="11" ry="6.5" {...p} />
+      <path d="M27 4.5v13M25 4.5h4M25 17.5h4" {...p} />
+    </svg>
+  );
+  if (kind === 'ed') return (
+    <svg className="iv-fig" viewBox="0 0 26 22" aria-hidden="true">
+      <ellipse cx="13" cy="11" rx="12" ry="6.5" {...p} />
+      <path d="M3 15.5L23 6.5M3 13.2v2.6M23 6.5h-2.6" {...p} />
+    </svg>
+  );
+  return (
+    <svg className="iv-fig" viewBox="0 0 48 22" aria-hidden="true">
+      <ellipse cx="11" cy="11" rx="10" ry="6.5" {...p} />
+      <ellipse cx="37" cy="11" rx="10" ry="6.5" {...p} />
+      <path d="M21 11h6M22.6 9.2 21 11l1.6 1.8M25.4 9.2 27 11l-1.6 1.8" {...p} />
+    </svg>
+  );
+}
+
 const frameLabel = (o) => o?.frame_name
   || [o?.frame_brand, o?.frame_model].filter(Boolean).join(' ')
   || '';
 
 /** ชนิดงาน — ออเดอร์เก่ากรอก lens_type ไว้ ใบใหม่อ่านจากดีไซน์ของเลนส์ที่เลือก */
 const workType = (o) => o?.lens_type || o?.lens_design || '';
+
+/**
+ * หมายเหตุที่พิมพ์ลงใบ — มาจากคนละหน้าจอกัน จึงพิมพ์แยกบรรทัดพร้อมป้ายว่ามาจากขั้นไหน
+ * ช่างอ่านแล้วต้องรู้ทันทีว่าข้อไหนมาจากหมอวัด ข้อไหนมาจากคนขาย
+ *
+ *   วัดสายตา  prescriptions.exam_note ของใบ kind='final' — ช่อง "บันทึกการตรวจ"
+ *             ในหัวข้อ 6 ของ ExamPanel ซึ่งบันทึกลงใบ final ใบเดียวกับที่ใบนี้
+ *             ใช้อ่านค่าสายตาอยู่แล้ว จึงไม่ต้องไปหาใบอื่น
+ *   ขาย       custom_orders.notes — การ์ด "หมายเหตุ" ของ OrderFormView
+ *             (สีเลนส์ ทรงกรอบ การปรับขาแว่น)
+ *
+ * ว่างทั้งคู่ = ไม่คืนแถวเลย ใบออกมาเหมือนเดิมทุกประการ กรอบเปล่าไว้ให้เขียนมือ
+ */
+const noteRows = (o, rx) => [
+  ['วัดสายตา', rx?.exam_note],
+  ['ขาย', o?.notes],
+].filter(([, v]) => String(v ?? '').trim());
 
 /**
  * วิธีชำระที่พิมพ์ลงใบ = วิธีของเงินก้อนล่าสุดที่รับจริง (ไม่นับรายการที่ยกเลิก)
@@ -151,6 +220,7 @@ function OrderSheet() {
     || null;
 
   const name = custName(o);
+  const notes = noteRows(o, rx);
   const net = Number(o.total_price || 0) - Number(o.discount || 0);
   const paid = Number(o.paid || 0);
   const remain = Number(o.balance || 0);
@@ -277,10 +347,8 @@ function OrderSheet() {
             <div className="iv-col">
               <F k="Type" v={workType(o)} />
               <F k="LensName" v={o.lens_name} />
-              <F k="FrameName" v={frameLabel(o)} />
               <F k="RightLen" v={o.lens_r_name} />
               <F k="LeftLen" v={o.lens_l_name} />
-              <F k="Frame" v={[o.frame_color, o.frame_size, o.frame_sku].filter(Boolean).join(' · ')} />
             </div>
             <div className="iv-col iv-money">
               {moneyRows.map(([k, v]) => <F key={k} k={k} v={v} />)}
@@ -288,26 +356,46 @@ function OrderSheet() {
             </div>
           </div>
 
-          {/* ช่องที่ช่างเขียนมือตอนสั่งของ — ระบบไม่มีค่าให้ ตั้งใจเว้นเป็นเส้น */}
-          <div className="iv-hand">
-            <F k="Lens Name for Order" fill />
-            <F k="Frame Type" fill />
-            <F k="Number Order" fill />
+          {/* ขั้นตอนงาน — ระบบไม่มีค่าให้ ตั้งใจเว้นช่องไว้ให้ช่างเซ็น/ลงวันที่กำกับทีละขั้น */}
+          <div className="iv-stages">
+            {STAGES.map((s) => (
+              <div className="iv-stage" key={s}>
+                <span className="iv-stage-k">{s}</span>
+                <span className="iv-stage-box" />
+              </div>
+            ))}
           </div>
 
-          <div className="iv-marks">
-            <div className="iv-mark">
-              <span className="iv-f-k">PD</span>
-              <span className="iv-dots">{[0, 1, 2, 3, 4].map((i) => <i key={i} />)}</span>
-            </div>
-            <div className="iv-mark">
-              <span className="iv-f-k">FH</span>
-              <span className="iv-opts">{['A', 'B', 'ED', 'DBL'].map((t) => <b key={t}>{t}</b>)}</span>
-            </div>
-          </div>
+          {/* ค่าที่วัดหน้าลูกค้า + ขนาดกรอบ — ตารางช่องว่างให้ช่างกรอกมือ */}
+          <table className="iv-meas">
+            <thead>
+              <tr>
+                {MEASURES.map(([k, fig]) => (
+                  <th key={k}>
+                    <span className="iv-meas-fig">{fig ? <FrameFig kind={fig} /> : null}</span>
+                    <span className="iv-meas-k">{k}</span>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              <tr>{MEASURES.map(([k]) => <td key={k} />)}</tr>
+            </tbody>
+          </table>
 
+          {/* หมายเหตุจากสองขั้นก่อนหน้า พิมพ์ชิดบน ที่เหลือในกรอบยังเป็นที่ว่างให้ช่างเขียนมือ */}
           <div className="iv-note">
             <span>หมายเหตุ / รายละเอียดสำหรับสั่งงาน</span>
+            {notes.length > 0 && (
+              <div className="iv-note-body">
+                {notes.map(([k, v]) => (
+                  <div className="iv-note-row" key={k}>
+                    <span className="iv-f-k">{k}</span>
+                    <span className="iv-note-v">{v}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </section>
       </div>
@@ -329,8 +417,12 @@ export default function PrintOrderPage() {
    ไม่ใช่ดันกระดาษให้ยาวออกไป */
 const sheetCss = `
 .iv-sheet{
-  --ink:#000; --line:#000; --soft:#666;
-  --half-top:104mm; --half-bottom:193mm;   /* 104 + 193 = 297 */
+  /* --line  เส้นโครงใบ (ขอบหัวใบ / ขีดใต้หัวข้อข้างซ้าย-ขวา) ยังเข้มเพื่อคุมโครง
+     --rule  เส้นตาราง/กรอบช่องกรอก จงใจให้อ่อนกว่า ตัวหนังสือในช่องจะได้เด่นกว่ากรอบ
+     --head  หัวข้อ/ป้ายกำกับทุกตัว ดำหนา เป็นตัวนำสายตาว่าช่องนี้คืออะไร
+     --data  ค่าจริงในช่อง เทาอ่อนกว่าและบางกว่าหัวข้อ ใบจึงอ่านเป็นชั้น ๆ ไม่ดำเท่ากันทั้งใบ */
+  --ink:#000; --line:#000; --rule:#a9a9a9; --head:#000; --data:#5a5a5a;
+  --half-top:92mm; --half-bottom:205mm;   /* 92 + 205 = 297 */
   box-sizing:border-box;
   width:210mm; height:297mm; margin:0 auto;
   background:#fff; color:var(--ink);
@@ -358,35 +450,39 @@ const sheetCss = `
 .iv-half.iv-bottom .iv-head .iv-brand .ico{width:4.8mm;height:4.8mm}
 .iv-head .iv-brand b{font-size:11pt;letter-spacing:1.2px;line-height:1.1}
 .iv-half.iv-bottom .iv-head .iv-brand b{font-size:9pt}
-.iv-head .iv-brand small{font-size:6.5pt;color:var(--soft);letter-spacing:.3px}
+.iv-head .iv-brand small{font-size:6.5pt;color:var(--data);letter-spacing:.3px}
 .iv-head .iv-title{text-align:center;flex:1 1 auto}
 .iv-head .iv-title b{display:block;font-size:13pt;line-height:1.2}
 .iv-half.iv-bottom .iv-head .iv-title b{font-size:10.5pt}
-.iv-head .iv-title span{font-size:8pt;letter-spacing:3px;color:var(--soft)}
+.iv-head .iv-title span{font-size:8pt;letter-spacing:3px;color:var(--data)}
 .iv-head .iv-ref{text-align:right;min-width:34mm;display:flex;flex-direction:column}
-.iv-head .iv-ref span{font-size:8pt}
+.iv-head .iv-ref span{font-size:8pt;color:var(--data);font-weight:400}
 .iv-head .iv-ref b{font-size:9.5pt;letter-spacing:.5px}
 
 /* ---- แถวป้าย: ค่า ---- */
 .iv-f{display:flex;gap:2mm;align-items:baseline;min-width:0;padding:0.6mm 0}
 .iv-half.iv-bottom .iv-f{padding:0.5mm 0}
-.iv-f-k{flex:0 0 24mm;font-weight:700;color:var(--soft);white-space:nowrap}
+.iv-f-k{flex:0 0 24mm;font-weight:700;color:var(--head);white-space:nowrap}
 .iv-half.iv-bottom .iv-f-k{flex:0 0 21mm}
-.iv-f-v{flex:1 1 auto;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-weight:600}
-.iv-f-v.iv-dim{color:#aaa;font-weight:400}
+.iv-f-v{flex:1 1 auto;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;
+  color:var(--data);font-weight:500}
+.iv-f-v.iv-dim{color:#9a9a9a;font-weight:400}
 /* ค่าว่างที่ "ตั้งใจให้เขียนมือ" — เส้นจริง ไม่ใช่ขีดกลาง */
-.iv-f-blank{flex:1 1 auto;border-bottom:0.25mm dotted #444;height:3.4mm}
+.iv-f-blank{flex:1 1 auto;border-bottom:0.25mm dotted #999;height:3.4mm}
 .iv-col.iv-money .iv-f-k{flex:0 0 22mm}
-.iv-col.iv-money .iv-f-v{text-align:right;font-weight:700}
+.iv-col.iv-money .iv-f-v{text-align:right;font-weight:600}
 
 /* ---- ครึ่งบน ---- */
+/* เนื้อครึ่งบนเกาะขอบบน (ไม่ใช่กลางแถบ) — ที่ว่างที่เหลือไปกองอยู่เหนือแถบที่ติดต่อร้าน
+   ซึ่งเป็นที่ที่ลูกค้าเขียนกำกับได้ ดีกว่าลอยอยู่กลางใบ */
 .iv-cust-body{flex:1 1 auto;display:grid;grid-template-columns:1fr 1fr;
-  column-gap:10mm;align-content:center;padding:4mm 0}
-.iv-cust-body .iv-col{display:flex;flex-direction:column;gap:2.6mm;min-width:0}
+  column-gap:10mm;align-content:start;padding:2.5mm 0 0}
+.iv-cust-body .iv-col{display:flex;flex-direction:column;gap:2mm;min-width:0}
 
 .iv-shop{display:flex;align-items:flex-end;justify-content:space-between;gap:6mm;
   padding-top:2.5mm;border-top:0.4mm solid var(--line)}
-.iv-shop-info{font-size:8pt;line-height:1.6;min-width:0}
+.iv-shop-info{font-size:8pt;line-height:1.6;min-width:0;color:var(--data)}
+.iv-shop-info b{color:var(--head)}
 .iv-shop-info .ico{width:3.5mm;height:3.5mm;vertical-align:-0.5mm}
 .iv-qrs{display:flex;gap:3mm;flex:0 0 auto}
 .iv-qr{width:18mm;height:18mm;display:flex;align-items:center;justify-content:center;overflow:hidden}
@@ -402,13 +498,13 @@ const sheetCss = `
 .iv-job{display:flex;align-items:center;gap:6mm;padding:2.5mm 0 2mm}
 .iv-job-no{font-size:14pt;font-weight:800;letter-spacing:1px;min-width:20mm}
 .iv-job-appt{display:flex;align-items:center;gap:2mm}
-.iv-job-appt span{font-weight:700;color:var(--soft)}
+.iv-job-appt span{font-weight:700;color:var(--head)}
 .iv-job-appt .iv-box{display:inline-block;min-width:32mm;padding:0.8mm 2mm;
-  border:0.3mm solid var(--line);text-align:center;font-size:8.5pt}
-.iv-job-code{margin-left:auto;font-size:8pt;letter-spacing:.5px;color:var(--soft)}
+  border:0.3mm solid var(--rule);text-align:center;font-size:8.5pt}
+.iv-job-code{margin-left:auto;font-size:8pt;letter-spacing:.5px;color:var(--data)}
 
 .iv-who{display:grid;grid-template-columns:1.4fr 1fr 1fr;column-gap:6mm;
-  padding:2mm 0;border-top:0.25mm solid #bbb;border-bottom:0.25mm solid #bbb}
+  padding:2mm 0;border-top:0.25mm solid var(--rule);border-bottom:0.25mm solid var(--rule)}
 .iv-who .iv-f-k{flex:0 0 16mm}
 
 /* ค่าสายตา: สองข้างกว้างเท่ากันเป๊ะ ตัวเลขอยู่ในกรอบ อ่านทีละแถวข้ามข้างได้ */
@@ -417,30 +513,47 @@ const sheetCss = `
 .iv-rx-title{text-align:center;font-weight:800;font-size:9pt;letter-spacing:1px;
   border-bottom:0.3mm solid var(--line);padding-bottom:1mm;margin-bottom:1mm}
 .iv-rx-row{display:flex;align-items:center;gap:2mm}
-.iv-rx-k{flex:0 0 15mm;font-weight:700;color:var(--soft)}
-.iv-rx-v{flex:1 1 auto;border:0.25mm solid var(--line);padding:0.9mm 2mm;
-  text-align:center;font-size:8.5pt;font-weight:700;line-height:1.35}
+.iv-rx-k{flex:0 0 15mm;font-weight:700;color:var(--head)}
+.iv-rx-v{flex:1 1 auto;border:0.25mm solid var(--rule);padding:0.9mm 2mm;
+  text-align:center;font-size:8.5pt;color:var(--data);font-weight:600;line-height:1.35}
 
 .iv-spec{display:grid;grid-template-columns:1.35fr 1fr;column-gap:8mm;
-  padding:1.8mm 0;border-top:0.25mm solid #bbb}
+  padding:1.8mm 0;border-top:0.25mm solid var(--rule)}
 .iv-spec .iv-col{display:flex;flex-direction:column;min-width:0}
 
-.iv-hand{display:flex;flex-direction:column;gap:1mm;padding:1.8mm 0;
-  border-top:0.25mm solid #bbb}
-.iv-hand .iv-f-k{flex:0 0 34mm}
-.iv-hand .iv-f-blank{height:4mm}
+/* ขั้นตอนงาน — สี่ช่องกว้างเท่ากัน ชื่อขั้นอยู่บน ใต้ชื่อเป็นที่ว่างให้เซ็น/ลงวันที่ */
+.iv-stages{display:grid;grid-template-columns:repeat(4,1fr);gap:3mm;
+  padding:2.2mm 0;border-top:0.25mm solid var(--rule)}
+.iv-stage{display:flex;flex-direction:column;gap:1mm}
+.iv-stage-k{font-weight:700;font-size:8.5pt;text-align:center}
+.iv-stage-box{height:8mm;border:0.3mm solid var(--rule)}
 
-.iv-marks{display:flex;gap:12mm;padding:1.8mm 0}
-.iv-mark{display:flex;align-items:center;gap:3mm}
-.iv-mark .iv-f-k{flex:0 0 auto}
-.iv-dots{display:flex;gap:3mm}
-.iv-dots i{width:3.2mm;height:3.2mm;border:0.3mm solid var(--line);border-radius:50%}
-.iv-opts{display:flex;gap:0}
-.iv-opts b{padding:0 2.5mm;border-right:0.25mm solid var(--line);font-weight:700}
-.iv-opts b:last-child{border-right:0}
+/* ตารางค่าที่ต้องกรอกมือ — หัวตารางมีรูปกำกับเฉพาะค่าที่วัดจากกรอบ (A/B/ED/DBL)
+   ช่อง PD/FH เว้นที่รูปไว้เท่ากันเพื่อให้ตัวอักษรหัวตารางอยู่ระดับเดียวกันทุกช่อง */
+.iv-meas{width:100%;border-collapse:collapse;table-layout:fixed;margin:2.2mm 0 0}
+.iv-meas th,.iv-meas td{border:0.25mm solid var(--rule);text-align:center}
+.iv-meas th{padding:1mm 0.5mm;font-weight:700}
+.iv-meas td{height:8mm}
+.iv-meas-fig{display:flex;align-items:center;justify-content:center;height:5mm}
+.iv-meas .iv-fig{height:4.6mm;width:auto;color:var(--ink)}
+.iv-meas-k{display:block;font-size:8.5pt;letter-spacing:.5px}
 
-.iv-note{flex:1 1 auto;min-height:13mm;border:0.3mm solid var(--line);
-  padding:2mm 2.5mm;color:var(--soft);font-size:7.5pt}
+.iv-note{flex:1 1 auto;min-height:13mm;border:0.3mm solid var(--rule);
+  padding:2mm 2.5mm;color:var(--data);font-size:7.5pt;
+  /* กรอบนี้กินที่ที่เหลือของครึ่งล่างซึ่งสูงตายตัว ถ้าหมายเหตุยาวผิดปกติต้องถูก
+     "ตัด" ตรงนี้ ไม่ใช่ดันกระดาษให้เกิดหน้า 2 — กฎเหล็กที่หัวไฟล์ */
+  display:flex;flex-direction:column;overflow:hidden}
+.iv-note>span{color:var(--head);font-weight:700}
+
+/* หมายเหตุที่ระบบมีให้ พิมพ์ชิดบนใต้หัวข้อ ส่วนที่เหลือของกรอบยังว่างให้เขียนมือต่อ
+   ตัวข้อความจึง clamp ไว้บรรทัดละไม่เกิน 2 บรรทัด แทนที่จะปล่อยให้กินกรอบทั้งใบ */
+.iv-note-body{display:flex;flex-direction:column;gap:0.8mm;margin-top:1.4mm;
+  min-height:0;overflow:hidden}
+.iv-note-row{display:flex;gap:2mm;align-items:baseline}
+.iv-note-row .iv-f-k{flex:0 0 16mm}
+.iv-note-v{flex:1 1 auto;min-width:0;color:var(--data);font-weight:500;
+  display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;
+  white-space:pre-line}
 
 /* ---- เปลือกหน้าจอ (ไม่ติดไปกับกระดาษ) ---- */
 .iv-sheet-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
