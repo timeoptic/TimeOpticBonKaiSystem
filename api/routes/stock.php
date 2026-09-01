@@ -117,24 +117,56 @@ GET('/api/stock', function (array $req) {
        not have to choose between two identical lines to do that.
        group=lot keeps one row per receiving batch, for when the batch matters. */
     if ($group === 'product') {
+        /*
+         * ของหมดแล้วก็ยังต้องเลือกได้
+         *
+         * เดิมข้ามล็อตที่ยอดไม่เป็นบวก สินค้าที่ขายหมดจึงหายไปจากรายการทั้งตัว
+         * คนขายที่ลูกค้าสั่งเลนส์รุ่นเดิมซ้ำจึงหาไม่เจอ แล้วต้องสร้างสินค้าใหม่
+         * ชื่อซ้ำกับของเดิม · ตอนนี้ขายเกินของที่มีได้ (ยอดติดลบเป็นค้างส่ง)
+         * รายการจึงต้องแสดงต่อ พร้อมยอดจริงซึ่งอาจเป็นศูนย์หรือติดลบ
+         *
+         * ล็อตค้างส่ง (`SHORT-`) นับรวมในยอด แต่ไม่ถูกเลือกเป็นตัวแทน — มันไม่ใช่
+         * กล่องที่หยิบได้ · ตัวแทนคือล็อตเก่าสุดที่ยังมีของ ถ้าไม่มีเลยก็ใช้ล็อต
+         * จริงใบใดใบหนึ่ง เพื่อให้ออเดอร์มีอะไรให้ชี้
+         */
         $byProduct = [];
         foreach ($lots as $l) {
             $left = (int) $l['remaining_qty'];
-            if ($left <= 0) {
-                continue;
-            }
+            $isShort = str_starts_with((string) ($l['lot_number'] ?? ''), 'SHORT-');
             $key = $l['product_id'] ?? ('name:' . $l['product_name']);
+
             if (!isset($byProduct[$key])) {
+                if ($isShort) {
+                    continue; // รอเจอล็อตจริงก่อน ค่อยเอายอดค้างไปรวม
+                }
                 $byProduct[$key] = $l + ['lot_count' => 0, 'sold' => 0];
                 $byProduct[$key]['remaining_qty'] = 0;
+                $byProduct[$key]['pick_id'] = null;
             }
+
             $byProduct[$key]['remaining_qty'] += $left;
-            $byProduct[$key]['lot_count']     += 1;
-            /* oldest lot still holding stock wins — smaller id = received earlier */
-            if ((int) $l['id'] < (int) $byProduct[$key]['id']) {
+            if ($isShort) {
+                continue;
+            }
+            if ($left > 0) {
+                $byProduct[$key]['lot_count'] += 1;
+                /* oldest lot still holding stock wins — smaller id = received earlier */
+                if ($byProduct[$key]['pick_id'] === null || (int) $l['id'] < (int) $byProduct[$key]['pick_id']) {
+                    $byProduct[$key]['pick_id'] = $l['id'];
+                }
+            }
+            /* ไม่มีล็อตไหนเหลือของเลย — ชี้ไปที่ล็อตจริงใบล่าสุดไว้ก่อน */
+            if ($byProduct[$key]['pick_id'] === null) {
                 $byProduct[$key]['id'] = $l['id'];
             }
         }
+        foreach ($byProduct as &$row) {
+            if ($row['pick_id'] !== null) {
+                $row['id'] = $row['pick_id'];
+            }
+            unset($row['pick_id']);
+        }
+        unset($row);
         $rows = array_values($byProduct);
         usort($rows, fn($a, $b) => strcmp((string) $a['product_name'], (string) $b['product_name']));
         return array_slice($rows, 0, min(int_or($q['limit'] ?? null, 300), 2000));
@@ -223,7 +255,8 @@ POST('/api/stock', function (array $req) {
     $body = $req['body'];
     [$role, $actorId] = stockActor();
 
-    $amount = min(max(int_or($body['amount'] ?? null, 1) ?? 1, 1), 500);
+    /* 0 ได้ = ลงชื่อสินค้าไว้ก่อน ของยังไม่มา · ขายต่อได้เลย ยอดจะเป็นค้างส่ง */
+    $amount = min(max(int_or($body['amount'] ?? null, 1) ?? 1, 0), 500);
     /* ฟอร์มส่งมาเป็น datetime ส่วนวันที่รับเข้าเป็นวัน ไม่ใช่เวลา */
     $date   = substr((string) (str_or($body['stock_date'] ?? null) ?: nowStamp()), 0, 10);
 

@@ -238,6 +238,13 @@ final class Receiving
     }
 
     /** @param array<string,mixed> $req */
+    /**
+     * จำนวนที่รับเข้า — 0 ได้ แปลว่า "ลงชื่อไว้ก่อน ของยังไม่มา"
+     *
+     * คนขายเจอเลนส์รุ่นที่ร้านยังไม่เคยลงระบบ ลูกค้ายืนอยู่ตรงหน้า ของจะมา
+     * สัปดาห์หน้า · เดิมต้องใส่อย่างน้อย 1 ซึ่งเป็นการโกหกว่ามีของอยู่บนชั้น
+     * ลงเป็น 0 แล้วขายต่อได้เลย ยอดจะติดลบเป็นค้างส่ง ซึ่งตรงกับความจริง
+     */
     private static function qty(array $req): int
     {
         $v = $req['quantity'] ?? null;
@@ -245,8 +252,8 @@ final class Receiving
             throw ApiError::badRequest('จำนวนต้องเป็นจำนวนเต็ม', 'bad_quantity');
         }
         $n = (int) $v;
-        if ($n < 1 || $n > 999999) {
-            throw ApiError::badRequest('จำนวนต้องอยู่ระหว่าง 1 ถึง 999999', 'bad_quantity');
+        if ($n < 0 || $n > 999999) {
+            throw ApiError::badRequest('จำนวนต้องอยู่ระหว่าง 0 ถึง 999999', 'bad_quantity');
         }
         return $n;
     }
