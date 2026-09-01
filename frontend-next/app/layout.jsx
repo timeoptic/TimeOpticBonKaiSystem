@@ -21,12 +21,35 @@ export const viewport = {
   viewportFit: 'cover',
 };
 
+/**
+ * ฟอนต์ของทั้งระบบ โหลดที่นี่ที่เดียว
+ *
+ * เป็นข้อยกเว้นเดียวของกฎ "layout รากต้องว่าง" — ฟอนต์ไม่ใช่สไตล์ที่ชนกัน
+ * มันคือทรัพยากรที่ทั้งสองฝั่งใช้ตัวเดียวกัน โหลดซ้ำสองที่ก็ได้ไฟล์เดิม
+ *
+ * Google Sans มี subset ไทยมาด้วย จึงไม่ต้องมีฟอนต์ไทยแยกอีกตัว · Google Sans
+ * Code ใช้กับตัวเลขและรหัสสินค้า ซึ่งต้องเรียงตรงคอลัมน์ในตาราง
+ *
+ * `preconnect` สองบรรทัดมาก่อน เพราะไฟล์ฟอนต์อยู่คนละโดเมนกับ CSS ที่ประกาศมัน
+ * ถ้าไม่บอกไว้ เบราว์เซอร์จะเสียเวลาเปิดการเชื่อมต่อตอนที่รู้ตัวว่าต้องใช้แล้ว
+ */
+const FONT_CSS =
+  'https://fonts.googleapis.com/css2' +
+  '?family=Google+Sans:wght@400;500;600;700' +
+  '&family=Google+Sans+Code:wght@400;500;600' +
+  '&display=swap';
+
 export default function RootLayout({ children }) {
   return (
     // ส่วนขยายเบราว์เซอร์ (เช่น Scribe recorder) แปะ attribute ของตัวเองลงบน <html>
     // ก่อน React hydrate — ทำให้ dev overlay ขึ้น hydration mismatch ทั้งที่โค้ดเราไม่ได้ผิด
     // suppressHydrationWarning ที่นี่กันแค่ attribute ของแท็กนี้แท็กเดียว ไม่ได้ปิดทั้งหน้า
     <html lang="th" suppressHydrationWarning>
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link rel="stylesheet" href={FONT_CSS} />
+      </head>
       <body>{children}</body>
     </html>
   );

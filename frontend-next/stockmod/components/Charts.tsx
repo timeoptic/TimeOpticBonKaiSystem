@@ -21,12 +21,18 @@ import { count, date, money } from "@/stockmod/lib/format";
  * page. The picture is for spotting the odd day; the table is the record.
  */
 
-/** Chart ink. Not in tokens.css because nothing else in the app draws marks. */
+/**
+ * Chart ink. Not in tokens.css because nothing else in the app draws marks.
+ *
+ * ปรับตามกระดาษที่เปลี่ยนจากครีมเป็นเย็นอ่อน — ค่าเดิมเลือกไว้ให้อ่านออกบนครีม
+ * ทั้งสี่ยังเข้มพอผ่าน 3:1 บนกระดาษใหม่ และคู่ที่อยู่ในกราฟเดียวกัน (เข้า/ออก)
+ * ยังเป็นเขียวกับน้ำเงิน ซึ่งเป็นคู่ที่รอดตาบอดสีแบบ protanopia
+ */
 const INK = {
-  in: "#006b2d",
-  out: "#0086cf",
-  scrap: "#ed3151",
-  cost: "#a38300",
+  in: "oklch(45% 0.15 150)",
+  out: "oklch(46% 0.22 268)",
+  scrap: "oklch(52% 0.20 20)",
+  cost: "oklch(52% 0.13 70)",
 };
 
 type Day = {
