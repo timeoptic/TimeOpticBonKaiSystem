@@ -181,7 +181,56 @@ final class Settlement
             throw ApiError::conflict('race', 'มีคนบันทึกรายการนี้พร้อมกัน ลองใหม่อีกครั้ง');
         }
 
+        self::logMoney($issue, $amount, $note, $actorId, 'รับเงินค่าของที่สาขาเบิกไป');
+
         return self::byId($id);
+    }
+
+    /**
+     * เงินที่เพิ่งกรอก เป็นรายการของวันที่กรอก
+     *
+     * ของออกไปหาสาขาวันหนึ่ง เงินกลับมาอีกวันหนึ่ง — เดิมมีแค่ตัวเลขในใบเบิกใบ
+     * เดิม เงินที่รับวันนี้จึงไม่มีบรรทัดไหนบอกเลยว่าเกิดขึ้นวันนี้ ต้องไปเปิดใบ
+     * เบิกของเดือนก่อนถึงจะเห็น และหน้าความเคลื่อนไหวก็เงียบสนิททั้งที่มีเงินเข้า
+     *
+     * แถวนี้ไม่ใช่การเคลื่อนของ `quantity` จึงเป็นศูนย์ · `unit_cost` เก็บจำนวน
+     * เงินที่รับมาทั้งใบ ซึ่งอ่านได้จากบรรทัดในหมายเหตุ และไม่ถูกนับซ้ำที่ไหน
+     * เพราะทุกที่คิดมูลค่าเป็น `quantity * unit_cost`
+     *
+     * ผูก `branch_issue_id` ไว้ ใบเบิกใบไหนได้เงินแล้วจึงตามกลับได้จากสมุด
+     *
+     * @param array<string,mixed> $issue
+     */
+    private static function logMoney(array $issue, string $amount, ?string $note, int $actorId, string $what): void
+    {
+        $productId = (int) ($issue['product_id'] ?? 0);
+        if ($productId === 0) {
+            return; // ใบเบิกที่สินค้าถูกลบไปแล้ว — สมุดผูกกับสินค้าเสมอ
+        }
+
+        /* เลขเอกสารเดียวกับตอนของออกไป — ใบเบิกไม่ได้เก็บเลขไว้เอง มันอยู่บนแถว
+           ที่ตัดของออกให้สาขานั้น เงินกับของจะได้อยู่ใต้เลขเดียวกันในสมุด */
+        $doc = Db::value(
+            'SELECT reference_doc FROM inventory_logs
+              WHERE branch_issue_id = ? AND reference_doc IS NOT NULL
+              ORDER BY id ASC LIMIT 1',
+            [(int) $issue['id']],
+        );
+
+        Db::run(
+            'INSERT INTO inventory_logs
+               (product_id, lot_id, action_type, quantity, unit_cost, reference_doc,
+                notes, created_by, created_by_kind, branch_issue_id, created_at)
+             VALUES (?, NULL, \'SETTLE\', 0, ?, ?, ?, ?, \'user\', ?, NOW())',
+            [
+                $productId,
+                $amount,
+                $doc === null ? null : (string) $doc,
+                $what . ' — ' . $amount . ' บาท' . ($note !== null ? " · {$note}" : ''),
+                $actorId,
+                (int) $issue['id'],
+            ],
+        );
     }
 
     /**
@@ -200,7 +249,8 @@ final class Settlement
             throw ApiError::badRequest('ตัดหนี้สูญต้องบอกเหตุผลไว้ด้วย', 'missing_field');
         }
 
-        self::mustBePending(self::byIdRaw($id));
+        $issue = self::byIdRaw($id);
+        self::mustBePending($issue);
 
         $changed = Db::run(
             'UPDATE branch_issues
@@ -212,6 +262,10 @@ final class Settlement
         if ($changed !== 1) {
             throw ApiError::conflict('race', 'มีคนบันทึกรายการนี้พร้อมกัน ลองใหม่อีกครั้ง');
         }
+
+        /* ศูนย์บาทก็ยังเป็นการตัดสินใจเรื่องเงินที่เกิดวันนี้ และเป็นบรรทัดที่คน
+           ตรวจย้อนหลังอยากเห็นมากกว่าใบที่จ่ายครบด้วยซ้ำ */
+        self::logMoney($issue, '0.00', $note, $actorId, 'ตัดหนี้สูญค่าของที่สาขาเบิกไป');
 
         return self::byId($id);
     }

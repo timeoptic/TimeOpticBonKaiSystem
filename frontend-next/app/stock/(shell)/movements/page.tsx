@@ -40,6 +40,10 @@ const TYPES = [
   { key: "RETURN", label: "รับคืน", countKey: "RETURN" },
   { key: "ADJUST", label: "ปรับยอด", countKey: "ADJUST" },
   { key: "RX_ORDER", label: "สั่งตัด RX", countKey: "RX_ORDER" },
+  /* สองชนิดท้ายไม่ใช่การเคลื่อนของ แต่เป็นตัวเลขเงินที่มีคนกรอกในวันนั้น —
+     จำนวนเป็นศูนย์เสมอ และวันที่คือวันที่กรอก ไม่ใช่วันที่ของออกไป */
+  { key: "COST", label: "ลงต้นทุน RX", countKey: "COST" },
+  { key: "SETTLE", label: "รับเงินจากสาขา", countKey: "SETTLE" },
 ] as const;
 
 /**
@@ -302,8 +306,12 @@ function Row({ row: r, money: showMoney }: { row: MovementRow; money: boolean })
         <span className="grid__name">{r.productName}</span>
         <span className="grid__sub">{r.sku}</span>
       </td>
+      {/* แถวเรื่องเงินไม่มีของเคลื่อน — ขีดกลางบอกว่า "ไม่มีจำนวน" ส่วนเลข 0
+          อ่านได้ว่ามีของศูนย์ชิ้นเคลื่อนที่ ซึ่งไม่ใช่เรื่องเดียวกัน */}
       <td className={r.quantity > 0 ? "grid__num grid__num--in" : "grid__num"}>
-        {r.quantity > 0 ? `+${count(r.quantity)}` : count(r.quantity)}
+        {r.quantity === 0
+          ? <span className="grid__muted">—</span>
+          : r.quantity > 0 ? `+${count(r.quantity)}` : count(r.quantity)}
       </td>
 
       {/* One money column instead of two. Cost leads because it is the figure
@@ -322,6 +330,10 @@ function Row({ row: r, money: showMoney }: { row: MovementRow; money: boolean })
           ) : (
             <span className="grid__name">{money(r.unitCost)}</span>
           )}
+          {/* คอลัมน์นี้ชื่อ "ต้นทุน/ชิ้น" ซึ่งจริงกับแถวของจริง · สองชนิดนี้ตัวเลข
+              หมายถึงอย่างอื่น จึงต้องเขียนกำกับไว้ ไม่ใช่ปล่อยให้หัวคอลัมน์โกหก */}
+          {r.actionType === "SETTLE" ? <span className="grid__sub">เงินที่รับทั้งใบ</span> : null}
+          {r.actionType === "COST" ? <span className="grid__sub">ต้นทุนที่เพิ่งกรอก</span> : null}
           {r.basePrice === null ? null : (
             <span className="grid__sub">ขาย {money(r.basePrice)}</span>
           )}

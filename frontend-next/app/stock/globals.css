@@ -651,6 +651,12 @@ code {
 /* Adjust keeps the neutral chip: it is a correction, not an event in the shop,
    and giving it an accent would make housekeeping look like trade. */
 .tag--adjust   { background: var(--veil-ink);   color: var(--color-ink-2);     font-weight: 500; }
+/* Money keyed in after the fact — the cost of an RX job, the cash a branch
+   finally paid. Nothing moved on the shelf, so neither wears a goods colour:
+   they share one outline chip that reads as bookkeeping beside the traded ones. */
+.tag--cost,
+.tag--settle   { background: transparent; color: var(--color-ink-2); font-weight: 500;
+                 box-shadow: inset 0 0 0 1px var(--color-rule); }
 
 .status--stock   { background: var(--color-mint); color: var(--color-ink); }
 .status--rx      { background: var(--color-lavender); color: var(--color-ink); }
