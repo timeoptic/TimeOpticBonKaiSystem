@@ -49,8 +49,10 @@ const NAV = [
     ['👓', 'ออเดอร์ตัดแว่น', '/orders'],
     ['🛍', 'ขายสินค้า', '/sales'],
   ]],
+  /* เคยมี "สต็อกสินค้า" ชี้ไป /stock ของฝั่งนี้เอง — ตอนนี้ /stock เป็นของระบบ
+     คลังที่ย้ายเข้ามา และมีปุ่ม "คลังและต้นทุน" ในกลุ่ม "ระบบอื่น" อยู่แล้ว
+     สองรายการที่พาไปที่เดียวกันมีไว้ก็สับสนเปล่า ๆ */
   ['คลังสินค้า', [
-    ['📦', 'สต็อกสินค้า', '/stock'],
     ['📍', 'ตำแหน่งสินค้า', '/locations'],
   ]],
   ['การเงิน', [
@@ -144,9 +146,19 @@ export function Shell({ children }) {
             <Fragment key={group}>
               <div className="nav-group">{group}</div>
               {items.map(([icon, label, to]) => (
-                <Link key={to} href={to} className={isActive(to) ? 'active' : ''}>
-                  <span className="ic"><Icon name={icon} /></span>{label}
-                </Link>
+                /* เมนูที่ชี้ออกไปฝั่งคลังต้องโหลดหน้าใหม่ ไม่ใช่ <Link> — สองฝั่ง
+                   import CSS คนละชุด เดินข้ามแบบ client-side จะได้สไตล์ทับกัน
+                   ก่อนหน้านี้ "สต็อกสินค้า" ยังเป็น <Link> เพราะสมัยที่เขียน
+                   /stock ยังเป็นหน้าของฝั่งนี้เอง */
+                to.startsWith('/stock') ? (
+                  <a key={to} href={`${to}/`}>
+                    <span className="ic"><Icon name={icon} /></span>{label}
+                  </a>
+                ) : (
+                  <Link key={to} href={to} className={isActive(to) ? 'active' : ''}>
+                    <span className="ic"><Icon name={icon} /></span>{label}
+                  </Link>
+                )
               ))}
             </Fragment>
           ))}
