@@ -111,9 +111,20 @@ export default function DashboardPage() {
   const actor = useActor();
   const money$ = can.seeCost(actor);
 
-  const [preset, setPreset] = useState<string>("month");
-  const [from, setFrom] = useState(() => PRESETS[4].range().from);
-  const [to, setTo] = useState(() => PRESETS[4].range().to);
+  /**
+   * เปิดมาเห็น 30 วันล่าสุด ไม่ใช่ "เดือนนี้"
+   *
+   * "เดือนนี้" อ่านดูเข้าท่า จนถึงวันที่ 1 ของเดือน — วันนั้นช่วงที่เลือกยาว
+   * วันเดียวคือวันที่ยังไม่มีอะไรเกิดขึ้น ทั้งหน้าจึงเป็นศูนย์ และคนเปิดจะอ่าน
+   * ว่าระบบพัง ไม่ใช่ว่าเดือนเพิ่งเริ่ม · ต้นเดือนกับเช้าวันที่ยังไม่ได้ขายอะไร
+   * เป็นเวลาที่คนเปิดแดชบอร์ดพอดี ค่าตั้งต้นจึงต้องทนกับสองเวลานั้นให้ได้
+   *
+   * 30 วันล่าสุดตอบเหมือนกันทุกวันของเดือน ปุ่ม "เดือนนี้" ยังอยู่ให้กดเมื่อ
+   * ต้องการยอดตามปฏิทินจริง ๆ
+   */
+  const [preset, setPreset] = useState<string>("30d");
+  const [from, setFrom] = useState(() => PRESETS[3].range().from);
+  const [to, setTo] = useState(() => PRESETS[3].range().to);
 
   /**
    * How still is still. Applies to the bottom table only — see the note there.
