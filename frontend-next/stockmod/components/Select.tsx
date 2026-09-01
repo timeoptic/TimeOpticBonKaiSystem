@@ -102,37 +102,54 @@ export default function Select({
       : options.filter((o) => `${o.label} ${o.keywords ?? ""}`.toLowerCase().includes(q));
 
   /**
-   * Keyboard moves the highlight; the highlight has to stay on screen for that
-   * to mean anything once the list is longer than its own box.
+   * ตอนเปิด รายการหยุดตรงค่าที่ช่องถืออยู่ — แล้วอยู่นิ่ง
    *
-   * `shown.length` อยู่ในรายการที่เฝ้าดูด้วย เพราะตอนเปิดครั้งแรก state ของ
-   * ไฮไลต์ถูกตั้งก่อนที่รายการจะถูกวาด — ไม่มีลูกให้เลื่อนไปหา · บันไดค่าสายตา
-   * ยาว 97 ขั้น เปิดมาแล้วเริ่มที่ -12.00 ทั้งที่ช่องเขียนว่า 0.00 คือให้เลื่อน
-   * เกือบห้าสิบบรรทัดก่อนจะเจอที่ที่ตัวเองยืนอยู่
+   * บันไดค่าสายตายาว 97 ขั้น (CYL 49) เปิดมาเจอ -12.00 ทั้งที่ช่องเขียนว่า
+   * 0.00 คือให้ไล่เลื่อนเกือบห้าสิบบรรทัดก่อนจะเจอที่ที่ตัวเองยืนอยู่ — และ
+   * คนที่เห็นแต่ครึ่งลบก็สรุปว่าค่าบวกหายไป
+   *
+   * เลื่อน "ครั้งเดียวตอนเปิด" เท่านั้น ไม่ใช่ทุกครั้งที่รายการเปลี่ยน — รอบ
+   * ก่อนผูกไว้กับความยาวรายการด้วย รายการจึงกระโดดเองระหว่างพิมพ์ ซึ่งอ่านเป็น
+   * "ดรอปดาวน์เลื่อนเอง" · ระหว่างพิมพ์คนกำลังอ่านรายการอยู่ อย่าไปขยับมัน
+   *
+   * ลองสามเฟรมเพราะความสูงสูงสุดของกล่องถูกเขียนหลังเปิดหนึ่งเฟรม (ดู
+   * dropbox.ts) เฟรมแรกจึงยังไม่มีอะไรล้นให้เลื่อน
    */
-  useEffect(() => {
-    if (!open || at < 0) return;
-    const el = list.current;
-    const row = el?.children[at] as HTMLElement | undefined;
-    if (!el || !row) return;
+  const placed = useRef(false);
 
-    /* เลื่อนเองด้วย offsetTop แทน scrollIntoView และรอเฟรมถัดไป
-       ความสูงสูงสุดของกล่องถูกเขียนลงไปหลังเปิดหนึ่งเฟรม (ดู dropbox.ts) — ตอน
-       effect ทำงานครั้งแรก กล่องยังสูงเท่าเนื้อหาทั้งก้อน ไม่มีอะไรล้น จึงไม่มี
-       อะไรให้เลื่อน แล้ว effect ก็ไม่ถูกเรียกอีก · บันไดค่าสายตายาว 97 ขั้น
-       เปิดมาเจอ -12.00 ทั้งที่ช่องเขียนว่า 0.00 คือต้องเลื่อนเกือบห้าสิบบรรทัด */
+  useEffect(() => {
+    if (!open) {
+      placed.current = false;
+      return;
+    }
+    if (placed.current) return;
+
+    let frame = 0;
+    let tries = 0;
+
     const put = () => {
-      if (el.scrollHeight <= el.clientHeight) return;
-      const above = row.offsetTop - el.clientHeight / 2 + row.offsetHeight / 2;
-      el.scrollTop = Math.max(0, Math.min(above, el.scrollHeight - el.clientHeight));
+      const el = list.current;
+      const row = el?.children[options.findIndex((o) => o.value === value)] as HTMLElement | undefined;
+      if (el && row && el.scrollHeight > el.clientHeight) {
+        const above = row.offsetTop - el.clientHeight / 2 + row.offsetHeight / 2;
+        el.scrollTop = Math.max(0, Math.min(above, el.scrollHeight - el.clientHeight));
+        placed.current = true;
+        return;
+      }
+      if (++tries < 4) {
+        frame = requestAnimationFrame(put);
+      }
     };
+
     put();
-    const first = requestAnimationFrame(() => {
-      put();
-      requestAnimationFrame(put);
-    });
-    return () => cancelAnimationFrame(first);
-  }, [open, at, shown.length, box]);
+    return () => cancelAnimationFrame(frame);
+  }, [open, options, value]);
+
+  /* ลูกศรขึ้นลงพาไฮไลต์ไปไหน รายการต้องตามไปด้วย — แค่ให้เห็น ไม่ต้องจัดกลาง */
+  useEffect(() => {
+    if (!open || at < 0 || !placed.current) return;
+    list.current?.children[at]?.scrollIntoView({ block: "nearest" });
+  }, [at]);
 
   function show() {
     if (disabled || open) return;

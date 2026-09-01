@@ -501,9 +501,11 @@ export default function ProductForm({
         })}`,
   );
 
+  /* ตั้งชื่อให้เองเฉพาะเลนส์ — ชนิดอื่นไม่ได้ถามสเปกแล้ว ชื่อที่ประกอบจากช่อง
+     ว่างจะเหลือแค่แบรนด์ ซึ่งแย่กว่าปล่อยให้คนพิมพ์เอง */
   useEffect(() => {
-    if (autoName && composed.status === "ready") setName(composed.data.name);
-  }, [autoName, composed.status, composed.data]);
+    if (type === "Lens" && autoName && composed.status === "ready") setName(composed.data.name);
+  }, [type, autoName, composed.status, composed.data]);
 
   /* ------------------------------------------------------------ first lot */
 
@@ -543,19 +545,20 @@ export default function ProductForm({
    * corrected from the product's own drawer, not from here.
    */
   /**
-   * The spec is always a stop, whatever is being added.
+   * ถามรายละเอียดเฉพาะเลนส์ ชนิดอื่นเอาแค่ชื่อ
    *
-   * It used to be skipped for everything but a lens while receiving: a frame's
-   * colour was worth recording but not worth standing at the counter for with
-   * the delivery waiting, so it was left to the catalogue screen.
+   * เคยถามทุกชนิด ด้วยเหตุผลว่าชื่อสินค้าถูกประกอบจากสเปก ข้ามแล้วกรอบจะถูกตั้ง
+   * ชื่อว่า "Hitop" เฉย ๆ แล้วกรอบ Hitop ตัวถัดไปก็ชื่อเดียวกันอีก
    *
-   * That stopped being true when the name began to be composed from the spec.
-   * Skipping it now files a frame called "Hitop" and nothing else — and the
-   * next Hitop frame is called "Hitop" too. The stop that was costing fifteen
-   * seconds was the stop that makes the row identifiable, so it is always
-   * asked, and every field on it may still be left blank.
+   * แต่ชื่อเป็นช่องบังคับอยู่แล้วตั้งแต่หน้าแรก (ดู `blocking`) คนที่พิมพ์ชื่อ
+   * เต็ม ๆ ว่า "Hitop AC5028 ดำด้าน 54-16-145" ก็ได้แถวที่แยกออกจากตัวอื่นแล้ว
+   * โดยไม่ต้องกรอกอีกห้าช่องที่จะถูกใช้ประกอบเป็นชื่อเดียวกันนั้น · คนหน้าร้าน
+   * ที่ยืนรับของอยู่ไม่ได้อยากกรอกสี ขนาด วัสดุ ไลน์สินค้า ทีละกล่อง
+   *
+   * เลนส์ต่างออกไปจริง — ค่าสายตา Index Coating ข้างตา ไม่ใช่คำอธิบายของชื่อ
+   * แต่เป็นตัวสินค้าเอง เลนส์ -2.00 กับ -2.25 คนละ SKU กัน ระบบจึงต้องรู้
    */
-  const wantSpec = true;
+  const wantSpec = type === "Lens";
 
   const steps = [
     "ข้อมูลหลัก",
@@ -980,9 +983,19 @@ export default function ProductForm({
               }}
               disabled={locked}
               autoComplete="off"
-              placeholder={autoName ? "ตั้งให้เองจากสเปกด้านล่าง" : undefined}
+              placeholder={
+                type === "Lens" && autoName
+                  ? "ตั้งให้เองจากสเปกด้านล่าง"
+                  : "เช่น Hitop AC5028 ดำด้าน 54-16-145"
+              }
             />
-            {autoName ? (
+            {type !== "Lens" ? (
+              /* ชนิดอื่นไม่ได้ถามสเปกแล้ว ชื่อจึงเป็นสิ่งเดียวที่แยกสินค้าออกจาก
+                 กันในรายการ — บอกไปตรง ๆ ว่าเขียนให้ครบพอที่จะจำได้ */
+              <span className="field__help">
+                ชื่อนี้คือสิ่งเดียวที่ใช้แยกสินค้าตัวนี้ออกจากตัวอื่น — ใส่รุ่น สี ขนาด เท่าที่จำเป็นได้เลย
+              </span>
+            ) : autoName ? (
               <span className="field__help">
                 ตั้งให้เองจาก แบรนด์ · รุ่น · สเปก — พิมพ์ทับได้ถ้าจะใช้ชื่ออื่น
               </span>
