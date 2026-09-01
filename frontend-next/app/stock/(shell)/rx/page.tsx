@@ -379,7 +379,7 @@ function OrderRow({
  * mean going to the receiving screen, which is a strange place to create
  * something that is never received.
  */
-function NewOrderDialog({
+export function NewOrderDialog({
   mayCost,
   onClose,
   onSaved,

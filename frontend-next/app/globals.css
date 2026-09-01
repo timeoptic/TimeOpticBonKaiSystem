@@ -2713,3 +2713,24 @@ table.grid.data-grid tr.row-danger td:first-child{border-left-color:var(--danger
     radial-gradient(900px 500px at 88% 8%, oklch(90% 0.09 130 / .30), transparent 55%),
     var(--bg);
 }
+
+/* ── ป๊อบอัพที่ฝังฟอร์มของฝั่งคลัง ─────────────────────────────────────────────
+   ข้างในเป็น iframe คนละเอกสาร สไตล์ทั้งหมดของฟอร์มอยู่ในนั้น ที่นี่จึงไม่มี
+   กรอบ ไม่มีเงา ไม่มีพื้น — มีแค่ที่ว่างให้ iframe กางเต็มจอ ไม่งั้นจะได้กล่อง
+   ซ้อนกล่องเพราะฟอร์มข้างในมีกรอบของมันเองอยู่แล้ว */
+.embed-modal{width:min(1040px,96vw);height:min(92vh,860px);display:flex;flex-direction:column}
+.embed-modal__wait{color:#fff;font-size:13px;margin:0 0 8px}
+.embed-modal__frame{flex:1;width:100%;border:0;display:block;background:transparent}
+
+/* ── ติ๊กเลือกที่เป็นการ์ด ────────────────────────────────────────────────────
+   ช่องติ๊กเปล่า ๆ กับข้อความข้าง ๆ อ่านเป็นเชิงอรรถ ไม่ใช่ทางเลือกที่ต้องตัดสินใจ
+   ทำเป็นการ์ดที่กดได้ทั้งใบ และเปลี่ยนสีตอนติ๊ก จะได้รู้จากมุมตาว่าตอนนี้เลือกอยู่ */
+.toggle-card{display:flex;gap:10px;align-items:flex-start;cursor:pointer;
+  padding:12px 14px;margin-bottom:12px;border:var(--rule-hair);border-radius:var(--radius-sm);
+  background:var(--field);transition:background var(--dur-fast) var(--ease-out),border-color var(--dur-fast) var(--ease-out)}
+.toggle-card:hover{background:var(--field-hover)}
+.toggle-card.on{background:var(--accent-soft);border-color:var(--accent)}
+.toggle-card input{margin-top:2px;width:16px;height:16px;accent-color:var(--accent);cursor:pointer}
+.toggle-card__text{display:flex;flex-direction:column;gap:2px}
+.toggle-card__text b{font-weight:600}
+.toggle-card__text small{color:var(--ink-faint);font-size:12.5px}

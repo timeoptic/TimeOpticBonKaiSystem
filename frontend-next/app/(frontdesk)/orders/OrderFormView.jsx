@@ -29,7 +29,7 @@ import { StockPicker, stockLabel } from '../../../components/StockPicker.jsx';
 import { RxSets } from '../../../components/RxSets.jsx';
 import { EyewearHistory } from '../../../components/EyewearHistory.jsx';
 import { EmployeeSelect } from '../../../components/Selects.jsx';
-import { NewRxLensModal } from '../../../components/NewRxLensModal.jsx';
+import { StockEmbedModal } from '../../../components/StockEmbedModal.jsx';
 import { RX_KIND_LABEL } from '../../../lib/constants.js';
 import {
   custName, fmtDateTime, money, power, rxNum,
@@ -252,7 +252,9 @@ export function OrderFormView({
       if (!body[field] && value) body[field] = value;
     };
     if (usesOldFrame) {
-      fill('frame_name', 'กรอบเดิมของลูกค้า');
+      /* คำเดียวกันทุกใบ ไม่ให้พิมพ์เอง — กรอบของลูกค้าไม่ใช่สินค้าของร้าน
+         ถ้าปล่อยให้พิมพ์ จะได้สิบคำในสิบใบแล้วนับทีหลังไม่ได้ว่ากี่ใบใช้กรอบเดิม */
+      body.frame_name = 'oldframe';
     } else if (picked.frame) {
       fill('frame_name', stockLabel(picked.frame));
       fill('frame_brand', picked.frame.brand);
@@ -452,7 +454,7 @@ export function OrderFormView({
               ออกจากคลังสักชิ้น · ติ๊กแล้วออเดอร์บันทึกว่าใช้กรอบเดิม ชื่อกรอบ
               ไปโผล่ในใบสั่งและในประวัติพร้อมเลขออเดอร์เหมือนกรอบที่ขายจริง
               ต่างกันตรงไม่มี frame_product_id จึงไม่มีอะไรถูกตัดจากสต็อก */}
-          <label className="row" style={{ gap: 8, alignItems: 'center', marginBottom: 10 }}>
+          <label className={`toggle-card ${usesOldFrame ? 'on' : ''}`}>
             <input
               type="checkbox"
               name="uses_old_frame"
@@ -465,17 +467,17 @@ export function OrderFormView({
                 }
               }}
             />
-            <span>ใช้กรอบเก่าของลูกค้า — ไม่ตัดของออกจากคลัง</span>
+            <span className="toggle-card__text">
+              <b>ใช้กรอบเก่าของลูกค้า</b>
+              <small>ลูกค้าเอากรอบเดิมมาเปลี่ยนเลนส์ — ไม่มีของออกจากคลัง</small>
+            </span>
           </label>
 
           {usesOldFrame ? (
-            <Field label="กรอบเดิมของลูกค้า" hint="เขียนให้พอจำได้ว่าเป็นกรอบไหน — ขึ้นในใบสั่งและประวัติ">
-              <input
-                name="frame_name"
-                defaultValue={o.frame_name || 'กรอบเดิมของลูกค้า'}
-                placeholder="เช่น กรอบเดิม Rayban ดำ"
-              />
-            </Field>
+            /* ไม่มีช่องให้พิมพ์ชื่อ — กรอบของลูกค้าไม่ใช่สินค้าของร้าน ชื่อที่
+               พิมพ์เองจะกลายเป็นสิบแบบในสิบใบ แล้วค้นหาทีหลังไม่เจอ · ใบสั่งและ
+               ประวัติเขียนคำเดียวกันทุกใบว่า oldframe */
+            <p className="hint">บันทึกในใบสั่งว่า <b>oldframe</b> · ไม่ตัดของออกจากคลัง</p>
           ) : (
             <StockPicker
               type="Frame"
@@ -591,17 +593,15 @@ export function OrderFormView({
           </Split>
         </Card>
 
+        {/* กล่องเปิดใบสั่งตัดตัวจริงของฝั่งคลัง ฝังมาเป็น iframe — เลขใบสั่ง
+            สิทธิ์กรอกต้นทุน และการเลือกรุ่นเลนส์ ทำงานเหมือนเปิดจากหน้าคลังทุกอย่าง */}
         {rxFor ? (
-          <NewRxLensModal
-            side={rxFor}
+          <StockEmbedModal
+            what="rx"
+            title={`สั่งตัดเลนส์ ${rxFor === 'r' ? 'ขวา (R)' : 'ซ้าย (L)'}`}
             onClose={() => setRxFor(null)}
-            onCreated={(order) => {
-              /* ราคาขายที่กรอกในใบสั่งคือราคาที่บอกลูกค้าไปแล้ว เติมลงช่องราคา
-                 ของข้างนั้นให้เลย จะได้ไม่ต้องพิมพ์เลขเดิมสองที่ */
+            onRx={(order) => {
               setRxLens((m) => ({ ...m, [rxFor]: order }));
-              if (order.salePrice) {
-                setP({ [rxFor === 'r' ? 'lens_od_price' : 'lens_os_price']: Number(order.salePrice) });
-              }
               setRxFor(null);
             }}
           />
