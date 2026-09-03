@@ -52,9 +52,8 @@ final class Catalog
     /** @param array<string,mixed> $req @return array<string,mixed> */
     public static function createProduct(array $req, string $role): array
     {
-        /* addCatalog ไม่ใช่ editCatalog — เพิ่มของใหม่กับแก้ของเดิมเป็นคนละสิทธิ์
-           ต้นทุนของล็อตแรกยังผ่าน enterRxCost ที่ Receiving เหมือนเดิม */
-        Roles::require(Roles::addCatalog($role), 'เพิ่มสินค้า');
+        // เพิ่มของใหม่ ไม่ใช่แก้ของที่มีอยู่ — คนละสิทธิ์ ดูเหตุผลใน Roles::addProduct
+        Roles::require(Roles::addProduct($role), 'เพิ่มสินค้า');
 
         $data = self::productFields($req);
 

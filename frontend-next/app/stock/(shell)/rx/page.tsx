@@ -1280,7 +1280,8 @@ function LensModels() {
             ค้นหา
           </button>
         </form>
-        {mayEdit ? (
+        {/* เพิ่มรุ่นใหม่ทำได้ทุกบทบาท — ราคาตั้งกับปุ่มลบยังเป็นของแอดมินขึ้นไป */}
+        {can.addProduct(actor) ? (
           <button type="button" className="btn btn--primary" onClick={() => setAdding(true)}>
             + เพิ่มรุ่นเลนส์
           </button>

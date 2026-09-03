@@ -559,9 +559,10 @@ final class Rx
             return (string) $existing;
         }
 
-        // Filing a new model is a catalogue write, and it is gated as one: a
-        // shop-floor account may order what the catalogue holds, not add to it.
-        Roles::require(Roles::editCatalog($role), 'เพิ่มรุ่นเลนส์ใหม่');
+        /* เปิดรุ่นเลนส์ใหม่คือการเพิ่มของ ไม่ใช่การแก้ของที่มีอยู่ — และมันเกิด
+           ตรงที่คนขายกำลังเขียนใบสั่งให้ลูกค้าที่ยืนรออยู่ ถ้าห้ามไว้ พนักงานจะ
+           เลือกรุ่นที่ใกล้เคียงที่สุดแทน แล้วใบสั่งจะบอกรุ่นผิดตลอดไป */
+        Roles::require(Roles::addProduct($role), 'เพิ่มรุ่นเลนส์ใหม่');
 
         $categoryId = Db::value("SELECT id FROM categories WHERE code = 'Lens'");
         if ($categoryId === null) {

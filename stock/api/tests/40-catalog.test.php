@@ -110,44 +110,31 @@ test('ตัวช่วยเติมชื่อและแบรนด์ �
     });
 });
 
-/**
- * กฎเปลี่ยนตามที่หน้าร้านขอ: พนักงานขายเพิ่มสินค้าใหม่ได้
- *
- * เดิมเทสต์นี้ยืนยันว่าเพิ่มไม่ได้ · คนขายเจอเลนส์รุ่นที่ยังไม่มีในระบบตอนลูกค้า
- * ยืนอยู่ตรงหน้า ถ้าเพิ่มเองไม่ได้ ออเดอร์จะค้างจนกว่าจะมีแอดมินว่าง — ซึ่งแปลว่า
- * คนขายจะเลี่ยงไปพิมพ์ชื่อมั่ว ๆ ลงช่องอื่นแทน แล้วของชิ้นนั้นจะไม่ขึ้นคลังเลย
- *
- * เส้นที่ยังไม่ขยับคือ *ต้นทุน* — คนขายบอกได้ว่าขายเท่าไร ไม่ใช่ซื้อมาเท่าไร
- */
-test('พนักงานขายเพิ่มสินค้าใหม่ได้', function () {
+test('พนักงานหน้าร้านเพิ่มสินค้าได้ แต่แก้กับลบไม่ได้', function () {
     withRollback(function () {
-        $r = Catalog::createProduct(productArgs(), Roles::SALES);
-        ok(($r['id'] ?? 0) > 0, 'ต้องได้ id ของสินค้าที่เพิ่ง สร้าง');
-    });
-});
+        /* ของใหม่ถูกค้นพบตอนขาย ลูกค้ายืนรออยู่ — ห้ามเพิ่มแล้วพนักงานจะเลือกของ
+           ที่ใกล้เคียงที่สุดแทน ซึ่งผิดกว่าการมี SKU เกินมาหนึ่งตัว */
+        $made = Catalog::createProduct(productArgs(), Roles::SALES);
+        ok($made['id'] > 0, 'พนักงานขายเพิ่มสินค้าได้');
 
-test('แต่พนักงานขายยังแก้สินค้าเดิมไม่ได้', function () {
-    withRollback(function () {
-        $id = (int) Db::value('SELECT id FROM products LIMIT 1');
+        /* แต่ของที่มีประวัติของคนอื่นอยู่แล้ว ยังแตะไม่ได้ */
         throwsReason(
             'forbidden',
-            fn() => Catalog::updateProduct($id, productArgs(), Roles::SALES),
-            'staff แก้สินค้าเดิม',
+            fn() => Catalog::updateProduct($made['id'], productArgs(['name' => 'เปลี่ยนชื่อ']), Roles::SALES),
+            'staff แก้สินค้า',
         );
-    });
-});
+        throwsReason('forbidden', fn() => Catalog::deleteProduct($made['id'], Roles::SALES), 'staff ลบสินค้า');
 
-test('และพนักงานขายยังกรอกต้นทุนไม่ได้', function () {
-    withRollback(function () {
+        /* และต้นทุนยังเป็นสิทธิ์คนละใบ */
         throwsReason(
             'forbidden',
-            fn() => Receiving::receive(
-                ['sku' => (string) Db::value("SELECT sku FROM products WHERE is_custom_made = 0 LIMIT 1"),
-                 'quantity' => 1, 'cost_per_unit' => '250.00', 'received_date' => date('Y-m-d')],
-                Roles::SALES,
-                1,
-            ),
-            'staff ลงต้นทุนล็อต',
+            fn() => Receiving::receive([
+                'sku'           => $made['sku'],
+                'quantity'      => 1,
+                'cost_per_unit' => '100.00',
+                'received_date' => date('Y-m-d'),
+            ], Roles::SALES, 1),
+            'staff กรอกต้นทุน',
         );
     });
 });

@@ -250,7 +250,8 @@ export default function ProductsScreen({
             ค้นหา
           </button>
         </form>
-        {can.editCatalog(actor) ? (
+        {/* เพิ่มได้ทุกบทบาท — แก้กับลบยังเป็นของแอดมินขึ้นไป (ดู can.addProduct) */}
+        {can.addProduct(actor) ? (
           <button type="button" className="btn" onClick={() => setCreating(true)}>
             เพิ่มสินค้า
           </button>

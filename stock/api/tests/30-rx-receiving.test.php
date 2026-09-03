@@ -71,13 +71,18 @@ test('พิมพ์ชื่อรุ่นที่มีอยู่แล�
     });
 });
 
-test('พนักงานหน้าร้านเพิ่มรุ่นใหม่ผ่านใบสั่งไม่ได้ แต่สั่งรุ่นที่มีอยู่ได้', function () {
+test('พนักงานหน้าร้านเปิดรุ่นใหม่ผ่านใบสั่งได้ และสั่งรุ่นที่มีอยู่ได้', function () {
     withRollback(function () {
-        throwsReason(
-            'forbidden',
-            fn() => Rx::order(['lens_name' => 'รุ่นที่ไม่เคยมี ' . bin2hex(random_bytes(3))], Roles::SALES, 1),
-            'staff เพิ่มรุ่นใหม่',
+        /* ลูกค้าสั่งเลนส์รุ่นที่ร้านไม่เคยลง — ห้ามเปิดรุ่นใหม่แล้วคนขายจะเลือกรุ่น
+           ที่ใกล้เคียงที่สุดแทน แล้วใบสั่งจะบอกรุ่นผิดตลอดไป */
+        $fresh = 'รุ่นที่ไม่เคยมี ' . bin2hex(random_bytes(3));
+        $out = Rx::order(['lens_name' => $fresh], Roles::SALES, 1);
+        eq(
+            (string) Db::value('SELECT name FROM products WHERE sku = ?', [$out['sku']]),
+            $fresh,
+            'รุ่นใหม่ถูกเปิดไว้ในแคตตาล็อกด้วยชื่อที่เขียนบนใบสั่ง',
         );
+        eq($out['unitCost'], null, 'แต่ยังไม่มีต้นทุน — คนละสิทธิ์');
 
         $sku = customSku();
         $name = (string) Db::value('SELECT name FROM products WHERE sku = ?', [$sku]);

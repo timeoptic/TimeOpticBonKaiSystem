@@ -44,9 +44,13 @@ export function useActor(): Actor {
 export const can = {
   enterCost: (a: Actor) => isAdminUp(a),
   editCatalog: (a: Actor) => isAdminUp(a),
-  /* เพิ่มสินค้าใหม่ทำได้ทุกบทบาทที่ล็อกอินเข้ามาได้ — คนขายเจอของที่ยังไม่มีใน
-     ระบบตอนลูกค้ารออยู่ · ตรงกับ Roles::addCatalog ฝั่ง API ซึ่งเป็นด่านจริง */
-  addCatalog: (_a: Actor) => true,
+  /**
+   * เพิ่มของที่ยังไม่มีในแคตตาล็อก — ทำได้ทุกบทบาท ต่างจากการแก้และการลบ
+   *
+   * ของใหม่ถูกค้นพบตอนทำงาน ไม่ใช่ตอนจัดแคตตาล็อก · ฝั่งเซิร์ฟเวอร์ตอบด้วย
+   * `Roles::addProduct` ตัวเดียวกัน ที่นี่มีไว้ไม่ให้ปุ่มหายไปจากคนที่กดได้
+   */
+  addProduct: (_a: Actor) => true,
   manageUsers: (a: Actor) => isAdminUp(a),
   /**
    * Seeing what stock cost us. The API already withholds those numbers from
