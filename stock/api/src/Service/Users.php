@@ -17,13 +17,33 @@ use Optic\Roles;
  * identity first and an account second — `username` and `password_hash` are both
  * optional, and granting a login is a separate act from creating the person.
  *
- * Accounts are deactivated, never deleted. `inventory_logs.created_by` points at
- * these ids, and a movement whose author has vanished is a movement nobody can
- * account for.
+ * Accounts that have done work are deactivated, never deleted.
+ * `inventory_logs.created_by` points at these ids, and a movement whose author
+ * has vanished is a movement nobody can account for. `delete()` below is for the
+ * other case only — the row keyed in twice, the person who never started — where
+ * deactivating leaves a name in the list forever for no reason at all.
  */
 final class Users
 {
     private const MIN_PASSWORD = 10;
+
+    /**
+     * ทุกที่ที่ชี้กลับมาที่ admins.id — ใช้ตอบคำถามเดียว: คนนี้ทิ้งร่องรอยไว้ไหม
+     *
+     * Only the two pos_* tables carry a real foreign key (ON DELETE RESTRICT);
+     * the rest point at these ids by convention alone, on purpose — the ledger
+     * has to keep writing while the people table is being migrated. That split
+     * is exactly why the check lives here: left to the database, half of these
+     * would refuse the delete and the other half would quietly be orphaned.
+     */
+    private const TRACES = [
+        // created_by = ใครเป็นคนคีย์ · issued_to_admin_id = ใครเป็นคนรับของไป
+        'inventory_logs' => ['created_by', 'issued_to_admin_id'],
+        'branch_issues'  => ['issued_by', 'settled_by'],
+        'pos_sales'      => ['created_by', 'void_by'],
+        'pos_payments'   => ['created_by', 'cancelled_by'],
+        'stock_requests' => ['actor_id'],
+    ];
 
     /** @return list<array<string,mixed>> */
     public static function list(string $role): array
@@ -190,6 +210,67 @@ final class Users
         $password = self::password($req, required: true);
 
         Db::run('UPDATE admins SET password_hash = ? WHERE id = ?', [Auth::hashPassword((string) $password), $id]);
+
+        return ['id' => $id, 'displayName' => $target['display_name']];
+    }
+
+    /**
+     * ลบคนที่ยังไม่เคยทำอะไรในระบบ — ที่เหลือให้ปิดใช้งานแทน
+     *
+     * The gate is not "who is senior enough to delete" but "is there anything
+     * left that points at this person": one movement, one branch withdrawal,
+     * one sale keyed in, and the account stays so the history can still be read
+     * back with a name on it. The refusal says how many, because "ลบไม่ได้" on
+     * its own leaves the manager guessing which record to go looking for.
+     *
+     * @return array<string,mixed>
+     */
+    public static function delete(int $id, string $role, int $actorId): array
+    {
+        Roles::require(Roles::manageAdmins($role), 'ลบผู้ใช้');
+
+        $target = Db::one('SELECT id, display_name, role FROM admins WHERE id = ?', [$id]);
+        if ($target === null) {
+            throw ApiError::notFound('ไม่พบผู้ใช้');
+        }
+        self::requireReach($role, (string) $target['role'], 'ลบบัญชีนี้');
+
+        // Same two locks as update(): the account you are signed in as, and the
+        // last owner. Deleting is the harder-to-undo way of making either
+        // mistake, so neither is offered as a confirmable warning.
+        if ($id === $actorId) {
+            throw ApiError::conflict('self_lockout', 'ลบบัญชีตัวเองไม่ได้');
+        }
+        if ($target['role'] === Roles::OWNER) {
+            $others = (int) Db::value(
+                "SELECT COUNT(*) FROM admins WHERE role = 'owner' AND is_active = 1 AND id <> ?",
+                [$id],
+            );
+            if ($others === 0) {
+                throw ApiError::conflict('last_owner', 'ต้องเหลือเจ้าของร้านที่ใช้งานได้อย่างน้อยหนึ่งคน');
+            }
+        }
+
+        $traces = 0;
+        foreach (self::TRACES as $table => $columns) {
+            $where = implode(' OR ', array_map(static fn(string $c): string => "{$c} = ?", $columns));
+            $traces += (int) Db::value(
+                "SELECT COUNT(*) FROM {$table} WHERE {$where}",
+                array_fill(0, count($columns), $id),
+            );
+        }
+        if ($traces > 0) {
+            throw ApiError::conflict(
+                'user_has_history',
+                "ลบไม่ได้ — {$target['display_name']} มีประวัติในระบบแล้ว {$traces} รายการ "
+                . 'ประวัติต้องอ่านย้อนหลังได้ · ปิดใช้งานแทนได้',
+                ['traces' => $traces],
+            );
+        }
+
+        // admins.created_by points here with ON DELETE SET NULL, so the accounts
+        // this person opened stay; only the note of who opened them goes.
+        Db::run('DELETE FROM admins WHERE id = ?', [$id]);
 
         return ['id' => $id, 'displayName' => $target['display_name']];
     }

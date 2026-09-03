@@ -2,8 +2,10 @@
 
 import { useMemo, useState } from "react";
 import { can, useActor, WorkHead } from "@/stockmod/components/AppShell";
+import { useToast } from "@/stockmod/components/Toaster";
 import SortHead, { SortBar, sortRows, useSort } from "@/stockmod/components/SortHead";
 import PolicyTable from "@/stockmod/components/PolicyTable";
+import { IconTrash } from "@/stockmod/components/Icon";
 import Select from "@/stockmod/components/Select";
 import { api, ApiError } from "@/stockmod/lib/api";
 import { useApi } from "@/stockmod/lib/useApi";
@@ -239,6 +241,11 @@ function UserDialog({
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  /* แยกจาก `problem` เพราะ notice ของฟอร์มอยู่เหนือกล่องนี้ขึ้นไปสองบล็อก
+     เหตุผลที่ลบไม่ได้คือสิ่งที่ต้องอ่าน — วางไว้ตรงปุ่มที่เพิ่งกด */
+  const [deleteProblem, setDeleteProblem] = useState<string | null>(null);
+  const toast = useToast();
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
@@ -262,6 +269,21 @@ function UserDialog({
           role,
         });
       }
+      /* บัญชีที่ไม่มีชื่อผู้ใช้เข้าระบบไม่ได้ — เป็นชื่อไว้ลงในสมุดเฉย ๆ ซึ่งเป็น
+         สิ่งที่คนเพิ่งกดบันทึกมักไม่ได้ตั้งใจ ถ้าตั้งใจจะเพิ่มคนเข้าใช้งาน */
+      if (username.trim() === "") {
+        toast.warning({
+          text: `${user ? "แก้" : "เพิ่ม"}บัญชี ${displayName.trim()} แล้ว — ยังเข้าระบบไม่ได้`,
+          detail: "ไม่มีชื่อผู้ใช้ จึงเป็นชื่อสำหรับบันทึกในสมุดเท่านั้น",
+        });
+      } else if (!isActive && user) {
+        toast.warning({
+          text: `แก้บัญชี ${displayName.trim()} แล้ว — บัญชีนี้ปิดใช้งานอยู่`,
+          detail: "เข้าระบบไม่ได้จนกว่าจะเปิดใช้งานใหม่",
+        });
+      } else {
+        toast.success({ text: `${user ? "แก้" : "เพิ่ม"}บัญชี ${displayName.trim()} แล้ว` });
+      }
       onSaved();
     } catch (err) {
       setProblem(ApiError.is(err) ? err.message : "บันทึกไม่สำเร็จ");
@@ -277,10 +299,34 @@ function UserDialog({
     try {
       await api.post(`/users/${user.id}/password`, { password });
       setDone(`ตั้งรหัสผ่านใหม่ให้ ${user.displayName} แล้ว`);
+      toast.success({ text: `ตั้งรหัสผ่านใหม่ให้ ${user.displayName} แล้ว` });
       setPassword("");
     } catch (err) {
       setProblem(ApiError.is(err) ? err.message : "ตั้งรหัสผ่านไม่สำเร็จ");
     } finally {
+      setBusy(false);
+    }
+  }
+
+  /**
+   * Only ever gets through for someone the ledger does not point at — the API
+   * counts the traces and refuses the rest by number, and that refusal is what
+   * lands in `problem`. Asking twice first is the local half of the same care:
+   * a person is a name printed on every movement they keyed, and the confirm is
+   * cheaper than finding out which ones the hard way.
+   */
+  async function remove() {
+    if (!user) return;
+    setBusy(true);
+    setDeleteProblem(null);
+    setDone(null);
+    try {
+      await api.post(`/users/${user.id}/delete`);
+      toast.success({ text: `ลบบัญชี ${user.displayName} แล้ว` });
+      onSaved();
+    } catch (err) {
+      setDeleteProblem(ApiError.is(err) ? err.message : "ลบไม่สำเร็จ");
+      setConfirmDelete(false);
       setBusy(false);
     }
   }
@@ -372,7 +418,7 @@ function UserDialog({
                 ]}
               />
               <span className="field__help">
-                {isSelf ? "ปิดบัญชีตัวเองไม่ได้" : "บัญชีถูกปิด ไม่ถูกลบ เพราะประวัติต้องอ่านย้อนหลังได้"}
+                {isSelf ? "ปิดบัญชีตัวเองไม่ได้" : "ปิดแทนการลบ เพราะประวัติต้องอ่านย้อนหลังได้ — คนที่ยังไม่เคยทำอะไรเลย ลบได้ข้างล่าง"}
               </span>
             </div>
           ) : null}
@@ -410,6 +456,60 @@ function UserDialog({
             <button type="button" className="btn btn--small" onClick={setPasswordOnly} disabled={busy || !password || !user.username}>
               ตั้งรหัสผ่าน
             </button>
+          </div>
+        ) : null}
+
+        {/* Last block on the card, below the password one: deleting is the only
+            thing here that cannot be undone, and it should not sit where a thumb
+            aiming for "บันทึกการแก้ไข" can reach it. Nothing to delete on the
+            form that is still creating a person, and the account you are signed
+            in as is refused by the API anyway — so it is not offered. */}
+        {user && !isSelf ? (
+          <div className="drawer__danger">
+            <h3 className="drawer__legend">ลบผู้ใช้</h3>
+            {deleteProblem ? (
+              <div className="notice notice--error" role="alert">{deleteProblem}</div>
+            ) : null}
+            {confirmDelete ? (
+              <>
+                <p className="field__help">ลบ {user.displayName} ถาวร — ทำแล้วย้อนไม่ได้</p>
+                <div className="chips">
+                  <button
+                    type="button"
+                    className="btn btn--danger btn--small btn--icon"
+                    onClick={remove}
+                    disabled={busy}
+                  >
+                    <IconTrash />
+                    ยืนยันลบ
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn--quiet btn--small"
+                    onClick={() => setConfirmDelete(false)}
+                    disabled={busy}
+                  >
+                    ยกเลิก
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="btn btn--danger-quiet btn--small btn--icon"
+                  onClick={() => setConfirmDelete(true)}
+                  disabled={busy}
+                >
+                  <IconTrash />
+                  ลบผู้ใช้นี้
+                </button>
+                <span className="field__help">
+                  ลบได้เฉพาะคนที่ยังไม่เคยทำรายการและไม่เคยรับของ — คนที่มีประวัติแล้วให้ปิดใช้งานแทน
+                  ประวัติจะได้ยังอ่านชื่อได้
+                </span>
+              </>
+            )}
           </div>
         ) : null}
       </div>

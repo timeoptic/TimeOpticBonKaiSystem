@@ -513,6 +513,12 @@ Http::post('/api/users/{id}/password', static function (array $p) use ($numericI
     return ['user' => Users::setPassword($numericId($p), Http::body(), $actor['role'])];
 });
 
+/** ลบได้เฉพาะบัญชีที่ยังไม่มีประวัติในระบบ — ที่เหลือ Users::delete ปฏิเสธเอง */
+Http::post('/api/users/{id}/delete', static function (array $p) use ($numericId): array {
+    $actor = Auth::require();
+    return Users::delete($numericId($p), $actor['role'], $actor['id']);
+});
+
 /* ----------------------------------------------------------------- health */
 
 Http::get('/api/health', static fn(): array => [

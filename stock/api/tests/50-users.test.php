@@ -12,6 +12,26 @@ function uname(): string
     return 'u' . strtolower(bin2hex(random_bytes(4)));
 }
 
+/**
+ * A product to hang a log row on, made here rather than borrowed.
+ *
+ * `SELECT id FROM products LIMIT 1` is the tempting version and it is wrong: the
+ * catalogue is empty on a freshly wiped database, and a test that skips itself
+ * when the shelf is bare is a test that stops guarding anything.
+ */
+function aProduct(): int
+{
+    $made = \Optic\Service\Catalog::createProduct([
+        'sku'                => 'DEL-' . strtoupper(bin2hex(random_bytes(3))),
+        'name'               => 'สินค้าไว้ผูกประวัติ',
+        'product_type'       => 'Frame',
+        'category_id'        => (int) Db::value('SELECT id FROM categories ORDER BY id LIMIT 1'),
+        'base_selling_price' => '100',
+    ], Roles::OWNER);
+
+    return (int) $made['id'];
+}
+
 group('จัดการผู้ใช้');
 
 test('ผู้ที่จัดการผู้ใช้ได้เท่านั้นที่ดูรายชื่อได้', function () {
@@ -289,5 +309,117 @@ test('ฝ่ายบัญชีตั้งรหัสให้คนอื�
             fn() => Users::setPassword(1, ['password' => 'a-strong-password'], Roles::ADMIN),
             'accountant ตั้งรหัส',
         );
+    });
+});
+
+group('ลบผู้ใช้');
+
+test('ลบคนที่ยังไม่เคยทำอะไรในระบบได้', function () {
+    withRollback(function () {
+        $made = Users::create(['display_name' => 'คีย์ผิด ลบทิ้ง', 'role' => Roles::STOCK], Roles::OWNER);
+
+        $gone = Users::delete($made['id'], Roles::OWNER, 1);
+        eq($gone['id'], $made['id'], 'คืน id ของคนที่ลบ');
+        eq(Db::value('SELECT COUNT(*) FROM admins WHERE id = ?', [$made['id']]), 0, 'แถวต้องหายไปจริง');
+    });
+});
+
+test('คนที่เคยคีย์รายการแล้ว ลบไม่ได้ — ประวัติต้องอ่านย้อนหลังได้', function () {
+    withRollback(function () {
+        $made = Users::create(['display_name' => 'เคยคีย์ของ', 'role' => Roles::STOCK], Roles::OWNER);
+        $product = aProduct();
+
+        Db::run(
+            'INSERT INTO inventory_logs (product_id, action_type, quantity, created_by, created_by_kind)
+             VALUES (?, ?, ?, ?, ?)',
+            [$product, 'ADJUST', 1, $made['id'], 'admin'],
+        );
+
+        $e = throwsReason(
+            'user_has_history',
+            fn() => Users::delete($made['id'], Roles::OWNER, 1),
+            'ลบคนที่เคยคีย์รายการ',
+        );
+        eq($e->payload()['traces'], 1, 'บอกจำนวนร่องรอยที่ค้างอยู่');
+    });
+});
+
+test('คนที่เคยรับของไป ลบไม่ได้ ถึงจะไม่เคยคีย์อะไรเลย', function () {
+    withRollback(function () {
+        /* คนที่ไม่มีบัญชีล็อกอินมีไว้เพื่อการนี้โดยเฉพาะ — เป็นชื่อผู้รับของ
+           ไม่ใช่คนคีย์ ถ้านับแค่ created_by คนกลุ่มนี้จะลบได้ทั้งที่ประวัติชี้อยู่ */
+        $made = Users::create(['display_name' => 'ช่างที่มารับของ', 'role' => Roles::STOCK], Roles::OWNER);
+        $product = aProduct();
+
+        Db::run(
+            'INSERT INTO inventory_logs (product_id, action_type, quantity, created_by, created_by_kind, issued_to_admin_id)
+             VALUES (?, ?, ?, ?, ?, ?)',
+            [$product, 'OUT', -1, 1, 'admin', $made['id']],
+        );
+
+        throwsReason(
+            'user_has_history',
+            fn() => Users::delete($made['id'], Roles::OWNER, 1),
+            'ลบคนที่เคยรับของ',
+        );
+    });
+});
+
+test('ลบบัญชีตัวเองไม่ได้', function () {
+    withRollback(function () {
+        $made = Users::create(['display_name' => 'ลบตัวเอง', 'role' => Roles::OWNER], Roles::OWNER);
+        throwsReason(
+            'self_lockout',
+            fn() => Users::delete($made['id'], Roles::OWNER, $made['id']),
+            'ลบบัญชีที่กำลังใช้อยู่',
+        );
+    });
+});
+
+test('ลบเจ้าของร้านคนสุดท้ายไม่ได้', function () {
+    withRollback(function () {
+        Db::run("UPDATE admins SET is_active = 0 WHERE role = 'owner' AND id <> 1");
+        // เจ้าของคนที่สองไว้เป็นคนกด จะได้ไม่ชนกฎ "ห้ามลบตัวเอง"
+        $second = Users::create(
+            ['display_name' => 'เจ้าของสอง', 'role' => Roles::OWNER, 'username' => uname(), 'password' => 'a-strong-password'],
+            Roles::OWNER,
+        );
+
+        // ตอนนี้มีสองคน ลบคนที่สองได้ (ยังไม่เคยทำอะไร) แล้วเหลือคนเดียว
+        Users::delete($second['id'], Roles::OWNER, 1);
+
+        $third = Users::create(['display_name' => 'เจ้าของสาม', 'role' => Roles::OWNER], Roles::OWNER);
+        Db::run('UPDATE admins SET is_active = 0 WHERE id = ?', [$third['id']]);
+
+        throwsReason(
+            'last_owner',
+            fn() => Users::delete(1, Roles::OWNER, $third['id']),
+            'ลบเจ้าของร้านที่ใช้งานได้คนสุดท้าย',
+        );
+    });
+});
+
+test('ลบบัญชีที่สิทธิ์สูงกว่าตัวเองไม่ได้', function () {
+    withRollback(function () {
+        $owner = Users::create(['display_name' => 'เจ้าของที่แอดมินเอื้อมไม่ถึง', 'role' => Roles::OWNER], Roles::OWNER);
+        throwsReason(
+            'forbidden',
+            fn() => Users::delete($owner['id'], Roles::ADMIN, 1),
+            'แอดมินลบบัญชีเจ้าของร้าน',
+        );
+    });
+});
+
+test('พนักงานลบใครไม่ได้', function () {
+    withRollback(function () {
+        $made = Users::create(['display_name' => 'เป้าหมาย', 'role' => Roles::STOCK], Roles::OWNER);
+        throwsReason('forbidden', fn() => Users::delete($made['id'], Roles::SALES, 1), 'พนักงานขายลบผู้ใช้');
+        throwsReason('forbidden', fn() => Users::delete($made['id'], Roles::STOCK, 1), 'พนักงานคลังลบผู้ใช้');
+    });
+});
+
+test('ลบคนที่ไม่มีอยู่จริง ตอบว่าไม่พบ', function () {
+    withRollback(function () {
+        throwsReason('not_found', fn() => Users::delete(999999, Roles::OWNER, 1), 'ลบ id ที่ไม่มี');
     });
 });
