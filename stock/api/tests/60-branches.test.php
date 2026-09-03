@@ -7,7 +7,9 @@ use Optic\Repo\Inventory;
 use Optic\Repo\Reports;
 use Optic\Roles;
 use Optic\Service\Branches;
+use Optic\Service\Catalog;
 use Optic\Service\Receiving;
+use Optic\Service\Rx;
 use Optic\Service\Settlement;
 use Optic\Service\Stock;
 
@@ -1551,5 +1553,327 @@ test('ลบสาขาได้เฉพาะเจ้าของร้า�
             fn() => Branches::delete($branch, Roles::SALES),
             'พนักงานลบสาขา',
         );
+    });
+});
+
+group('แก้ไขและยกเลิกรายการค้างรับจากสาขา');
+
+/**
+ * สินค้าหนึ่งตัวที่มีของอยู่ล็อตเดียว รู้ต้นทุน
+ *
+ * เทสต์กลุ่มนี้สร้างของเอง ไม่หยิบจาก `skuWithLots()` เพราะสิ่งที่ตรวจคือยอด
+ * ล็อตก่อนกับหลังยกเลิก ซึ่งต้องเป็นล็อตที่ไม่มีเทสต์อื่นมายุ่งด้วย
+ *
+ * @return array{sku:string,lot:string}
+ */
+function stockedForCancel(int $qty = 5): array
+{
+    $sku = 'CAN-' . strtoupper(bin2hex(random_bytes(3)));
+    Catalog::createProduct([
+        'sku'                => $sku,
+        'name'               => 'สินค้าทดสอบยกเลิกการเบิก',
+        'product_type'       => 'Frame',
+        'category_id'        => (int) Db::value("SELECT id FROM categories WHERE code = 'Frame'"),
+        'base_selling_price' => '1200.00',
+        'is_custom_made'     => false,
+    ], Roles::OWNER);
+
+    $lot = 'LOT-' . strtoupper(bin2hex(random_bytes(3)));
+    Receiving::receive([
+        'sku'           => $sku,
+        'lot_number'    => $lot,
+        'quantity'      => $qty,
+        'cost_per_unit' => '400.00',
+        'received_date' => date('Y-m-d'),
+    ], Roles::OWNER, 1);
+
+    return ['sku' => $sku, 'lot' => $lot];
+}
+
+/** สาขามาเบิกของจากสินค้าที่เพิ่งสร้าง แล้วคืน id ของรายการค้างรับ */
+function aPendingIssue(string $sku, int $qty = 2, array $extra = []): int
+{
+    $out = Stock::issue(issueReq($sku, $qty, idem('cancel'), $extra + [
+        'branch_id' => aBranch(),
+        'taken_by'  => 'สมชาย',
+    ]));
+
+    return (int) $out['branch_issue_id'];
+}
+
+test('แก้สาขา ผู้รับของ วันที่เบิก และหมายเหตุ ของใบที่ยังค้างได้', function () {
+    withRollback(function () {
+        $p = stockedForCancel();
+        $id = aPendingIssue($p['sku']);
+        $other = aBranch();
+
+        $out = Settlement::edit($id, [
+            'branch_id' => $other,
+            'taken_by'  => 'สมหญิง',
+            'issued_at' => '2026-08-01',
+            'note'      => 'คีย์สาขาผิด แก้แล้ว',
+        ], Roles::OWNER, 1);
+
+        eq($out['branchId'], $other, 'สาขา');
+        eq($out['takenBy'], 'สมหญิง', 'ผู้รับของ');
+        ok(str_starts_with((string) $out['issuedAt'], '2026-08-01'), 'วันที่เบิก — ได้ ' . $out['issuedAt']);
+        eq($out['note'], 'คีย์สาขาผิด แก้แล้ว', 'หมายเหตุ');
+    });
+});
+
+test('แก้รายการค้างรับแล้ว ยอดในล็อตไม่ขยับ — แก้ป้าย ไม่ใช่แก้ของ', function () {
+    withRollback(function () {
+        $p = stockedForCancel();
+        $id = aPendingIssue($p['sku'], 2);
+        $before = lotRemaining($p['lot']);
+
+        Settlement::edit($id, ['taken_by' => 'คนใหม่'], Roles::OWNER, 1);
+
+        eq(lotRemaining($p['lot']), $before, 'ยอดล็อตต้องเท่าเดิม');
+    });
+});
+
+test('ใบที่รับเงินไปแล้ว แก้ไม่ได้', function () {
+    withRollback(function () {
+        $p = stockedForCancel();
+        $id = aPendingIssue($p['sku']);
+        Settlement::settle($id, ['amount' => '1500'], Roles::OWNER, 1);
+
+        throwsReason(
+            'not_pending',
+            fn() => Settlement::edit($id, ['taken_by' => 'ใครก็ได้'], Roles::OWNER, 1),
+            'แก้ใบที่ปิดไปแล้ว',
+        );
+    });
+});
+
+test('พนักงานขายแก้รายการค้างรับไม่ได้ — เป็นเรื่องเงินของร้าน', function () {
+    withRollback(function () {
+        $p = stockedForCancel();
+        $id = aPendingIssue($p['sku']);
+
+        throwsReason(
+            'forbidden',
+            fn() => Settlement::edit($id, ['taken_by' => 'ใครก็ได้'], Roles::SALES, 1),
+            'staff แก้รายการค้างรับ',
+        );
+    });
+});
+
+test('ยกเลิกใบค้าง แล้วของกลับเข้าล็อตเดิมครบ', function () {
+    withRollback(function () {
+        $p = stockedForCancel(5);
+        $full = lotRemaining($p['lot']);
+        $id = aPendingIssue($p['sku'], 2);
+
+        eq(lotRemaining($p['lot']), $full - 2, 'เบิกแล้วยอดต้องลดก่อน');
+
+        $out = Settlement::cancel($id, ['note' => 'สาขาเอาของมาคืน'], Roles::OWNER, 1);
+
+        eq($out['status'], 'cancelled', 'สถานะต้องเป็นยกเลิก');
+        eq(lotRemaining($p['lot']), $full, 'ของต้องกลับเข้าล็อตเดิมครบ');
+    });
+});
+
+test('ยกเลิกแล้วสมุดกับยอดล็อตยังตรงกัน', function () {
+    withRollback(function () {
+        $p = stockedForCancel(5);
+        $id = aPendingIssue($p['sku'], 3);
+
+        Settlement::cancel($id, ['note' => 'คืนของ'], Roles::OWNER, 1);
+
+        $bad = Db::all(
+            'SELECT l.lot_number FROM stock_lots l
+             LEFT JOIN inventory_logs g ON g.lot_id = l.id
+             WHERE l.lot_number = ?
+             GROUP BY l.id, l.lot_number, l.remaining_qty
+             HAVING l.remaining_qty <> COALESCE(SUM(g.quantity), 0)',
+            [$p['lot']],
+        );
+        eq(count($bad), 0, 'ล็อตที่ยอดไม่ตรงกับสมุด');
+    });
+});
+
+test('ยกเลิกใบที่รับเงินไปแล้วไม่ได้ — ต้องออกใบลดหนี้แทน', function () {
+    withRollback(function () {
+        $p = stockedForCancel();
+        $id = aPendingIssue($p['sku']);
+        Settlement::settle($id, ['amount' => '1500'], Roles::OWNER, 1);
+
+        throwsReason(
+            'already_settled',
+            fn() => Settlement::cancel($id, ['note' => 'ขอยกเลิก'], Roles::OWNER, 1),
+            'ยกเลิกใบที่รับเงินแล้ว',
+        );
+    });
+});
+
+test('ยกเลิกรายการค้างรับต้องบอกเหตุผล', function () {
+    withRollback(function () {
+        $p = stockedForCancel();
+        $id = aPendingIssue($p['sku']);
+
+        throwsReason(
+            'missing_field',
+            fn() => Settlement::cancel($id, [], Roles::OWNER, 1),
+            'ยกเลิกโดยไม่บอกเหตุผล',
+        );
+    });
+});
+
+test('ยกเลิกซ้ำไม่ได้ — ของคืนไปแล้วรอบเดียว', function () {
+    withRollback(function () {
+        $p = stockedForCancel(5);
+        $full = lotRemaining($p['lot']);
+        $id = aPendingIssue($p['sku'], 2);
+
+        Settlement::cancel($id, ['note' => 'คืนของ'], Roles::OWNER, 1);
+        throwsReason(
+            'not_pending',
+            fn() => Settlement::cancel($id, ['note' => 'คืนอีกรอบ'], Roles::OWNER, 1),
+            'ยกเลิกซ้ำ',
+        );
+
+        eq(lotRemaining($p['lot']), $full, 'ยอดต้องไม่เกินของที่เคยรับเข้า');
+    });
+});
+
+test('ยกเลิกใบที่เบิกเกินของที่มี ล็อตค้างส่งก็ถูกหักกลบกลับ', function () {
+    withRollback(function () {
+        $p = stockedForCancel(2);
+        $id = aPendingIssue($p['sku'], 5);
+
+        eq(lotRemaining('SHORT-' . $p['sku']), -3, 'เบิกเกินสามชิ้นต้องไปกองบนล็อตค้างส่ง');
+
+        Settlement::cancel($id, ['note' => 'สาขาคืนของทั้งหมด'], Roles::OWNER, 1);
+
+        eq(lotRemaining($p['lot']), 2, 'ล็อตจริงต้องกลับมาเต็ม');
+        eq(lotRemaining('SHORT-' . $p['sku']), 0, 'ล็อตค้างส่งต้องกลับเป็นศูนย์');
+    });
+});
+
+group('ยอดขายและกำไรบนแดชบอร์ด');
+
+/**
+ * ใบสั่งตัดหนึ่งใบ พร้อมรุ่นเลนส์ของตัวเอง
+ *
+ * สร้างรุ่นเองแทนที่จะหยิบรุ่นที่มีอยู่ เพราะเทสต์กลุ่มนี้อ่านผลรวมของทั้งช่วง
+ * ไม่ใช่ของแถวเดียว — รุ่นที่ใช้ร่วมกับเทสต์อื่นจะพาตัวเลขของคนอื่นเข้ามาด้วย
+ *
+ * @param array<string,mixed> $over
+ * @return array<string,mixed>
+ */
+function anRxSale(array $over = []): array
+{
+    return Rx::order([
+        'lens_name'     => 'เลนส์ทดสอบยอดขาย ' . bin2hex(random_bytes(3)),
+        'reference_doc' => 'RX-SALE-' . strtoupper(bin2hex(random_bytes(3))),
+    ] + $over, Roles::OWNER, 1);
+}
+
+/** ตัวเลขยอดขายของวันนี้ ตามที่แดชบอร์ดจะได้ */
+function salesToday(bool $money = true): array
+{
+    return Reports::overview(date('Y-m-d'), date('Y-m-d'), $money)['sales'];
+}
+
+test('ใบสั่งตัดที่มีทั้งราคาขายและต้นทุน นับเป็นยอดขายและกำไร', function () {
+    withRollback(function () {
+        $before = salesToday();
+
+        anRxSale(['sale_price' => '9500', 'unit_cost' => '4000']);
+
+        $after = salesToday();
+        eq($after['bills'] - $before['bills'], 1, 'จำนวนรายการ');
+        eq($after['costed'] - $before['costed'], 1, 'รายการที่รู้ต้นทุน');
+        eq(round($after['revenue'] - $before['revenue'], 2), 9500.0, 'ยอดขายที่เพิ่ม');
+        eq(round($after['profit'] - $before['profit'], 2), 5500.0, 'กำไรที่เพิ่ม');
+    });
+});
+
+test('ใบที่ตั้งราคาแต่ยังไม่ลงต้นทุน นับเป็นยอดขาย แต่ไม่นับเป็นกำไร', function () {
+    withRollback(function () {
+        $before = salesToday();
+
+        anRxSale(['sale_price' => '9500']);
+
+        $after = salesToday();
+        eq(round($after['revenue'] - $before['revenue'], 2), 9500.0, 'ยอดขายต้องนับ');
+        eq(round($after['profit'] - $before['profit'], 2), 0.0, 'กำไรต้องไม่ขยับ');
+        eq($after['uncosted'] - $before['uncosted'], 1, 'ต้องถูกนับเป็นรายการที่ยังไม่รู้ต้นทุน');
+    });
+});
+
+/**
+ * เหตุผลที่ `costedRevenue` ต้องแยกจาก `revenue` — บทเรียนเดิมของโปรเจกต์
+ *
+ * ใบที่รู้ต้นทุนขาย 100 กำไร 40 · อีกใบขาย 900 แต่ไม่รู้ต้นทุน · อัตรากำไรคือ
+ * 40% (40 จาก 100) ไม่ใช่ 4% (40 จาก 1000) — ตัวหลังคือการเอากำไรของใบเดียวไป
+ * หารด้วยยอดขายของสองใบ แล้วได้ตัวเลขที่ต่ำกว่าจริงโดยไม่มีอะไรบอกว่าทำไม
+ */
+test('อัตรากำไรหารด้วยยอดขายของใบที่รู้ต้นทุน ไม่ใช่ยอดขายทั้งก้อน', function () {
+    withRollback(function () {
+        // ล้างพื้นให้เหลือแต่สองใบนี้ ด้วยการอ่านส่วนต่างไม่ได้ — margin เป็น
+        // อัตราส่วน จึงต้องคุมทั้งช่วง · ใช้วันในอนาคตที่ยังไม่มีอะไรเลย
+        $day = date('Y-m-d', strtotime('+1 day'));
+        Db::run(
+            "UPDATE inventory_logs SET created_at = ? WHERE id = ?",
+            [$day . ' 09:00:00', anRxSale(['sale_price' => '100', 'unit_cost' => '60'])['id']],
+        );
+        Db::run(
+            "UPDATE inventory_logs SET created_at = ? WHERE id = ?",
+            [$day . ' 10:00:00', anRxSale(['sale_price' => '900'])['id']],
+        );
+
+        $s = Reports::overview($day, $day, true)['sales'];
+        eq($s['revenue'], 1000.0, 'ยอดขายรวมทั้งสองใบ');
+        eq($s['profit'], 40.0, 'กำไรจากใบที่รู้ต้นทุนใบเดียว');
+        eq($s['margin'], 40.0, 'อัตรากำไรต้องเป็น 40% ไม่ใช่ 4%');
+    });
+});
+
+test('ใบสั่งตัดที่ยกเลิกแล้วไม่นับเป็นยอดขาย', function () {
+    withRollback(function () {
+        $before = salesToday();
+
+        $o = anRxSale(['sale_price' => '9500', 'unit_cost' => '4000']);
+        Rx::remove((int) $o['id'], ['note' => 'ลูกค้ายกเลิก'], Roles::OWNER, 1);
+
+        $after = salesToday();
+        eq($after['bills'], $before['bills'], 'จำนวนรายการต้องเท่าเดิม');
+        eq(round($after['revenue'] - $before['revenue'], 2), 0.0, 'ยอดขายต้องไม่ขยับ');
+        eq(round($after['profit'] - $before['profit'], 2), 0.0, 'กำไรต้องไม่ขยับ');
+    });
+});
+
+/**
+ * ราคาตั้งขายตอนรับของเข้า ไม่ใช่ยอดขาย
+ *
+ * `Receiving` ลง `sale_price` ไว้บนแถว IN เพื่อให้หน้าความเคลื่อนไหวบอกได้ว่า
+ * ของที่เพิ่งเข้ามาตั้งขายเท่าไร · นับเข้ายอดขายคือนับของที่ยังอยู่บนชั้น
+ */
+test('ของที่เพิ่งรับเข้าคลัง ไม่นับเป็นยอดขาย แม้จะมีราคาตั้งขายติดมา', function () {
+    withRollback(function () {
+        $p = stockedForCancel(3);
+        $before = salesToday();
+
+        Receiving::receive([
+            'sku' => $p['sku'], 'quantity' => 5,
+            'cost_per_unit' => '400.00', 'received_date' => date('Y-m-d'),
+        ], Roles::OWNER, 1);
+
+        eq(salesToday()['revenue'], $before['revenue'], 'ยอดขายต้องเท่าเดิม');
+    });
+});
+
+test('บทบาทที่ไม่มีสิทธิ์เห็นราคาทุน ไม่ได้ตัวเลขยอดขายและกำไรเลย', function () {
+    withRollback(function () {
+        anRxSale(['sale_price' => '9500', 'unit_cost' => '4000']);
+
+        $s = salesToday(false);
+        eq($s['revenue'], null, 'ยอดขายต้องไม่ออกจากเซิร์ฟเวอร์');
+        eq($s['profit'], null, 'กำไรต้องไม่ออกจากเซิร์ฟเวอร์');
+        eq($s['margin'], null, 'อัตรากำไรก็เป็นตัวเลขเงินเหมือนกัน');
+        ok($s['bills'] > 0, 'แต่จำนวนรายการยังบอกได้ — ไม่ใช่ราคา');
     });
 });

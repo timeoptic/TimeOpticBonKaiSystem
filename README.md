@@ -164,7 +164,8 @@ reception   exam       sales           payment    centering    delivery
 | ขายสินค้าทั่วไป | ตัดสต็อกทันที + บันทึกลง payments |
 | สต็อก / ตำแหน่งสินค้า / ซัพพลายเออร์ / พนักงาน | ข้อมูลตั้งต้น |
 | รายรับ / รายจ่าย | บันทึก + ประวัติ + สรุปยอด |
-| รายงาน | 5 รายงาน + เอกสารพิมพ์ 2 แบบ |
+| **📊 รายงาน** | 7 หน้าวิเคราะห์ยอดขาย — ภาพรวม · งานตัดแว่น · ขายหน้าร้าน · ช่องทางลูกค้า · การรับเงิน · กำไร · พนักงาน · กรองวันที่/ช่องทาง · กราฟ SVG · ส่งออก Excel/PDF |
+| เอกสารพิมพ์ | ใบสั่งตัดแว่น · ใบวัดสายตา |
 
 ### แผงของแต่ละขั้นในหน้าเคส
 
@@ -286,6 +287,15 @@ GET    /api/notifications  ·  POST /api/reminders/run
 GET    /api/reports/daily-closed?from=&to=
 GET    /api/reports/income-by-month · /checklist?type= · /stock-labels · /unsold-stock?days=
 GET    /api/reports/order/:id · /api/reports/prescription/:id · /api/reports/workload
+
+# รายงานวิเคราะห์ยอดขาย — ทุกเส้นรับ ?from=&to=&channel=all|main|pos
+GET    /api/reports/overview       KPI + เทียบสองช่องทาง + ยอดรายวัน
+GET    /api/reports/main-process   งานตัดแว่น — ตามเลนส์ / ตามพนักงาน / รายเคส
+GET    /api/reports/pos            ขายหน้าร้าน — ตามหมวดสินค้า / รายบิล
+GET    /api/reports/payments       ช่องทางชำระ — นับด้วย paid_at ไม่ใช่วันที่เปิดบิล
+GET    /api/reports/profit         ต้นทุนกรอบ/เลนส์จากล็อต · POS คืน has_cost=false
+GET    /api/reports/employees      ผลงานรวมสองฝั่งของคนเดียวกัน
+GET    /api/reports/channels      ลูกค้ารู้จักร้านจากไหน (cases.referral_source)
 ```
 
 ---

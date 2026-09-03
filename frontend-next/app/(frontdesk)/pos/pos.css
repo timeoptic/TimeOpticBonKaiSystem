@@ -1,276 +1,391 @@
-/* POS ขายหน้าร้าน — หน้าตาตามระบบ POS ด่วนเดิมที่พนักงานคุ้นมือแล้ว
+/* POS ขายหน้าร้าน — แผงทำงานสองฝั่ง
  *
- * ทุกค่าสี ระยะ และรูปทรงในไฟล์นี้ถอดมาจากหน้าจอ POS เดิม ไม่ได้ออกแบบใหม่ —
- * ของที่คนใช้เป็นอยู่แล้วไม่ควรเปลี่ยนหน้าตาเพียงเพราะข้างในถูกเขียนใหม่
+ * เดิมหน้านี้ตั้งใจคงหน้าตา POS ชุดเก่าไว้ทั้งชุด (ส้ม flat UI พื้นขาว การ์ดเดียว
+ * กลางจอ) เพราะ "ของที่คนใช้เป็นอยู่แล้วไม่ควรเปลี่ยนหน้าตา" — เหตุผลนั้นหมดอายุ
+ * ไปพร้อมกับการรื้อระบบสีทั้งแอป ตอนนี้ POS ที่เป็นสีส้มคือหน้าเดียวในระบบที่หลุด
+ * ออกจากภาษาเดียวกัน ซึ่งอ่านเป็น "คนละโปรแกรม" มากกว่าอ่านเป็นความคุ้นมือ
  *
- * ทั้งหมดอยู่ใต้ `.pos` จึงไม่หลุดไปเปลี่ยนหน้าอื่นของหน้าร้าน (ที่เป็นสีเขียวน้ำทะเล)
- * แม้จะตั้งชื่อคลาสซ้ำกัน
+ * โครงใหม่เป็นสองแผงตามลำดับที่มือทำจริง:
+ *   ซ้าย  หาของ → ใส่บิล   (ยาวเท่าไหร่ก็ได้ เลื่อนได้)
+ *   ขวา   เก็บเงิน          (เกาะอยู่กับที่ ยอดรวมอยู่บนสุดเสมอ)
+ * ของเดิมเป็นคอลัมน์เดียว 16 บล็อกเรียงลงมา พนักงานต้องเลื่อนผ่านตะกร้าทุกครั้ง
+ * ที่จะดูยอด ซึ่งเป็นสิ่งที่ต้องทำทุกบิล
+ *
+ * ทั้งหมดอยู่ใต้ `.pos` จึงไม่หลุดไปเปลี่ยนหน้าอื่น แม้จะตั้งชื่อคลาสซ้ำกัน
  */
 
-/* สีทุกค่าในบล็อกนี้สุ่มออกมาจากภาพหน้าจอ POS เดิมโดยตรง ไม่ได้เลือกเอง —
-   เป็นชุด flat UI: #2c3e50 หัวเรื่อง · #f39c12 ส้ม · #7f8c8d ตัวรอง ·
-   #eafaf1 / #fef9e7 / #eaf2f8 สามเฉดพื้นอ่อน */
-.pos {
-  --pos: #e67e22;
-  --pos-bar: #f39c12;
-  --pos-deep: #d55901;
-  --pos-grad: linear-gradient(90deg, #f09610 0%, #d55901 100%);
-  --pos-ink: #2c3e50;
-  --pos-label: #444;
-  --pos-muted: #7f8c8d;
-  --pos-field: #f9f9f9;
-  --pos-field-line: #ececec;
-  --pos-money-bg: #fef9e7;
-  --pos-money-line: #f5cd79;
-  --pos-money-ink: #d68910;
-  --pos-green-bg: #eafaf1;
-  --pos-green-line: #abebc6;
-  --pos-green-ink: #1e8449;
-  --pos-blue-bg: #eaf2f8;
-  --pos-blue-ink: #249ad1;
-
-  color: var(--pos-ink);
-}
-
-/* พื้นหลังของหน้านี้เป็นสีขาว ไม่ใช่เขียวน้ำทะเลของทั้งเว็บ — ส้มบนพื้นเขียวอมฟ้า
-   อ่านแล้วขุ่น และ POS เดิมก็เป็นพื้นขาว · วาดด้วย fixed ที่ z-index ติดลบ
-   sidebar กับแถบบนมีพื้นของตัวเองอยู่แล้วจึงทับกลับได้ตามปกติ */
-.pos::before {
-  content: ""; position: fixed; inset: 0; background: #fff; z-index: -1;
-}
-
-/* ---- การ์ดกลางจอ ----
-   ของเดิมเป็นการ์ดใบเดียวกลางหน้า ไม่ใช่แผงซ้าย-ขวา · กว้างขึ้นเล็กน้อยจากเดิม
-   เพราะตอนนี้มีตะกร้าหลายรายการอยู่ข้างใน ไม่ใช่สินค้าชิ้นเดียว */
-.pos-card {
-  max-width: 780px; margin: 0 auto;
-  background: #fff; border-radius: 20px; overflow: hidden;
-  box-shadow: 0 1px 3px rgba(44, 62, 80, .06), 0 10px 28px rgba(44, 62, 80, .08);
-  border: 1px solid var(--pos-field-line);
-}
-/* แถบส้มพาดหัวการ์ด — เครื่องหมายประจำตัวของหน้านี้ในระบบเดิม */
-.pos-card::before { content: ""; display: block; height: 6px; background: var(--pos-bar); }
-.pos-card-in { padding: 26px 30px 30px; }
-
-@media (max-width: 640px) {
-  .pos-card { border-radius: 14px; }
-  .pos-card-in { padding: 20px 16px 24px; }
-}
+.pos{ color:var(--ink); }
 
 /* ---- หัวหน้า ---- */
-.pos-head { text-align: center; margin-bottom: 22px; }
-.pos-head .pos-mark { font-size: 46px; line-height: 1; display: block; }
-.pos-head h1 { margin: 8px 0 2px; font-size: 26px; font-weight: 800; letter-spacing: -.2px; color: var(--pos-ink); }
-.pos-head p { margin: 0; color: var(--pos); font-size: 14px; font-weight: 600; }
-.pos-head .pos-who { margin-top: 10px; font-size: 13px; color: var(--pos-muted); }
-
-/* ---- ตารางช่องกรอกสองคอลัมน์ ---- */
-.pos-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 18px; margin-bottom: 14px; }
-.pos-row.one { grid-template-columns: 1fr; }
-@media (max-width: 640px) { .pos-row { grid-template-columns: 1fr; } }
-
-.pos-lab { display: block; font-size: 13px; color: var(--pos-label); margin-bottom: 6px; }
-
-/* ช่องกรอกพื้นเทาอมม่วง มีไอคอนอยู่ในช่อง — รูปแบบเดียวกับของเดิมทุกช่อง */
-.pos-f { position: relative; }
-.pos-f > .pos-ico {
-  position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
-  font-size: 15px; line-height: 1; pointer-events: none;
+.pos-head{
+  display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+  margin:2px 0 18px;
 }
+
+.pos-head .pos-mark{
+  width:46px;height:46px;flex:0 0 46px;border-radius:var(--radius-sm);
+  background:var(--green-tint);color:var(--green-ink);
+  display:flex;align-items:center;justify-content:center;font-size:22px;line-height:1;
+}
+
+.pos-head .pos-mark .ico{width:23px;height:23px;margin:0}
+
+.pos-head-txt{min-width:0}
+
+.pos-head h1{margin:0;font-size:var(--t-xl);font-weight:650;letter-spacing:-.6px;line-height:1.2}
+
+.pos-head p{margin:2px 0 0;font-size:var(--t-sm);color:var(--ink-faint)}
+
+.pos-head-act{margin-left:auto;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+
+.pos-head .pos-who{font-size:var(--t-sm);color:var(--ink-faint)}
+
+/* ---- แผงทำงานสองฝั่ง ---- */
+/* 384px คือความกว้างที่แผงเก็บเงินต้องการพอดีสำหรับสองช่องเรียงกัน ไม่ใช่สัดส่วน
+   ที่คิดเป็นเปอร์เซ็นต์ — ถ้าให้มันยืดตามจอ ช่อง "รับเงินมา / เงินทอน" จะกว้าง
+   เกินจำเป็นบนจอใหญ่ แล้วตัวเลขสองก้อนจะห่างกันจนอ่านเป็นคู่ไม่ได้ */
+.pos-work{display:grid;grid-template-columns:minmax(0,1fr) 384px;gap:20px;align-items:start}
+
+@media (max-width:1120px){ .pos-work{grid-template-columns:1fr} }
+
+.pos-main{
+  background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  box-shadow:var(--shadow-sm);padding:18px 20px 20px;min-width:0;
+}
+
+.pos-side{min-width:0}
+
+/* แผงเก็บเงินเกาะอยู่กับที่ตอนเลื่อนดูตะกร้ายาว ๆ — ยอดรวมกับปุ่มรับเงินจึงอยู่ใน
+   สายตาเสมอ ไม่ต้องเลื่อนกลับขึ้นมา */
+.pos-side-in{
+  background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  box-shadow:var(--shadow);padding:18px 20px 20px;
+  position:sticky;top:calc(var(--topbar-h) + 20px);
+}
+
+@media (max-width:1120px){ .pos-side-in{position:static} }
+
+/* ---- ยอดรวม ----
+   ตัวเลขเดียวที่ต้องอ่านถูกต่อหน้าลูกค้า จึงใหญ่กว่าทุกอย่างในแผงและอยู่บนสุด */
+.pos-total{
+  display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;
+  padding:0 0 16px;margin-bottom:16px;border-bottom:1px solid var(--line-soft);
+}
+
+.pos-total-lab{font-size:var(--t-sm);color:var(--ink-faint);font-weight:500}
+
+.pos-total-val{
+  margin-left:auto;font-size:34px;font-weight:650;letter-spacing:-1.4px;
+  color:var(--ink);font-variant-numeric:tabular-nums;line-height:1.1;
+}
+
+/* ---- แถวช่องกรอก ---- */
+.pos-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+
+.pos-row.one{grid-template-columns:1fr}
+
+@media (max-width:640px){ .pos-row{grid-template-columns:1fr} }
+
+.pos-lab{display:block;font-size:var(--t-sm);font-weight:600;color:var(--ink-soft)}
+
+/* ---- ช่องกรอกที่มีไอคอนอยู่ในช่อง ---- */
+.pos-f{position:relative}
+
+.pos-f > .pos-ico{
+  position:absolute;left:13px;top:50%;transform:translateY(-50%);
+  font-size:14px;line-height:1;pointer-events:none;opacity:.5;
+}
+
 .pos-f > input,
 .pos-f > select,
-.pos-f > textarea {
-  width: 100%; min-height: 46px; padding: 10px 12px 10px 38px;
-  background: var(--pos-field); border: 1.5px solid var(--pos-field-line); border-radius: 10px;
-  font: inherit; color: var(--pos-ink); appearance: none;
+.pos-f > textarea{
+  width:100%;min-height:46px;padding:11px 14px 11px 38px;
+  background:var(--field);border:1px solid transparent;border-radius:var(--radius-sm);
+  font:inherit;font-size:var(--t-base);color:var(--ink);appearance:none;
 }
-.pos-f > textarea { min-height: 46px; resize: vertical; padding-top: 12px; }
-.pos-f > select { padding-right: 34px; cursor: pointer; }
-.pos-f > input:focus, .pos-f > select:focus, .pos-f > textarea:focus {
-  outline: none; background: #fff; border-color: var(--pos);
+
+.pos-f > textarea{min-height:46px;resize:vertical;padding-top:13px}
+
+.pos-f > select{padding-right:34px;cursor:pointer}
+
+.pos-f > input:focus,.pos-f > select:focus,.pos-f > textarea:focus{
+  outline:none;background:var(--card);border-color:var(--green);box-shadow:0 0 0 3px var(--green-tint);
 }
-.pos-f > input::placeholder, .pos-f > textarea::placeholder { color: #9aa4a6; }
+
+.pos-f > input::placeholder,.pos-f > textarea::placeholder{color:var(--ink-dim)}
+
 /* ลูกศรของ select วาดเอง เพราะ appearance:none ตัดของเบราว์เซอร์ทิ้งไปแล้ว */
-.pos-f.sel::after {
-  content: "▾"; position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
-  color: var(--pos-muted); pointer-events: none;
+.pos-f.sel::after{
+  content:"▾";position:absolute;right:14px;top:50%;transform:translateY(-50%);
+  color:var(--ink-dim);pointer-events:none;
 }
 
-/* ---- เส้นประคั่นก่อนบล็อกเงิน ---- */
-.pos-sep { border: 0; border-top: 1.5px dashed #e0e0e0; margin: 20px 0 16px; }
+.pos-sep{border:0;border-top:1px solid var(--line-soft);margin:18px 0 16px}
 
-/* ---- ช่องยอดรวมและเงินทอน ----
-   ของเดิมทำสองช่องนี้ให้เด่นด้วยสีพื้น ไม่ใช่แค่ตัวหนา เพราะเป็นสองตัวเลขที่
-   พนักงานต้องอ่านให้ถูกต่อหน้าลูกค้า */
-.pos-out {
-  min-height: 46px; padding: 10px 12px 10px 38px; border-radius: 10px;
-  font-size: 17px; font-weight: 800; display: flex; align-items: center;
+/* ---- ตัวเลขที่อ่านออกเสียงให้ลูกค้าฟัง ---- */
+.pos-out{
+  min-height:46px;padding:11px 14px 11px 38px;border-radius:var(--radius-sm);
+  font-size:var(--t-md);font-weight:650;display:flex;align-items:center;
+  font-variant-numeric:tabular-nums;
 }
-.pos-out.money { background: var(--pos-money-bg); border: 1.5px solid var(--pos-money-line); color: var(--pos-money-ink); }
-.pos-out.change { background: var(--pos-green-bg); border: 1.5px solid var(--pos-green-line); color: var(--pos-green-ink); }
+
+.pos-out.money{background:var(--cyan-tint);border:1px solid var(--cyan-edge);color:var(--cyan-deep)}
+
+.pos-out.change{background:var(--green-tint);border:1px solid var(--green-edge);color:var(--green-deep)}
 
 /* ---- กล่องรับสินค้า ---- */
-.pos-deliver {
-  display: flex; gap: 12px; align-items: flex-start;
-  background: var(--pos-green-bg); border: 1.5px solid var(--pos-green-line);
-  border-radius: 10px; padding: 13px 14px; margin: 16px 0 18px; cursor: pointer;
+.pos-deliver{
+  display:flex;gap:12px;align-items:flex-start;
+  background:var(--green-tint);border:1px solid var(--green-edge);
+  border-radius:var(--radius-sm);padding:13px 14px;margin:16px 0;cursor:pointer;
 }
-.pos-deliver input { width: 20px; height: 20px; margin-top: 1px; accent-color: var(--pos); flex: 0 0 auto; }
-.pos-deliver .pos-deliver-txt { font-size: 13.5px; color: var(--pos-ink); }
-.pos-deliver .pos-deliver-state { display: block; margin-top: 3px; font-weight: 700; color: var(--pos-green-ink); }
-.pos-deliver.off { background: #fbfcfc; border-color: var(--pos-field-line); }
-.pos-deliver.off .pos-deliver-state { color: var(--pos-money-ink); }
 
-/* ---- ปุ่ม ---- */
-.pos-btn {
-  display: block; width: 100%; text-align: center; text-decoration: none;
-  padding: 16px; border-radius: 10px; font: inherit; font-size: 16px; font-weight: 800;
-  cursor: pointer; border: 1.5px solid transparent; margin-bottom: 10px;
+.pos-deliver input{width:20px;height:20px;margin-top:1px;accent-color:var(--green-ink);flex:0 0 auto}
+
+.pos-deliver .pos-deliver-txt{font-size:var(--t-sm);color:var(--ink)}
+
+.pos-deliver .pos-deliver-state{display:block;margin-top:2px;font-weight:650;color:var(--green-deep)}
+
+.pos-deliver.off{background:var(--surface-alt);border-color:var(--line)}
+
+.pos-deliver.off .pos-deliver-state{color:var(--warn)}
+
+/* ปุ่มรับเงินกว้างเต็มแผง — เป็นปุ่มเดียวที่จบงานได้ ไม่ต้องแข่งกับใคร */
+.pos-go{width:100%;margin-top:4px}
+
+/* ---- ปุ่มแบบเดิม (ยังใช้ในหน้าประวัติกับหน้ารายละเอียด) ---- */
+.pos-btn{
+  display:block;width:100%;text-align:center;text-decoration:none;
+  padding:14px;border-radius:var(--radius-sm);font:inherit;font-size:var(--t-base);font-weight:600;
+  cursor:pointer;border:1px solid var(--line);margin-bottom:10px;background:var(--card);color:var(--ink);
 }
-.pos-btn.primary { background: var(--pos-grad); color: #fff; box-shadow: 0 6px 16px rgba(213, 89, 1, .25); }
-.pos-btn.primary:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
-.pos-btn.link { background: var(--pos-blue-bg); color: var(--pos-blue-ink); font-size: 15px; padding: 13px; }
-.pos-btn.link:hover { text-decoration: none; background: #dfeaf4; }
-.pos-btn.back {
-  background: #fff; border: 1.5px dashed #d5dbdb; color: var(--pos-muted);
-  font-size: 14px; font-weight: 600; padding: 12px;
+
+.pos-btn.primary{background:var(--green);color:var(--ink);border-color:transparent;box-shadow:var(--shadow-green)}
+
+.pos-btn.primary:disabled{opacity:.45;cursor:not-allowed;box-shadow:none}
+
+.pos-btn.link{background:var(--cyan-tint);color:var(--cyan-deep);border-color:var(--cyan-edge)}
+
+.pos-btn.link:hover{text-decoration:none;background:#D3F5FB}
+
+.pos-btn.back{background:var(--card);border-style:dashed;color:var(--ink-faint);font-weight:500}
+
+.pos-btn.back:hover{text-decoration:none;border-color:var(--ink-dim);color:var(--ink)}
+
+/* ---- ตะกร้า ---- */
+.pos-cart-head{display:flex;align-items:center;gap:8px;margin:18px 0 8px}
+
+.pos-count{
+  display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;
+  padding:0 7px;border-radius:var(--radius-pill);background:var(--green-tint);
+  color:var(--green-deep);font-size:var(--t-xs);font-weight:650;
 }
-.pos-btn.back:hover { text-decoration: none; border-color: var(--pos-muted); }
 
-/* ---- ตะกร้า ----
-   วางไว้ตรงที่เดิมเคยเป็นช่อง "ชื่อสินค้า" ช่องเดียว — ตำแหน่งเดิม แต่รับได้หลายรายการ */
-.pos-cart { border: 1.5px solid var(--pos-field-line); border-radius: 10px; overflow: hidden; }
-.pos-cart-empty { padding: 18px 14px; text-align: center; color: var(--pos-muted); font-size: 14px; }
+.pos-cart{border:1px solid var(--line);border-radius:var(--radius-sm);overflow:hidden}
 
-.pos-line { padding: 12px 14px; border-top: 1.5px solid var(--pos-field-line); background: #fff; }
-.pos-line:first-child { border-top: 0; }
-.pos-line.is-bad { background: #fdedec; }
-.pos-line-top { display: flex; gap: 10px; align-items: flex-start; }
-.pos-line-name { flex: 1 1 auto; min-width: 0; }
-.pos-line-name b { font-weight: 700; }
-.pos-line-name small { display: block; color: var(--pos-muted); font-size: 12px; }
-.pos-line-name input { width: 100%; }
+.pos-cart-empty{
+  padding:34px 18px;text-align:center;color:var(--ink-faint);font-size:var(--t-sm);
+}
 
-.pos-line-ctl { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+.pos-cart-empty b{display:block;color:var(--ink);font-weight:600;font-size:var(--t-base);margin-bottom:3px}
+
+.pos-line{padding:14px 16px;border-top:1px solid var(--line-soft);background:var(--card)}
+
+.pos-line:first-child{border-top:0}
+
+.pos-line.is-bad{background:var(--danger-soft)}
+
+.pos-line-top{display:flex;gap:10px;align-items:flex-start}
+
+.pos-line-name{flex:1 1 auto;min-width:0}
+
+.pos-line-name b{font-weight:600}
+
+.pos-line-name small{display:block;color:var(--ink-faint);font-size:var(--t-xs)}
+
+.pos-line-name input{width:100%}
+
+.pos-line-ctl{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px}
 
 /* ปุ่ม +/- ขนาดนิ้วโป้ง — หน้าร้านกดบน iPad ไม่ใช่คลิกด้วยเมาส์ */
-.pos-step { display: flex; align-items: center; border: 1.5px solid var(--pos-money-line); border-radius: 999px; overflow: hidden; }
-.pos-step button {
-  width: 38px; height: 38px; border: 0; background: var(--pos-money-bg);
-  color: var(--pos-deep); font-size: 19px; font-weight: 700; cursor: pointer; line-height: 1;
-}
-.pos-step button:hover { background: #fdf0cf; }
-.pos-step input { width: 46px; height: 38px; border: 0; text-align: center; font: inherit; font-weight: 700; background: #fff; }
+.pos-step{display:flex;align-items:center;border:1px solid var(--line);border-radius:var(--radius-pill);overflow:hidden}
 
-.pos-price {
-  width: 100px; height: 38px; padding: 0 10px; text-align: right; font-weight: 700;
-  background: var(--pos-field); border: 1.5px solid var(--pos-field-line); border-radius: 8px; font: inherit;
+.pos-step button{
+  width:38px;height:38px;border:0;background:var(--surface-alt);
+  color:var(--ink);font-size:19px;font-weight:600;cursor:pointer;line-height:1;
 }
-.pos-price:focus { outline: none; background: #fff; border-color: var(--pos); }
-.pos-line-sum { margin-left: auto; font-weight: 800; color: var(--pos-deep); white-space: nowrap; }
-.pos-del {
-  width: 38px; height: 38px; border: 1.5px solid var(--pos-field-line); border-radius: 999px;
-  background: #fff; color: #c0392b; cursor: pointer; font-size: 15px;
+
+.pos-step button:hover{background:var(--green-tint);color:var(--green-deep)}
+
+.pos-step input{width:46px;height:38px;border:0;text-align:center;font:inherit;font-weight:600;background:var(--card);border-radius:0}
+
+.pos-price{
+  width:104px;height:38px;padding:0 12px;text-align:right;font-weight:600;
+  background:var(--field);border:1px solid transparent;border-radius:var(--radius-xs);font:inherit;
+  font-variant-numeric:tabular-nums;
 }
-.pos-del:hover { background: #fdedec; border-color: #c0392b; }
+
+.pos-price:focus{outline:none;background:var(--card);border-color:var(--green);box-shadow:0 0 0 3px var(--green-tint)}
+
+.pos-line-sum{margin-left:auto;font-weight:650;color:var(--ink);white-space:nowrap;font-variant-numeric:tabular-nums}
+
+.pos-del{
+  width:38px;height:38px;border:1px solid var(--line);border-radius:var(--radius-pill);
+  background:var(--card);color:var(--danger);cursor:pointer;font-size:15px;
+}
+
+.pos-del:hover{background:var(--danger-soft);border-color:var(--danger)}
 
 /* ช่องกรอกเพิ่มของสินค้าแต่ละชิ้น (ค่าสายตา / สี / รหัสแว่น) */
-.pos-meta { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
-.pos-meta label { font-size: 12px; color: var(--pos-muted); display: flex; flex-direction: column; gap: 3px; }
-.pos-meta input {
-  width: 150px; height: 36px; padding: 0 10px;
-  background: var(--pos-field); border: 1.5px solid var(--pos-field-line); border-radius: 8px; font: inherit;
-}
-.pos-meta input:focus { outline: none; background: #fff; border-color: var(--pos); }
+.pos-meta{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
 
-@media (max-width: 640px) {
-  .pos-line-sum { margin-left: 0; width: 100%; }
-  .pos-price { flex: 1 1 90px; width: auto; }
+.pos-meta label{font-size:var(--t-xs);color:var(--ink-faint);display:flex;flex-direction:column;gap:3px}
+
+.pos-meta input{
+  width:150px;height:36px;padding:0 11px;
+  background:var(--field);border:1px solid transparent;border-radius:var(--radius-xs);font:inherit;
 }
 
-/* ---- รายการที่ค้นเจอ ---- */
-.pos-search { position: relative; }
-.pos-results {
-  position: absolute; z-index: 30; left: 0; right: 0; top: calc(100% + 6px);
-  max-height: 56vh; overflow-y: auto;
-  background: #fff; border: 1.5px solid var(--pos-money-line);
-  border-radius: 10px; box-shadow: 0 12px 30px rgba(44, 62, 80, .16);
+.pos-meta input:focus{outline:none;background:var(--card);border-color:var(--green);box-shadow:0 0 0 3px var(--green-tint)}
+
+@media (max-width:640px){
+  .pos-line-sum{margin-left:0;width:100%}
+  .pos-price{flex:1 1 90px;width:auto}
 }
-.pos-cat {
-  padding: 7px 14px; font-size: 12px; font-weight: 700;
-  color: var(--pos-deep); background: var(--pos-money-bg); position: sticky; top: 0;
+
+/* ---- ค้นหาสินค้า ---- */
+.pos-search{position:relative}
+
+.pos-results{
+  position:absolute;z-index:30;left:0;right:0;top:calc(100% + 6px);
+  max-height:56vh;overflow-y:auto;
+  background:var(--card);border:1px solid var(--line);
+  border-radius:var(--radius-sm);box-shadow:var(--shadow-pop);
 }
-.pos-hit {
-  display: flex; align-items: center; gap: 10px; width: 100%;
-  padding: 11px 14px; border: 0; border-top: 1px solid #f4f4f5;
-  background: #fff; text-align: left; font: inherit; cursor: pointer; color: var(--pos-ink);
+
+.pos-cat{
+  padding:8px 16px;font-size:var(--t-xs);font-weight:650;
+  color:var(--ink-faint);background:var(--panel);position:sticky;top:0;
+  border-bottom:1px solid var(--line-soft);
 }
-.pos-hit:hover, .pos-hit:focus-visible { background: var(--pos-money-bg); outline: none; }
-.pos-hit .pos-hit-name { flex: 1 1 auto; min-width: 0; }
-.pos-hit .pos-hit-name b { display: block; font-weight: 600; }
-.pos-hit .pos-hit-name small { color: var(--pos-muted); font-size: 12px; }
-.pos-hit .pos-hit-price { font-weight: 700; color: var(--pos-deep); white-space: nowrap; }
+
+.pos-hit{
+  display:flex;align-items:center;gap:10px;width:100%;
+  padding:12px 16px;border:0;border-top:1px solid var(--line-soft);
+  background:var(--card);text-align:left;font:inherit;cursor:pointer;color:var(--ink);
+}
+
+.pos-hit:hover,.pos-hit:focus-visible{background:var(--green-tint);outline:none}
+
+.pos-hit .pos-hit-name{flex:1 1 auto;min-width:0}
+
+.pos-hit .pos-hit-name b{display:block;font-weight:600}
+
+.pos-hit .pos-hit-name small{color:var(--ink-faint);font-size:var(--t-xs)}
+
+.pos-hit .pos-hit-price{font-weight:650;color:var(--ink);white-space:nowrap;font-variant-numeric:tabular-nums}
 
 /* ---- กล่องยืนยัน ---- */
-.pos-modal-scrim {
-  position: fixed; inset: 0; z-index: 100; background: rgba(24, 24, 27, .5);
-  display: flex; align-items: center; justify-content: center; padding: 16px;
+.pos-modal-scrim{
+  position:fixed;inset:0;z-index:100;background:rgba(15,23,42,.38);backdrop-filter:blur(2px);
+  display:flex;align-items:center;justify-content:center;padding:16px;
 }
-.pos-modal {
-  background: #fff; border-radius: 16px; overflow: hidden;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, .3);
-  width: min(560px, 100%); max-height: 90vh; display: flex; flex-direction: column;
-}
-.pos-modal::before { content: ""; display: block; height: 6px; background: var(--pos-bar); }
-.pos-modal-head { padding: 16px 20px 12px; }
-.pos-modal-head h2 { margin: 0; font-size: 18px; font-weight: 800; }
-.pos-modal-body { padding: 0 20px 16px; overflow-y: auto; }
-.pos-modal-foot { padding: 14px 20px; border-top: 1px solid #f0f0f3; display: flex; gap: 10px; }
-.pos-modal-foot button { flex: 1 1 0; padding: 14px; font: inherit; font-size: 15px; font-weight: 800; border-radius: 10px; cursor: pointer; }
-.pos-modal-foot .pos-back { border: 1.5px solid #d5dbdb; background: #fff; color: var(--pos-muted); }
-.pos-modal-foot .pos-go { border: 0; background: var(--pos-grad); color: #fff; }
-.pos-modal-foot .pos-go:disabled { opacity: .5; cursor: not-allowed; }
 
-.pos-confirm-line { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; font-size: 14px; }
-.pos-confirm-line small { color: var(--pos-muted); }
-.pos-confirm-line.total { border-top: 1.5px dashed #e0e0e0; margin-top: 8px; padding-top: 10px; font-size: 16px; font-weight: 800; color: var(--pos-money-ink); }
+.pos-modal{
+  background:var(--card);border-radius:var(--radius-lg);overflow:hidden;
+  box-shadow:var(--shadow-pop);
+  width:min(560px,100%);max-height:90vh;display:flex;flex-direction:column;
+}
+
+.pos-modal-head{padding:20px 24px 12px}
+
+.pos-modal-head h2{margin:0;font-size:var(--t-lg);font-weight:650;letter-spacing:-.4px}
+
+.pos-modal-body{padding:0 24px 16px;overflow-y:auto}
+
+.pos-modal-foot{padding:16px 24px;border-top:1px solid var(--line-soft);display:flex;gap:10px}
+
+.pos-modal-foot button{
+  flex:1 1 0;padding:14px;font:inherit;font-size:var(--t-base);font-weight:600;
+  border-radius:var(--radius-pill);cursor:pointer;
+}
+
+.pos-modal-foot .pos-back{border:1px solid var(--line);background:var(--card);color:var(--ink)}
+
+.pos-modal-foot .pos-go{border:0;background:var(--green);color:var(--ink);box-shadow:var(--shadow-green);margin:0;width:auto}
+
+.pos-modal-foot .pos-go:disabled{opacity:.45;cursor:not-allowed;box-shadow:none}
+
+.pos-confirm-line{display:flex;justify-content:space-between;gap:12px;padding:6px 0;font-size:var(--t-base)}
+
+.pos-confirm-line small{color:var(--ink-faint)}
+
+.pos-confirm-line.total{
+  border-top:1px solid var(--line);margin-top:10px;padding-top:12px;
+  font-size:var(--t-md);font-weight:650;color:var(--ink);
+}
 
 /* ---- หน้าจอหลังบันทึกสำเร็จ ---- */
-.pos-done { text-align: center; }
-.pos-done .pos-tick { font-size: 48px; }
-.pos-done h2 { margin: 8px 0 2px; color: var(--pos-green-ink); font-size: 22px; }
-.pos-done .pos-no { font-size: 26px; font-weight: 800; color: var(--pos-deep); margin: 12px 0 16px; }
-.pos-done-figs { max-width: 320px; margin: 0 auto 22px; text-align: left; }
+.pos-done{text-align:center}
 
-/* ---- ป้ายสถานะ (ใช้ในหน้าประวัติและหน้ารายละเอียด) ---- */
-.pos-badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; }
-.pos-badge.ok { background: var(--pos-green-bg); color: var(--pos-green-ink); }
-.pos-badge.warn { background: var(--pos-money-bg); color: var(--pos-money-ink); }
-.pos-badge.danger { background: #fdedec; color: #c0392b; }
-.pos-badge.void { background: #e5e7eb; color: #4b5563; }
+.pos-done .pos-tick{font-size:48px}
 
-.pos-sum-row { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0; }
-.pos-err { color: #c0392b; font-size: 13px; margin: 0 0 8px; }
+.pos-done h2{margin:8px 0 2px;color:var(--green-deep);font-size:var(--t-lg)}
 
-/* ---- หัวหน้าประวัติและหน้ารายละเอียด ----
-   ไม่ใช้ PageHead กลางของแอปที่เป็นสีเขียวน้ำทะเล เพราะสามหน้าของ POS ต้องอ่าน
-   เป็นโมดูลเดียวกัน · แถบส้มบาง ๆ ด้านบนคือตัวเดียวกับที่พาดหัวการ์ดหน้าขาย */
-.pos-bar {
-  background: #fff; border: 1px solid var(--pos-field-line); border-radius: 14px;
-  overflow: hidden; margin-bottom: 14px;
-  box-shadow: 0 1px 3px rgba(44, 62, 80, .06);
+.pos-done .pos-no{font-size:26px;font-weight:650;color:var(--ink);margin:12px 0 16px;font-variant-numeric:tabular-nums}
+
+.pos-done-figs{max-width:320px;margin:0 auto 22px;text-align:left}
+
+/* ---- ป้ายสถานะ (หน้าประวัติและหน้ารายละเอียด) ---- */
+.pos-badge{
+  display:inline-flex;align-items:center;padding:4px 11px;border-radius:var(--radius-pill);
+  font-size:var(--t-xs);font-weight:600;white-space:nowrap;border:1px solid transparent;
 }
-.pos-bar::before { content: ""; display: block; height: 5px; background: var(--pos-bar); }
-.pos-bar-in {
-  display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 14px 18px;
-}
-.pos-bar-in .pos-bar-mark { font-size: 26px; line-height: 1; }
-.pos-bar-in h1 { margin: 0; font-size: 19px; font-weight: 800; color: var(--pos-ink); }
-.pos-bar-in p { margin: 1px 0 0; font-size: 13px; color: var(--pos-muted); }
-.pos-bar-in .pos-bar-act { margin-left: auto; }
-@media (max-width: 640px) { .pos-bar-in .pos-bar-act { margin-left: 0; width: 100%; } }
 
-/* การ์ดของสองหน้านี้ใช้โทนเดียวกับหน้าขาย ไม่ใช่การ์ดสีเขียวของแอป */
-.pos .card { border-color: var(--pos-field-line); }
-.pos .card > h2, .pos .card > .card-head { color: var(--pos-ink); }
-.pos-bar-act .pos-btn { width: auto; margin: 0; padding: 10px 16px; font-size: 14px; }
+.pos-badge.ok{background:var(--green-tint);color:var(--green-deep);border-color:var(--green-edge)}
+
+.pos-badge.warn{background:var(--warn-soft);color:#8A3F07;border-color:#FDE68A}
+
+.pos-badge.danger{background:var(--danger-soft);color:#9F0F33;border-color:#FECDD3}
+
+.pos-badge.void{background:var(--surface-alt);color:var(--ink-faint);border-color:var(--line)}
+
+.pos-sum-row{display:flex;justify-content:space-between;gap:12px;padding:5px 0}
+
+.pos-err{color:var(--danger);font-size:var(--t-sm);margin:0 0 8px}
+
+/* ---- หัวหน้าประวัติและหน้ารายละเอียด ---- */
+.pos-bar{
+  background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  overflow:hidden;margin-bottom:18px;box-shadow:var(--shadow-sm);
+}
+
+.pos-bar-in{display:flex;align-items:center;gap:13px;flex-wrap:wrap;padding:16px 20px}
+
+.pos-bar-in .pos-bar-mark{
+  width:42px;height:42px;flex:0 0 42px;border-radius:var(--radius-sm);
+  background:var(--green-tint);color:var(--green-ink);
+  display:flex;align-items:center;justify-content:center;font-size:20px;line-height:1;
+}
+
+.pos-bar-in h1{margin:0;font-size:var(--t-lg);font-weight:650;color:var(--ink);letter-spacing:-.4px}
+
+.pos-bar-in p{margin:1px 0 0;font-size:var(--t-sm);color:var(--ink-faint)}
+
+.pos-bar-in .pos-bar-act{margin-left:auto}
+
+@media (max-width:640px){ .pos-bar-in .pos-bar-act{margin-left:0;width:100%} }
+
+.pos-bar-act .pos-btn{width:auto;margin:0;padding:9px 16px;font-size:var(--t-sm)}
+
+/* การ์ดเก่าที่ยังถูกเรียกใช้ในหน้าอื่นของ POS */
+.pos-card{
+  max-width:780px;margin:0 auto;background:var(--card);border-radius:var(--radius);
+  overflow:hidden;box-shadow:var(--shadow);border:1px solid var(--line);
+}
+
+.pos-card-in{padding:24px 26px 26px}
+
+/* ตอนตะกร้าว่าง แผงซ้ายจะเตี้ยกว่าแผงขวามาก แล้วสองแผงอ่านเป็นคนละระดับกัน
+   ตั้งความสูงขั้นต่ำให้เท่ากับแผงเก็บเงินโดยประมาณ */
+@media (min-width:1121px){ .pos-main{min-height:420px} }

@@ -270,6 +270,117 @@ final class Settlement
         return self::byId($id);
     }
 
+    /**
+     * แก้ป้ายบนหนี้ก้อนนี้ — ไม่ใช่แก้ของที่ออกไปแล้ว
+     *
+     * เส้นแบ่งของทั้งฟังก์ชันนี้: อะไรที่แก้แล้วของบนชั้นไม่ขยับ แก้ได้
+     *
+     *   แก้ได้     สาขา · ผู้รับของ · วันที่เบิก · หมายเหตุ
+     *              ทั้งสี่อย่างเป็นคำอธิบายของรายการ คีย์ผิดได้เป็นเรื่องปกติ
+     *              (สาขาสองสาขาชื่อคล้ายกัน คนละคนมารับ วันที่ลืมแก้) และแก้แล้ว
+     *              ไม่มีชิ้นไหนย้ายที่
+     *
+     *   แก้ไม่ได้  สินค้า · จำนวน
+     *              สองอย่างนี้คือของที่ถูกตัดออกจากล็อตไปแล้วตาม FIFO และ
+     *              `cost_total` ถูกแช่แข็งไว้จากล็อตพวกนั้นโดยตั้งใจ (ดู
+     *              `Stock::costBranchIssue`) · แก้ตัวเลขเฉย ๆ จะได้ใบที่บอกว่า
+     *              เบิกไปห้าชิ้น แต่ในคลังหายไปสอง และต้นทุนเป็นของอีกจำนวนหนึ่ง
+     *              คีย์จำนวนผิดต้องยกเลิกแล้วเบิกใหม่ ซึ่งพาของกลับเข้าล็อตถูกใบ
+     *
+     * เฉพาะใบที่ยังค้างอยู่ · ใบที่รับเงินแล้วเป็นตัวเลขที่เข้ารายงานไปแล้ว
+     * เปลี่ยนสาขาทีหลังคือย้ายยอดของเดือนที่ปิดไปแล้วข้ามสาขา
+     *
+     * @param array<string,mixed> $body
+     * @return array<string,mixed>
+     */
+    public static function edit(int $id, array $body, string $role, int $actorId): array
+    {
+        Roles::require(Roles::settleBranch($role), 'แก้รายการค้างรับจากสาขา');
+
+        $issue = self::byIdRaw($id);
+        self::mustBePending($issue);
+
+        $branchId = self::branch($body, (int) $issue['branch_id']);
+        $takenBy = array_key_exists('taken_by', $body)
+            ? self::optional($body, 'taken_by', 120)
+            : $issue['taken_by'];
+        $note = array_key_exists('note', $body)
+            ? self::optional($body, 'note', 500)
+            : $issue['note'];
+
+        /* เวลาในวันเดิมถูกเก็บไว้ — ช่องที่คนกรอกมีแค่วันที่ ถ้าเขียนทับเป็น
+           เที่ยงคืนทุกครั้งที่กดบันทึก ลำดับของใบที่เบิกวันเดียวกันจะพังไปด้วย */
+        $issuedAt = (string) $issue['issued_at'];
+        if (array_key_exists('issued_at', $body)) {
+            $day = self::day($body, 'issued_at');
+            if ($day !== null) {
+                $issuedAt = $day . ' ' . substr($issuedAt, 11, 8);
+            }
+        }
+
+        $changed = Db::run(
+            'UPDATE branch_issues
+             SET branch_id = ?, taken_by = ?, issued_at = ?, note = ?
+             WHERE id = ? AND status = \'pending\'',
+            [$branchId, $takenBy, $issuedAt, $note, $id],
+        );
+        if ($changed !== 1) {
+            throw ApiError::conflict('race', 'มีคนแก้รายการนี้พร้อมกัน ลองใหม่อีกครั้ง');
+        }
+
+        return self::byId($id);
+    }
+
+    /**
+     * สาขาเอาของมาคืน หนี้ก้อนนี้จึงไม่มีวันกลายเป็นเงิน
+     *
+     * ต่างจาก `writeOff()` ตรงที่ไม่มีใครเบี้ยว — ของกลับมาแล้ว รายงานจึงต้อง
+     * แยกสองอย่างนี้ออกจากกันได้ ('cancelled' กับ 'written_off')
+     *
+     * **ของต้องกลับเข้าคลังจริง ๆ ไม่ใช่แค่เปลี่ยนสถานะ** ใบเบิกใบหนึ่งคือครึ่ง
+     * หนึ่งของธุรกรรมที่ของออกไปแล้ว การปิดใบโดยไม่คืนของคือการทำให้ของหายจาก
+     * คลังโดยไม่มีบรรทัดไหนอธิบาย ซึ่ง `doctor` จะจับได้ในวันรุ่งขึ้นว่ายอดล็อต
+     * ไม่ตรงกับสมุด · ทั้งสองอย่างจึงอยู่ในทรานแซกชันเดียวกัน
+     *
+     * @param array<string,mixed> $body
+     * @return array<string,mixed>
+     */
+    public static function cancel(int $id, array $body, string $role, int $actorId): array
+    {
+        Roles::require(Roles::settleBranch($role), 'ยกเลิกรายการค้างรับจากสาขา');
+
+        $note = self::optional($body, 'note', 500);
+        if ($note === null) {
+            throw ApiError::badRequest('ยกเลิกรายการเบิกต้องบอกเหตุผลไว้ด้วย', 'missing_field');
+        }
+
+        $issue = self::byIdRaw($id);
+        if ($issue['status'] === 'settled') {
+            throw ApiError::conflict(
+                'already_settled',
+                'รายการนี้รับเงินจากสาขาไปแล้ว ยกเลิกย้อนหลังไม่ได้ — ให้ฝ่ายบัญชีออกใบลดหนี้แทน',
+                ['status' => $issue['status']],
+            );
+        }
+        self::mustBePending($issue);
+
+        $back = Db::tx(static function (\PDO $pdo) use ($id, $note, $actorId): array {
+            $changed = $pdo->prepare(
+                'UPDATE branch_issues
+                 SET status = \'cancelled\', settled_at = NOW(), settled_by = ?, settled_note = ?
+                 WHERE id = ? AND status = \'pending\''
+            );
+            $changed->execute([$actorId, $note, $id]);
+            if ($changed->rowCount() !== 1) {
+                throw ApiError::conflict('race', 'มีคนบันทึกรายการนี้พร้อมกัน ลองใหม่อีกครั้ง');
+            }
+
+            return Stock::undoBranchIssue($pdo, $id, $actorId, 'สาขาคืนของ — ' . $note);
+        });
+
+        return self::byId($id) + ['returned' => $back];
+    }
+
     /* -------------------------------------------------------------- helpers */
 
     /**
@@ -429,6 +540,68 @@ final class Settlement
         }
         if ($v > date('Y-m-d')) {
             throw ApiError::badRequest('วันที่รับเงินเป็นอนาคตไม่ได้', 'bad_date');
+        }
+        return $v;
+    }
+
+    /**
+     * สาขาที่ใบนี้จะถูกย้ายไป — หรือสาขาเดิม ถ้าไม่ได้ส่งมา
+     *
+     * ต้องเปิดใช้งานอยู่ ด้วยเหตุผลเดียวกับตอนเบิก (`Stock::openBranchIssue`):
+     * สาขาที่ปิดไปแล้วรับหนี้ก้อนใหม่ไม่ได้ และการย้ายหนี้ไปให้มันคือการเพิ่ม
+     * หนี้ก้อนใหม่ในสายตาของหน้าจอที่ตามเก็บเงิน
+     *
+     * @param array<string,mixed> $body
+     */
+    private static function branch(array $body, int $current): int
+    {
+        if (!array_key_exists('branch_id', $body) || $body['branch_id'] === null || $body['branch_id'] === '') {
+            return $current;
+        }
+
+        $id = (int) $body['branch_id'];
+        if ($id === $current) {
+            return $current;
+        }
+
+        $branch = Db::one('SELECT id, name, is_active FROM branches WHERE id = ?', [$id]);
+        if ($branch === null) {
+            throw ApiError::notFound('ไม่พบสาขาที่ระบุ');
+        }
+        if (!(bool) $branch['is_active']) {
+            throw ApiError::conflict(
+                'branch_inactive',
+                "สาขา {$branch['name']} ปิดใช้งานอยู่ ย้ายรายการค้างมาไม่ได้",
+                ['branch' => $branch['name']],
+            );
+        }
+
+        return (int) $branch['id'];
+    }
+
+    /**
+     * วันที่ล้วน ๆ จากฟอร์ม — null เมื่อช่องถูกส่งมาว่าง
+     *
+     * ต่างจาก `when()` ตรงที่ไม่มีค่าตั้งต้นเป็นวันนี้ ช่องที่ถูกล้างหมายถึง
+     * "ไม่ได้แก้" ไม่ใช่ "ย้ายมาเป็นวันนี้"
+     *
+     * @param array<string,mixed> $body
+     */
+    private static function day(array $body, string $field): ?string
+    {
+        $v = $body[$field] ?? null;
+        if ($v === null || $v === '') {
+            return null;
+        }
+        if (!is_string($v) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $v)) {
+            throw ApiError::badRequest('วันที่ต้องอยู่ในรูปแบบ YYYY-MM-DD', 'bad_date');
+        }
+        [$y, $m, $d] = array_map(intval(...), explode('-', $v));
+        if (!checkdate($m, $d, $y)) {
+            throw ApiError::badRequest('วันที่ไม่มีอยู่จริง', 'bad_date');
+        }
+        if ($v > date('Y-m-d')) {
+            throw ApiError::badRequest('วันที่เบิกเป็นอนาคตไม่ได้', 'bad_date');
         }
         return $v;
     }

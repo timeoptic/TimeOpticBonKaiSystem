@@ -110,9 +110,97 @@ test('ตัวช่วยเติมชื่อและแบรนด์ �
     });
 });
 
-test('พนักงานหน้าร้านเพิ่มสินค้าไม่ได้', function () {
+/**
+ * กฎเปลี่ยนตามที่หน้าร้านขอ: พนักงานขายเพิ่มสินค้าใหม่ได้
+ *
+ * เดิมเทสต์นี้ยืนยันว่าเพิ่มไม่ได้ · คนขายเจอเลนส์รุ่นที่ยังไม่มีในระบบตอนลูกค้า
+ * ยืนอยู่ตรงหน้า ถ้าเพิ่มเองไม่ได้ ออเดอร์จะค้างจนกว่าจะมีแอดมินว่าง — ซึ่งแปลว่า
+ * คนขายจะเลี่ยงไปพิมพ์ชื่อมั่ว ๆ ลงช่องอื่นแทน แล้วของชิ้นนั้นจะไม่ขึ้นคลังเลย
+ *
+ * เส้นที่ยังไม่ขยับคือ *ต้นทุน* — คนขายบอกได้ว่าขายเท่าไร ไม่ใช่ซื้อมาเท่าไร
+ */
+test('พนักงานขายเพิ่มสินค้าใหม่ได้', function () {
     withRollback(function () {
-        throwsReason('forbidden', fn() => Catalog::createProduct(productArgs(), Roles::SALES), 'staff เพิ่มสินค้า');
+        $r = Catalog::createProduct(productArgs(), Roles::SALES);
+        ok(($r['id'] ?? 0) > 0, 'ต้องได้ id ของสินค้าที่เพิ่ง สร้าง');
+    });
+});
+
+test('แต่พนักงานขายยังแก้สินค้าเดิมไม่ได้', function () {
+    withRollback(function () {
+        $id = (int) Db::value('SELECT id FROM products LIMIT 1');
+        throwsReason(
+            'forbidden',
+            fn() => Catalog::updateProduct($id, productArgs(), Roles::SALES),
+            'staff แก้สินค้าเดิม',
+        );
+    });
+});
+
+test('และพนักงานขายยังกรอกต้นทุนไม่ได้', function () {
+    withRollback(function () {
+        throwsReason(
+            'forbidden',
+            fn() => Receiving::receive(
+                ['sku' => (string) Db::value("SELECT sku FROM products WHERE is_custom_made = 0 LIMIT 1"),
+                 'quantity' => 1, 'cost_per_unit' => '250.00', 'received_date' => date('Y-m-d')],
+                Roles::SALES,
+                1,
+            ),
+            'staff ลงต้นทุนล็อต',
+        );
+    });
+});
+
+/**
+ * ราคาขายที่เปลี่ยนต้องทิ้งร่องรอยไว้ในสมุด
+ *
+ * เดิม updateProduct ไม่เขียน log อะไรเลย ราคาขายจึงเปลี่ยนได้เงียบ ๆ จากหน้าสินค้า
+ * หรือหน้าสินค้ารอสั่ง แล้วตรวจย้อนหลังไม่ได้ว่าใครเปลี่ยน จากเท่าไรเป็นเท่าไร
+ */
+test('แก้ราคาขายแล้วได้แถว PRICE ในสมุด', function () {
+    withRollback(function () {
+        $new = Catalog::createProduct(productArgs(['base_selling_price' => '1000.00']), Roles::OWNER);
+        $before = (int) Db::value(
+            "SELECT COUNT(*) FROM inventory_logs WHERE product_id = ? AND action_type = 'PRICE'",
+            [$new['id']],
+        );
+
+        Catalog::updateProduct(
+            $new['id'],
+            productArgs(['sku' => $new['sku'], 'base_selling_price' => '1250.00']),
+            Roles::OWNER,
+        );
+
+        $row = Db::one(
+            "SELECT sale_price, quantity, notes FROM inventory_logs
+              WHERE product_id = ? AND action_type = 'PRICE' ORDER BY id DESC LIMIT 1",
+            [$new['id']],
+        );
+        ok($row !== null, 'ต้องมีแถว PRICE เกิดขึ้น');
+        eq((float) $row['sale_price'], 1250.0, 'ราคาบนแถวคือราคาใหม่');
+        eq((int) $row['quantity'], 0, 'ไม่มีของเคลื่อน จำนวนต้องเป็นศูนย์');
+        ok(str_contains((string) $row['notes'], '1000.00'), 'บันทึกต้องบอกราคาเดิมด้วย');
+        ok(str_contains((string) $row['notes'], '1250.00'), 'และราคาใหม่');
+        eq($before, 0, 'ก่อนแก้ต้องยังไม่มีแถว PRICE');
+    });
+});
+
+test('แก้ชื่อสินค้าเฉย ๆ ไม่ควรได้แถวราคาแถมมา', function () {
+    withRollback(function () {
+        $new = Catalog::createProduct(productArgs(['base_selling_price' => '1000.00']), Roles::OWNER);
+
+        Catalog::updateProduct(
+            $new['id'],
+            productArgs(['sku' => $new['sku'], 'base_selling_price' => '1000.00', 'name' => 'ชื่อใหม่']),
+            Roles::OWNER,
+        );
+
+        $n = (int) Db::value(
+            "SELECT COUNT(*) FROM inventory_logs WHERE product_id = ? AND action_type = 'PRICE'",
+            [$new['id']],
+        );
+        eq($n, 0, 'ราคาไม่เปลี่ยน ก็ไม่ควรมีแถวราคา');
     });
 });
 

@@ -22,7 +22,14 @@ import { count, money } from "@/stockmod/lib/format";
 
 // The cost fields are absent, not null, for a role that may not see them — the
 // API drops the keys rather than sending an empty number.
-type Cut = { lot: string; lot_id: number; quantity: number; unit_cost?: string | null };
+type Cut = {
+  lot: string;
+  lot_id: number;
+  quantity: number;
+  unit_cost?: string | null;
+  /** ส่วนที่ของไม่พอ ไปกองบนล็อตค้างส่ง — ยอดของสินค้าตัวนี้ติดลบแล้ว */
+  shortfall?: boolean;
+};
 
 /** One product's worth of a withdrawal, as the API reports it back. */
 type ResultLine = {
@@ -228,21 +235,51 @@ export default function IssuePage() {
           ? done[0].name
           : `${count(done.length)} รายการ · ${count(out.quantity)} ชิ้น`;
 
-      toast.ok({
-        text: out.action === "SCRAP" ? `ตัดของเสีย ${what} แล้ว` : `ตัดสต็อก ${what} แล้ว`,
-        detail:
-          done
-            .map((l) =>
-              done.length === 1
-                ? l.cuts.map((c) => `${c.lot} ×${c.quantity}`).join(" · ")
-                : `${l.name} ×${count(l.quantity)}`,
-            )
-            .join(" · ") +
-          (out.total_cost ? ` · ต้นทุนรวม ${money(Number(out.total_cost))} บาท` : ""),
-        link: done.some((l) => l.branch_issue_id !== null)
-          ? { href: "/settlements", label: "บันทึกเป็นค้างรับ · ดูรายการ" }
-          : { href: "/movements", label: "ดูความเคลื่อนไหว" },
-      });
+      /* กดซ้ำใบเดิม — เซิร์ฟเวอร์ตอบใบเก่ากลับมา ไม่ได้ตัดสต็อกรอบสอง · ต้องบอก
+         ไปตรง ๆ ไม่งั้น "ตัดสต็อกแล้ว" ใบที่สองจะอ่านว่าตัดไปสองรอบ */
+      if (out.replayed) {
+        toast.info({
+          text: `รายการนี้บันทึกไปแล้ว — ${what}`,
+          detail: "กดซ้ำไม่ได้ตัดสต็อกเพิ่ม ระบบตอบใบเดิมกลับมา",
+          link: { href: "/movements", label: "ดูความเคลื่อนไหว" },
+        });
+        return;
+      }
+
+      /* ของไม่พอแล้วยังตัดออกไป = ยอดติดลบ กลายเป็นของที่ต้องสั่ง · เป็นเรื่อง
+         ที่ระบบยอมให้ทำ (หน้าร้านขายของที่ยังไม่มีได้) แต่ไม่ใช่เรื่องที่ควร
+         หายไปเงียบ ๆ — มีใบต้องสั่งซื้อเกิดขึ้นจากการกดครั้งนี้ */
+      const short = done.flatMap((l) =>
+        l.cuts.filter((c) => c.shortfall).map((c) => `${l.name} ×${c.quantity}`),
+      );
+
+      const detail =
+        done
+          .map((l) =>
+            done.length === 1
+              ? l.cuts.map((c) => `${c.lot} ×${c.quantity}`).join(" · ")
+              : `${l.name} ×${count(l.quantity)}`,
+          )
+          .join(" · ") +
+        (out.total_cost ? ` · ต้นทุนรวม ${money(Number(out.total_cost))} บาท` : "");
+
+      const link = done.some((l) => l.branch_issue_id !== null)
+        ? { href: "/settlements", label: "บันทึกเป็นค้างรับ · ดูรายการ" }
+        : { href: "/movements", label: "ดูความเคลื่อนไหว" };
+
+      if (short.length > 0) {
+        toast.warning({
+          text: `${out.action === "SCRAP" ? "ตัดของเสีย" : "ตัดสต็อก"} ${what} แล้ว — ของไม่พอ ${short.join(" · ")}`,
+          detail: `${detail} · ส่วนที่ขาดกลายเป็นสินค้ารอสั่ง ยอดคงเหลือติดลบ`,
+          link: { href: "/backorders", label: "ดูสินค้ารอสั่ง" },
+        });
+      } else {
+        toast.success({
+          text: out.action === "SCRAP" ? `ตัดของเสีย ${what} แล้ว` : `ตัดสต็อก ${what} แล้ว`,
+          detail,
+          link,
+        });
+      }
     } catch (err) {
       if (ApiError.is(err)) {
         const sku = typeof err.extra.sku === "string" ? err.extra.sku : null;

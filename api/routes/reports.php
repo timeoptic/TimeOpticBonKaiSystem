@@ -17,7 +17,9 @@ GET('/api/reports/daily-closed', function (array $req) {
         $from, $to
     );
     $sales = Db::all(
-        'SELECT s.*, st.product_name, e.employee_name
+        /* สำเนาบนใบขายมาก่อน — ดูหมายเหตุที่ api/routes/sales.php */
+        'SELECT s.*, COALESCE(s.product_name_snapshot, st.product_name) AS product_name,
+                e.employee_name
            FROM sales s
            LEFT JOIN v_stock_lot st ON st.id = s.product_stock_id
            LEFT JOIN employees e    ON e.id  = s.employee_id

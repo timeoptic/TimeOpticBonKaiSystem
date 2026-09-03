@@ -52,7 +52,9 @@ final class Catalog
     /** @param array<string,mixed> $req @return array<string,mixed> */
     public static function createProduct(array $req, string $role): array
     {
-        Roles::require(Roles::editCatalog($role), 'เพิ่มสินค้า');
+        /* addCatalog ไม่ใช่ editCatalog — เพิ่มของใหม่กับแก้ของเดิมเป็นคนละสิทธิ์
+           ต้นทุนของล็อตแรกยังผ่าน enterRxCost ที่ Receiving เหมือนเดิม */
+        Roles::require(Roles::addCatalog($role), 'เพิ่มสินค้า');
 
         $data = self::productFields($req);
 
@@ -85,7 +87,7 @@ final class Catalog
     }
 
     /** @param array<string,mixed> $req @return array<string,mixed> */
-    public static function updateProduct(int $id, array $req, string $role): array
+    public static function updateProduct(int $id, array $req, string $role, ?int $actorId = null): array
     {
         Roles::require(Roles::editCatalog($role), 'แก้ไขสินค้า');
 
@@ -118,17 +120,51 @@ final class Catalog
             }
         }
 
-        Db::run(
-            'UPDATE products
-             SET sku = ?, category_id = ?, product_type = ?, name = ?, brand = ?,
-                 base_selling_price = ?, min_stock = ?, is_custom_made = ?, attributes = ?
-             WHERE id = ?',
-            [
+        /**
+         * ราคาขายที่เปลี่ยน ต้องมีบรรทัดในสมุด
+         *
+         * เดิมการแก้สินค้าไม่เขียน log อะไรเลย — ราคาขายจึงเปลี่ยนได้เงียบ ๆ จากหน้า
+         * สินค้า หน้าสินค้ารอสั่ง หรือที่ไหนก็ได้ แล้วไม่มีทางรู้ย้อนหลังว่าใครเปลี่ยน
+         * เมื่อไร จากเท่าไรเป็นเท่าไร · ราคาขายเป็นตัวเลขที่ตกลงกับลูกค้า การเปลี่ยน
+         * โดยไม่มีร่องรอยคือช่องที่ตรวจสอบไม่ได้
+         *
+         * เขียนเฉพาะตอนตัวเลขเปลี่ยนจริง — แก้ชื่อหรือหมวดหมู่ไม่ควรได้แถวราคาแถมมา
+         * รูปแบบเดียวกับ COST/PRICE ของใบสั่งตัด: จำนวนเป็นศูนย์ ไม่มีของเคลื่อน
+         */
+        $oldPrice = $current['base_selling_price'] ?? null;
+        $priceChanged = $oldPrice === null || (float) $oldPrice !== (float) $data['price'];
+
+        Db::tx(static function (PDO $pdo) use ($sku, $data, $id, $priceChanged, $oldPrice, $actorId): void {
+            $pdo->prepare(
+                'UPDATE products
+                 SET sku = ?, category_id = ?, product_type = ?, name = ?, brand = ?,
+                     base_selling_price = ?, min_stock = ?, is_custom_made = ?, attributes = ?
+                 WHERE id = ?'
+            )->execute([
                 $sku, $data['categoryId'], $data['productType'], $data['name'], $data['brand'],
                 $data['price'], $data['minStock'], $data['isCustomMade'] ? 1 : 0,
                 $data['attributes'], $id,
-            ],
-        );
+            ]);
+
+            if (!$priceChanged) {
+                return;
+            }
+
+            $was = $oldPrice === null || (float) $oldPrice <= 0 ? 'ยังไม่ได้ตั้ง' : $oldPrice . ' บาท';
+            $now = (float) $data['price'] <= 0 ? 'ยังไม่ได้ตั้ง' : $data['price'] . ' บาท';
+
+            $pdo->prepare(
+                'INSERT INTO inventory_logs
+                   (product_id, lot_id, action_type, quantity, unit_cost, sale_price,
+                    reference_doc, notes, created_by, created_by_kind, created_at)
+                 VALUES (?, NULL, \'PRICE\', 0, NULL, ?, NULL, ?, ?, \'user\', NOW())'
+            )->execute([
+                $id,
+                (float) $data['price'] > 0 ? $data['price'] : null,
+                "แก้ราคาขายสินค้า {$sku} — จาก {$was} เป็น {$now}",
+                $actorId,
+            ]);
+        });
 
         return ['id' => $id, 'sku' => $sku, 'name' => $data['name']];
     }

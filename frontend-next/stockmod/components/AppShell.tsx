@@ -1,11 +1,12 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { api, ApiError, type Actor } from "@/stockmod/lib/api";
 import { homeFor, isAdminUp, mayUseStock } from "@/lib/roles.js";
 import CommandPalette from "./CommandPalette";
 import { ToastProvider } from "./Toaster";
-import SideRail from "./SideRail";
+import SideRail, { sectionFor } from "./SideRail";
 
 const ActorContext = createContext<Actor | null>(null);
 
@@ -43,6 +44,9 @@ export function useActor(): Actor {
 export const can = {
   enterCost: (a: Actor) => isAdminUp(a),
   editCatalog: (a: Actor) => isAdminUp(a),
+  /* เพิ่มสินค้าใหม่ทำได้ทุกบทบาทที่ล็อกอินเข้ามาได้ — คนขายเจอของที่ยังไม่มีใน
+     ระบบตอนลูกค้ารออยู่ · ตรงกับ Roles::addCatalog ฝั่ง API ซึ่งเป็นด่านจริง */
+  addCatalog: (_a: Actor) => true,
   manageUsers: (a: Actor) => isAdminUp(a),
   /**
    * Seeing what stock cost us. The API already withholds those numbers from
@@ -138,12 +142,53 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     <ActorContext.Provider value={actor}>
       <ToastProvider>
         <div className="app">
-          <SideRail actor={actor} onSignOut={signOut} />
-          <div className="work-area">{children}</div>
+          <SideRail actor={actor} />
+          <div className="work-area">
+            <WorkBar actor={actor} onSignOut={signOut} />
+            {children}
+          </div>
         </div>
         <CommandPalette />
       </ToastProvider>
     </ActorContext.Provider>
+  );
+}
+
+/**
+ * แถบบน — อยู่ตรงไหนของระบบ กับใครกำลังใช้เครื่องนี้
+ *
+ * ฝั่งคลังเคยไม่มีแถบนี้เลย ชื่อหน้าอยู่ในเนื้อหน้าอย่างเดียว · พอสองฝั่งใช้
+ * เมนูซ้ายหน้าตาเดียวกันแล้ว การที่ฝั่งหนึ่งมีแถบบนอีกฝั่งไม่มีคือสิ่งแรกที่
+ * บอกว่า "คนละเว็บ" ก่อนจะทันอ่านอะไรอย่างอื่น
+ */
+function WorkBar({ actor, onSignOut }: { actor: Actor; onSignOut: () => void }) {
+  const pathname = usePathname();
+  const here = sectionFor(pathname);
+  const crumb = here?.label ?? "คลังและต้นทุน";
+
+  useEffect(() => {
+    document.title = `${crumb} — TimeOptic`;
+  }, [crumb]);
+
+  /* อักษรย่อจากชื่อที่แสดง — ชื่อไทยไม่มีนามสกุลแยกเสมอไป จึงเอาตัวแรกของคำแรก
+     ตัวเดียว ไม่ใช่พยายามหาชื่อ-สกุลแบบฝรั่งแล้วได้ตัวอักษรมั่ว ๆ */
+  const initial = (actor.displayName ?? "").trim().charAt(0) || "?";
+
+  return (
+    <header className="workbar">
+      <div className="workbar__crumb">{crumb}</div>
+      <div className="workbar__spacer" />
+      <div className="whoami">
+        <span className="whoami-mark" aria-hidden="true">{initial}</span>
+        <span className="whoami-text">
+          <b>{actor.displayName}</b>
+          <small>{actor.roleLabel}</small>
+        </span>
+        <button type="button" className="btn btn--quiet btn--small" onClick={onSignOut} title="ออกจากระบบ">
+          ออก
+        </button>
+      </div>
+    </header>
   );
 }
 
@@ -160,8 +205,14 @@ export function WorkHead({
   lede?: string;
   children?: React.ReactNode;
 }) {
+  /* แผ่นไอคอนมาจากเมนูของหมวดที่ยืนอยู่ ไม่ใช่จากที่แต่ละหน้าส่งเข้ามา — หน้าไหน
+     ลืมส่งก็จะไม่มีไอคอน และไอคอนกับปุ่มเมนูที่ไฮไลต์อยู่ก็จะเป็นคนละตัวได้
+     หน้าที่ไม่มีหมวด (ยังไม่เคยเกิด แต่เป็นไปได้) แค่ไม่มีแผ่นไอคอน ไม่พัง */
+  const icon = sectionFor(usePathname())?.icon ?? null;
+
   return (
     <header className="workhead">
+      {icon ? <span className="workhead__icon" aria-hidden="true">{icon}</span> : null}
       <div className="workhead__text">
         <h1 className="workhead__title">{title}</h1>
         {lede ? <p className="workhead__lede">{lede}</p> : null}

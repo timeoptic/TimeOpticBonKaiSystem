@@ -76,3 +76,34 @@ GET('/api/notifications', fn(array $r) => Db::all(
 ));
 
 POST('/api/reminders/run', fn() => Scheduler::runOnce());
+
+/**
+ * คำค้นที่ใช้จัดประเภทเคสจากโน้ต — แก้ได้โดยไม่ต้องแตะโค้ด (สเปกข้อ 6)
+ *
+ * อยู่ใต้ `/api/settings` ซึ่งอ่านได้ทุกคนแต่เขียนได้เฉพาะแอดมิน (ประตูที่สองใน
+ * index.php กันด้วยคำนำหน้าเส้นทาง + เมธอด) — คนหน้าร้านจึงเห็นว่าระบบใช้คำอะไร
+ * ตัดสิน แต่แก้ไม่ได้
+ */
+GET('/api/settings/case-keywords', fn() => [
+    'keywords' => CaseSource::keywords(),
+    'defaults' => CaseSource::DEFAULTS,
+    'labels'   => (object) CaseSource::LABELS,
+    /* บอกด้วยว่าคำชุดนี้ตอนนี้จับได้กี่เคส — เปลี่ยนคำแล้วเห็นผลทันทีโดยไม่ต้อง
+       ไปรัน CLI ก่อน · คำกว้างไปคำเดียวทำให้ตัวเลข "ออนไลน์" พุ่งขึ้นให้เห็น
+       ก่อนที่จะมีใครสั่งลบ */
+    'preview'  => CaseSource::tally(),
+]);
+
+PUT('/api/settings/case-keywords', function (array $req) {
+    $body = $req['body'];
+    $patch = [];
+    foreach (array_keys(CaseSource::SETTING_KEYS) as $type) {
+        if (array_key_exists($type, $body)) {
+            $patch[$type] = $body[$type];
+        }
+    }
+    if (!$patch) {
+        bad('ไม่มีคำค้นที่จะบันทึก');
+    }
+    return ['keywords' => CaseSource::saveKeywords($patch), 'preview' => CaseSource::tally()];
+});

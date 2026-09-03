@@ -6,25 +6,30 @@ import { useAsync } from '../../lib/hooks.js';
 import { Badge, Card, Kpi, Kpis, Loading, PageHead } from '../../components/ui.jsx';
 import { DataTable } from '../../components/DataTable.jsx';
 import { stageInfo } from '../../lib/constants.js';
-import { count, custName, fmtDate, fmtDateTime, hhmm, money, moneyShort } from '../../lib/format.js';
+import { custName, fmtDate, fmtDateTime, hhmm, money } from '../../lib/format.js';
 import { Icon } from '../../components/Icon.jsx';
 
 const TILES = [
   ['📅', 'ปฏิทินจองคิว', 'Queue Booking', '/bookings'],
-  ['➕', 'จองคิวใหม่', 'New Booking', '/bookings/new'],
-  ['🗂', 'กระดานงาน', 'Case Board', '/cases'],
   ['➕', 'เปิดเคสใหม่', 'New Case', '/cases/new'],
   ['👥', 'ลูกค้าใหม่', 'New Customer', '/customers/new'],
   ['👁', 'วัดสายตา', 'Eye Exam', '/exam'],
-  ['👓', 'เปิดออเดอร์ตัดแว่น', 'Custom Order', '/orders/new'],
   ['📦', 'ส่งมอบ', 'Delivery', '/delivery'],
-  ['🛍', 'ขายสินค้าทั่วไป', 'Product Sale', '/sales/new'],
-  ['📦', 'เพิ่มสินค้าเข้าคลัง', 'Add to Stock', '/stock/new'],
   ['📜', 'ประวัติการสั่งซื้อ', 'Order History', '/orders'],
-  ['💸', 'รายจ่าย', 'Expense', '/expense'],
-  ['💰', 'รายรับ', 'Income', '/income'],
-  ['📊', 'รายงาน', 'Reports', '/reports'],
 ];
+/* เคยมีอีกแปดใบ ตัดออกแล้วทั้งหมด ด้วยเหตุผลคนละแบบ:
+     "จองคิวใหม่" · "กระดานงาน" · "เปิดออเดอร์ตัดแว่น"
+       ทางเข้าซ้ำ — คิวจองมี "ปฏิทินจองคิว" ที่เปิดคิวใหม่ได้จากในปฏิทินอยู่แล้ว
+       กระดานงานมีปุ่มของตัวเองอยู่หัวหน้านี้และในเมนูซ้าย ส่วนออเดอร์ตัดแว่น
+       เริ่มจากเคสของลูกค้า ไม่ใช่จากเมนูหลัก
+     "ขายสินค้าทั่วไป" → /sales/new  ·  "เพิ่มสินค้าเข้าคลัง" → /stock/new
+       สองหน้านี้ไม่เคยมีอยู่จริง กดแล้วได้ 404 มาตลอด · ของจริงคือ /pos กับ
+       /stock/receive/ ซึ่งอยู่ในเมนูซ้ายและเมนูของฝั่งคลังอยู่แล้ว
+     "รายจ่าย" · "รายรับ" · "รายงาน"
+       เป็นงานของแอดมิน (ดู ADMIN_PATHS ใน lib/roles.js) พนักงานขายกดแล้วเจอ
+       หน้า "เมนูนี้สำหรับผู้ดูแลระบบ" — ไทล์ที่กดแล้วโดนปฏิเสธไม่ใช่ทางลัด
+       แอดมินยังเข้าได้จากเมนูซ้าย กลุ่ม "การเงิน" กับ "ข้อมูลระบบ"
+   หน้าที่ของแถบนี้คือทางลัดของงานหน้าร้านที่แตะทุกวัน ไม่ใช่สารบัญของทั้งระบบ */
 
 function MinsAway({ value }) {
   const m = Number(value);
@@ -67,24 +72,18 @@ export default function Home() {
         icon="👓"
         title="Main Menu"
         subtitle="เมนูหลัก"
-        actions={(
-          <>
-            <Link className="btn btn-ghost" href="/cases"><Icon name="board" /> กระดานงาน</Link>
-            <Link className="btn btn-ghost" href="/reports/daily"><Icon name="calendar" /> สรุปรายวัน</Link>
-          </>
-        )}
+        /* เคยมีปุ่ม "สรุปรายวัน" ชี้ไป /reports/daily ตรงนี้ — หน้านั้นยังไม่ถูก
+           ย้ายมาจากแอปเดิม กดแล้วได้ 404 · ปุ่มที่พาไปหน้าเสียแย่กว่าไม่มีปุ่ม
+           จะเอากลับมาเมื่อไหร่ ให้สร้างหน้าก่อนแล้วค่อยเติมลิงก์ */
+        actions={<Link className="btn btn-ghost" href="/cases"><Icon name="board" /> กระดานงาน</Link>}
       />
 
+      {/* สามใบ ไม่ใช่แปด — หน้าเมนูหลักถูกเปิดตอนเริ่มวัน คำถามตอนนั้นคือ
+          "วันนี้มีใครจะมา" กับ "ค้างอยู่เท่าไหร่" ไม่ใช่ยอดเงิน
+          เรื่องเงิน (รับเงิน · ขาย · รายจ่าย) ย้ายไปอยู่หน้ารายงานครบแล้ว และ
+          ที่นั่นกรองช่วงวันที่กับกดดูที่มาของตัวเลขได้ ซึ่งการ์ดใบเดียวทำไม่ได้
+          สินค้าคงคลังกับจำนวนลูกค้าเป็นตัวเลขที่ไม่เปลี่ยนพฤติกรรมใครในวันนั้น */}
       <Kpis>
-        <Kpi kind="ok" label="รับเงินวันนี้" value={moneyShort(s.received_today.amount)} sub={`${s.received_today.n} รายการ`} />
-        <Kpi kind="accent" label="ขายสินค้าวันนี้" value={moneyShort(s.sales_today.amount)} sub={`${s.sales_today.n} รายการ`} />
-        <Kpi kind="danger" label="รายจ่ายวันนี้" value={moneyShort(s.expense_today.amount)} sub="Expense" />
-        <Kpi
-          kind="warn"
-          label="เคสที่ยังไม่จบ"
-          value={String(s.open_cases)}
-          sub={s.rush_cases ? `ด่วน ${s.rush_cases} เคส` : 'ทั้งร้าน'}
-        />
         <Kpi
           kind="accent"
           label="คิวจองวันนี้"
@@ -92,8 +91,12 @@ export default function Home() {
           sub={`ยังไม่มา ${s.bookings_pending ?? 0} คิว`}
         />
         <Kpi label="นัดรับแว่นวันนี้" value={String(s.appointments_today)} sub="Appointment" />
-        <Kpi label="สินค้าคงคลัง" value={count(s.stock_on_hand)} sub="ชิ้น" />
-        <Kpi label="ลูกค้าทั้งหมด" value={count(s.customers)} sub="คน" />
+        <Kpi
+          kind="warn"
+          label="เคสที่ยังไม่จบ"
+          value={String(s.open_cases)}
+          sub={s.rush_cases ? `ด่วน ${s.rush_cases} เคส` : 'ทั้งร้าน'}
+        />
       </Kpis>
 
       {stages.length > 0 && (

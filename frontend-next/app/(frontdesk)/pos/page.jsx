@@ -19,6 +19,7 @@ import { money, todayISO } from '../../../lib/format.js';
 import { useAuth } from '../../../contexts/AuthContext.jsx';
 import { isAdminUp } from '../../../lib/roles.js';
 import { Card, Loading } from '../../../components/ui.jsx';
+import { Icon } from '../../../components/Icon.jsx';
 import { useToast } from '../../../components/Toast.jsx';
 
 import { posApi, PAY_METHODS } from '../../../lib/pos/posApi.js';
@@ -171,176 +172,193 @@ export default function PosPage() {
     );
   }
 
-  /* ---- หน้าขาย ---- */
+  /* ---- หน้าขาย ----
+     แผงซ้าย = หาของแล้วใส่ตะกร้า · แผงขวา = เก็บเงิน
+     เดิมเป็นคอลัมน์เดียวเรียงลงมา 16 บล็อก ทำให้ตอนจะดูยอดรวมต้องเลื่อนพ้นตะกร้า
+     ไปก่อน ซึ่งเป็นสิ่งที่พนักงานต้องทำทุกบิล · แยกสองแผงแล้วยอดรวมค้างอยู่กับที่
+     ไม่ว่าตะกร้าจะยาวแค่ไหน */
   return (
     <div className="pos">
-      <div className="pos-card">
-        <div className="pos-card-in">
-
-          <div className="pos-head">
-            <span className="pos-mark">🧾</span>
-            <h1>ระบบ POS ด่วน</h1>
-            <p>🛒 ขายสินค้าทั่วไป</p>
-            <div className="pos-who">ผู้ขาย: {actor?.displayName || '—'}</div>
-          </div>
-
-          <div className="pos-row">
-            <PosField label="วันที่ขาย:" icon="📅">
-              {/* วันที่ย้อนหลังเปลี่ยนตัวเลขปิดยอดของวันที่ปิดไปแล้ว จึงเปิดเฉพาะแอดมิน
-                  ขึ้นไป คนอื่นเห็นวันที่แต่แก้ไม่ได้ — API ตรวจซ้ำอยู่ดี */}
-              <input
-                type="date"
-                value={saleDate}
-                readOnly={!isAdminUp(actor)}
-                onChange={(e) => setSaleDate(e.target.value)}
-              />
-            </PosField>
-            <PosField label="ช่องทางชำระเงิน:" icon="💳" select>
-              <select value={form.method} onChange={(e) => set('method', e.target.value)}>
-                {PAY_METHODS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
-              </select>
-            </PosField>
-          </div>
-
-          <div className="pos-row one">
-            <ProductPicker products={products || []} onPick={(p) => setItems((c) => addItem(c, p))} />
-          </div>
-
-          <div className="pos-row one">
-            <span className="pos-lab">รายการสินค้า:</span>
-            <div className="pos-cart">
-              {items.length === 0
-                ? <div className="pos-cart-empty">ยังไม่มีสินค้า — ค้นหาด้านบนแล้วกดเพื่อเพิ่ม</div>
-                : items.map((it) => (
-                  <CartItemRow
-                    key={it.key}
-                    item={it}
-                    bad={badKeys.has(it.key)}
-                    onQty={(v) => setItems((c) => setQty(c, it.key, v))}
-                    onBump={(d) => setItems((c) => bumpQty(c, it.key, d))}
-                    onPrice={(v) => setItems((c) => setPrice(c, it.key, v))}
-                    onMeta={(k, v) => setItems((c) => setMeta(c, it.key, k, v))}
-                    onCustomName={(v) => setItems((c) => setCustomName(c, it.key, v))}
-                    onRemove={() => setItems((c) => removeItem(c, it.key))}
-                  />
-                ))}
-            </div>
-          </div>
-
-          <div className="pos-row">
-            <PosField label="ชื่อลูกค้า:" icon="👤">
-              <input
-                value={form.customerName}
-                placeholder="กรอกเมื่อเป็นการมัดจำ หรือสั่งของ"
-                onChange={(e) => set('customerName', e.target.value)}
-              />
-            </PosField>
-            <PosField label="เบอร์โทร:" icon="📞">
-              <input
-                inputMode="tel"
-                value={form.customerPhone}
-                placeholder="กรอกเมื่อเป็นการมัดจำ หรือสั่งของ"
-                onChange={(e) => set('customerPhone', e.target.value)}
-              />
-            </PosField>
-          </div>
-
-          <div className="pos-row one">
-            <PosField label="หมายเหตุ (เพิ่มเติม):" icon="💬">
-              <textarea
-                rows={1}
-                value={form.note}
-                placeholder="กรอกหมายเหตุ (ถ้ามี)"
-                onChange={(e) => set('note', e.target.value)}
-              />
-            </PosField>
-          </div>
-
-          <hr className="pos-sep" />
-
-          <div className="pos-row">
-            <PosOut label="ยอดรวม (บาท):" icon="💰" tone="money">
-              {money(sums.total)}
-            </PosOut>
-            <PosField label="รูปแบบการชำระ:" icon="⚖️" select>
-              <select value={form.mode} onChange={(e) => set('mode', e.target.value)}>
-                <option value="full">ชำระเต็มจำนวน</option>
-                <option value="deposit">มัดจำ / ชำระบางส่วน</option>
-                <option value="none">ยังไม่รับเงิน</option>
-              </select>
-            </PosField>
-          </div>
-
-          {form.mode === 'deposit' && (
-            <div className="pos-row one">
-              <PosField label="ยอดที่รับวันนี้ (บาท):" icon="🧾">
-                <input
-                  inputMode="decimal"
-                  value={form.amount}
-                  placeholder="กรอกยอดมัดจำ"
-                  onChange={(e) => set('amount', e.target.value)}
-                />
-              </PosField>
-            </div>
-          )}
-
-          {form.method === 'cash' && payNow > 0 && (
-            <div className="pos-row">
-              <PosField label="รับเงินมา (บาท):" icon="💵">
-                <input
-                  inputMode="decimal"
-                  value={form.received}
-                  placeholder="กรอกจำนวนเงินที่รับมา"
-                  onChange={(e) => set('received', e.target.value)}
-                />
-              </PosField>
-              <PosOut label="เงินทอน (บาท):" icon="💸" tone="change">
-                {money(change)}
-              </PosOut>
-            </div>
-          )}
-
-          {balance > 0 && (
-            <div className="pos-row one">
-              <PosOut label="ยอดค้างชำระ (บาท):" icon="⏳" tone="money">
-                {money(balance)}
-              </PosOut>
-            </div>
-          )}
-
-          {/* สถานะรับสินค้าแยกจากสถานะจ่ายเงินโดยสิ้นเชิง — ติ๊กได้แม้ยังค้างเงิน */}
-          <label className={`pos-deliver${form.delivered ? '' : ' off'}`}>
-            <input
-              type="checkbox"
-              checked={form.delivered}
-              onChange={(e) => set('delivered', e.target.checked)}
-            />
-            <span className="pos-deliver-txt">
-              🧺 ลูกค้ารับสินค้าแล้ววันนี้ (ถ้าเป็นการสั่งของ/รอของเข้า ให้เอาเครื่องหมายออก)
-              <b className="pos-deliver-state">
-                {form.delivered
-                  ? '✓ ส่งมอบสินค้าแล้ว — บิลนี้จะปิดงานทันที'
-                  : '⏳ ยังไม่ส่งมอบ / รอลูกค้ามารับ'}
-              </b>
-            </span>
-          </label>
-
-          {errors.map((e) => <p className="pos-err" key={e}>{e}</p>)}
-
-          <button
-            type="button"
-            className="pos-btn primary"
-            disabled={busy || errors.length > 0 || items.length === 0}
-            onClick={() => { setSaveError(null); setConfirming(true); }}
-          >
-            🛒 ชำระเงิน / บันทึกการขาย
-          </button>
-
-          <Link className="pos-btn link" href="/pos/history/">
-            ↻ ดูประวัติการขาย POS / เก็บยอดค้างชำระ
-          </Link>
-          <Link className="pos-btn back" href="/">← กลับไปหน้าระบบแว่นตา (Main)</Link>
+      <div className="pos-head">
+        <span className="pos-mark"><Icon name="🛍" /></span>
+        <div className="pos-head-txt">
+          <h1>ขายหน้าร้าน</h1>
+          <p>บิลด่วน ไม่ต้องเปิดเคส</p>
         </div>
+        <div className="pos-head-act">
+          <span className="pos-who">ผู้ขาย · {actor?.displayName || '—'}</span>
+          <Link className="btn btn-light btn-sm" href="/pos/history/">ประวัติการขาย</Link>
+        </div>
+      </div>
+
+      <div className="pos-work">
+        {/* ─── แผงซ้าย: เลือกของ ─────────────────────────────────────────── */}
+        <section className="pos-main">
+          <ProductPicker products={products || []} onPick={(p) => setItems((c) => addItem(c, p))} />
+
+          <div className="pos-cart-head">
+            <span className="pos-lab">รายการในบิล</span>
+            {items.length > 0 && <span className="pos-count">{items.length}</span>}
+          </div>
+          <div className="pos-cart">
+            {items.length === 0
+              ? (
+                <div className="pos-cart-empty">
+                  <b>ยังไม่มีสินค้าในบิล</b>
+                  ค้นหาชื่อสินค้าหรือ SKU ด้านบน แล้วกดเพื่อเพิ่มลงบิล
+                </div>
+              )
+              : items.map((it) => (
+                <CartItemRow
+                  key={it.key}
+                  item={it}
+                  bad={badKeys.has(it.key)}
+                  onQty={(v) => setItems((c) => setQty(c, it.key, v))}
+                  onBump={(d) => setItems((c) => bumpQty(c, it.key, d))}
+                  onPrice={(v) => setItems((c) => setPrice(c, it.key, v))}
+                  onMeta={(k, v) => setItems((c) => setMeta(c, it.key, k, v))}
+                  onCustomName={(v) => setItems((c) => setCustomName(c, it.key, v))}
+                  onRemove={() => setItems((c) => removeItem(c, it.key))}
+                />
+              ))}
+          </div>
+        </section>
+
+        {/* ─── แผงขวา: เก็บเงิน ──────────────────────────────────────────── */}
+        <aside className="pos-side">
+          <div className="pos-side-in">
+            {/* ยอดรวมเป็นของชิ้นเดียวที่ต้องเห็นก่อนเสมอตอนเก็บเงิน จึงอยู่บนสุด
+                และตัวใหญ่กว่าทุกอย่างในแผง ไม่ใช่แถวหนึ่งในฟอร์ม */}
+            <div className="pos-total">
+              <span className="pos-total-lab">ยอดรวม</span>
+              <b className="pos-total-val">{money(sums.total)}</b>
+            </div>
+
+            <div className="pos-row">
+              <PosField label="วันที่ขาย" icon="📅">
+                {/* วันที่ย้อนหลังเปลี่ยนตัวเลขปิดยอดของวันที่ปิดไปแล้ว จึงเปิดเฉพาะแอดมิน
+                    ขึ้นไป คนอื่นเห็นวันที่แต่แก้ไม่ได้ — API ตรวจซ้ำอยู่ดี */}
+                <input
+                  type="date"
+                  value={saleDate}
+                  readOnly={!isAdminUp(actor)}
+                  onChange={(e) => setSaleDate(e.target.value)}
+                />
+              </PosField>
+              <PosField label="ช่องทางชำระเงิน" icon="💳" select>
+                <select value={form.method} onChange={(e) => set('method', e.target.value)}>
+                  {PAY_METHODS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+                </select>
+              </PosField>
+            </div>
+
+            <div className="pos-row one">
+              <PosField label="รูปแบบการชำระ" icon="⚖️" select>
+                <select value={form.mode} onChange={(e) => set('mode', e.target.value)}>
+                  <option value="full">ชำระเต็มจำนวน</option>
+                  <option value="deposit">มัดจำ / ชำระบางส่วน</option>
+                  <option value="none">ยังไม่รับเงิน</option>
+                </select>
+              </PosField>
+            </div>
+
+            {form.mode === 'deposit' && (
+              <div className="pos-row one">
+                <PosField label="ยอดที่รับวันนี้ (บาท)" icon="🧾">
+                  <input
+                    inputMode="decimal"
+                    value={form.amount}
+                    placeholder="กรอกยอดมัดจำ"
+                    onChange={(e) => set('amount', e.target.value)}
+                  />
+                </PosField>
+              </div>
+            )}
+
+            {form.method === 'cash' && payNow > 0 && (
+              <div className="pos-row">
+                <PosField label="รับเงินมา (บาท)" icon="💵">
+                  <input
+                    inputMode="decimal"
+                    value={form.received}
+                    placeholder="0.00"
+                    onChange={(e) => set('received', e.target.value)}
+                  />
+                </PosField>
+                <PosOut label="เงินทอน (บาท)" icon="💸" tone="change">
+                  {money(change)}
+                </PosOut>
+              </div>
+            )}
+
+            {balance > 0 && (
+              <div className="pos-row one">
+                <PosOut label="ยอดค้างชำระ (บาท)" icon="⏳" tone="money">
+                  {money(balance)}
+                </PosOut>
+              </div>
+            )}
+
+            <hr className="pos-sep" />
+
+            <div className="pos-row">
+              <PosField label="ชื่อลูกค้า" icon="👤">
+                <input
+                  value={form.customerName}
+                  placeholder="เฉพาะมัดจำ / สั่งของ"
+                  onChange={(e) => set('customerName', e.target.value)}
+                />
+              </PosField>
+              <PosField label="เบอร์โทร" icon="📞">
+                <input
+                  inputMode="tel"
+                  value={form.customerPhone}
+                  placeholder="เฉพาะมัดจำ / สั่งของ"
+                  onChange={(e) => set('customerPhone', e.target.value)}
+                />
+              </PosField>
+            </div>
+
+            <div className="pos-row one">
+              <PosField label="หมายเหตุ" icon="💬">
+                <textarea
+                  rows={1}
+                  value={form.note}
+                  placeholder="กรอกหมายเหตุ (ถ้ามี)"
+                  onChange={(e) => set('note', e.target.value)}
+                />
+              </PosField>
+            </div>
+
+            {/* สถานะรับสินค้าแยกจากสถานะจ่ายเงินโดยสิ้นเชิง — ติ๊กได้แม้ยังค้างเงิน */}
+            <label className={`pos-deliver${form.delivered ? '' : ' off'}`}>
+              <input
+                type="checkbox"
+                checked={form.delivered}
+                onChange={(e) => set('delivered', e.target.checked)}
+              />
+              <span className="pos-deliver-txt">
+                ลูกค้ารับสินค้าแล้ววันนี้
+                <b className="pos-deliver-state">
+                  {form.delivered
+                    ? 'บิลนี้จะปิดงานทันที'
+                    : 'รอลูกค้ามารับ — บิลยังไม่ปิด'}
+                </b>
+              </span>
+            </label>
+
+            {errors.map((e) => <p className="pos-err" key={e}>{e}</p>)}
+
+            <button
+              type="button"
+              className="btn btn-lg pos-go"
+              disabled={busy || errors.length > 0 || items.length === 0}
+              onClick={() => { setSaveError(null); setConfirming(true); }}
+            >
+              รับเงิน {money(payNow)}
+            </button>
+          </div>
+        </aside>
       </div>
 
       {confirming && (

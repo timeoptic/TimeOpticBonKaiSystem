@@ -144,6 +144,71 @@ final class Reports
                 'rows' => (int) $r['rows_n'],
             ], $people),
             'branch' => self::branch($from, $to, $money),
+            'sales'  => self::sales($window, $args, $money),
+        ];
+    }
+
+    /**
+     * ยอดขายและกำไรเท่าที่สมุดคลังรู้
+     *
+     * สมุดนี้ไม่ใช่สมุดขาย มันบันทึก "ของเคลื่อนที่" — บรรทัดส่วนใหญ่จึงมีต้นทุน
+     * แต่ไม่มีราคาขาย เพราะตอนตัดของออกไม่มีใครบอกระบบว่าขายได้เท่าไร · ที่มีทั้ง
+     * สองค่าคือใบสั่งตัด RX ซึ่งตกลงราคากันต่อใบและบันทึกไว้ทั้งคู่
+     *
+     * เงื่อนไขจึงเป็นกฎเดียว ไม่ใช่รายชื่อกรณี: **บรรทัดที่ของออกจากคลัง และมี
+     * ราคาขายติดอยู่** · วันนี้เข้าเงื่อนไขแต่ RX_ORDER แต่ถ้าวันหน้าการตัดขาย
+     * เริ่มบันทึกราคาขายลง OUT ด้วย ตัวเลขนี้จะนับให้เองโดยไม่ต้องมีใครมาแก้ตรงนี้
+     *
+     * สามชนิดที่ *ไม่* นับ และเหตุผล:
+     *   IN     มี sale_price ก็จริง แต่นั่นคือราคาที่ตั้งจะขายตอนรับเข้า ไม่ใช่
+     *          ราคาที่ขายได้ · นับเข้าไปคือนับของที่ยังอยู่บนชั้นเป็นยอดขาย
+     *   PRICE  เป็นบรรทัดบันทึกการแก้ราคา `quantity` เป็นศูนย์ ไม่มีของเคลื่อน
+     *   SETTLE เงินจากสาขา มีที่ทางของมันที่หน้าค้างรับ และคิดคนละวันกัน
+     *          (ดูหมายเหตุหัวไฟล์เรื่องนาฬิกาสองเรือน) รวมเข้ามาจะได้ยอดที่
+     *          อธิบายไม่ได้ว่านับวันไหน
+     *
+     * ใบสั่งตัดที่ถูกยกเลิกไม่นับ — แถวยังอยู่ในสมุดตามกฎ (ประวัติลบไม่ได้) แต่
+     * มันไม่ใช่ของที่ขายได้ · `cancelled_at` เป็นตัวบอก ดู migration 024
+     *
+     * `costedRevenue` แยกจาก `revenue` เพราะอัตรากำไรต้องหารด้วยตัวหลัง — หาร
+     * ด้วยยอดรวมทั้งก้อนคือเอากำไรของใบที่รู้ต้นทุน ไปหารด้วยยอดขายของใบที่
+     * มากกว่านั้น แล้วได้เปอร์เซ็นต์ที่ต่ำกว่าจริงโดยไม่มีอะไรบอกว่าทำไม
+     *
+     * @param list<mixed> $args
+     * @return array<string,mixed>
+     */
+    private static function sales(string $window, array $args, bool $money): array
+    {
+        $r = Db::one(
+            "SELECT COUNT(*) AS bills,
+                    COALESCE(SUM(ABS(g.quantity) * g.sale_price), 0) AS revenue,
+                    COALESCE(SUM(CASE WHEN g.unit_cost IS NOT NULL
+                                      THEN ABS(g.quantity) * g.sale_price ELSE 0 END), 0) AS costed_revenue,
+                    COALESCE(SUM(CASE WHEN g.unit_cost IS NOT NULL
+                                      THEN ABS(g.quantity) * (g.sale_price - g.unit_cost) ELSE 0 END), 0) AS profit,
+                    COALESCE(SUM(g.unit_cost IS NOT NULL), 0) AS costed,
+                    COALESCE(SUM(g.unit_cost IS NULL), 0)     AS uncosted
+             FROM inventory_logs g
+             LEFT JOIN rx_orders r ON r.log_id = g.id
+             WHERE {$window}
+               AND g.action_type IN ('RX_ORDER','OUT')
+               AND g.sale_price IS NOT NULL
+               AND r.cancelled_at IS NULL",
+            $args,
+        ) ?? ['bills' => 0, 'revenue' => 0, 'costed_revenue' => 0, 'profit' => 0, 'costed' => 0, 'uncosted' => 0];
+
+        $costedRevenue = (float) $r['costed_revenue'];
+
+        return [
+            'bills'    => (int) $r['bills'],
+            'costed'   => (int) $r['costed'],
+            'uncosted' => (int) $r['uncosted'],
+            // ตัวเลขเงินไปเฉพาะบทบาทที่เห็นราคาทุนได้ กฎเดียวกับทั้งไฟล์
+            'revenue'  => $money ? (float) $r['revenue'] : null,
+            'profit'   => $money ? (float) $r['profit'] : null,
+            'margin'   => $money && $costedRevenue > 0
+                ? round((float) $r['profit'] / $costedRevenue * 100, 1)
+                : null,
         ];
     }
 

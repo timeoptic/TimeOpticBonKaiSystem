@@ -6,6 +6,8 @@ import { can as may, useActor, WorkHead } from "@/stockmod/components/AppShell";
 import Paginator from "@/stockmod/components/Paginator";
 import SortHead, { SortBar, useSort } from "@/stockmod/components/SortHead";
 import Select from "@/stockmod/components/Select";
+import SettlementEditDialog from "@/stockmod/components/SettlementEditDialog";
+import { useToast } from "@/stockmod/components/Toaster";
 import {
   api,
   ApiError,
@@ -255,11 +257,18 @@ export default function SettlementsPage() {
                   <SortHead label="รับเงิน" col="amount" sort={sort} dir={dir} onSort={pick} num />
                   <SortHead label="กำไร" col="profit" sort={sort} dir={dir} onSort={pick} num />
                   <th scope="col">สถานะ</th>
+                  <th scope="col"><span className="sr-only">แก้ไข</span></th>
                 </tr>
               </thead>
               <tbody>
                 {list.data.rows.map((r) => (
-                  <IssueRow key={r.id} row={r} maySettle={can} onDone={list.reload} />
+                  <IssueRow
+                    key={r.id}
+                    row={r}
+                    maySettle={can}
+                    branches={branches.status === "ready" ? branches.data.branches : []}
+                    onDone={list.reload}
+                  />
                 ))}
               </tbody>
             </table>
@@ -282,12 +291,16 @@ export default function SettlementsPage() {
 function IssueRow({
   row,
   maySettle,
+  branches,
   onDone,
 }: {
   row: SettlementRow;
   maySettle: boolean;
+  branches: BranchRow[];
   onDone: () => void;
 }) {
+  const toast = useToast();
+  const [editing, setEditing] = useState(false);
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState("");
   const [when, setWhen] = useState(() => new Date().toISOString().slice(0, 10));
@@ -308,8 +321,27 @@ function IssueRow({
           received_date: when,
           note: note.trim() || null,
         });
+        const paid = Number(amount.trim());
+        const profit = paid - row.costTotal;
+        /* ได้น้อยกว่าต้นทุนไม่ใช่ error — แต่เป็นบรรทัดที่คนคุมเงินอยากรู้ตอน
+           มันเกิด ไม่ใช่ตอนดูรายงานสิ้นเดือน · เท่าทุนหรือมีกำไรคือเรื่องปกติ */
+        if (profit < 0) {
+          toast.warning({
+            text: `บันทึกรับเงิน ${money(paid)} แล้ว — ต่ำกว่าต้นทุน ${money(-profit)}`,
+            detail: `${row.branchName ?? "สาขา"} · ต้นทุนของรายการนี้ ${money(row.costTotal)}`,
+          });
+        } else {
+          toast.success({
+            text: `บันทึกรับเงิน ${money(paid)} จาก ${row.branchName ?? "สาขา"} แล้ว`,
+            detail: profit === 0 ? "รับเท่าทุน ไม่มีกำไร" : `กำไร ${money(profit)} · ลงวันที่ ${when}`,
+          });
+        }
       } else {
         await api.post(`/settlements/${row.id}/write-off`, { note: note.trim() || null });
+        toast.warning({
+          text: `ตัดหนี้สูญ ${money(row.costTotal)} แล้ว`,
+          detail: `${row.branchName ?? "สาขา"} · ต้นทุนก้อนนี้จะไม่กลับมาเป็นเงิน`,
+        });
       }
       setOpen(false);
       onDone();
@@ -390,11 +422,34 @@ function IssueRow({
             </span>
           )}
         </td>
+        {/* แก้ไขได้เฉพาะใบที่ยังค้าง · ใบที่ปิดไปแล้วเป็นตัวเลขที่เข้ารายงานแล้ว
+            ช่องว่างไว้ตรงนี้แทนที่จะซ่อนทั้งคอลัมน์ ตารางจะได้ไม่ขยับเวลาสลับ
+            ตัวกรองสถานะ */}
+        <td className="grid__act">
+          {pending && maySettle ? (
+            <button
+              type="button"
+              className="btn btn--quiet btn--small"
+              onClick={() => setEditing(true)}
+              aria-label={`แก้ไขรายการของ ${row.branchName ?? "สาขา"}`}
+            >
+              แก้ไข
+            </button>
+          ) : null}
+          {editing ? (
+            <SettlementEditDialog
+              row={row}
+              branches={branches}
+              onClose={() => setEditing(false)}
+              onSaved={onDone}
+            />
+          ) : null}
+        </td>
       </tr>
 
       {open ? (
         <tr className="grid__row">
-          <td colSpan={6}>
+          <td colSpan={7}>
             <div className="lotedit">
               <div className="chips chips--bar" role="group" aria-label="วิธีปิดรายการ">
                 <button

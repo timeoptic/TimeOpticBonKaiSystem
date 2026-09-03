@@ -20,17 +20,50 @@ function uploadDir(int $caseId): string
     return $dir;
 }
 
+/*
+ * ตัวกรองทั้งสามตัวเป็นทางเลือก ไม่ใส่ = ได้ทุกไฟล์ของเคสเหมือนเดิม
+ * (หน้าชำระเงินกับหน้าส่งมอบดึงทั้งเคสแล้วไปจับคู่ payment_id เองฝั่งหน้าเว็บ
+ *  เพราะมันวาดสลิปใต้รายการรับเงินหลายรายการในหน้าเดียว)
+ *
+ * เดิม endpoint นี้กรองด้วย case_id อย่างเดียว ทั้งที่ตอนอัปโหลดเก็บ kind /
+ * centering_id / payment_id ไว้ครบ ผลคือกล่อง "รูปภาพการวัด" ของขั้นวัด Center
+ * แสดงไฟล์ทุกใบของเคส สลิปโอนเงินจึงไปโผล่ปนกับรูปวัดศูนย์เลนส์
+ *
+ * กรองด้วย kind เป็นหลัก ไม่ใช่ centering_id — ข้อมูลจริงในตารางตอนนี้ kind
+ * ถูกตั้งครบทุกแถว แต่ centering_id ตั้งไว้แค่บางแถว (รูปที่อัปโหลดตอนยังไม่มี
+ * แถว centerings จะเป็น NULL) ถ้าไปกรองด้วย centering_id รูปวัดเก่าจะหายไปเฉย ๆ
+ */
 GET('/api/uploads', function (array $req) {
     $caseId = int_or($req['query']['case_id'] ?? null);
     if (!$caseId) {
         bad('กรุณาระบุเคส');
     }
-    return Db::all(
-        'SELECT p.*, e.employee_name AS taken_by_name FROM case_photos p
+    $sql = 'SELECT p.*, e.employee_name AS taken_by_name FROM case_photos p
            LEFT JOIN employees e ON e.id = p.taken_by
-          WHERE p.case_id = ? ORDER BY p.id DESC',
-        $caseId
-    );
+          WHERE p.case_id = ?';
+    $args = [$caseId];
+
+    /* nul() ไม่ใช่ str_or() — str_or คืน '' เสมอ ไม่เคยคืน null เงื่อนไขข้างล่าง
+       จึงเป็นจริงตลอดแม้ไม่ได้ส่ง kind มา แล้วกลายเป็น AND p.kind = '' ซึ่งไม่
+       แมตช์แถวไหนเลย ผลคือหน้าชำระเงินกับหน้าส่งมอบจะได้ไฟล์ 0 ใบ สลิปหายทั้งหมด */
+    $kind = nul($req['query']['kind'] ?? null);
+    if ($kind !== null) {
+        $sql .= ' AND p.kind = ?';
+        $args[] = $kind;
+    }
+    $centeringId = int_or($req['query']['centering_id'] ?? null);
+    if ($centeringId) {
+        $sql .= ' AND p.centering_id = ?';
+        $args[] = $centeringId;
+    }
+    $paymentId = int_or($req['query']['payment_id'] ?? null);
+    if ($paymentId) {
+        $sql .= ' AND p.payment_id = ?';
+        $args[] = $paymentId;
+    }
+
+    $sql .= ' ORDER BY p.id DESC';
+    return Db::all($sql, ...$args);
 });
 
 GET('/api/uploads/:id', function (array $req) {

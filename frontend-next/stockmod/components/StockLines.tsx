@@ -7,6 +7,7 @@ import Select from "./Select";
 import DateField from "./DateField";
 import QtyField from "./QtyField";
 import { IconTrash } from "./Icon";
+import { useToast } from "./Toaster";
 import { api, ApiError, type ProductDetail, type ProductRow } from "@/stockmod/lib/api";
 import { useApi } from "@/stockmod/lib/useApi";
 import { count, date, money } from "@/stockmod/lib/format";
@@ -81,6 +82,8 @@ export default function StockLines({
   const emptied = all.filter((l) => l.remainingQty === 0);
   const lots = spent ? all : live;
 
+  const toast = useToast();
+
   function done() {
     detail.reload();
     onChanged();
@@ -89,6 +92,7 @@ export default function StockLines({
   async function patchLot(id: number, body: Record<string, unknown>) {
     try {
       await api.post(`/lots/${id}/update`, body);
+      toast.success({ text: "แก้ล็อตแล้ว", detail: product.sku });
       done();
     } catch (e) {
       // Thrown on, not swallowed: InlineEdit shows it beside the figure that
@@ -101,6 +105,7 @@ export default function StockLines({
     setProblem(null);
     try {
       await api.post(`/lots/${id}/delete`);
+      toast.success({ text: "ลบล็อตแล้ว", detail: product.sku });
       done();
     } catch (e) {
       setProblem(ApiError.is(e) ? e.message : "ลบไม่สำเร็จ");

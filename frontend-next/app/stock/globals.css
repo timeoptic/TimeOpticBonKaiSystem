@@ -1,4 +1,8 @@
-/* Hallmark · genre: playful · macrostructure: Workbench (side-rail + working surface) · theme: Hum
+/* Hallmark · genre: playful · macrostructure: Workbench (side-rail + working surface)
+ * theme: ชุดเดียวกับหน้าร้าน (`app/globals.css`) ไม่ใช่ Hum อีกต่อไป — สี ขนาดตัวอักษร
+ *   รูปทรงปุ่ม ช่องกรอก ตาราง การ์ด และป้าย ยกค่ามาตรงกันทุกตัว · โครงยังเป็น
+ *   Workbench ของฝั่งนี้ (แถบข้าง + พื้นทำงาน) แต่ตอนนี้มีแถบบนเหมือนหน้าร้านด้วย
+ *   ชื่อคลาสยังเป็นของฝั่งนี้ทั้งหมด สองฝั่ง import CSS คนละไฟล์เหมือนเดิม
  * system: design.md at the repo root — every page shares this, nothing rotates
  * enrichment: none — app pages let function carry the page
  * nav: N3 side-rail · footer: none (an app screen has no footer to read)
@@ -65,34 +69,107 @@ code {
   grid-template-columns: minmax(0, 1fr);
 }
 
-.work-area { min-width: 0; }
-
-/* Full bleed. Every screen here is a table or a working surface, and a table
-   that stops at 96rem while the monitor keeps going wastes the columns it could
-   have shown. Padding grows with the viewport instead of a max-width. */
-.work-main {
-  padding: var(--space-lg) var(--space-md) var(--space-2xl);
-  inline-size: 100%;
+.work-area {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-paper);
 }
 
-@media (min-width: 1400px) {
-  .work-main { padding-inline: var(--space-xl); }
+/* จอกว้างขึ้นไม่ได้แปลว่าอยากได้ตารางที่กว้างขึ้น — ตันที่ 1560px แล้วจัดกลาง
+   ที่เหลือปล่อยเป็นขอบ ค่าเดียวกับ `.content` ของหน้าร้าน
+   เดิมที่นี่เต็มจอโดยตั้งใจ ด้วยเหตุผลว่าตารางที่หยุดกลางจอทิ้งคอลัมน์ไปฟรี ๆ
+   ซึ่งจริงจนถึงราว 1560px — เกินจากนั้นแถวหนึ่งยาวเกินกว่าจะกวาดตาจากชื่อสินค้า
+   ไปถึงจำนวนคงเหลือได้ในครั้งเดียว ความกว้างจึงหยุดที่จุดเดียวกับอีกฝั่ง */
+.work-main {
+  padding: 26px;
+  inline-size: 100%;
+  max-width: 1560px;
+  margin-inline: auto;
 }
 
 @media (min-width: 56.25rem) {
   .app { grid-template-columns: var(--rail-w) minmax(0, 1fr); }
-  .work-main { padding-inline: var(--space-xl); }
+}
+
+/* --- แถบบน --------------------------------------------------------------- */
+/* เดิมฝั่งนี้ไม่มีแถบบนเลย ชื่อหน้าอยู่ในเนื้อหน้าอย่างเดียว — พอเดินจากหน้าร้าน
+   ข้ามมา แถบขาวโปร่งที่เคยอยู่บนสุดหายไปทั้งแถบ ซึ่งอ่านเป็น "คนละเว็บ" ก่อนจะ
+   ทันอ่านอะไรอย่างอื่น · ใส่กลับมาพร้อมของสองอย่างที่หน้าร้านใส่ไว้ตรงนี้:
+   เส้นทางที่ยืนอยู่ กับใครกำลังใช้เครื่องนี้ */
+.workbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 26px;
+  min-height: var(--topbar-h);
+  background: rgba(255,255,255,.86);
+  backdrop-filter: blur(12px);
+  border-block-end: 1px solid var(--color-rule-2);
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky);
+}
+
+.workbar__crumb {
+  font-weight: 600;
+  color: var(--color-ink);
+  font-size: var(--text-md);
+  letter-spacing: -0.2px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workbar__spacer { flex: 1; }
+
+/* ใครล็อกอินอยู่ กับปุ่มออก — ย้ายมาจากท้ายแถบข้าง มาอยู่มุมขวาบนที่เดียวกับ
+   หน้าร้าน · ท้ายแถบข้างเป็นที่ที่ตาไม่เคยไปถึงเว้นแต่ตั้งใจหา
+   ชื่อคลาสตามหน้าร้าน (`whoami`) ไม่ใช่ `whois` — `whois` ในไฟล์นี้ถูกหน้าแรก
+   ของฝั่งคลังใช้ไปแล้วกับของคนละอย่าง */
+.whoami {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.whoami-mark {
+  inline-size: 34px;
+  block-size: 34px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-pill);
+  background: var(--tint-pear);
+  color: var(--color-accent-deep);
+  font-size: var(--text-base);
+  font-weight: 650;
+  line-height: 1;
+}
+
+.whoami-text { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
+.whoami-text b { font-size: var(--text-sm); font-weight: 600; color: var(--color-ink); white-space: nowrap; }
+.whoami-text small { font-size: var(--text-xs); color: var(--color-muted); white-space: nowrap; }
+
+/* บนจอแคบเหลือแค่ตัวย่อกับปุ่มออก — ชื่อเต็มกับตำแหน่งงานกินความกว้างที่
+   breadcrumb ต้องใช้ และเป็นข้อมูลที่คนใช้เครื่องนั้นรู้อยู่แล้ว */
+@media (max-width: 45rem) {
+  .workbar { padding-inline: var(--space-md); }
+  .whoami-text { display: none; }
 }
 
 /* --- rail ---------------------------------------------------------------- */
 
+/* ขาวบนพื้นเทาอ่อน คั่นด้วยเส้นผมเส้นเดียว ไม่ใช่พื้นเทาบนพื้นเทา — ชุดเดียวกับ
+   `.sidebar` ของหน้าร้าน · เดิมที่นี่เป็นพื้น --color-paper-2 ซึ่งเป็นสีเดียวกับ
+   พื้นแถบเครื่องมือ ผลคือแถบเมนูอ่านเป็น "พื้นหลัง" แทนที่จะเป็นแผ่นของตัวเอง */
 .rail-nav {
   display: flex;
   flex-direction: column;
-  gap: var(--space-md);
-  padding: var(--space-md);
-  background: var(--color-paper-2);
-  border-block-end: 1px solid var(--color-rule);
+  background: var(--color-card);
+  border-block-end: 1px solid var(--color-rule-2);
   position: sticky;
   top: 0;
   z-index: var(--z-sticky-nav);
@@ -103,118 +180,131 @@ code {
     height: 100dvh;
     align-self: start;
     border-block-end: 0;
-    border-inline-end: 1px solid var(--color-rule);
+    border-inline-end: 1px solid var(--color-rule-2);
   }
 }
 
 .rail-brand {
   display: flex;
   align-items: center;
-  gap: var(--space-xs);
+  gap: 11px;
+  padding: 16px 18px 12px;
   font-weight: 700;
-  border-radius: var(--radius-sm);
 }
 
-.rail-brand:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 3px; }
+.rail-brand:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
 
-/* The one character moment in the whole app. */
-.rail-brand__dot {
-  inline-size: 12px;
-  block-size: 12px;
+/* โลโก้เป็นสี่เหลี่ยมมนไล่สีแบรนด์ ขนาดและรัศมีเท่า `.brand-mark` ของหน้าร้าน —
+   ที่เดียวคู่กับเมนู active ที่ยอมให้มีไล่สี · เดิมเป็นจุดกลม 12px ซึ่งเป็น
+   ลายเซ็นของธีมเก่า และเป็นสิ่งแรกที่ตาเห็นตอนเดินข้ามฝั่งมาว่า "คนละแอป" */
+.rail-brand__mark {
+  inline-size: 38px;
+  block-size: 38px;
   flex: none;
-  border-radius: var(--radius-pill);
-  background: var(--color-accent);
-  box-shadow: 0 0 0 4px var(--tint-pear);
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--brand-1) 0%, var(--brand-2) 100%);
+  color: var(--color-ink);
+  font-size: 19px;
+  letter-spacing: -2px;
+  box-shadow: var(--shadow-brand);
   transition: transform var(--dur-press) var(--ease-press);
 }
 
-.rail-brand:active .rail-brand__dot { transform: scale(0.9); }
-.rail-brand__text { display: grid; line-height: 1.15; }
+.rail-brand:active .rail-brand__mark { transform: scale(0.96); }
+.rail-brand__mark .rail-icon { inline-size: 20px; block-size: 20px; opacity: 1; }
+
+.rail-brand__text { display: flex; flex-direction: column; line-height: 1.2; min-width: 0; }
+.rail-brand__name { color: var(--color-ink); font-size: var(--text-md); font-weight: 650; letter-spacing: -0.2px; }
 
 .rail-brand__sub {
-  font-family: var(--font-label);
   font-size: var(--text-xs);
   font-weight: 400;
   color: var(--color-muted);
-  letter-spacing: 0.08em;
+  letter-spacing: 0;
 }
 
-.rail-scroll { display: grid; gap: var(--space-md); }
-.rail-group { display: grid; gap: var(--space-2xs); }
+.rail-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 2px 12px 12px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
 
+.rail-scroll::-webkit-scrollbar { width: 0; height: 0; }
+
+/* หัวข้อกลุ่ม — ไม่ใช้ตัวพิมพ์ใหญ่กับ letter-spacing เพราะภาษาไทยไม่มีตัวพิมพ์ใหญ่
+   กฎนั้นเลยได้แค่ทำให้ตัวอักษรไทยห่างกันเป็นแถบยาวโดยไม่ได้ลำดับชั้นอะไรกลับมา
+   ใช้ขนาดกับน้ำหนักบอกแทน — เหตุผลเดียวกับ `.nav-group` ฝั่งหน้าร้าน
+   ด้วยเหตุผลเดียวกัน ฟอนต์ตัวเลขก็ถูกถอดออก: "งานประจำวัน" ไม่ใช่รหัส */
 .rail-group__title {
-  font-family: var(--font-label);
+  margin: 12px 12px 4px;
   font-size: var(--text-xs);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--color-muted);
-  padding-inline: var(--space-sm);
+  font-weight: 600;
+  color: var(--color-ink-dim);
+  letter-spacing: 0;
+  text-transform: none;
 }
 
-.rail-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3xs); }
+.rail-scroll > .rail-group:first-child .rail-group__title { margin-top: 4px; }
+
+.rail-list { list-style: none; margin: 0; padding: 0; }
 
 .rail-item {
   position: relative;
   display: flex;
   align-items: center;
-  gap: var(--space-xs);
-  min-height: var(--control-h);
-  padding-inline: var(--space-sm);
+  gap: 11px;
+  padding: 7px 12px;
+  margin-block-end: 1px;
   border-radius: var(--radius-sm);
-  font-size: var(--text-sm);
+  font-size: var(--text-base);
   font-weight: 500;
   color: var(--color-ink-2);
   white-space: nowrap;
   transition: background var(--dur-micro) var(--ease-out),
-              transform var(--dur-press) var(--ease-press);
+              color var(--dur-micro) var(--ease-out);
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .rail-item:hover { background: var(--tint-cyan); color: var(--color-ink); }
+  .rail-item:hover { background: var(--color-paper-2); color: var(--color-ink); }
 }
 
-.rail-item:active { transform: translateY(1px); }
 .rail-item:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 
-/* Current page carries a drawn bar as well as a tint — the shape reads
-   without relying on colour. */
+/* หน้าที่เปิดอยู่ใช้เม็ดยาไล่สีเขียวชุดเดียวกับเมนูฝั่งหน้าร้าน — สองฝั่งเป็น
+   ระบบเดียวกันแล้ว สถานะ "อยู่ตรงนี้" จึงต้องหน้าตาเหมือนกัน ไม่ใช่แถบขีดข้าง
+   แบบหนึ่งกับเม็ดยาอีกแบบหนึ่ง
+   ตัวหนังสือเป็นหมึกเข้ม ไม่ใช่ขาว: ขาวบนเขียวสดได้คอนทราสต์แค่ 2:1 */
 .rail-item[aria-current="page"] {
-  background: var(--tint-pear);
+  background: linear-gradient(135deg, var(--brand-1) 0%, var(--brand-2) 100%);
   color: var(--color-ink);
-  font-weight: 700;
+  font-weight: 650;
+  box-shadow: var(--shadow-brand);
 }
 
-.rail-item[aria-current="page"]::before {
-  content: "";
-  position: absolute;
-  inset-block: 22%;
-  inset-inline-start: 0;
-  inline-size: 3px;
-  border-radius: var(--radius-pill);
-  background: var(--color-accent-deep);
-}
+.rail-item[aria-current="page"]:hover { color: var(--color-ink); }
 
-.rail-icon { inline-size: 20px; block-size: 20px; flex: none; }
+.rail-icon { inline-size: 19px; block-size: 19px; flex: none; opacity: .85; }
+.rail-item[aria-current="page"] .rail-icon { opacity: 1; }
 
+/* ท้ายแถบข้างเหลือแค่วันเวลา เหมือน `.sidebar-foot` ของหน้าร้าน — ชื่อผู้ใช้กับ
+   ปุ่มออกย้ายขึ้นไปมุมขวาบนแล้ว */
 .rail-foot {
-  display: grid;
-  gap: var(--space-xs);
-  padding-block-start: var(--space-sm);
+  padding: 9px 18px;
   border-block-start: 1px solid var(--color-rule);
+  font-size: var(--text-xs);
+  color: var(--color-ink-dim);
 }
-
-@media (min-width: 56.25rem) { .rail-foot { margin-block-start: auto; } }
-
-.rail-who { display: grid; line-height: 1.2; }
-.rail-who__name { font-size: var(--text-sm); font-weight: 600; }
-.rail-who__role { font-family: var(--font-label); font-size: var(--text-xs); color: var(--color-muted); }
 
 /* Under 900px the rail becomes a scrolling strip rather than collapsing behind
    a menu button: stock work switches sections constantly, and hiding the nav
    costs a tap every single time. */
 @media (max-width: 56.24rem) {
   .rail-nav { flex-direction: row; flex-wrap: wrap; align-items: center; }
-  .rail-brand { flex: 0 1 auto; }
+  .rail-brand { flex: 0 1 auto; padding: var(--space-sm) var(--space-md); }
   .rail-scroll {
     order: 3;
     flex: 1 0 100%;
@@ -222,56 +312,75 @@ code {
     gap: var(--space-md);
     overflow-x: auto;
     overscroll-behavior-inline: contain;
-    padding-block-end: var(--space-3xs);
+    padding: 0 var(--space-sm) var(--space-xs);
   }
   .rail-group { display: flex; align-items: center; gap: var(--space-2xs); }
   .rail-group__title { display: none; }
   .rail-list { display: flex; gap: var(--space-2xs); }
-  .rail-item[aria-current="page"]::before {
-    inset-block: auto 4px;
-    inset-inline: 25%;
-    inline-size: auto;
-    block-size: 3px;
-  }
-  .rail-foot {
-    margin-inline-start: auto;
-    grid-auto-flow: column;
-    align-items: center;
-    border-block-start: 0;
-    padding-block-start: 0;
-  }
+  .rail-item { margin-block-end: 0; }
+  /* วันเวลาไม่ได้สำคัญพอจะกินบรรทัดบนจอแคบ — แถบนี้เหลือแค่โลโก้กับเมนู */
+  .rail-foot { display: none; }
 }
 
 /* --------------------------------------------------------------------------
    Working-surface head
    -------------------------------------------------------------------------- */
 
+/* รูปทรงเดียวกับ `.page-head` ของหน้าร้าน: แผ่นไอคอนสีเขียวจาง ชื่อหน้าตัวใหญ่
+   คำอธิบายลงบรรทัดใหม่ · หัวเพจนั่งบนพื้นเปล่า ไม่มีกล่อง ลำดับชั้นมาจากขนาด
+   ตัวอักษรกับที่ว่าง
+   จัดชิดกลางแนวตั้ง ไม่ใช่ชิดล่าง — พอมีแผ่นไอคอนสูง 46px แล้ว การชิดล่างทำให้
+   ปุ่มด้านขวาลอยต่ำกว่าไอคอนอย่างเห็นได้ชัด */
 .workhead {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: var(--space-md);
-  margin-block-end: var(--space-lg);
+  align-items: center;
+  gap: 15px;
+  margin: 2px 0 22px;
 }
 
-.workhead__text { min-width: 0; }
+/* แผ่นไอคอนหัวเพจ — จุดสีเดียวที่หัวเพจได้ ไอคอนมาจากเมนูของหมวดที่ยืนอยู่
+   จึงไม่ต้องให้แต่ละหน้าเลือกเอง และไม่มีวันหลุดจากเมนู */
+.workhead__icon {
+  inline-size: 46px;
+  block-size: 46px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-input);
+  background: var(--tint-pear);
+  color: var(--color-accent);
+}
+
+.workhead__icon .rail-icon { inline-size: 22px; block-size: 22px; opacity: 1; }
+
+/* ยอมให้หดได้ เพื่อให้อยู่บรรทัดเดียวกับแผ่นไอคอนเสมอ — แถวนี้ตั้ง flex-wrap ไว้
+   เพื่อให้ "ปุ่มของหน้า" ตกลงไปข้างล่างบนจอแคบ ถ้าไม่ตั้ง flex-basis ให้ก้อน
+   ตัวหนังสือ มันจะเอาความกว้างตามเนื้อหาแล้วดันตัวเองลงบรรทัดใหม่ทั้งก้อน
+   เหลือไอคอนลอยอยู่บรรทัดบนตัวเดียว */
+.workhead__text { flex: 1 1 12rem; min-width: 0; }
 
 .workhead__title {
-  font-size: var(--text-md);
-  font-weight: 700;
-  letter-spacing: -0.01em;
+  font-size: var(--text-xl);
+  font-weight: 650;
+  letter-spacing: -0.6px;
+  line-height: 1.25;
+  color: var(--color-ink);
   overflow-wrap: anywhere;
 }
 
+/* คำอธิบายรองลงบรรทัดใหม่ ไม่ใช่ต่อท้ายหัวเรื่อง — สองระดับที่อยู่บรรทัดเดียวกัน
+   อ่านเป็นประโยคเดียวที่สะดุด */
 .workhead__lede {
-  margin-block-start: var(--space-2xs);
+  margin-block-start: 2px;
   font-size: var(--text-sm);
+  font-weight: 400;
   color: var(--color-muted);
+  letter-spacing: 0;
   max-width: 62ch;
 }
 
-.workhead__tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-xs); }
+.workhead__tools { margin-inline-start: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 9px; }
 
 .toolsearch { display: flex; align-items: center; gap: var(--space-xs); }
 .toolsearch .input { inline-size: clamp(11rem, 34vw, 22rem); }
@@ -280,102 +389,139 @@ code {
    Controls
    -------------------------------------------------------------------------- */
 
+/* ปุ่มเปล่าเป็นแผ่นขาวมีเส้น เท่ากับ `.btn-light` ของหน้าร้าน — ที่นี่ `.btn`
+   ถูกใช้กับงานรองเป็นส่วนใหญ่ ปุ่มหลักเรียก `.btn--primary` เสมอ จึงจับคู่กัน
+   แบบนั้น ไม่ใช่ให้ปุ่มเปล่าเป็นเขียวเหมือนหน้าร้านแล้วทั้งหน้าเขียวไปหมด */
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: var(--space-2xs);
+  gap: 8px;
   min-height: var(--control-h);
-  padding-inline: var(--space-lg);
-  border: 0;
+  padding: 10px 20px;
+  border: 1px solid var(--color-rule-2);
   border-radius: var(--radius-pill);
-  background: var(--color-paper-2);
+  background: var(--color-card);
   color: var(--color-ink);
-  font-size: var(--text-sm);
-  font-weight: 600;
+  font-size: var(--text-base);
+  font-weight: 500;
+  white-space: nowrap;
   cursor: pointer;
   box-shadow: var(--shadow-rest);
-  transition: transform var(--dur-press) var(--ease-press),
+  transition: background var(--dur-micro) var(--ease-out),
+              border-color var(--dur-micro) var(--ease-out),
               box-shadow var(--dur-micro) var(--ease-out),
-              background var(--dur-micro) var(--ease-out);
+              transform var(--dur-press) var(--ease-press),
+              color var(--dur-micro) var(--ease-out);
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .btn:hover { background: var(--color-paper-3); box-shadow: var(--shadow-lift); }
+  .btn:hover { background: var(--color-paper); border-color: var(--color-ink-dim); }
 }
 
 .btn:active { transform: translateY(1px); box-shadow: var(--shadow-rest); }
 .btn:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 
 .btn:disabled, .btn[aria-disabled="true"] {
-  opacity: 0.55;
+  opacity: 0.45;
   cursor: not-allowed;
+  transform: none;
   box-shadow: none;
 }
 
-/* ปุ่มหลักเป็นแผ่นเรียบ ไม่ใช่ปุ่มนูนมีขอบล่างเหมือนธีมเดิม
-   ตอนนั้นสีเน้นเป็นสีอ่อน ปุ่มจึงต้องมีขอบล่างเข้มไว้บอกว่ามันกดได้ · ตอนนี้
-   สีเน้นเป็นครามเข้มบนกระดาษอ่อน ตัวมันเองก็ดังพอแล้ว ขอบล่างจึงเหลือแค่เสียงรบกวน
-   การกดบอกด้วยการขยับตัวเอง ไม่ใช่ด้วยขอบที่ยุบ */
+/* ปุ่มหลักเป็นเขียวสดตัวหนังสือหมึกเข้ม พร้อมเงาสีตัวเอง — ชุดเดียวกับ `.btn`
+   ของหน้าร้าน · เดิมเป็นเขียวเข้มตัวหนังสือขาว ซึ่งอ่านหนักกว่าและทำให้ปุ่มหลัก
+   สองฝั่งเป็นคนละสีทั้งที่เป็นแบรนด์เดียวกัน
+   หมึกเข้มบนเขียวสดได้ 9:1 · ขาวบนเขียวสดได้แค่ 2:1 จึงเป็นหมึก ไม่ใช่ขาว */
 .btn--primary {
-  background: var(--color-accent);
-  color: var(--color-accent-ink);
-  border-color: var(--color-accent);
-  box-shadow: var(--shadow-rest);
+  background: var(--brand-1);
+  border-color: transparent;
+  color: var(--color-ink);
+  font-weight: 600;
+  box-shadow: var(--shadow-brand);
 }
 
 @media (hover: hover) and (pointer: fine) {
   .btn--primary:hover {
-    background: var(--color-accent-deep);
-    border-color: var(--color-accent-deep);
+    background: #3EC554;
+    border-color: transparent;
+    color: var(--color-ink);
     transform: translateY(-1px);
     box-shadow: var(--shadow-lift);
   }
 }
 
 .btn--primary:active { transform: translateY(0); box-shadow: var(--shadow-rest); }
-/* The secondary button. It used to be bare text in a pill — no fill, no edge —
-   which read as a link that had lost its underline rather than as something to
-   press. A tinted surface with a real edge makes it a button; the pear primary
-   is still the loudest thing on the screen. */
+
+/* ปุ่มเงียบไม่มีทั้งพื้นและขอบ เท่ากับ `.btn-ghost` — ใช้กับงานที่ไม่อยากให้
+   แข่งกับปุ่มหลักในกล่องเดียวกัน (ยกเลิก ปิด ย้อนกลับ) */
 .btn--quiet {
-  background: var(--color-paper-2);
-  border: 1px solid var(--color-rule);
+  background: transparent;
+  border-color: transparent;
   color: var(--color-ink-2);
   box-shadow: none;
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .btn--quiet:hover { background: var(--color-paper-3); border-color: var(--color-rule-2); box-shadow: var(--shadow-rest); }
+  .btn--quiet:hover { background: var(--color-paper-2); border-color: transparent; color: var(--color-ink); box-shadow: none; }
 }
 
 .btn--quiet:active { box-shadow: none; }
-.btn--small { min-height: 38px; padding-inline: var(--space-md); font-size: var(--text-xs); }
+
+.btn--small { min-height: 36px; padding: 6px 14px; font-size: var(--text-sm); font-weight: 600; }
 .btn--block { inline-size: 100%; }
 
-.field { display: grid; gap: var(--space-2xs); }
+.field { display: grid; gap: 6px; min-width: 0; }
 
+/* ป้ายช่องกรอกเป็นไทยธรรมดา ไม่ใช่ตัวพิมพ์ใหญ่ฟอนต์ตัวเลขยืดตัว — เหตุผลเดียว
+   กับหัวข้อกลุ่มในเมนู: ภาษาไทยไม่มีตัวพิมพ์ใหญ่ให้แปลง กฎนั้นเลยได้แค่ตัวอักษร
+   ที่ห่างกันผิดจังหวะ และฟอนต์ตัวเลขทำให้ตัวไทยกว้างไม่เท่ากันทั้งบรรทัด */
 .field__label {
-  font-family: var(--font-label);
-  font-size: var(--text-xs);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--color-muted);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-ink-soft);
+  letter-spacing: 0;
+  text-transform: none;
 }
 
+/* ช่องกรอกเป็นพื้นเทาไร้ขอบ พอโฟกัสถึงกลายเป็นขาว ขอบเขียว และมีวงเขียวจางรอบ —
+   ชุดเดียวกับหน้าร้าน · เดิมเป็นพื้นขาวมีขอบเทาตลอดเวลา ซึ่งอ่านเป็นช่องที่
+   "แตะไม่ได้" เมื่อวางข้างช่องแบบหน้าร้านที่พื้นเทา */
 .input {
   min-height: var(--control-h);
   inline-size: 100%;
-  padding-inline: var(--space-md);
-  border: 1px solid var(--color-rule-2);
+  padding: 11px 14px;
+  border: 1px solid transparent;
   border-radius: var(--radius-input);
-  background: var(--color-paper);
-  transition: border-color var(--dur-micro) var(--ease-out);
+  background: var(--color-field);
+  color: var(--color-ink);
+  transition: background var(--dur-micro) var(--ease-out),
+              border-color var(--dur-micro) var(--ease-out),
+              box-shadow var(--dur-micro) var(--ease-out);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .input:hover:not(:disabled):not([readonly]) { background: var(--color-field-hover); }
 }
 
 .input::placeholder { color: var(--color-muted); }
-.input:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 1px; border-color: transparent; }
-.input:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.input:focus, .input:focus-visible {
+  outline: none;
+  border-color: var(--brand-1);
+  background: var(--color-card);
+  box-shadow: 0 0 0 3px var(--tint-pear);
+}
+
+/* อ่านอย่างเดียวต้องดูต่างจาก "ยังไม่ได้พิมพ์" — ขอบจาง ๆ บอกว่าแตะไม่ได้
+   แทนที่จะให้พื้นอ่อนลงเฉย ๆ ซึ่งอ่านเป็นช่องว่างที่รอให้กรอก */
+.input:disabled, .input[readonly] {
+  background: var(--color-card);
+  border-color: var(--color-rule);
+  color: var(--color-muted);
+  cursor: not-allowed;
+}
+
 .input[aria-invalid="true"] { border-color: var(--color-error); }
 
 .field__help { font-size: var(--text-xs); color: var(--color-muted); }
@@ -399,34 +545,46 @@ code {
 
 .readout--tight { margin-block-end: var(--space-md); }
 
+/* การ์ดตัวเลขเป็นกระดาษขาวมีเส้นผมหนึ่งเส้น สีไปอยู่ที่ "ตัวเลข" ไม่ใช่ "พื้น" —
+   ชุดเดียวกับ `.kpi` ของหน้าร้าน · เดิมทั้งใบเป็นพื้นสีจาง ซึ่งอ่านเป็นสี่ป้าย
+   สีวางเรียงกัน มากกว่าจะเป็นตัวเลขสี่ตัวที่ต้องอ่าน และตอนวางข้างการ์ดขาว
+   ของหน้าร้านก็เป็นจุดที่สองฝั่งดูต่างกันมากที่สุดจุดหนึ่ง */
 .readout__cell {
   display: flex;
   flex-direction: column;
   min-block-size: 7.5rem;
-  padding: var(--space-md);
+  padding: 17px 19px;
+  border: 1px solid var(--color-rule-2);
   border-radius: var(--radius-card);
-  background: var(--tint-pear);
+  background: var(--color-card);
+  box-shadow: var(--shadow-rest);
 }
 
-.readout__cell--pear  { background: var(--tint-pear); }
-.readout__cell--mint  { background: var(--tint-mint); }
-.readout__cell--cyan  { background: var(--tint-cyan); }
-.readout__cell--coral { background: var(--tint-coral); }
+.readout__cell--pear  .readout__figure { color: var(--color-accent); }
+.readout__cell--mint  .readout__figure { color: var(--color-mint-ink); }
+.readout__cell--cyan  .readout__figure { color: var(--color-cyan-ink); }
+.readout__cell--coral .readout__figure { color: var(--color-coral-ink); }
 
 .readout__label {
-  font-family: var(--font-label);
-  font-size: var(--text-xs);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
   color: var(--color-muted);
 }
 
+/* ตัวเลขใหญ่และแน่น — letter-spacing ติดลบมากกว่าตัวหนังสือปกติ เพราะเลขตัวหนา
+   ขนาดนี้ถ้าไม่บีบจะอ่านเป็นตัว ๆ แทนที่จะอ่านเป็นจำนวนเดียว */
 .readout__figure {
-  font-size: var(--text-2xl);
-  font-weight: 700;
+  font-size: 29px;
+  font-weight: 650;
+  letter-spacing: -1px;
   font-variant-numeric: tabular-nums;
-  line-height: 1.2;
-  margin-block: var(--space-3xs);
+  line-height: 1.15;
+  margin-block: 6px 0;
 }
 
 .readout__figure--signal { color: var(--color-coral-ink); }
@@ -437,7 +595,7 @@ code {
   padding-block-start: var(--space-2xs);
   font-size: var(--text-xs);
   line-height: 1.45;
-  color: var(--color-muted);
+  color: var(--color-ink-dim);
 }
 
 /* --------------------------------------------------------------------------
@@ -447,37 +605,46 @@ code {
 .chips { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-xs); }
 .chips--bar { margin-block-end: var(--space-md); }
 
+/* ชิปกรองเป็นเม็ดยาขาวมีขอบ ตัวที่เลือกอยู่เป็นเขียวจางขอบเขียว — รูปทรงเดียว
+   กับ `.tabs` ของหน้าร้าน · เดิมตัวที่เลือกเป็นเขียวเข้มทึบ ซึ่งดังเท่าปุ่มหลัก
+   ทั้งที่มันคือ "กำลังดูอันนี้อยู่" ไม่ใช่ "กดตรงนี้" */
 .chip {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-2xs);
-  min-height: 38px;
-  padding-inline: var(--space-md);
-  border: 0;
+  gap: 6px;
+  min-height: 36px;
+  padding: 8px 16px;
+  border: 1px solid var(--color-rule-2);
   border-radius: var(--radius-pill);
-  background: var(--color-paper-2);
+  background: var(--color-card);
+  color: var(--color-ink-soft);
   font-size: var(--text-sm);
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
-  transition: background var(--dur-micro) var(--ease-out), transform var(--dur-press) var(--ease-press);
+  transition: background var(--dur-micro) var(--ease-out),
+              border-color var(--dur-micro) var(--ease-out),
+              color var(--dur-micro) var(--ease-out);
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .chip:hover { background: var(--tint-cyan); }
+  .chip:hover { border-color: var(--color-accent); color: var(--color-accent); }
 }
 
-.chip:active { transform: translateY(1px); }
 .chip:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
-.chip[aria-current="true"] { background: var(--color-accent); color: var(--color-accent-ink); font-weight: 700; }
+
+.chip[aria-current="true"] {
+  background: var(--tint-pear);
+  border-color: var(--edge-pear);
+  color: var(--color-accent-deep);
+}
 
 .chip__count {
-  font-family: var(--font-label);
   font-size: var(--text-xs);
   color: var(--color-muted);
   font-variant-numeric: tabular-nums;
 }
 
-.chip[aria-current="true"] .chip__count { color: var(--color-ink); }
+.chip[aria-current="true"] .chip__count { color: var(--color-accent-deep); }
 
 /* Two groups of chips sharing one wrapping line.
    Stacked they were two full bands under the sort strip — three rows of
@@ -513,52 +680,68 @@ code {
    Tinted rather than outlined: an outline on a pill reads as "disabled" before
    it reads as "needs doing". Dropped entirely at a tally of zero — nothing to
    do is not a warning. */
-.chip--alert { background: var(--tint-coral); color: var(--color-coral-ink); }
+.chip--alert {
+  background: var(--tint-coral);
+  border-color: var(--edge-coral);
+  color: var(--color-coral-ink);
+}
 
 @media (hover: hover) and (pointer: fine) {
   /* The same wash deepened — the token that exists for exactly this. Hovering
-     must not take the chip out of its accent and into the shared cyan. */
-  .chip--alert:hover { background: var(--tint-coral-deep); }
+     must not take the chip out of its accent and into the shared green. */
+  .chip--alert:hover {
+    background: var(--tint-coral-deep);
+    border-color: var(--edge-coral);
+    color: var(--color-coral-ink);
+  }
 }
-.chips__note { font-family: var(--font-label); font-size: var(--text-xs); color: var(--color-muted); }
+.chips__note { font-size: var(--text-xs); color: var(--color-muted); }
 
 /* --------------------------------------------------------------------------
    Data grid — a real <table>, so screen readers announce row and column and
    the browser keeps the columns aligned without a hand-built template.
    -------------------------------------------------------------------------- */
 
+/* ตารางนั่งอยู่บนการ์ดขาวมีเส้นผมหนึ่งเส้น ไม่ใช่แผ่นเทา — เท่ากับ `.card`
+   ที่หุ้ม `table.grid` ของหน้าร้าน */
 .tablewrap {
   overflow-x: auto;
+  border: 1px solid var(--color-rule-2);
   border-radius: var(--radius-card);
-  background: var(--color-paper-2);
+  background: var(--color-card);
   box-shadow: var(--shadow-rest);
 }
 
-.grid { inline-size: 100%; border-collapse: collapse; font-size: var(--text-sm); }
+.grid { inline-size: 100%; border-collapse: collapse; font-size: var(--text-base); }
 
+/* หัวตารางเป็นพื้นขาวกับเส้นใต้ ไม่ใช่แถบเทาเต็มความกว้าง — แถบเทาอ่านเป็น
+   "ของอีกก้อนหนึ่ง" ที่คั่นระหว่างหัวการ์ดกับข้อมูล ทั้งที่มันคือฉลากของข้อมูล
+   และเลิกเป็นตัวพิมพ์ใหญ่ฟอนต์ตัวเลข: หัวคอลัมน์ที่นี่เป็นภาษาไทยเกือบทั้งหมด
+   ("จำนวนคงเหลือ" "วันที่รับเข้า") ซึ่ง text-transform ทำอะไรไม่ได้ เหลือแค่
+   letter-spacing ที่ดันตัวไทยห่างจนอ่านช้าลง */
 .grid thead th {
   position: sticky;
   top: 0;
   z-index: var(--z-raised);
-  background: var(--color-paper-2);
-  font-family: var(--font-label);
-  font-size: var(--text-xs);
-  font-weight: 500;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  background: var(--color-card);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
   color: var(--color-muted);
   text-align: start;
   white-space: nowrap;
-  padding: var(--space-sm) var(--space-md);
+  padding: 11px 16px;
   border-block-end: 1px solid var(--color-rule-2);
 }
 
+/* แถวสูงขึ้น — ตารางที่พนักงานกวาดตาหาชื่อสินค้าทั้งวัน ระยะห่างคือความเร็ว */
 .grid tbody th,
 .grid tbody td {
-  padding: var(--space-sm) var(--space-md);
+  padding: 13px 16px;
   text-align: start;
   font-weight: 400;
-  vertical-align: top;
+  vertical-align: middle;
   border-block-end: 1px solid var(--color-rule);
 }
 
@@ -566,12 +749,12 @@ code {
 .grid tbody tr:last-child td { border-block-end: 0; }
 
 .grid__row {
-  background: var(--color-paper);
+  background: var(--color-card);
   transition: background var(--dur-micro) var(--ease-out);
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .grid__row:hover { background: var(--color-paper-3); }
+  .grid__row:hover { background: var(--color-paper); }
 }
 
 /* Only rows that need a decision get a tint. If every row is coloured, none
@@ -582,11 +765,14 @@ code {
 .grid__num { text-align: end; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .grid__num--in { color: var(--color-mint-ink); font-weight: 600; }
 
+/* ช่องปุ่มท้ายแถว — แคบที่สุดเท่าที่ปุ่มจะพอ ตารางที่เหลือจึงไม่ถูกบีบ
+   และปุ่มของทุกแถวเรียงตรงกันเป็นเส้นเดียว หาได้โดยไม่ต้องกวาดตา */
+.grid__act { inline-size: 1%; white-space: nowrap; text-align: end; }
+
 .grid__name { display: block; font-weight: 600; color: var(--color-ink); }
 
 .grid__sub {
   display: block;
-  font-family: var(--font-label);
   font-size: var(--text-xs);
   color: var(--color-muted);
 }
@@ -628,43 +814,59 @@ code {
    Status words — always word plus shape plus colour, never colour alone
    -------------------------------------------------------------------------- */
 
+/* รูปทรงเดียวกับ `.badge` ของหน้าร้าน: เม็ดยาพื้นจาง + ขอบสีเดียวกันเข้มขึ้นหนึ่งขั้น
+   + หมึกเข้มของสีนั้น · ขอบไม่ใช่ของประดับ — พื้นจางล้วนหายไปเลยตอนสั่งพิมพ์
+   ใบสั่งตัดกับใบรับของฝั่งนี้ถูกพิมพ์ออกกระดาษจริง ป้ายจึงต้องรอด
+   และเลิกใช้ฟอนต์ตัวเลข: ข้อความในป้ายเป็นคำไทย ("รับเข้า" "ตัดออก") ไม่ใช่รหัส */
 .status, .tag {
-  display: inline-block;
-  padding: 3px var(--space-xs);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 11px;
+  border: 1px solid transparent;
   border-radius: var(--radius-pill);
-  font-family: var(--font-label);
   font-size: var(--text-xs);
+  font-weight: 600;
+  line-height: 1.5;
   white-space: nowrap;
 }
 
-.tag { background: var(--veil-ink); color: var(--color-ink-2); }
+.tag { background: var(--color-paper-2); color: var(--color-ink-soft); border-color: var(--color-rule-2); }
 /* One tint per kind of movement, so a page of the ledger can be read by shape
    and colour before any of it is read as words. The tints are the ones the rest
    of the app already means something by: mint is stock on hand, coral is the
    thing that needs attention, lavender is a made-to-order job. Each carries its
    own deepened ink so the label stays legible on cream and in dark. */
-.tag--in       { background: var(--tint-mint);  color: var(--color-mint-ink);  font-weight: 500; }
-.tag--out      { background: var(--tint-cyan);  color: var(--color-cyan-ink);  font-weight: 500; }
-.tag--scrap    { background: var(--tint-coral); color: var(--color-coral-ink); font-weight: 500; }
-.tag--return   { background: var(--tint-pear);  color: var(--color-ink);       font-weight: 500; }
-.tag--rx-order { background: var(--tint-lav);   color: var(--color-lav-ink);   font-weight: 500; }
+.tag--in       { background: var(--tint-mint);  color: var(--color-mint-ink);  border-color: var(--edge-mint); }
+.tag--out      { background: var(--tint-cyan);  color: var(--color-cyan-ink);  border-color: var(--edge-cyan); }
+.tag--scrap    { background: var(--tint-coral); color: var(--color-coral-ink); border-color: var(--edge-coral); }
+.tag--return   { background: var(--tint-pear);  color: var(--color-accent-deep); border-color: var(--edge-pear); }
+.tag--rx-order { background: var(--tint-lav);   color: var(--color-lav-ink);   border-color: var(--edge-lav); }
 /* Adjust keeps the neutral chip: it is a correction, not an event in the shop,
    and giving it an accent would make housekeeping look like trade. */
-.tag--adjust   { background: var(--veil-ink);   color: var(--color-ink-2);     font-weight: 500; }
+.tag--adjust   { background: var(--color-paper-2); color: var(--color-ink-soft); border-color: var(--color-rule-2); }
 /* Money keyed in after the fact — the cost of an RX job, the cash a branch
    finally paid. Nothing moved on the shelf, so neither wears a goods colour:
    they share one outline chip that reads as bookkeeping beside the traded ones. */
 .tag--cost,
-.tag--settle   { background: transparent; color: var(--color-ink-2); font-weight: 500;
-                 box-shadow: inset 0 0 0 1px var(--color-rule); }
+.tag--settle   { background: transparent; color: var(--color-ink-soft); border-color: var(--color-rule-2); }
 
-.status--stock   { background: var(--color-mint); color: var(--color-ink); }
-.status--rx      { background: var(--color-lavender); color: var(--color-ink); }
-.status--pending { background: var(--color-accent-3); color: var(--color-ink); }
-.status--out     { background: var(--veil-ink); color: var(--color-muted); }
-/* Running out, not out. Coral because it is the one thing on this row that
-   needs doing today — the same accent the alert chip above the table wears. */
-.status--low     { background: var(--tint-coral); color: var(--color-coral-ink); font-weight: 600; }
+/* สถานะของสินค้าเป็นป้ายพื้นจางชุดเดียวกับ tag ไม่ใช่พื้นสีสดทึบ — สีสดทึบ
+   ในคอลัมน์เดียวของตารางยาว ๆ อ่านเป็นแถบไฟกระพริบ และดังกว่าปุ่มหลักในหน้า
+
+   สีตามกฎเดียวกับหน้าร้าน ซึ่งเป็นกฎที่พนักงานอ่านสถานะจากสีได้โดยไม่ต้องอ่านคำ:
+     เขียว = ผ่าน/มีของ · มินต์ = งานที่กำลังเดินอยู่ · เทา = จบแล้ว/ปิดแล้ว
+     เหลือง = รออะไรอยู่ · แดง = ต้องทำอะไรสักอย่างวันนี้
+   เดิม "รอต้นทุน" กับ "ต่ำกว่าขั้นต่ำ" อยู่ในตระกูลเหลืองด้วยกัน ต่างกันแค่
+   ทึบกับจาง · พอทั้งคู่กลายเป็นป้ายพื้นจาง จึงต้องแยกออกจากกันจริง ๆ:
+   "รอ" คือคอยได้ "ต่ำกว่าขั้นต่ำ" คือของกำลังจะหมดหน้าร้าน */
+.status--stock   { background: var(--tint-pear);  color: var(--color-accent-deep); border-color: var(--edge-pear); }
+.status--rx      { background: var(--tint-lav);   color: var(--color-lav-ink);   border-color: var(--edge-lav); }
+.status--pending { background: var(--tint-coral); color: var(--color-coral-ink); border-color: var(--edge-coral); }
+.status--out     { background: var(--color-paper-2); color: var(--color-muted); border-color: var(--color-rule-2); }
+/* Running out, not out — the one thing on this row that needs doing today.
+   แดงอยู่นอกพาเลตต์โดยตั้งใจ เพราะมันต้องดังกว่าสีแบรนด์ตอนมีอะไรผิด */
+.status--low     { background: var(--color-error-dim); color: #9F0F33; border-color: var(--edge-error); font-weight: 700; }
 
 .eye {
   display: inline-grid;
@@ -691,25 +893,32 @@ code {
 
 .notice {
   padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--color-rule-2);
   border-radius: var(--radius-input);
   background: var(--color-paper-2);
   font-size: var(--text-sm);
   margin-block-end: var(--space-md);
 }
 
-.notice--error { color: var(--color-error); background: var(--color-error-dim); }
-.notice--ok { color: var(--color-mint-ink); background: var(--tint-mint); }
+/* สีของ "สำเร็จ" คือเขียวแบรนด์ ไม่ใช่ฟ้า — ในระบบที่เขียวแปลว่าผ่านอยู่แล้ว
+   การให้ข้อความสำเร็จเป็นฟ้าทำให้มันอ่านเป็น "ข้อมูล" ไม่ใช่ "เรียบร้อย" */
+.notice--error { color: var(--color-error); background: var(--color-error-dim); border-color: var(--edge-error); }
+.notice--ok { color: var(--color-accent-deep); background: var(--tint-pear); border-color: var(--edge-pear); }
 
+/* จอว่างคือคำเชิญให้ลงมือ ไม่ใช่กล่องเทาที่รายงานว่าไม่มีอะไร — เดิมเป็นแผ่นเทา
+   ชิดซ้าย ซึ่งบนหน้าที่เหลือแต่ความว่างอ่านเป็น "โหลดไม่ขึ้น" มากกว่า "ไม่มีของ"
+   จัดกลางตาม `.empty` ของหน้าร้าน · ต่างกันตรงที่นี่มีปุ่มต่อท้ายได้ (ล้างตัวกรอง)
+   ซึ่งเป็นทางออกจากจอว่างที่คนมาถึงตรงนี้ต้องการจริง ๆ */
 .empty {
   display: grid;
-  justify-items: start;
+  justify-items: center;
+  text-align: center;
   gap: var(--space-sm);
-  padding: var(--space-xl) var(--space-md);
-  border-radius: var(--radius-card);
-  background: var(--color-paper-2);
+  padding: 46px var(--space-md);
+  color: var(--color-muted);
 }
 
-.empty__title { font-size: var(--text-base); font-weight: 700; }
+.empty__title { font-size: var(--text-base); font-weight: 700; color: var(--color-ink); }
 .empty__body { font-size: var(--text-sm); color: var(--color-muted); max-width: 60ch; }
 
 .skeleton {
@@ -739,8 +948,9 @@ code {
   display: grid;
   gap: var(--space-md);
   padding: var(--space-xl);
+  border: 1px solid var(--color-rule-2);
   border-radius: var(--radius-card);
-  background: var(--color-paper-2);
+  background: var(--color-card);
   box-shadow: var(--shadow-lift);
 }
 
@@ -773,7 +983,7 @@ code {
   max-block-size: min(90dvh, 60rem);
   inline-size: min(46rem, calc(100vw - 2rem));
   border-radius: var(--radius-card);
-  background: var(--color-paper);
+  background: var(--color-card);
   color: var(--color-ink);
   box-shadow: var(--shadow-lift);
   overflow-y: auto;
@@ -802,7 +1012,7 @@ code {
   z-index: var(--z-sticky);
   padding-block: var(--space-sm);
   margin-block-start: calc(var(--space-lg) * -1);
-  background: var(--color-paper);
+  background: var(--color-card);
 }
 
 .drawer__eyebrow { font-family: var(--font-label); font-size: var(--text-xs); color: var(--color-muted); }
@@ -810,11 +1020,13 @@ code {
 
 .drawer__section { display: grid; gap: var(--space-sm); }
 
+/* หัวข้อกลุ่มในฟอร์ม — ไทยธรรมดา ไม่ใช่ตัวพิมพ์ใหญ่ฟอนต์ตัวเลขยืดตัว
+   (เหตุผลเดียวกับ .field__label ด้านบน) */
 .drawer__legend {
-  font-family: var(--font-label);
-  font-size: var(--text-xs);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
   color: var(--color-muted);
 }
 
@@ -886,7 +1098,7 @@ code {
   inline-size: min(36rem, 100%);
   display: grid;
   border-radius: var(--radius-card);
-  background: var(--color-paper);
+  background: var(--color-card);
   box-shadow: var(--shadow-lift);
   overflow: hidden;
 }
@@ -989,7 +1201,7 @@ kbd {
   gap: var(--space-lg);
   padding: var(--space-lg);
   border-radius: var(--radius-card);
-  background: var(--color-paper);
+  background: var(--color-card);
   box-shadow: var(--shadow-lift);
 }
 
@@ -1011,10 +1223,10 @@ kbd {
 
 .pform__legend {
   padding-inline: var(--space-xs);
-  font-family: var(--font-label);
-  font-size: var(--text-xs);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
   color: var(--color-muted);
 }
 
@@ -1184,9 +1396,10 @@ kbd {
   gap: var(--space-sm);
   align-content: start;
   padding: var(--space-lg);
-  border: 1px solid var(--color-rule);
+  border: 1px solid var(--color-rule-2);
   border-radius: var(--radius-card);
-  background: var(--color-paper-2);
+  background: var(--color-card);
+  box-shadow: var(--shadow-rest);
 }
 
 .panel__head {
@@ -1283,7 +1496,7 @@ kbd {
   position: sticky;
   inset-block-start: 0;
   z-index: var(--z-sticky);
-  background: var(--color-paper-2);
+  background: var(--color-card);
 }
 
 /* --------------------------------------------------------------------------
@@ -1366,9 +1579,10 @@ kbd {
   display: grid;
   gap: var(--space-md);
   padding: var(--space-lg);
-  border: 1px solid var(--color-rule);
+  border: 1px solid var(--color-rule-2);
   border-radius: var(--radius-card);
-  background: var(--color-paper-2);
+  background: var(--color-card);
+  box-shadow: var(--shadow-rest);
   margin-block-end: var(--space-lg);
 }
 
@@ -1410,7 +1624,6 @@ kbd {
 .picked__what { display: grid; }
 .picked__name { font-weight: 600; }
 .picked__sub {
-  font-family: var(--font-label);
   font-size: var(--text-xs);
   color: var(--color-muted);
 }
@@ -1441,7 +1654,6 @@ kbd {
 }
 
 .lensfacts__label {
-  font-family: var(--font-label);
   font-size: var(--text-xs);
   color: var(--color-muted);
 }
@@ -1499,7 +1711,6 @@ kbd {
 }
 
 .pager__count, .pager__only {
-  font-family: var(--font-label);
   font-size: var(--text-xs);
   color: var(--color-muted);
   font-variant-numeric: tabular-nums;
@@ -1554,7 +1765,7 @@ kbd {
   /* Two tiles across rather than four squeezed ones. */
   .readout { grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); }
   .readout__cell { min-block-size: 6.5rem; }
-  .readout__figure { font-size: var(--text-md); }
+  .readout__figure { font-size: var(--text-lg); }
 
   /* One chart at a time; two side by side stops being readable well before the
      grid's own 28rem minimum would have wrapped them. */
@@ -1650,7 +1861,6 @@ kbd {
 .typecard__name { font-weight: 700; }
 
 .typecard__asks {
-  font-family: var(--font-label);
   font-size: var(--text-xs);
   line-height: 1.5;
   color: var(--color-muted);
@@ -1731,10 +1941,10 @@ kbd {
 .whois__what { display: grid; }
 
 .whois__label {
-  font-family: var(--font-label);
   font-size: var(--text-xs);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
   color: var(--color-muted);
 }
 
@@ -1869,7 +2079,6 @@ kbd {
 .sortbar { display: flex; align-items: center; gap: var(--space-2xs); flex-wrap: wrap; }
 
 .sortbar__label {
-  font-family: var(--font-label);
   font-size: var(--text-xs);
   color: var(--color-muted);
   white-space: nowrap;
@@ -1945,7 +2154,6 @@ kbd {
 }
 
 .wizard__name {
-  font-family: var(--font-label);
   font-size: var(--text-xs);
   color: var(--color-muted);
   white-space: nowrap;
@@ -1997,10 +2205,10 @@ kbd {
 }
 
 .lensfilter__label {
-  font-family: var(--font-label);
-  font-size: var(--text-xs);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
   color: var(--color-lav-ink);
   white-space: nowrap;
 }
@@ -2061,15 +2269,29 @@ kbd {
   gap: var(--space-xs);
   padding: var(--space-sm) var(--space-sm) var(--space-sm) var(--space-md);
   border-radius: var(--radius-card);
-  background: var(--color-paper);
+  background: var(--color-card);
   box-shadow: var(--shadow-lift);
   border: 1px solid var(--color-rule-2);
   pointer-events: auto;
 }
 
-/* A drawn edge as well as a tint, so the kind of message reads without colour. */
-.toast--ok { background: var(--tint-mint); border-color: transparent; border-inline-start: 4px solid var(--color-mint); }
-.toast--error { background: var(--color-error-dim); border-color: transparent; border-inline-start: 4px solid var(--color-error); }
+/* สองช่องซ้อนกันในภาชนะเดียว — ช่องเสียงเบากับช่องเสียงดังต้องแยกกันเพราะ
+   `aria-live` ตั้งได้ทีละภาชนะ แต่บนจอมันคือกองเดียวต่อกันลงมา */
+.toaster__lane {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+.toaster__lane:empty { display: none; }
+
+/* A drawn edge as well as a tint, so the kind of message reads without colour.
+   สี่โทน สี่สีคนละวง — เขียวแบรนด์คือสำเร็จ ฟ้าคือให้รู้ไว้ อำพันคือมีอะไรค้าง
+   แดงคือไม่สำเร็จ · ขอบซ้ายหนา 4px ทำหน้าที่เดียวกับสีพื้น เผื่อจอที่สีเพี้ยน
+   และเผื่อคนที่แยกเขียวกับแดงไม่ออก ซึ่งเป็นคนละเรื่องกับไอคอนที่แยกรูปทรงไว้แล้ว */
+.toast--success { background: var(--tint-pear); border-color: transparent; border-inline-start: 4px solid var(--color-accent); }
+.toast--info    { background: var(--tint-mint); border-color: transparent; border-inline-start: 4px solid var(--color-mint); }
+.toast--warning { background: var(--tint-coral); border-color: transparent; border-inline-start: 4px solid var(--color-accent-3); }
+.toast--error   { background: var(--color-error-dim); border-color: transparent; border-inline-start: 4px solid var(--color-error); }
 
 @media (prefers-reduced-motion: no-preference) {
   .toast { animation: toast-in var(--dur-short) var(--ease-out); }
@@ -2089,14 +2311,15 @@ kbd {
 }
 
 .toast__mark .icon { inline-size: 1.25rem; block-size: 1.25rem; }
-.toast--ok .toast__mark { color: var(--color-mint-ink); }
-.toast--error .toast__mark { color: var(--color-error); }
+.toast--success .toast__mark { color: var(--color-cyan-ink); }
+.toast--info    .toast__mark { color: var(--color-mint-ink); }
+.toast--warning .toast__mark { color: var(--color-coral-ink); }
+.toast--error   .toast__mark { color: var(--color-error); }
 
 .toast__body { display: grid; gap: var(--space-3xs); min-width: 0; flex: 1; }
 .toast__text { font-weight: 600; font-size: var(--text-sm); }
 
 .toast__detail {
-  font-family: var(--font-label);
   font-size: var(--text-xs);
   color: var(--color-ink-2);
   font-variant-numeric: tabular-nums;
@@ -2197,7 +2420,7 @@ kbd {
   overscroll-behavior: contain;
   border: 1px solid var(--color-rule-2);
   border-radius: var(--radius-sm);
-  background: var(--color-paper);
+  background: var(--color-card);
   box-shadow: var(--shadow-lift);
 }
 
@@ -2257,7 +2480,7 @@ kbd {
   overflow-y: auto;
   border: 1px solid var(--color-rule-2);
   border-radius: var(--radius-card);
-  background: var(--color-paper);
+  background: var(--color-card);
   box-shadow: var(--shadow-lift);
 }
 
@@ -2388,10 +2611,10 @@ kbd {
 }
 
 .basket__head {
-  font-family: var(--font-label);
-  font-size: var(--text-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
   color: var(--color-muted);
 }
 
@@ -2451,7 +2674,6 @@ kbd {
 .basketbar__what { flex: 1; display: grid; gap: 1px; font-weight: 600; min-inline-size: 12rem; }
 
 .basketbar__names {
-  font-family: var(--font-label);
   font-size: var(--text-xs);
   font-weight: 400;
   color: var(--color-muted);
@@ -2560,7 +2782,6 @@ kbd {
 
 .lotline__label,
 .lotline__sub {
-  font-family: var(--font-label);
   font-size: var(--text-xs);
   color: var(--color-muted);
 }
@@ -2582,19 +2803,68 @@ kbd {
 .lotline--spent .inline-edit__value { color: var(--color-muted); }
 
 /* ── ชิปที่ถูกเลือก ─────────────────────────────────────────────────────────
-   สีเน้นเปลี่ยนจากสีอ่อน (ธีมเดิม) เป็นครามเข้ม ตัวหนังสือบนชิปที่ถูกเลือกจึง
-   ต้องเป็นสีกระดาษ ไม่ใช่หมึก · รวมถึงตัวเลขนับที่อยู่ในชิปเดียวกัน ซึ่งเมื่อก่อน
-   ตั้งเป็นหมึกไว้เพราะพื้นหลังตอนนั้นสว่าง
+   เขียวจางขอบเขียว ตัวหนังสือเขียวเข้ม — รูปทรงเดียวกับแท็บที่เปิดอยู่ของหน้าร้าน
+   เดิมเป็นพื้นเขียวเข้มทึบตัวหนังสือขาว ซึ่งดังเท่าปุ่มหลัก ทั้งที่มันแปลว่า
+   "กำลังดูอันนี้อยู่" ไม่ใช่ "กดตรงนี้" · แถวชิปหกเจ็ดตัวที่มีตัวหนึ่งเป็นแผ่นทึบ
+   ดึงสายตาไปจากปุ่มที่เป็นงานจริงในหน้า
    ประกาศไว้ท้ายไฟล์เพื่อให้ชนะลำดับแน่นอน ไม่ต้องไปแข่งความจำเพาะกับกฎอื่น */
 .chip[aria-current="true"],
 .chip[aria-pressed="true"] {
-  background: var(--color-accent);
-  color: var(--color-accent-ink);
+  background: var(--tint-pear);
+  border-color: var(--edge-pear);
+  color: var(--color-accent-deep);
   font-weight: 600;
 }
 
 .chip[aria-current="true"] .chip__count,
 .chip[aria-pressed="true"] .chip__count {
-  color: var(--color-accent-ink);
-  opacity: 0.85;
+  color: var(--color-accent-deep);
+  opacity: 0.75;
 }
+
+/* ---- กล่องยืนยันตัวเลขเงิน (ใบสั่งตัด RX) ----
+ *
+ * ช่องกรอกในตารางกดพลาดง่ายบนแท็บเล็ต · กล่องนี้โชว์ "ค่าเดิม → ค่าใหม่" ให้เห็น
+ * ทั้งคู่ก่อนบันทึก เพราะตัวเลขใหม่ตัวเดียวลอย ๆ ไม่บอกว่ากำลังจะทับอะไรอยู่
+ */
+.confirm-money { display: grid; gap: 16px; }
+
+.confirm-money__pair {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  padding: 16px 18px;
+  border-radius: 12px;
+  background: var(--color-paper-2);
+}
+
+.confirm-money__cap {
+  margin: 0 0 2px;
+  font-size: 12px;
+  color: var(--color-muted);
+}
+
+/* ค่าเดิมขีดฆ่า — บอกว่ากำลังจะหายไป โดยไม่ต้องเขียนคำว่า "เดิม" ซ้ำในหัว */
+.confirm-money__old {
+  margin: 0;
+  font-size: 18px;
+  color: var(--color-muted);
+  text-decoration: line-through;
+  font-variant-numeric: tabular-nums;
+}
+
+.confirm-money__new {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--color-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.confirm-money__arrow { font-size: 20px; color: var(--color-muted); }
+
+.confirm-money__note { margin: 0; font-size: 13px; color: var(--color-muted); line-height: 1.6; }
+
+/* ปุ่มยืนยันอยู่ขวาสุด ตามลำดับที่ปุ่มอันตรายควรอยู่ไกลจากนิ้วที่กำลังกดรัว */
+.confirm-money .chips { justify-content: flex-end; }

@@ -492,13 +492,16 @@ export default function ProductsScreen({
             setCreating(false);
             reload();
             setOpenRow(id);
-            toast.ok({
+            const said = {
               text: lot ? "เพิ่มสินค้าและรับเข้าคลังแล้ว" : "เพิ่มสินค้าใหม่แล้ว",
               detail: lot
                 ? `${count(lot.quantity)} ชิ้น` +
                   (lot.awaitingCost ? " · ยังไม่มีต้นทุน รอใบกำกับ" : "")
                 : undefined,
-            });
+            };
+            /* ล็อตที่ยังไม่มีต้นทุนคือใบกำกับที่ต้องตามเก็บ — งานยังไม่จบ */
+            if (lot?.awaitingCost) toast.warning(said);
+            else toast.success(said);
           }}
         />
       ) : null}
@@ -535,6 +538,7 @@ function Row({
   onChanged: () => void;
 }) {
   const actor = useActor();
+  const toast = useToast();
   const mayEdit = can.editCatalog(actor);
   const rx = row.isCustomMade;
   const pending = row.lotsMissingCost > 0;
@@ -562,6 +566,7 @@ function Row({
         is_custom_made: row.isCustomMade,
         ...field,
       });
+      toast.success({ text: `แก้ ${row.sku} แล้ว`, detail: row.name });
       onChanged();
     } catch (e) {
       throw new Error(ApiError.is(e) ? e.message : wrong);

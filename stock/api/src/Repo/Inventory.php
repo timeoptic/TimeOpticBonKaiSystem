@@ -83,6 +83,7 @@ final class Inventory
         'SCRAP'    => 'ตัดเสีย',
         /* ตัวเลขเงินที่กรอกทีหลัง ไม่ใช่ของที่เคลื่อน — จำนวนเป็นศูนย์เสมอ */
         'COST'     => 'ลงต้นทุน RX',
+        'PRICE'    => 'แก้ราคาขาย',
         'SETTLE'   => 'รับเงินจากสาขา',
     ];
 
@@ -546,7 +547,7 @@ final class Inventory
         array_push($args, self::PER_PAGE, $offset);
 
         $rows = Db::all(
-            "SELECT g.id, g.action_type, g.quantity, g.unit_cost, g.reference_doc, g.notes,
+            "SELECT g.id, g.action_type, g.quantity, g.unit_cost, g.sale_price, g.reference_doc, g.notes,
                     g.created_at, g.created_by, g.created_by_kind,
                     g.product_id, p.sku, p.name AS product_name,
                     p.base_selling_price,
@@ -1155,6 +1156,11 @@ final class Inventory
             'actionLabel'   => self::ACTION_LABEL[$r['action_type']] ?? $r['action_type'],
             'quantity'      => (int) $r['quantity'],
             'unitCost'      => $money && $r['unit_cost'] !== null ? (float) $r['unit_cost'] : null,
+            /* ราคาขายไม่ถูกกั้นด้วย $money ต่างจากต้นทุน — คนขายต้องเห็นราคาขาย
+               เพราะการบอกราคาคือหน้าที่ของเขา ส่วนราคาที่ซื้อมาไม่ใช่ */
+            'salePrice'     => isset($r['sale_price']) && $r['sale_price'] !== null
+                ? (float) $r['sale_price']
+                : null,
             'referenceDoc'  => $r['reference_doc'],
             'notes'         => $r['notes'],
             'createdAt'     => $r['created_at'],

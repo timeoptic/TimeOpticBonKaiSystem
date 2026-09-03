@@ -30,6 +30,8 @@ require __DIR__ . '/services/StockClient.php';
 require __DIR__ . '/services/CaseStock.php';
 require __DIR__ . '/services/Migrate.php';
 require __DIR__ . '/services/Scheduler.php';
+require __DIR__ . '/services/SalesReport.php';
+require __DIR__ . '/services/CaseSource.php';
 
 Db::configure($config['db']);
 /* โหลดโค้ดฝั่งคลังจาก stock/ แล้วยกคอนเนกชันกับ session ให้ใช้ตัวเดียวกัน
@@ -43,7 +45,8 @@ StockClient::configure($config['stock_api']);
 foreach ([
     'auth', 'meta', 'dashboard', 'cases', 'customers', 'employees', 'prescriptions',
     'stock', 'locations', 'suppliers', 'orders', 'payments',
-    'workflow', 'processes', 'uploads', 'sales', 'pos', 'cashflow', 'reports', 'bookings', 'settings',
+    'workflow', 'processes', 'uploads', 'sales', 'pos', 'cashflow', 'reports', 'analytics',
+    'bookings', 'settings',
 ] as $group) {
     require __DIR__ . "/routes/$group.php";
 }

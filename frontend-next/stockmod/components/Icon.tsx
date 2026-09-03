@@ -68,6 +68,20 @@ export const IconAlert = () => (
 );
 
 /**
+ * มีอะไรให้รู้ไว้ แต่ไม่มีอะไรต้องทำ
+ *
+ * วงกลม ไม่ใช่สามเหลี่ยม — ต้องดูออกจาก IconAlert ได้ตั้งแต่ยังไม่ทันเห็นสี
+ * ข้อความน้ำเงินกับข้อความเหลืองเป็นข้อความเดียวกันสำหรับคนที่แยกสองสีนี้ไม่ออก
+ */
+export const IconInfo = () => (
+  <Frame>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 11v5.5" />
+    <path d="M12 7.5h.01" />
+  </Frame>
+);
+
+/**
  * The basket — goods waiting to leave together.
  *
  * A trolley rather than a bag: this is a shop's back room, and the thing being

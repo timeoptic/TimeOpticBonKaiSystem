@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { can, useActor, WorkHead } from "@/stockmod/components/AppShell";
+import { useToast } from "@/stockmod/components/Toaster";
 import Paginator from "@/stockmod/components/Paginator";
 import SortHead, { SortBar, useSort } from "@/stockmod/components/SortHead";
 import LotEditDialog from "@/stockmod/components/LotEditDialog";
@@ -66,6 +67,7 @@ export default function LotsPage() {
    * must be at least one. They were not receiving anything.
    */
   const [editing, setEditing] = useState<LotRow | null>(null);
+  const toast = useToast();
 
   const money$ = can.seeCost(useActor());
   const list = useApi<List>(
@@ -213,6 +215,7 @@ export default function LotsPage() {
           lot={editing}
           onClose={() => setEditing(null)}
           onSaved={() => {
+            toast.success({ text: `แก้ล็อต ${editing.lotNumber} แล้ว`, detail: editing.productName });
             setEditing(null);
             list.reload();
           }}

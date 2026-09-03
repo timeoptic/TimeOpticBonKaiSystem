@@ -657,6 +657,80 @@ final class Stock
     }
 
     /**
+     * คืนของที่สาขาเบิกไป กลับเข้าล็อตเดิมที่มันถูกตัดออกมา
+     *
+     * ทำงานอยู่ในทรานแซกชันที่คนเรียกเปิดไว้ — สถานะของใบเบิกกับยอดของล็อตต้อง
+     * เปลี่ยนพร้อมกันหรือไม่เปลี่ยนเลย ใบที่ยกเลิกแล้วแต่ของไม่กลับเข้าคลังคือ
+     * ของที่หายไปเฉย ๆ โดยไม่มีบรรทัดไหนอธิบาย
+     *
+     * ล็อตไหนและกี่ชิ้น อ่านจากสมุด ไม่ใช่ให้คนเรียกบอก: ของที่ตัดจาก FIFO ไป
+     * สามล็อตต้องกลับเข้าสามล็อตเดิมตามจำนวนเดิม คืนรวมเข้าล็อตเดียวจะทำให้
+     * ฐานต้นทุนของล็อตนั้นผิดไปตลอด · แถว OUT ที่ผูกกับใบเบิกใบนี้บอกครบอยู่แล้ว
+     *
+     * ล็อตค้างส่ง (`SHORT-<sku>`) ก็อยู่ในนั้นด้วย และถูกหักกลบกลับด้วยกฎเดียวกัน
+     * — มันคือล็อตที่ `initial_qty` เป็นศูนย์และยอดคงเหลือติดลบ การคืนของจึงพา
+     * มันกลับขึ้นมาที่ศูนย์พอดี ไม่ใช่กรณีพิเศษที่ต้องเขียนแยก
+     *
+     * @return list<array{lot:string,lot_id:int,quantity:int}> สิ่งที่คืนเข้าไปจริง
+     */
+    public static function undoBranchIssue(PDO $pdo, int $issueId, ?int $actor, string $note): array
+    {
+        $st = $pdo->prepare(
+            'SELECT g.lot_id, g.quantity, g.product_id, g.reference_doc, l.lot_number
+             FROM inventory_logs g
+             JOIN stock_lots l ON l.id = g.lot_id
+             WHERE g.branch_issue_id = ? AND g.action_type = \'OUT\'
+             ORDER BY g.id ASC'
+        );
+        $st->execute([$issueId]);
+        $cuts = $st->fetchAll();
+
+        $back = [];
+        foreach ($cuts as $cut) {
+            $qty = -(int) $cut['quantity'];
+            if ($qty <= 0) {
+                continue;
+            }
+
+            // ไม่คืนเกินกว่าที่ล็อตนั้นเคยรับเข้า — เหมือนเส้นทางคืนของปกติ
+            $put = $pdo->prepare(
+                'UPDATE stock_lots SET remaining_qty = remaining_qty + ?
+                 WHERE id = ? AND remaining_qty + ? <= initial_qty'
+            );
+            $put->execute([$qty, $cut['lot_id'], $qty]);
+            if ($put->rowCount() !== 1) {
+                throw ApiError::conflict('over_return', 'คืนแล้วยอดจะเกินจำนวนที่เคยรับเข้าล็อตนี้', [
+                    'lot' => $cut['lot_number'],
+                ]);
+            }
+
+            $pdo->prepare(
+                'INSERT INTO inventory_logs
+                   (product_id, lot_id, action_type, quantity, unit_cost,
+                    reference_doc, notes, created_by, created_by_kind,
+                    branch_issue_id, created_at)
+                 SELECT product_id, id, \'RETURN\', ?, cost_per_unit, ?, ?, ?, \'user\', ?, NOW()
+                 FROM stock_lots WHERE id = ?'
+            )->execute([
+                $qty,
+                $cut['reference_doc'],
+                $note,
+                $actor,
+                $issueId,
+                $cut['lot_id'],
+            ]);
+
+            $back[] = [
+                'lot'      => (string) $cut['lot_number'],
+                'lot_id'   => (int) $cut['lot_id'],
+                'quantity' => $qty,
+            ];
+        }
+
+        return $back;
+    }
+
+    /**
      * The branch brought the goods back, so the receivable never becomes money.
      * 'cancelled' rather than 'written_off': nobody failed to pay.
      */

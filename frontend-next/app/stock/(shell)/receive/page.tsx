@@ -123,13 +123,17 @@ export default function ReceivePage() {
 
       // Said in the corner and the form closed, rather than a green panel left
       // sitting above the last delivery while the next box waits.
-      toast.ok({
+      const said = {
         text: `รับ ${created.name} เข้าคลังแล้ว`,
         detail:
           `${count(created.quantity)} ชิ้น` +
           (created.awaitingCost ? " · ยังไม่มีต้นทุน รอใบกำกับ" : ""),
         link: { href: "/lots", label: "ดูล็อตทั้งหมด" },
-      });
+      };
+      /* ล็อตที่ไม่มีต้นทุนคือใบกำกับที่ยังต้องตามเก็บ — งานยังไม่จบ ต่างจากล็อต
+         ที่ลงต้นทุนครบซึ่งจบแล้วจริง ๆ · โทนเป็นตัวบอกความต่างนี้ */
+      if (created.awaitingCost) toast.warning(said);
+      else toast.success(said);
     } catch (err) {
       setProblem(ApiError.is(err) ? err.message : "รับของไม่สำเร็จ");
     } finally {
@@ -359,7 +363,7 @@ export default function ReceivePage() {
           onSaved={() => {
             setFixingLot(false);
             setRefresh((n) => n + 1);
-            toast.ok({ text: "แก้ไขล็อตแล้ว", link: { href: "/lots", label: "ดูล็อตทั้งหมด" } });
+            toast.success({ text: "แก้ไขล็อตแล้ว", link: { href: "/lots", label: "ดูล็อตทั้งหมด" } });
             // Re-read the defaults so the line above stops saying "ยังไม่มีต้นทุน".
             const picked = product;
             setProduct(null);
@@ -390,13 +394,15 @@ export default function ReceivePage() {
             // The dialog took the first lot in as part of the same save, so the
             // receipt is reported here exactly as one entered on this form is.
             if (created) {
-              toast.ok({
+              const said = {
                 text: `เพิ่ม ${created.name} และรับเข้าคลังแล้ว`,
                 detail:
                   `${count(created.quantity)} ชิ้น` +
                   (created.awaitingCost ? " · ยังไม่มีต้นทุน รอใบกำกับ" : ""),
                 link: { href: "/lots", label: "ดูล็อตทั้งหมด" },
-              });
+              };
+              if (created.awaitingCost) toast.warning(said);
+              else toast.success(said);
             }
             setRefresh((n) => n + 1);
 
@@ -408,7 +414,7 @@ export default function ReceivePage() {
             try {
               const { product: fresh } = await api.get<{ product: ProductRow }>(`/products/${id}`);
               if (fresh.isCustomMade) {
-                toast.ok({
+                toast.info({
                   text: `เพิ่ม ${fresh.name} เข้าแคตตาล็อกแล้ว`,
                   detail: "สินค้าสั่งตัดไม่เก็บเป็นล็อต — ไม่ต้องรับเข้าคลัง สั่งกับผู้ขายที่หน้าใบสั่งตัด RX",
                   link: { href: "/rx", label: "ไปหน้าใบสั่งตัด RX" },

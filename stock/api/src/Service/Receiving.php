@@ -44,7 +44,10 @@ final class Receiving
             Roles::require(Roles::enterRxCost($role), 'กรอกต้นทุน');
         }
 
-        $p = Db::one('SELECT id, sku, name, is_custom_made FROM products WHERE sku = ?', [$sku]);
+        /* ดึง base_selling_price มาด้วย เพื่อบันทึก "ราคาขาย ณ ตอนรับเข้า" ลงสมุด
+           — เพิ่มเลนส์ใหม่จากหน้าขายแล้วเปิดหน้าความเคลื่อนไหวดู เดิมเห็นแต่ของเข้า
+           ไม่เห็นว่าตั้งขายเท่าไร ทั้งที่คนขายเพิ่งพิมพ์ตัวเลขนั้นไปเมื่อกี้ */
+        $p = Db::one('SELECT id, sku, name, is_custom_made, base_selling_price FROM products WHERE sku = ?', [$sku]);
         if ($p === null) {
             throw ApiError::unknownSku($sku);
         }
@@ -81,7 +84,13 @@ final class Receiving
             );
         }
 
-        $lotId = Db::tx(static function (PDO $pdo) use ($p, $lotNumber, $supplierId, $cost, $qty, $received, $expiry, $note, $actorId): int {
+        /* 0.00 ในคอลัมน์แปลว่า "ยังไม่ได้ตั้งราคา" ไม่ใช่ "ขายฟรี" — เก็บ NULL
+           ลงสมุดแทน ไม่งั้นแถวจะอ่านว่าตั้งขายศูนย์บาทซึ่งไม่จริง */
+        $salePrice = ($p['base_selling_price'] ?? null) !== null && (float) $p['base_selling_price'] > 0
+            ? (string) $p['base_selling_price']
+            : null;
+
+        $lotId = Db::tx(static function (PDO $pdo) use ($p, $lotNumber, $supplierId, $cost, $salePrice, $qty, $received, $expiry, $note, $actorId): int {
             $pdo->prepare(
                 'INSERT INTO stock_lots
                    (lot_number, product_id, supplier_id, cost_per_unit, initial_qty,
@@ -96,11 +105,11 @@ final class Receiving
 
             $pdo->prepare(
                 'INSERT INTO inventory_logs
-                   (product_id, lot_id, action_type, quantity, unit_cost,
+                   (product_id, lot_id, action_type, quantity, unit_cost, sale_price,
                     reference_doc, notes, created_by, created_by_kind, created_at)
-                 VALUES (?, ?, \'IN\', ?, ?, ?, ?, ?, \'user\', NOW())'
+                 VALUES (?, ?, \'IN\', ?, ?, ?, ?, ?, ?, \'user\', NOW())'
             )->execute([
-                $p['id'], $id, $qty, $cost, 'GRN-' . $lotNumber,
+                $p['id'], $id, $qty, $cost, $salePrice, 'GRN-' . $lotNumber,
                 "รับเข้าคลัง {$lotNumber}", $actorId,
             ]);
 

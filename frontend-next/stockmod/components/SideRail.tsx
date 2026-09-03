@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { Actor } from "@/stockmod/lib/api";
@@ -156,6 +157,38 @@ const isCurrent = (pathname: string, href: string) => {
   return href === "/" ? here === there : here === there || here.startsWith(`${there}/`);
 };
 
+/**
+ * หน้าที่ไม่มีปุ่มของตัวเองในเมนู แต่ยังต้องมีชื่อกับไอคอนบนแถบบนและหัวเพจ
+ *
+ * ไม่ได้อยู่ในเมนูเพราะเดินเข้ามาจากหน้าอื่นเสมอ (กดจากสินค้า กดจากล็อต) —
+ * เมนูที่ยาวขึ้นสองรายการเพื่อทางเข้าที่ไม่มีใครใช้คือเมนูที่หาอะไรเจอยากขึ้น
+ */
+const UNLISTED: Item[] = [
+  { href: "/receive", label: "รับของเข้า", hint: "", icon: ICON.in },
+  { href: "/lots", label: "ล็อตและต้นทุน", hint: "", icon: ICON.layers },
+];
+
+/**
+ * หมวดที่กำลังยืนอยู่ — แถบบนใช้เป็นชื่อหน้า หัวเพจใช้เป็นไอคอน
+ *
+ * เลือกรายการที่ href ยาวที่สุดที่ยังตรง เพื่อให้หน้าลูก (`/products/…`) ได้
+ * หมวดของตัวเอง ไม่ใช่หมวดแรกที่บังเอิญขึ้นต้นเหมือนกัน · ไอคอนจึงมาจากเมนูเสมอ
+ * และไม่มีวันเป็นคนละตัวกับปุ่มที่ไฮไลต์อยู่ทางซ้าย
+ */
+export function sectionFor(pathname: string): Item | null {
+  let best: Item | null = null;
+  let bestLen = -1;
+  for (const item of [...DAILY, ...STOCK, ...MONEY, ...ADMIN, ...UNLISTED]) {
+    if (!isCurrent(pathname, item.href)) continue;
+    const len = trimSlash(stockHref(item.href)).length;
+    if (len > bestLen) {
+      best = item;
+      bestLen = len;
+    }
+  }
+  return best;
+}
+
 function Group({ title, items, pathname }: { title: string; items: Item[]; pathname: string }) {
   return (
     <div className="rail-group">
@@ -179,22 +212,34 @@ function Group({ title, items, pathname }: { title: string; items: Item[]; pathn
   );
 }
 
-export default function SideRail({
-  actor,
-  onSignOut,
-}: {
-  actor: Actor;
-  onSignOut: () => void;
-}) {
+/** วันเวลาท้ายแถบข้าง — ที่เดียวกับหน้าร้าน อัปเดตทุกครึ่งนาที */
+function Clock() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 30000);
+    return () => clearInterval(t);
+  }, []);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return (
+    <span suppressHydrationWarning>
+      {`${p(now.getDate())}/${p(now.getMonth() + 1)}/${now.getFullYear()}  ${p(now.getHours())}:${p(now.getMinutes())}`}
+    </span>
+  );
+}
+
+export default function SideRail({ actor }: { actor: Actor }) {
   const pathname = usePathname();
 
   return (
     <nav className="rail-nav" aria-label="ส่วนหลักของระบบ">
       <Link href="/stock" className="rail-brand">
-        <span className="rail-brand__dot" aria-hidden="true" />
+        <span className="rail-brand__mark" aria-hidden="true">{ICON.boxes}</span>
+        {/* ชื่อแบรนด์อยู่บรรทัดบน ชื่อฝั่งอยู่บรรทัดล่าง — เรียงเหมือนหน้าร้าน
+            (TimeOptic / ระบบจัดการร้านแว่นตา) เพราะแบรนด์คือของที่เหมือนกัน
+            ส่วนบรรทัดล่างคือสิ่งที่บอกว่ากำลังยืนอยู่ฝั่งไหนของระบบเดียวกัน */}
         <span className="rail-brand__text">
-          คลังและต้นทุน
-          <span className="rail-brand__sub">optical</span>
+          <span className="rail-brand__name">TimeOptic</span>
+          <span className="rail-brand__sub">คลังและต้นทุน</span>
         </span>
       </Link>
 
@@ -235,14 +280,10 @@ export default function SideRail({
         ) : null}
       </div>
 
+      {/* ชื่อผู้ใช้กับปุ่มออกย้ายไปมุมขวาบนแล้ว ท้ายแถบข้างเหลือวันเวลา
+          เหมือน `.sidebar-foot` ของหน้าร้าน */}
       <div className="rail-foot">
-        <div className="rail-who">
-          <span className="rail-who__name">{actor.displayName}</span>
-          <span className="rail-who__role">{actor.roleLabel}</span>
-        </div>
-        <button type="button" onClick={onSignOut} className="btn btn--quiet btn--small btn--block">
-          ออกจากระบบ
-        </button>
+        <Clock />
       </div>
     </nav>
   );

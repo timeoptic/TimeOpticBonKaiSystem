@@ -15,18 +15,28 @@
  * The origin comes from NEXT_PUBLIC_API_ORIGIN, the same variable the
  * storefront half reads, so there is one origin to set rather than one each.
  *
- * With nothing configured, it is assumed to be on the same machine that served
- * this page, on port 8095. That is what makes the shop LAN work without anyone
- * editing a config file: the till opens http://192.168.1.108:3010 and its API
- * calls go to http://192.168.1.108:8095 by themselves. Hard-coding localhost
- * would send every other device looking for an API on its own machine.
+ * Set but EMPTY means the API answers on the same origin as the page, so the
+ * calls go out as relative paths. That is the shape a reverse proxy in front of
+ * both halves needs - gateway.mjs behind a tunnel, or Apache in production -
+ * where port 8095 is not reachable from outside at all. It matches what the
+ * storefront half already does in lib/apiClient.js, which reads the same
+ * variable and falls back to `''`. An empty value therefore cannot be treated
+ * as "nothing configured": `if (origin)` sent every one of these calls to a
+ * port the visitor's browser could not open, and every stock screen failed
+ * while the pages themselves loaded fine.
+ *
+ * With nothing configured AT ALL, it is assumed to be on the same machine that
+ * served this page, on port 8095. That is what makes the shop LAN work without
+ * anyone editing a config file: the till opens http://192.168.1.108:3010 and
+ * its API calls go to http://192.168.1.108:8095 by themselves. Hard-coding
+ * localhost would send every other device looking for an API on its own machine.
  *
  * Computed per call rather than once at import, because this module is also
  * evaluated during server rendering where there is no window to ask.
  */
 function apiBase(): string {
   const origin = process.env.NEXT_PUBLIC_API_ORIGIN;
-  if (origin) return `${origin}/stock-api`;
+  if (origin !== undefined) return `${origin}/stock-api`;
   if (typeof window === "undefined") return "http://localhost:8095/stock-api";
   return `${window.location.protocol}//${window.location.hostname}:8095/stock-api`;
 }
@@ -68,11 +78,11 @@ export class ApiError extends Error {
   }
 }
 
-async function call<T>(path: string, init?: RequestInit): Promise<T> {
+async function call<T>(base: string, path: string, init?: RequestInit): Promise<T> {
   let res: Response;
 
   try {
-    res = await fetch(`${apiBase()}${path}`, {
+    res = await fetch(`${base}${path}`, {
       ...init,
       // Without this the PHP session cookie is dropped on every cross-origin
       // request and the API answers 401 to a user who is signed in.
@@ -110,9 +120,9 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  get: <T>(path: string) => call<T>(path),
+  get: <T>(path: string) => call<T>(apiBase(), path),
   post: <T>(path: string, body?: unknown) =>
-    call<T>(path, { method: "POST", body: JSON.stringify(body ?? {}) }),
+    call<T>(apiBase(), path, { method: "POST", body: JSON.stringify(body ?? {}) }),
 };
 
 /* ------------------------------------------------------------------ types */
@@ -245,6 +255,8 @@ export type MovementRow = {
   productName: string | null;
   /** Catalogue price now, not what it sold for — see the note on the API side. */
   basePrice: number | null;
+  /** ราคาขาย ณ ตอนที่เกิดรายการนี้ — ต่างจาก basePrice ที่เป็นราคาปัจจุบันของสินค้า */
+  salePrice: number | null;
   lotNumber: string | null;
 };
 
@@ -290,6 +302,38 @@ export type SettlementSummary = {
   monthCount: number;
   monthAmount: number;
   monthProfit: number;
+};
+
+/**
+ * One RX order, as the order book reports it.
+ *
+ * The prescription rides on the order rather than on the product: the shop
+ * stocks six made-to-order lens *models*, and every job cut from one of them
+ * has its own power. See `011_rx_order_details.sql` for why that moved.
+ */
+export type RxOrderRow = {
+  id: number;
+  sku: string;
+  name: string;
+  referenceDoc: string | null;
+  createdAt: string;
+  actorName: string | null;
+  note: string | null;
+  unitCost: number | null;
+  /**
+   * ต้นทุนยังไม่ถูกลงหรือยัง — มาจาก API ตรง ๆ ไม่ใช่เดาจาก `unitCost === null`
+   *
+   * `unitCost` เป็น null ได้สองความหมาย: "ยังไม่ได้ลง" กับ "ลงแล้วแต่บทบาทนี้
+   * ไม่มีสิทธิ์เห็น" · เดาจาก null เฉย ๆ ทำให้พนักงานคลังเห็นทุกแถวเป็น
+   * "รอฝ่ายบัญชี" ทั้งที่บัญชีลงครบแล้ว
+   */
+  awaitingCost: boolean;
+  salePrice: number | null;
+  eyeSide: "left" | "right" | null;
+  sph: number | null;
+  cyl: number | null;
+  axis: number | null;
+  add: string | null;
 };
 
 /**

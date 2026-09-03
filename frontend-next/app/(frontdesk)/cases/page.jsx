@@ -46,6 +46,14 @@ const VIEWS = [
   ['list', 'ลิสต์', 'clipboard'],
 ];
 
+/**
+ * ขอเคสมาทีเดียวให้ครบ — ฝั่ง API เพดานอยู่ที่ 5,000
+ *
+ * กระดานกรองและนับในเบราว์เซอร์ทั้งหมด (ดูหัวไฟล์) ตัวเลขบนชิปจึงถูกต้องได้
+ * ก็ต่อเมื่อโหลดมาครบ · ร้านนี้มีเคสที่ยังทำไม่จบราว 1,200 เคส
+ */
+const BOARD_LIMIT = 3000;
+
 /** the two books of work, plus everything at once */
 const CLIENTS = [
   ['', 'ทั้งหมด', null],
@@ -206,12 +214,19 @@ function CaseBoardInner() {
       q: q.trim(),
       rush: rushOnly ? 1 : '',
       closed: showDone ? 1 : '',
-      limit: 500,
+      /* ขอมาให้ครบทุกเคสที่ยังทำไม่จบ ไม่ใช่ 500 ใบแรก
+         ชิปนับจำนวนจากแถวที่โหลดมา (ตั้งใจ ดูหัวไฟล์) — ถ้าโหลดมาไม่ครบ ตัวเลข
+         บนชิปจะผิด ไม่ใช่แค่รายการขาด · ตอนข้อมูลจริงเข้ามาใหม่ ๆ ชิป SightFirst
+         ขึ้น 9 ทั้งที่ของจริงมี 200 เพราะ 500 ใบแรกไม่มีของ SightFirst อยู่ในนั้น */
+      limit: BOARD_LIMIT,
     }),
     [q, rushOnly, showDone]
   );
 
   const all = rows || [];
+  /* โหลดมาเต็มเพดานพอดี = อาจมีมากกว่านี้ที่ไม่ได้มา · เตือนไว้ เพราะตัวเลข
+     ที่ผิดแบบดูน่าเชื่อ แย่กว่าตัวเลขที่บอกว่าตัวเองไม่ครบ */
+  const truncated = all.length >= BOARD_LIMIT;
   const shown = useMemo(() => {
     const pick = (CLIENTS.find(([v]) => v === client) || [])[2];
     return all.filter((c) => (!pick || pick(c))
@@ -259,6 +274,16 @@ function CaseBoardInner() {
           </button>
         ))}
       </div>
+
+      {/* ตัวเลขบนชิปนับจากแถวที่โหลดมา — ถ้าโหลดมาไม่ครบ ตัวเลขก็ผิด
+          บอกออกไปตรง ๆ ดีกว่าปล่อยให้อ่านตัวเลขที่ผิดแบบดูน่าเชื่อ */}
+      {truncated ? (
+        <div className="report-note warn no-print">
+          <b>แสดงได้ {all.length.toLocaleString('th-TH')} เคสเท่านั้น</b> — ยังมีเคสที่ยังทำไม่จบมากกว่านี้
+          และตัวเลขบนปุ่มด้านบนจึงยังไม่ครบ · ใช้ช่องค้นหาหรือตัวกรองขั้นตอน
+          เพื่อดูเคสที่ต้องการ
+        </div>
+      ) : null}
 
       <div className="board-filters">
         <div className="bf-row">

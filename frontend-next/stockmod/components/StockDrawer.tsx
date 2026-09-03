@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { api, ApiError, type ProductDetail } from "@/stockmod/lib/api";
 import { can, useActor } from "./AppShell";
+import { useToast } from "./Toaster";
 import ProductForm from "./ProductForm";
 import LensDetail from "./LensDetail";
 import { IconClose, IconTrash } from "./Icon";
@@ -42,10 +43,12 @@ export default function StockDrawer({
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const toast = useToast();
 
   async function removeProduct() {
     try {
       await api.post(`/products/${productId}/delete`);
+      toast.success({ text: `ลบสินค้า ${detail?.sku ?? ""} แล้ว`, detail: detail?.name });
       onChanged();
       ref.current?.close();
     } catch (e) {
@@ -111,6 +114,7 @@ export default function StockDrawer({
               onCancel={() => setEditing(false)}
               onSaved={() => {
                 setEditing(false);
+                toast.success({ text: `แก้สินค้า ${detail.sku} แล้ว`, detail: detail.name });
                 load();
                 onChanged();
               }}
@@ -329,6 +333,7 @@ type Lot = ProductDetail["lots"][number];
  */
 function LotRow({ lot, money: showCost, onDone }: { lot: Lot; money: boolean; onDone: () => void }) {
   const actor = useActor();
+  const toast = useToast();
   const [open, setOpen] = useState(false);
   const [qty, setQty] = useState(String(lot.remainingQty));
   const [cost, setCost] = useState(lot.costPerUnit === null ? "" : String(lot.costPerUnit));
@@ -362,6 +367,16 @@ function LotRow({ lot, money: showCost, onDone }: { lot: Lot; money: boolean; on
       }
       await api.post(`/lots/${lot.id}/update`, body);
       setOpen(false);
+      /* ยอดที่ต่างจากเดิมคือการปรับสต็อก ไม่ใช่การแก้ป้าย — มันลง ADJUST ในสมุด
+         และเปลี่ยนของที่นับได้จริงบนชั้น คนกดควรเห็นตัวเลขที่เพิ่งเปลี่ยน */
+      if (Number(qty) !== lot.remainingQty) {
+        toast.warning({
+          text: `แก้ยอดล็อต ${lot.lotNumber} เป็น ${count(Number(qty))} ชิ้น`,
+          detail: `จากเดิม ${count(lot.remainingQty)} ชิ้น — ลง ADJUST ในสมุดแล้ว`,
+        });
+      } else {
+        toast.success({ text: `แก้ล็อต ${lot.lotNumber} แล้ว` });
+      }
       onDone();
     } catch (e) {
       setProblem(ApiError.is(e) ? e.message : "แก้ไขไม่สำเร็จ");
@@ -375,6 +390,7 @@ function LotRow({ lot, money: showCost, onDone }: { lot: Lot; money: boolean; on
     setProblem(null);
     try {
       await api.post(`/lots/${lot.id}/delete`);
+      toast.success({ text: `ลบล็อต ${lot.lotNumber} แล้ว` });
       onDone();
     } catch (e) {
       setProblem(ApiError.is(e) ? e.message : "ลบไม่สำเร็จ");

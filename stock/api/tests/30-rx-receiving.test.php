@@ -501,3 +501,231 @@ test('ต้นทุนจากผู้ขายไม่ถูกส่ง�
         eq($hidden['salePrice'], 9500.0, 'แต่ราคาขายยังเห็นได้ — ใช้ขายของ');
     });
 });
+
+group('แก้ไขใบสั่งตัด RX ที่เปิดไปแล้ว');
+
+/** ใบสั่งหนึ่งใบ ที่เทสต์ข้างล่างนี้เอาไปแก้ไปลบ */
+function anRxOrder(array $over = []): array
+{
+    return Rx::order(['sku' => customSku(), 'reference_doc' => doc('RX-EDIT')] + $over, Roles::OWNER, 1);
+}
+
+/** แถวของใบนี้ตามที่สมุดใบสั่งรายงาน — null ถ้าไม่อยู่ในสมุดแล้ว */
+function rxRow(int $id): ?array
+{
+    foreach (Rx::orders(null, false, 1, 200, true)['rows'] as $r) {
+        if ($r['id'] === $id) {
+            return $r;
+        }
+    }
+    return null;
+}
+
+test('แก้ค่าสายตา หมายเหตุ และเลขใบสั่ง ของใบที่เปิดไปแล้วได้', function () {
+    withRollback(function () {
+        $o = anRxOrder(['eye_side' => 'left', 'sph' => '-2.00']);
+        $ref = doc('RX-NEW');
+
+        Rx::edit((int) $o['id'], [
+            'reference_doc' => $ref,
+            'eye_side' => 'right',
+            'sph'  => '-2.25',
+            'cyl'  => '-0.50',
+            'axis' => '180',
+            'add'  => '+2.00',
+            'note' => 'อ่านใบสั่งผิดข้าง แก้แล้ว',
+        ], Roles::SALES, 1);
+
+        $r = rxRow((int) $o['id']);
+        eq($r['referenceDoc'], $ref, 'เลขใบสั่ง');
+        eq($r['eyeSide'], 'right', 'ข้างตา');
+        eq($r['sph'], -2.25, 'SPH');
+        eq($r['cyl'], -0.5, 'CYL');
+        eq($r['axis'], 180, 'AXIS');
+        eq($r['add'], '+2.00', 'ADD');
+        eq($r['note'], 'อ่านใบสั่งผิดข้าง แก้แล้ว', 'หมายเหตุ');
+    });
+});
+
+test('ล้างค่าสายตาที่เคยกรอกผิดให้ว่างได้ ไม่ใช่แก้ทับได้อย่างเดียว', function () {
+    withRollback(function () {
+        $o = anRxOrder(['eye_side' => 'left', 'sph' => '-2.00', 'cyl' => '-1.00', 'axis' => '90']);
+
+        Rx::edit((int) $o['id'], [
+            'eye_side' => '', 'sph' => '', 'cyl' => '', 'axis' => '', 'add' => '',
+        ], Roles::OWNER, 1);
+
+        $r = rxRow((int) $o['id']);
+        eq($r['eyeSide'], null, 'ข้างตาต้องกลับไปว่าง');
+        eq($r['sph'], null, 'SPH ต้องกลับไปว่าง');
+        eq($r['axis'], null, 'AXIS ต้องกลับไปว่าง');
+    });
+});
+
+test('แก้ราคาขายจากหน้าแก้ไข ยังลงบรรทัด PRICE ในสมุดเหมือนเดิม', function () {
+    withRollback(function () {
+        $o = anRxOrder(['sale_price' => '9500']);
+
+        Rx::edit((int) $o['id'], ['sale_price' => '10200'], Roles::SALES, 1);
+
+        eq(rxRow((int) $o['id'])['salePrice'], 10200.0, 'ราคาขายใหม่');
+
+        $price = Db::all(
+            "SELECT * FROM inventory_logs WHERE reference_doc = ? AND action_type = 'PRICE'",
+            [$o['referenceDoc']],
+        );
+        eq(count($price), 1, 'ต้องมีบรรทัด PRICE หนึ่งบรรทัด');
+        ok(
+            str_contains((string) $price[0]['notes'], '9500') && str_contains((string) $price[0]['notes'], '10200'),
+            'บรรทัดนั้นต้องบอกว่าจากเท่าไรเป็นเท่าไร — ได้: ' . $price[0]['notes'],
+        );
+    });
+});
+
+test('ราคาขายที่ไม่ได้เปลี่ยน ไม่ลงบรรทัด PRICE ซ้ำ', function () {
+    withRollback(function () {
+        $o = anRxOrder(['sale_price' => '9500']);
+
+        Rx::edit((int) $o['id'], ['sale_price' => '9500', 'note' => 'แก้แต่หมายเหตุ'], Roles::OWNER, 1);
+
+        eq(
+            (int) Db::value(
+                "SELECT COUNT(*) FROM inventory_logs WHERE reference_doc = ? AND action_type = 'PRICE'",
+                [$o['referenceDoc']],
+            ),
+            0,
+            'ไม่ควรมีบรรทัด PRICE เลย',
+        );
+    });
+});
+
+test('ค่าสายตาที่ผิดรูปแบบถูกปฏิเสธตอนแก้ เหมือนตอนเปิดใบ', function () {
+    withRollback(function () {
+        $o = anRxOrder();
+        throwsReason(
+            'bad_axis',
+            fn() => Rx::edit((int) $o['id'], ['axis' => '200'], Roles::OWNER, 1),
+            'AXIS เกิน 180',
+        );
+        throwsReason(
+            'bad_rx',
+            fn() => Rx::edit((int) $o['id'], ['sph' => 'ลบสอง'], Roles::OWNER, 1),
+            'SPH ที่ไม่ใช่ตัวเลข',
+        );
+    });
+});
+
+test('ต้นทุนแก้ผ่านหน้าแก้ไขไม่ได้ — ยังเป็นทางของฝ่ายบัญชีทางเดียว', function () {
+    withRollback(function () {
+        $o = anRxOrder();
+        Rx::edit((int) $o['id'], ['unit_cost' => '1'], Roles::SALES, 1);
+        eq(rxRow((int) $o['id'])['awaitingCost'], true, 'ต้นทุนต้องยังว่างอยู่');
+    });
+});
+
+group('ลบและยกเลิกใบสั่งตัด RX');
+
+test('ใบที่ยังไม่มีต้นทุนและยังไม่ตั้งราคา ลบทิ้งได้จริง', function () {
+    withRollback(function () {
+        $o = anRxOrder();
+        $id = (int) $o['id'];
+
+        eq(Rx::remove($id, [], Roles::SALES, 1)['mode'], 'deleted', 'ต้องเป็นการลบจริง');
+
+        eq((int) Db::value('SELECT COUNT(*) FROM inventory_logs WHERE id = ?', [$id]), 0, 'แถวในสมุดต้องหาย');
+        eq((int) Db::value('SELECT COUNT(*) FROM rx_orders WHERE log_id = ?', [$id]), 0, 'ค่าสายตาต้องหายตาม');
+    });
+});
+
+test('ใบที่ตั้งราคาขายแล้ว ลบไม่ได้ — ยกเลิกแทน และแถวเดิมยังอยู่', function () {
+    withRollback(function () {
+        $o = anRxOrder(['sale_price' => '9500']);
+        $id = (int) $o['id'];
+
+        $out = Rx::remove($id, ['note' => 'ลูกค้ายกเลิกงาน'], Roles::OWNER, 1);
+        eq($out['mode'], 'cancelled', 'ต้องเป็นการยกเลิก ไม่ใช่ลบ');
+
+        eq((int) Db::value('SELECT COUNT(*) FROM inventory_logs WHERE id = ?', [$id]), 1, 'แถวเดิมต้องยังอยู่');
+
+        $rx = Db::one('SELECT * FROM rx_orders WHERE log_id = ?', [$id]);
+        neq($rx['cancelled_at'], null, 'ต้องถูกปั๊มว่ายกเลิกเมื่อไหร่');
+        eq($rx['cancelled_note'], 'ลูกค้ายกเลิกงาน', 'เหตุผลต้องถูกเก็บ');
+    });
+});
+
+test('ยกเลิกแล้วมีบรรทัด RETURN คู่กันในสมุด อ้างเลขใบเดิม', function () {
+    withRollback(function () {
+        $o = anRxOrder(['unit_cost' => '4780']);
+
+        Rx::remove((int) $o['id'], ['note' => 'สั่งซ้ำสองใบ'], Roles::OWNER, 1);
+
+        $ret = Db::all(
+            "SELECT * FROM inventory_logs WHERE reference_doc = ? AND action_type = 'RETURN'",
+            [$o['referenceDoc']],
+        );
+        eq(count($ret), 1, 'ต้องมีบรรทัด RETURN หนึ่งบรรทัด');
+        eq((int) $ret[0]['quantity'], 1, 'กลับทิศกับ RX_ORDER ที่เป็น -1');
+        eq($ret[0]['lot_id'], null, 'ใบสั่งตัดไม่เคยผูกล็อต การยกเลิกก็ไม่ผูก');
+    });
+});
+
+test('ยกเลิกต้องบอกเหตุผล', function () {
+    withRollback(function () {
+        $o = anRxOrder(['sale_price' => '9500']);
+        throwsReason(
+            'missing_field',
+            fn() => Rx::remove((int) $o['id'], [], Roles::OWNER, 1),
+            'ยกเลิกโดยไม่บอกเหตุผล',
+        );
+    });
+});
+
+test('พนักงานหน้าร้านยกเลิกใบที่ลงต้นทุนแล้วไม่ได้ — มีตัวเลขเงินผูกอยู่', function () {
+    withRollback(function () {
+        $o = anRxOrder(['unit_cost' => '4780']);
+        throwsReason(
+            'forbidden',
+            fn() => Rx::remove((int) $o['id'], ['note' => 'ขอลบ'], Roles::SALES, 1),
+            'staff ยกเลิกใบที่มีต้นทุน',
+        );
+    });
+});
+
+test('ยกเลิกซ้ำไม่ได้', function () {
+    withRollback(function () {
+        $o = anRxOrder(['sale_price' => '9500']);
+        Rx::remove((int) $o['id'], ['note' => 'ครั้งแรก'], Roles::OWNER, 1);
+        throwsReason(
+            'already_cancelled',
+            fn() => Rx::remove((int) $o['id'], ['note' => 'ครั้งที่สอง'], Roles::OWNER, 1),
+            'ยกเลิกใบเดิมซ้ำ',
+        );
+    });
+});
+
+test('ใบที่ยกเลิกแล้วหายจากสมุดใบสั่ง และไม่ค้างอยู่ในคิวรอลงต้นทุน', function () {
+    withRollback(function () {
+        $live = anRxOrder();
+        $dead = anRxOrder(['sale_price' => '9500']);
+
+        Rx::remove((int) $dead['id'], ['note' => 'ยกเลิก'], Roles::OWNER, 1);
+
+        ok(rxRow((int) $live['id']) !== null, 'ใบที่ยังเดินอยู่ต้องยังเห็น');
+        eq(rxRow((int) $dead['id']), null, 'ใบที่ยกเลิกต้องหายจากสมุด');
+
+        $waiting = array_column(Rx::awaitingCost(), 'id');
+        ok(!in_array((int) $dead['id'], $waiting, true), 'ใบที่ยกเลิกต้องไม่รออยู่ในคิวลงต้นทุน');
+    });
+});
+
+test('ใบที่ยกเลิกแล้ว แก้ไขต่อไม่ได้', function () {
+    withRollback(function () {
+        $o = anRxOrder(['sale_price' => '9500']);
+        Rx::remove((int) $o['id'], ['note' => 'ยกเลิก'], Roles::OWNER, 1);
+        throwsReason(
+            'already_cancelled',
+            fn() => Rx::edit((int) $o['id'], ['note' => 'ขอแก้'], Roles::OWNER, 1),
+            'แก้ใบที่ยกเลิกแล้ว',
+        );
+    });
+});

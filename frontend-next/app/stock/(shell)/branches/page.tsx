@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { can, useActor, WorkHead } from "@/stockmod/components/AppShell";
+import { useToast } from "@/stockmod/components/Toaster";
 import SortHead, { SortBar, sortRows, useSort } from "@/stockmod/components/SortHead";
 import { IconTrash } from "@/stockmod/components/Icon";
 import Select from "@/stockmod/components/Select";
@@ -259,6 +260,7 @@ function BranchForm({
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const toast = useToast();
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
@@ -272,6 +274,10 @@ function BranchForm({
         is_active: active,
       };
       await api.post(branch ? `/branches/${branch.id}/update` : "/branches", body);
+      toast.success({
+        text: branch ? `แก้สาขา ${body.name} แล้ว` : `เพิ่มสาขา ${body.name} แล้ว`,
+        detail: active ? undefined : "สาขานี้ปิดใช้งานอยู่ — เบิกของใหม่ไม่ได้",
+      });
       onSaved();
     } catch (e) {
       setProblem(ApiError.is(e) ? e.message : "บันทึกไม่สำเร็จ");
@@ -293,6 +299,7 @@ function BranchForm({
     setProblem(null);
     try {
       await api.post(`/branches/${branch.id}/delete`);
+      toast.success({ text: `ลบสาขา ${branch.name} แล้ว` });
       onSaved();
     } catch (e) {
       setProblem(ApiError.is(e) ? e.message : "ลบไม่สำเร็จ");

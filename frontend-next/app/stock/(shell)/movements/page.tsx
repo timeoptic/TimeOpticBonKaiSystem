@@ -40,9 +40,10 @@ const TYPES = [
   { key: "RETURN", label: "รับคืน", countKey: "RETURN" },
   { key: "ADJUST", label: "ปรับยอด", countKey: "ADJUST" },
   { key: "RX_ORDER", label: "สั่งตัด RX", countKey: "RX_ORDER" },
-  /* สองชนิดท้ายไม่ใช่การเคลื่อนของ แต่เป็นตัวเลขเงินที่มีคนกรอกในวันนั้น —
+  /* สามชนิดท้ายไม่ใช่การเคลื่อนของ แต่เป็นตัวเลขเงินที่มีคนกรอกในวันนั้น —
      จำนวนเป็นศูนย์เสมอ และวันที่คือวันที่กรอก ไม่ใช่วันที่ของออกไป */
   { key: "COST", label: "ลงต้นทุน RX", countKey: "COST" },
+  { key: "PRICE", label: "แก้ราคาขาย", countKey: "PRICE" },
   { key: "SETTLE", label: "รับเงินจากสาขา", countKey: "SETTLE" },
 ] as const;
 
@@ -334,13 +335,30 @@ function Row({ row: r, money: showMoney }: { row: MovementRow; money: boolean })
               หมายถึงอย่างอื่น จึงต้องเขียนกำกับไว้ ไม่ใช่ปล่อยให้หัวคอลัมน์โกหก */}
           {r.actionType === "SETTLE" ? <span className="grid__sub">เงินที่รับทั้งใบ</span> : null}
           {r.actionType === "COST" ? <span className="grid__sub">ต้นทุนที่เพิ่งกรอก</span> : null}
-          {r.basePrice === null ? null : (
-            <span className="grid__sub">ขาย {money(r.basePrice)}</span>
+          {r.actionType === "PRICE" ? <span className="grid__sub">ราคาขายที่เพิ่งแก้</span> : null}
+          {/* ราคาขายบนแถวคือราคา "ณ ตอนนั้น" ถ้ามีบันทึกไว้ — ไม่ใช่ราคาปัจจุบัน
+              ของสินค้า · ราคาของงานสั่งตัดเปลี่ยนได้ทุกบิล การเอาราคาปัจจุบันมา
+              แปะทุกแถวย้อนหลังทำให้สมุดเล่าเรื่องผิด */}
+          {r.salePrice !== null ? (
+            <span className="grid__sub">ขาย {money(r.salePrice)}</span>
+          ) : r.basePrice === null ? null : (
+            <span className="grid__sub grid__muted">ขายตอนนี้ {money(r.basePrice)}</span>
           )}
         </td>
       ) : (
         <td className="grid__num">
-          {r.basePrice === null ? <span className="grid__muted">—</span> : money(r.basePrice)}
+          {r.salePrice !== null ? (
+            <span className="grid__name">{money(r.salePrice)}</span>
+          ) : r.basePrice === null ? (
+            <span className="grid__muted">—</span>
+          ) : (
+            /* ไม่มีราคาบันทึกไว้บนแถวนี้ ก็บอกตรง ๆ ว่าที่เห็นคือราคาปัจจุบัน
+               ไม่ใช่ราคาที่ขายไปจริงตอนนั้น */
+            <>
+              <span className="grid__muted">{money(r.basePrice)}</span>
+              <span className="grid__sub">ราคาตอนนี้</span>
+            </>
+          )}
         </td>
       )}
 

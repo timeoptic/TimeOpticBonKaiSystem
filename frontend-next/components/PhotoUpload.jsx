@@ -11,9 +11,12 @@ export function PhotoUpload({ caseId, kind = 'other', centeringId = null, paymen
   const { ok, err } = useToast();
   const confirm = useConfirm();
   const inputRef = useRef(null);
+  /* ขอเฉพาะไฟล์ชนิดเดียวกับที่กล่องนี้อัปโหลด ไม่ใช่ทุกไฟล์ของเคส
+     ก่อนหน้านี้ไม่ได้ส่ง kind ไป กล่อง "รูปภาพการวัด" จึงแสดงสลิปโอนเงินที่
+     แนบไว้ในขั้นชำระเงินปนมาด้วย ทั้งที่ตอนอัปโหลดแยก kind ไว้แล้ว */
   const { data: photos, loading, reload } = useAsync(
-    () => api.get('/api/uploads', { case_id: caseId }),
-    [caseId]
+    () => api.get('/api/uploads', { case_id: caseId, kind }),
+    [caseId, kind]
   );
 
   const pick = () => inputRef.current?.click();

@@ -27,11 +27,29 @@ type Report = {
   branch: {
     issuedCount: number;
     issuedCost: number | null;
+    /* สามค่านี้ API ยังส่งมาเหมือนเดิม แต่หน้านี้ไม่ได้วาดแล้ว — การ์ด
+       "รับเงินจากสาขา" กับ "กำไรจากสาขา" ถูกแทนด้วยยอดขายและกำไรของทั้งร้าน
+       เงินฝั่งสาขาอ่านได้ครบที่หน้าค้างรับ ซึ่งเป็นที่ของมันอยู่แล้ว */
     settledCount: number;
     settledAmount: number | null;
     settledProfit: number | null;
     owingCount: number;
     owingCost: number | null;
+  };
+  /**
+   * ยอดขายและกำไรเท่าที่สมุดคลังรู้ — บรรทัดที่ของออกจากคลังและมีราคาขายติดอยู่
+   *
+   * `costed`/`uncosted` นับเป็นใบ ไม่ใช่เป็นชิ้น และ `margin` ถูกคิดจากยอดขาย
+   * ของใบที่รู้ต้นทุนเท่านั้น — หน้าจอจึงต้องเขียนฐานนั้นไว้ข้างเปอร์เซ็นต์เสมอ
+   * ดูเหตุผลเต็มที่ `Reports::sales` ฝั่ง API
+   */
+  sales: {
+    bills: number;
+    costed: number;
+    uncosted: number;
+    revenue: number | null;
+    profit: number | null;
+    margin: number | null;
   };
 };
 
@@ -133,6 +151,7 @@ export default function DashboardPage() {
 
   const report = useApi<Report>(`/report${qs({ from, to })}`);
   const movers = useApi<Movers>(`/movers${qs({ from, to, idle })}`);
+
 
   function useRange(next: { from: string; to: string }, key: string) {
     setFrom(next.from);
@@ -288,19 +307,47 @@ export default function DashboardPage() {
           </section>
 
           {money$ ? (
-            <section className="readout" aria-label="สรุปเงินจากสาขาในช่วงนี้">
+            <section className="readout" aria-label="ยอดขาย กำไร และหนี้ค้างรับ">
+              {/* ยอดขายกับกำไรมาก่อนเสมอ และมาคู่กัน — ตัวเลขกำไรที่ไม่มียอดขาย
+                  ยืนอยู่ข้าง ๆ คือตัวเลขที่ตรวจไม่ได้ว่าสมเหตุสมผลไหม · หน้านี้มี
+                  "ต้นทุนขาย" อยู่แถวบนแล้ว สามตัวจึงครบสมการพอดี */}
               <div className="readout__cell readout__cell--mint">
-                <p className="readout__label">รับเงินจากสาขา</p>
-                <p className="readout__figure">{money(report.data.branch.settledAmount ?? 0)}</p>
+                <p className="readout__label">ยอดขาย</p>
+                <p className="readout__figure">{money(report.data.sales.revenue ?? 0)}</p>
                 <p className="readout__note">
-                  บาท จาก {count(report.data.branch.settledCount)} รายการ · ตามวันที่เงินเข้า
+                  {report.data.sales.bills === 0
+                    ? "บาท · ยังไม่มีรายการที่บันทึกราคาขายไว้ในช่วงนี้"
+                    : `บาท จาก ${count(report.data.sales.bills)} รายการที่บันทึกราคาขายไว้`}
                 </p>
               </div>
+
               <div className="readout__cell readout__cell--pear">
-                <p className="readout__label">กำไรจากสาขา</p>
-                <p className="readout__figure">{money(report.data.branch.settledProfit ?? 0)}</p>
-                <p className="readout__note">บาท · เฉพาะรายการที่เงินเข้าแล้วในช่วงนี้</p>
+                <p className="readout__label">กำไร</p>
+                <p className="readout__figure">
+                  {report.data.sales.costed > 0 ? money(report.data.sales.profit ?? 0) : "—"}
+                </p>
+                <p className="readout__note">
+                  {report.data.sales.costed === 0 ? (
+                    report.data.sales.bills === 0
+                      ? "ยังไม่มีรายการให้คิด"
+                      : "ยังไม่มีรายการไหนที่รู้ทั้งราคาขายและต้นทุน — คิดกำไรไม่ได้"
+                  ) : (
+                    <>
+                      {/* ฐานที่คิดต้องเดินคู่กับเปอร์เซ็นต์เสมอ — เปอร์เซ็นต์ที่ลอย
+                          อยู่ข้างยอดขายจะถูกอ่านว่าเป็นอัตรากำไรของทั้งก้อน ทั้งที่
+                          มันคิดจากยอดขายของเฉพาะใบที่รู้ต้นทุน */}
+                      บาท · จาก {count(report.data.sales.costed)} รายการที่รู้ต้นทุน
+                      {report.data.sales.margin !== null
+                        ? ` (อัตรากำไร ${report.data.sales.margin}%)`
+                        : ""}
+                      {report.data.sales.uncosted > 0
+                        ? ` · อีก ${count(report.data.sales.uncosted)} รายการยังไม่รู้ต้นทุน จึงไม่ได้นับ`
+                        : ""}
+                    </>
+                  )}
+                </p>
               </div>
+
               <div className="readout__cell readout__cell--coral">
                 <p className="readout__label">ค้างรับอยู่ตอนนี้</p>
                 <p

@@ -53,7 +53,18 @@ GET('/api/cases', function (array $req) {
     }
 
     $sqlWhere = $where ? 'WHERE ' . implode(' AND ', $where) : '';
-    $args[] = min(int_or($q['limit'] ?? null, 300), 1000);
+    /**
+     * เพดานเดิมคือ 1,000 ซึ่งพอตอนที่ฐานมีข้อมูลตัวอย่างไม่กี่สิบเคส
+     *
+     * พอข้อมูลจริงเข้ามา เคสที่ยังทำไม่จบมี 1,164 เคส — กระดานงานจึงตัดทิ้ง 164 เคส
+     * เงียบ ๆ และที่แย่กว่านั้นคือ **ตัวเลขบนชิปผิด** เพราะหน้าเว็บนับจากแถวที่ได้มา
+     * ไม่ใช่จากของจริง (ชิป SightFirst ขึ้น 9 ทั้งที่มี 200)
+     *
+     * 5,000 คือเพดานที่เผื่อไว้ให้โตได้อีกหลายปี · ไม่ปล่อยไร้เพดานเพราะพารามิเตอร์
+     * ที่ผู้ใช้ส่งมาได้ไม่ควรสั่งให้ฐานคายทุกแถวที่มี
+     */
+    $limit = min(int_or($q['limit'] ?? null, 300), 5000);
+    $args[] = $limit;
 
     /* เคสที่จบแล้วไม่มีคิวให้เรียง — สิ่งที่อยากเห็นก่อนคือ "เพิ่งปิดไปเมื่อไหร่" */
     $order = $closedOnly
@@ -174,8 +185,15 @@ POST('/api/cases', function (array $req) {
     }
     $code   = str_or($body['case_code'] ?? null) ?: nextCode('CASE', 'cases', 'case_code');
     $status = str_or($body['status'] ?? null, 'reception') ?: 'reception';
+    /* ที่มาของลูกค้า — อ่านจากโน้ตให้ ถ้าคนกรอกไม่ได้เลือกมาเอง
+       ค่าที่คนเลือกชนะเสมอ: ระบบเดาจากข้อความ ส่วนคนที่นั่งอยู่ตรงนั้นรู้จริง */
+    $category = CaseSource::valid($body['customer_category'] ?? null)
+        ?? CaseSource::detect(
+            $body['notes'] ?? null,
+            $body['referral_source'] ?? null
+        )['sourceType'];
 
-    $id = Db::tx(function (Tx $q) use ($body, $cid, $code, $status) {
+    $id = Db::tx(function (Tx $q) use ($body, $cid, $code, $status, $category) {
         $r = $q->run(
             'INSERT INTO cases (case_code, customer_id, status, is_new_customer, is_rush,
                priority_note, received_by, recorded_by, referral_source, referral_note,
@@ -192,7 +210,7 @@ POST('/api/cases', function (array $req) {
             nul($body['referral_source'] ?? null),
             nul($body['referral_note'] ?? null),
             nul($body['case_type'] ?? null),
-            nul($body['customer_category'] ?? null),
+            $category,
             nul($body['reception_note'] ?? null),
             nul($body['notes'] ?? null)
         );
@@ -214,6 +232,15 @@ PUT('/api/cases/:id', function (array $req) {
     if (!Db::get('SELECT id FROM cases WHERE id = ?', $id)) {
         missing();
     }
+    /* แก้โน้ตแล้วประเภทตามไปด้วย · เลือกมาเองก็ใช้ของที่เลือก
+       ตรงนี้ไม่ลบเคสออนไลน์ทิ้ง แม้โน้ตจะเข้าเงื่อนไข — การกดบันทึกแล้วเคสหาย
+       ต่อหน้าอ่านยังไงก็เป็นบั๊ก · การลบเดินผ่าน api/cli/classify-cases.php
+       ซึ่งมี --dry-run และเขียนสำเนาไว้ก่อนลบ */
+    $category = CaseSource::valid($body['customer_category'] ?? null)
+        ?? CaseSource::detect(
+            $body['notes'] ?? null,
+            $body['referral_source'] ?? null
+        )['sourceType'];
     Db::run(
         'UPDATE cases SET is_rush = ?, priority_note = ?, received_by = ?,
            referral_source = ?, referral_note = ?, case_type = ?, customer_category = ?,
@@ -224,7 +251,7 @@ PUT('/api/cases/:id', function (array $req) {
         nul($body['referral_source'] ?? null),
         nul($body['referral_note'] ?? null),
         nul($body['case_type'] ?? null),
-        nul($body['customer_category'] ?? null),
+        $category,
         nul($body['reception_note'] ?? null),
         nul($body['notes'] ?? null),
         $id

@@ -370,6 +370,50 @@ Http::post('/api/rx/{id}/cost', static function (array $p): array {
     return ['order' => Rx::setCost((int) $p['id'], $body['unit_cost'] ?? null, $actor['role'], (int) $actor['id'])];
 });
 
+/**
+ * แก้ราคาขายของใบสั่งตัดที่เปิดไปแล้ว
+ *
+ * แยกเส้นจาก /cost เพราะเป็นคนละสิทธิ์และคนละกติกา: ต้นทุนลงได้ครั้งเดียวและเป็น
+ * ของแอดมิน ส่วนราคาขายตกลงกันเป็นบิล ๆ คนขายแก้เองได้ และแก้ซ้ำได้ไม่จำกัด
+ */
+Http::post('/api/rx/{id}/price', static function (array $p): array {
+    $actor = Auth::require();
+    if (!ctype_digit($p['id'])) {
+        throw ApiError::badRequest('id ต้องเป็นตัวเลข');
+    }
+    $body = Http::body();
+    return ['order' => Rx::setPrice((int) $p['id'], $body['sale_price'] ?? null, $actor['role'], (int) $actor['id'])];
+});
+
+/**
+ * แก้รายละเอียดของใบสั่งตัดที่เปิดไปแล้ว — ค่าสายตา เลขใบ หมายเหตุ ราคาขาย
+ *
+ * ต้นทุนไม่อยู่ในนี้ มันมีเส้นของตัวเองที่ /cost ด้วยเหตุผลเดิม: ลงได้ครั้งเดียว
+ * และเป็นสิทธิ์ของฝ่ายบัญชี
+ */
+Http::post('/api/rx/{id}/update', static function (array $p): array {
+    $actor = Auth::require();
+    if (!ctype_digit($p['id'])) {
+        throw ApiError::badRequest('id ต้องเป็นตัวเลข');
+    }
+    return ['order' => Rx::edit((int) $p['id'], Http::body(), $actor['role'], (int) $actor['id'])];
+});
+
+/**
+ * เอาใบสั่งตัดออก — ลบจริงถ้ายังไม่มีตัวเลขเงินผูก ยกเลิกถ้ามีแล้ว
+ *
+ * เส้นเดียวสองพฤติกรรม เพราะคนกดถามคำถามเดียว ("เอาใบนี้ออก") และคำตอบว่า
+ * ทำได้แค่ไหนเป็นเรื่องของสถานะใบ ไม่ใช่เรื่องที่หน้าจอต้องตัดสินใจก่อนยิง
+ * `mode` ในคำตอบบอกว่าเกิดอะไรขึ้นจริง
+ */
+Http::post('/api/rx/{id}/delete', static function (array $p): array {
+    $actor = Auth::require();
+    if (!ctype_digit($p['id'])) {
+        throw ApiError::badRequest('id ต้องเป็นตัวเลข');
+    }
+    return Rx::remove((int) $p['id'], Http::body(), $actor['role'], (int) $actor['id']);
+});
+
 /* -------------------------------------------------------------- receiving */
 
 Http::post('/api/lots', static function (): array {
@@ -393,7 +437,7 @@ Http::post('/api/products', static function (): array {
 
 Http::post('/api/products/{id}/update', static function (array $p) use ($numericId): array {
     $actor = Auth::require();
-    return ['product' => Catalog::updateProduct($numericId($p), Http::body(), $actor['role'])];
+    return ['product' => Catalog::updateProduct($numericId($p), Http::body(), $actor['role'], (int) $actor['id'])];
 });
 
 Http::post('/api/products/{id}/delete', static function (array $p) use ($numericId): array {
@@ -471,6 +515,31 @@ Http::post('/api/settlements/{id}/write-off', static function (array $p): array 
         throw ApiError::badRequest('id ต้องเป็นตัวเลข');
     }
     return ['issue' => Settlement::writeOff((int) $p['id'], Http::body(), $actor['role'], $actor['id'])];
+});
+
+/**
+ * แก้ป้ายบนรายการค้างรับ — สาขา ผู้รับของ วันที่เบิก หมายเหตุ
+ *
+ * สินค้ากับจำนวนไม่อยู่ในนี้ สองอย่างนั้นคือของที่ตัดออกจากล็อตไปแล้ว
+ * คีย์ผิดต้องยกเลิกแล้วเบิกใหม่ ซึ่งพาของกลับเข้าล็อตถูกใบ
+ */
+Http::post('/api/settlements/{id}/update', static function (array $p): array {
+    $actor = Auth::require();
+    if (!ctype_digit($p['id'])) {
+        throw ApiError::badRequest('id ต้องเป็นตัวเลข');
+    }
+    return ['issue' => Settlement::edit((int) $p['id'], Http::body(), $actor['role'], $actor['id'])];
+});
+
+/**
+ * สาขาเอาของมาคืน — ปิดใบ และคืนของกลับเข้าล็อตเดิมในจังหวะเดียวกัน
+ */
+Http::post('/api/settlements/{id}/cancel', static function (array $p): array {
+    $actor = Auth::require();
+    if (!ctype_digit($p['id'])) {
+        throw ApiError::badRequest('id ต้องเป็นตัวเลข');
+    }
+    return ['issue' => Settlement::cancel((int) $p['id'], Http::body(), $actor['role'], $actor['id'])];
 });
 
 /* ------------------------------------------------------------------ users */

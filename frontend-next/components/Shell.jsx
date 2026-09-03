@@ -26,9 +26,21 @@ const STOCK_APP = process.env.NEXT_PUBLIC_STOCK_APP_URL || '/stock/';
 
 export { crumbFor };
 
+/**
+ * เมนูจัดใหม่ตามการทำงานจริงของร้าน ไม่ใช่ตามโครงตาราง:
+ *   งานหน้าร้าน = สิ่งที่พนักงานแตะทุกวัน เรียงตามลำดับที่ลูกค้าเดินผ่านจริง ๆ
+ *   หลังบ้าน    = งานที่ตามหลังลูกค้ากลับบ้านไปแล้ว
+ *
+ * เดิมมีสองกลุ่มที่ทับกัน ("ขั้นตอนงาน 6 ขั้น" กับ "งานหน้าร้าน") ทำให้ "วัดสายตา"
+ * โผล่สองที่คนละความหมาย (/exam คือคิวที่รอวัด · /prescriptions คือประวัติค่าสายตา)
+ * รวมเป็นกลุ่มเดียวแล้วแยกชื่อให้ตรงกับสิ่งที่หน้านั้นเป็นจริง ๆ
+ *
+ * ธงตัวที่สามของกลุ่มคือ adminOnly · ด่านจริงอยู่ที่ `api/index.php` ซึ่งตอบ 403
+ * ให้ทุกเส้นของกลุ่มนั้น ตรงนี้แค่ไม่วาดปุ่มที่กดไปก็ถูกปฏิเสธอยู่ดี
+ */
 const NAV = [
   ['หน้าหลัก', [
-    ['🏠', 'เมนูหลัก', '/'],
+    ['🏠', 'ภาพรวม', '/'],
   ]],
   ['งานในร้าน', [
     ['📅', 'ปฏิทินจองคิว', '/bookings'],
@@ -43,24 +55,17 @@ const NAV = [
     ['🎯', 'วัด Center', '/centering'],
     ['📦', 'ส่งมอบ', '/delivery'],
   ]],
+  /* "วัดสายตา" มีสองรายการโดยตั้งใจ และไปคนละหน้า:
+       ขั้นตอนงาน → /exam          คิวเคสที่รอวัดวันนี้
+       งานหน้าร้าน → /prescriptions ประวัติค่าสายตาย้อนหลังของลูกค้า
+     กลุ่มที่มันอยู่คือสิ่งที่บอกความต่าง ไม่ใช่ชื่อ */
   ['งานหน้าร้าน', [
     ['👥', 'ลูกค้า', '/customers'],
     ['👁', 'วัดสายตา', '/prescriptions'],
     ['👓', 'ออเดอร์ตัดแว่น', '/orders'],
     ['🛍', 'ขายสินค้า', '/pos'],
-  ]],
-  /* เคยมี "สต็อกสินค้า" ชี้ไป /stock ของฝั่งนี้เอง — ตอนนี้ /stock เป็นของระบบ
-     คลังที่ย้ายเข้ามา และมีปุ่ม "คลังและต้นทุน" ในกลุ่ม "ระบบอื่น" อยู่แล้ว
-     สองรายการที่พาไปที่เดียวกันมีไว้ก็สับสนเปล่า ๆ */
-  ['คลังสินค้า', [
     ['📍', 'ตำแหน่งสินค้า', '/locations'],
-    /* ของที่หน้าร้านขายไปแล้วแต่คลังยังไม่มี — หน้านั้นเป็นของฝั่งคลัง หน้าร้าน
-       แค่มีทางเดินไปถึง เพราะคนที่เพิ่งรับออเดอร์คือคนที่รู้ว่าต้องสั่งอะไร */
-    ['🧾', 'สินค้ารอสั่ง', '/stock/backorders'],
   ]],
-  /* สองกลุ่มท้ายเป็นงานของแอดมิน — เงินของร้านและข้อมูลระบบไม่ใช่งานหน้าร้าน
-     ธงตัวที่สามของกลุ่มคือ adminOnly · ด่านจริงอยู่ที่ `api/index.php` ซึ่งตอบ 403
-     ให้ทุกเส้นของสองกลุ่มนี้ ตรงนี้แค่ไม่วาดปุ่มที่กดไปก็ถูกปฏิเสธอยู่ดี */
   ['การเงิน', [
     ['💰', 'รายรับ', '/income'],
     ['💸', 'รายจ่าย', '/expense'],
@@ -96,15 +101,21 @@ function WhoAmI() {
   if (!actor) {
     return null;
   }
+  const name = actor.displayName || actor.username || "";
+  /* อักษรย่อจากชื่อที่แสดง — ชื่อไทยไม่มีนามสกุลแยกเสมอไป จึงเอาตัวแรกของคำแรก
+     ตัวเดียว ไม่ใช่พยายามหาชื่อ-สกุลแบบฝรั่งแล้วได้ตัวอักษรมั่ว ๆ */
+  const initial = name.trim().charAt(0) || "?";
   return (
-    <span className="row" style={{ gap: 8, alignItems: "center" }}>
-      <span className="muted lbl" style={{ fontSize: 12 }}>
-        {actor.displayName || actor.username} · {actor.roleLabel}
+    <div className="whoami">
+      <span className="whoami-mark" aria-hidden="true">{initial}</span>
+      <span className="whoami-text">
+        <b>{name}</b>
+        <small>{actor.roleLabel}</small>
       </span>
-      <button type="button" className="btn btn-ghost" onClick={logout} title="ออกจากระบบ">
+      <button type="button" className="btn btn-ghost btn-sm" onClick={logout} title="ออกจากระบบ">
         ออก
       </button>
-    </span>
+    </div>
   );
 }
 
@@ -172,11 +183,11 @@ export function Shell({ children }) {
                    /stock ยังเป็นหน้าของฝั่งนี้เอง */
                 to.startsWith('/stock') ? (
                   <a key={to} href={`${to}/`}>
-                    <span className="ic"><Icon name={icon} /></span>{label}
+                    <span className="ic"><Icon name={icon} /></span><span className="lbl">{label}</span>
                   </a>
                 ) : (
-                  <Link key={to} href={to} className={isActive(to) ? 'active' : ''}>
-                    <span className="ic"><Icon name={icon} /></span>{label}
+                  <Link key={to} href={to} className={isActive(to) ? 'active' : ''} aria-current={isActive(to) ? 'page' : undefined}>
+                    <span className="ic"><Icon name={icon} /></span><span className="lbl">{label}</span>
                   </Link>
                 )
               ))}
@@ -188,10 +199,10 @@ export function Shell({ children }) {
             <>
               <div className="nav-group">ระบบอื่น</div>
               <a href={STOCK_APP}>
-                <span className="ic"><Icon name="📦" /></span>คลังและต้นทุน
+                <span className="ic"><Icon name="📦" /></span><span className="lbl">คลังและต้นทุน</span>
               </a>
               <a href="/hub/">
-                <span className="ic"><Icon name="🏠" /></span>เลือกระบบ
+                <span className="ic"><Icon name="🏠" /></span><span className="lbl">เลือกระบบ</span>
               </a>
             </>
           ) : null}
@@ -217,7 +228,6 @@ export function Shell({ children }) {
           </button>
           <div className="crumb" id="crumb">{crumb}</div>
           <div className="spacer" />
-          <Link className="btn btn-ghost" href="/"><Icon name="home" /> <span className="lbl">เมนูหลัก</span></Link>
           <WhoAmI />
         </header>
         <div className="content" id="view">{children}</div>

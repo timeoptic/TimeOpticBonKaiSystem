@@ -26,8 +26,15 @@ GET('/api/sales', function (array $req) {
     $sqlWhere = $where ? 'WHERE ' . implode(' AND ', $where) : '';
     $args[]   = min(int_or($q['limit'] ?? null, 200), 2000);
 
+    /* ชื่อสินค้าเอาจากสำเนาบนใบขายก่อนเสมอ แล้วค่อยตกไปที่คลัง
+       ใบขายเก่าที่ยังไม่มีสำเนา (ก่อน migration 022) ยังอ่านได้เหมือนเดิม
+       ส่วนใบที่มีสำเนาแล้วจะอ่านได้ต่อไปแม้สินค้ากับล็อตจะถูกลบทิ้ง —
+       ประวัติว่าลูกค้าซื้ออะไรไปไม่ควรหายไปพร้อมกับการล้างคลัง */
     return Db::all(
-        "SELECT s.*, st.product_name, st.product_type, e.employee_name,
+        "SELECT s.*,
+                COALESCE(s.product_name_snapshot, st.product_name) AS product_name,
+                COALESCE(s.product_type_snapshot, st.product_type) AS product_type,
+                e.employee_name,
                 c.first_name, c.last_name
            FROM sales s
            LEFT JOIN v_stock_lot st ON st.id = s.product_stock_id
