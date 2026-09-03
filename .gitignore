@@ -44,3 +44,16 @@ _legacy-work-assessment.md
 *.tsbuildinfo
 .next/
 out/
+
+# hash รหัสผ่านเดิมของบัญชีทดสอบ — ไฟล์กู้คืน ห้ามขึ้น git
+backup-test-account-hashes.sql
+
+# ดัมป์ฐานข้อมูล — มีชื่อ เบอร์โทร อีเมลลูกค้าจริง และ hash รหัสผ่านของ admins
+backup-*.sql
+
+# ไฟล์ที่ export ออกมาดูเอง — เป็นข้อมูลลูกค้าจริงเหมือนกัน
+/*.csv
+
+# โปรเจกต์วิดีโอ how-to — 44 MB ส่วนใหญ่เป็น node_modules กับแคช thumbnail
+# ถ้าจะเก็บ ให้เก็บเฉพาะซอร์ส ไม่ใช่ทั้งโฟลเดอร์
+videos/
