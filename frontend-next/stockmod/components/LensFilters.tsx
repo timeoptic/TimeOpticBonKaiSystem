@@ -1,25 +1,25 @@
 "use client";
 
+import { Filter, withCount } from "./FilterBar";
 import { qs, useApi } from "@/stockmod/lib/useApi";
 import type { LensOptions } from "@/stockmod/lib/api";
 
 /**
  * Narrowing a list of lenses down to the drawer worth walking to.
  *
- * Chips, not selects. There are four indexes and two or three designs in the
- * whole catalogue — few enough to show at once, and showing them is the point:
- * a dropdown hides the answer until it is opened, costs two taps instead of
- * one, and on the shop tablet drops a native picker over the table you were
- * reading. The rest of this app filters with chips for the same reasons.
+ * เคยเป็นชิป และเหตุผลเดิมคือกดครั้งเดียวแล้วเห็นคำตอบโดยไม่ต้องเปิด · พอ
+ * แคตตาล็อกโตขึ้นจนมี Index ห้าค่า ชนิดเลนส์หกแบบ Coating ห้าแบบ สามแถวนั้น
+ * กลายเป็นยี่สิบปุ่มคาดอยู่เหนือตาราง ซึ่งข้อดีข้อเดิมไม่เหลือ — ของที่เห็นได้
+ * โดยไม่ต้องเปิด มีมากเกินกว่าจะกวาดตาอ่าน
  *
- * The values come from the API's `/lens-options` — the specs the catalogue
- * actually holds. Nothing here can be typed, and nothing offered comes back
- * empty: an index the shop has never stocked never appears, so choosing one is
- * not a mistake anyone can make.
+ * ดรอปดาวน์แทน และจำนวนของแต่ละค่าย้ายไปต่อท้ายชื่อในบรรทัดของมัน จึงไม่หาย
  *
- * Shown only where there are lenses to narrow. On a list of frames these would
- * be controls that could never do anything, and a dead control is worse than a
- * missing one — it invites a tap that answers nothing.
+ * ค่าที่ให้เลือกมาจาก `/lens-options` ของ API — สเปกที่แคตตาล็อกมีอยู่จริง
+ * พิมพ์เองไม่ได้ และค่าที่ไม่มีของเลยจะไม่ถูกเสนอ เลือกผิดจนตารางว่างจึงเป็น
+ * สิ่งที่ทำไม่ได้ ไม่ใช่สิ่งที่ต้องระวัง
+ *
+ * โผล่เฉพาะตอนที่มีเลนส์ให้กรอง — บนรายการกรอบแว่น สามช่องนี้คือช่องที่กดแล้ว
+ * ไม่มีอะไรเกิดขึ้น ซึ่งแย่กว่าช่องที่ไม่มี
  */
 export default function LensFilters({
   index,
@@ -37,17 +37,17 @@ export default function LensFilters({
   onDesign: (v: string) => void;
   onCoating: (v: string) => void;
   /**
-   * The rest of the narrowing the list under these chips is already under.
+   * The rest of the narrowing the list under these is already under.
    *
-   * Without it the chips tally the whole lens catalogue while the table below
+   * Without it the counts tally the whole lens catalogue while the table below
    * shows a slice of it, and the two disagree out loud: the withdraw screen
    * lists only stock, both 1.74 lenses in the shop are made to order, and the
-   * chip read "1.74 · 2" above a table that could never show either of them.
+   * count read "1.74 · 2" above a table that could never show either of them.
    */
   scope?: { q?: string; eye?: string; make?: string };
 }) {
   // The chosen index and design go too. The API drops a facet's own choice
-  // before counting it, so sending them is what makes the *other* row of chips
+  // before counting it, so sending them is what makes the *other* lists
   // re-tally — pick Progressive and the index counts become the Progressive
   // ones, rather than staying the counts for every lens in the shop.
   const options = useApi<LensOptions>(
@@ -59,69 +59,51 @@ export default function LensFilters({
   const { indexes, designs, coatings } = options.data;
   if (indexes.length === 0 && designs.length === 0 && coatings.length === 0) return null;
 
-  /** One chip per value, with its tally — a zero is an answer, not a dead end. */
-  const chips = (
+  /**
+   * ค่าที่ไม่มีของและไม่ได้ถูกเลือกอยู่ ถูกตัดออกจากลิสต์
+   *
+   * ชิปตัวเดิมยังวาดไว้แต่กดไม่ได้ เพราะช่องว่างในแถวชิปอ่านเป็นของหาย · ใน
+   * ดรอปดาวน์ไม่มีปัญหานั้น บรรทัดที่ไม่มีก็คือไม่มี · ที่เลือกอยู่ไม่ถูกตัด
+   * ไม่ว่านับได้เท่าไร ไม่งั้นค่าที่เลือกจะหายจากช่องของตัวเอง
+   */
+  const list = (
     facets: { value: string; count: number }[],
     chosen: string,
-    onPick: (v: string) => void,
     allLabel: string,
-    group: string,
-    numeric = false,
-  ) => (
-    <div className="chips" role="group" aria-label={group}>
-      <button
-        type="button"
-        className="chip"
-        aria-current={chosen === "" ? "true" : undefined}
-        onClick={() => onPick("")}
-      >
-        {allLabel}
-      </button>
-      {facets.map((f) => (
-        <button
-          key={f.value}
-          type="button"
-          className={numeric ? "chip chip--num" : "chip"}
-          aria-current={chosen === f.value ? "true" : undefined}
-          // Nothing to show and nothing chosen — leave it unclickable rather
-          // than let someone empty the table with a tap that says "none".
-          disabled={f.count === 0 && chosen !== f.value}
-          onClick={() => onPick(chosen === f.value ? "" : f.value)}
-        >
-          {f.value}
-          <span className="chip__count">{f.count}</span>
-        </button>
-      ))}
-    </div>
-  );
+  ) => [
+    { value: "", label: allLabel },
+    ...facets
+      .filter((f) => f.count > 0 || f.value === chosen)
+      .map((f) => ({ value: f.value, label: withCount(f.value, f.count) })),
+  ];
 
   return (
-    <div className="lensfilter">
-      <span className="lensfilter__label">เฉพาะเลนส์</span>
-
-      {indexes.length > 0
-        ? chips(indexes, index, onIndex, "ทุก Index", "กรองตาม Index", true)
-        : null}
-
-      {indexes.length > 0 && designs.length > 0 ? (
-        <span className="chips__note">·</span>
-      ) : null}
-
-      {designs.length > 0
-        ? chips(designs, design, onDesign, "ทุกชนิดเลนส์", "กรองตามชนิดเลนส์")
-        : null}
-
-      {designs.length > 0 && coatings.length > 0 ? (
-        <span className="chips__note">·</span>
-      ) : null}
-
-      {/* Coating earns a row now that the shop stocks five of them rather
+    <>
+      <Filter
+        id="lf-index"
+        label="Index"
+        value={index}
+        onChange={onIndex}
+        options={list(indexes, index, "ทุก Index")}
+      />
+      <Filter
+        id="lf-design"
+        label="ชนิดเลนส์"
+        value={design}
+        onChange={onDesign}
+        options={list(designs, design, "ทุกชนิดเลนส์")}
+      />
+      {/* Coating earns a place now that the shop stocks five of them rather
           than the open-ended list it used to be. Ordered by how much of each
           is stocked, not alphabetically: what a shop reaches for first is the
           one it sells most of, and A-to-Z would put Blue above everything. */}
-      {coatings.length > 0
-        ? chips(coatings, coating, onCoating, "ทุก Coating", "กรองตาม Coating")
-        : null}
-    </div>
+      <Filter
+        id="lf-coating"
+        label="Coating"
+        value={coating}
+        onChange={onCoating}
+        options={list(coatings, coating, "ทุก Coating")}
+      />
+    </>
   );
 }

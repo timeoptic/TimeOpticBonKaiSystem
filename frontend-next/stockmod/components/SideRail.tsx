@@ -131,7 +131,7 @@ const STOCK: Item[] = [
 ];
 
 const MONEY: Item[] = [
-  { href: "/settlements", label: "ค้างรับจากสาขา", hint: "ของออกไปแล้ว เงินยังไม่มา", icon: ICON.money },
+  { href: "/settlements", label: "ของที่สาขาเบิกไป", hint: "เบิกอะไรไป เป็นทุนเท่าไร", icon: ICON.money },
   { href: "/branches", label: "สาขา", hint: "รายชื่อสาขาที่มาเบิกของได้", icon: ICON.shops },
 ];
 
@@ -146,9 +146,13 @@ const MONEY: Item[] = [
  */
 const FRONTDESK = process.env.NEXT_PUBLIC_FRONTDESK_APP_URL ?? "/";
 
-const ADMIN: Item[] = [
-  { href: "/users", label: "จัดการผู้ใช้", hint: "บัญชี สิทธิ์ และตำแหน่งงาน", icon: ICON.people },
-];
+/**
+ * จัดการผู้ใช้ไม่อยู่ในแถบนี้แล้ว
+ *
+ * มันย้ายออกไปอยู่ที่ `/users` ของทั้งเว็บ และทางเข้าอยู่ที่เมนูหน้าร้าน กลุ่ม
+ * "ข้อมูลระบบ" ที่เดียว · บัญชีหนึ่งใบเปิดได้ทั้งสองฝั่งอยู่แล้ว ปุ่มสองที่
+ * สำหรับหน้าเดียวจึงเป็นเมนูที่ยาวขึ้นโดยไม่ได้อะไรกลับมา
+ */
 
 /** `/` matches only itself; every other section owns its subtree. */
 const isCurrent = (pathname: string, href: string) => {
@@ -178,7 +182,7 @@ const UNLISTED: Item[] = [
 export function sectionFor(pathname: string): Item | null {
   let best: Item | null = null;
   let bestLen = -1;
-  for (const item of [...DAILY, ...STOCK, ...MONEY, ...ADMIN, ...UNLISTED]) {
+  for (const item of [...DAILY, ...STOCK, ...MONEY, ...UNLISTED]) {
     if (!isCurrent(pathname, item.href)) continue;
     const len = trimSlash(stockHref(item.href)).length;
     if (len > bestLen) {
@@ -251,7 +255,6 @@ export default function SideRail({ actor }: { actor: Actor }) {
         {can.seeBranchMoney(actor) ? (
           <Group title="เงินและสาขา" items={MONEY} pathname={pathname} />
         ) : null}
-        {can.manageUsers(actor) ? <Group title="ระบบ" items={ADMIN} pathname={pathname} /> : null}
 
         {/* พนักงานคลังทำงานฝั่งเดียว ปุ่มข้ามฝั่งจึงไม่ขึ้นให้เขา — กดไปก็ถูก
             ส่งกลับมาที่เดิม */}

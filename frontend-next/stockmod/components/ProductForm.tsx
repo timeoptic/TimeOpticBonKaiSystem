@@ -25,6 +25,7 @@ import {
   RX_BRANDS,
   SPH_LADDER,
   STOCK_BRANDS,
+  withCurrent,
 } from "@/stockmod/lib/optics";
 import DateField from "./DateField";
 
@@ -58,10 +59,20 @@ type Spec = {
    * A picker that starts empty teaches the first person to type, and the second
    * to type it differently. These are the shop's own words for the things it
    * actually stocks — they seed the list on day one and are joined by whatever
-   * has been entered since. Never a closed list: a coating nobody has heard of
-   * is still enterable the day the rep brings it in.
+   * has been entered since. Open by default: a coating nobody has heard of is
+   * still enterable the day the rep brings it in.
    */
   seed?: readonly string[];
+  /**
+   * The seed is the whole list, and nothing else may be entered.
+   *
+   * For the powers. A lens is ground in quarter steps over a run this shop
+   * fits, so there is nothing between the steps to offer and nothing off the
+   * ends to stock — and what the catalogue happens to hold already is no
+   * argument for offering it again, which is why a closed field ignores the
+   * hints the open ones merge in.
+   */
+  closed?: boolean;
 };
 
 const EYE_SIDE: Spec = {
@@ -198,6 +209,7 @@ const RX_FIELDS: Spec[] = [
     label: "SPH (สายตาสั้น/ยาว)",
     placeholder: "เลือก หรือพิมพ์ค่า",
     seed: SPH_LADDER,
+    closed: true,
     numeric: true,
   },
   {
@@ -205,9 +217,17 @@ const RX_FIELDS: Spec[] = [
     label: "CYL (สายตาเอียง)",
     placeholder: "เลือก หรือพิมพ์ค่า",
     seed: CYL_LADDER,
+    closed: true,
     numeric: true,
   },
-  { key: "axis", label: "AXIS (องศา)", placeholder: "0–180", seed: AXIS_LADDER, numeric: true },
+  {
+    key: "axis",
+    label: "AXIS (องศา)",
+    placeholder: "0–180",
+    seed: AXIS_LADDER,
+    closed: true,
+    numeric: true,
+  },
   // "+2.00" — the leading plus is part of how an ADD is written and read, so it
   // is kept as text rather than normalised into a number.
   {
@@ -215,6 +235,7 @@ const RX_FIELDS: Spec[] = [
     label: "ADD (ระยะใกล้)",
     placeholder: "+2.00",
     seed: ADD_LADDER,
+    closed: true,
     help: "ใช้กับ Progressive และ Bifocal",
   },
 ];
@@ -404,7 +425,13 @@ export default function ProductForm({
    * this shop actually sells, and burying them among thirty historical spellings
    * would defeat the point of having named them.
    */
-  const choicesFor = (f: Spec) => {
+  const choicesFor = (f: Spec, value: string) => {
+    // A closed field is its ladder and nothing else — not even what the
+    // catalogue already holds, which is where the stray powers would come back
+    // in. What this row itself holds is carried through, so editing a lens
+    // recorded before the ladder closed cannot blank its power by accident.
+    if (f.closed) return withCurrent(f.seed ?? [], value);
+
     const seen = new Set<string>();
     const out: { value: string; label: string }[] = [];
     for (const v of [...(f.seed ?? []), ...(hints.data?.values?.[f.key] ?? [])]) {
@@ -893,13 +920,13 @@ export default function ProductForm({
              spellings — and, now that the product's name is composed from these
              boxes, three spellings would be three products. */
           <Select
-            free
+            free={!f.closed}
             id={id}
             value={value}
             onChange={(v) => set(f.key, v)}
             disabled={busy}
             placeholder={f.placeholder}
-            options={choicesFor(f)}
+            options={choicesFor(f, value)}
           />
         )}
 
@@ -1047,11 +1074,14 @@ export default function ProductForm({
               placeholder="พิมพ์แบรนด์ หรือเลือกจากที่เคยมี"
               // The shop's own three first, then every brand the catalogue has
               // been given since — seeds are a starting point, not a fence.
-              options={choicesFor({
-                key: "brand",
-                label: "",
-                seed: [...BRAND_SEED, ...(hints.data?.brands ?? [])],
-              })}
+              options={choicesFor(
+                {
+                  key: "brand",
+                  label: "",
+                  seed: [...BRAND_SEED, ...(hints.data?.brands ?? [])],
+                },
+                brand,
+              )}
             />
           </div>
           <div className="field">

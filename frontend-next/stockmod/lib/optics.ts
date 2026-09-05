@@ -8,8 +8,15 @@
  * chances to drift; one list is what makes "-2.25" mean the same thing on both
  * screens and sort together afterwards.
  *
- * Nothing here is a closed list. These are what the trade writes, and every
- * field that offers them still takes whatever is typed instead.
+ * The four powers — SPH, CYL, AXIS, ADD — are closed lists: a lens is ground in
+ * quarter steps over a run this shop fits, so a figure between two steps or off
+ * the ends is a slip of the finger and never a lens. Typing still works, and is
+ * the fast way in on a keyboard; what it does is find the step, not invent one.
+ *
+ * Everything else here stays a suggestion. A coating or an index is a name the
+ * trade gives a material, and the first one nobody has heard of has to be
+ * enterable on the day a rep brings it in. `stock/api/src/Optics.php` holds the
+ * same four runs, because the API is reachable without either form.
  */
 
 /**
@@ -47,13 +54,21 @@ export const SPH_LADDER = ladder(-12, 12);
  *
  * 0.00 ยังอยู่ เพราะ "ไม่มีสายตาเอียง" เป็นค่าจริงค่าหนึ่ง ไม่ใช่การเว้นว่าง
  *
- * ช่องนี้ยังพิมพ์เองได้เหมือนทุกช่องในไฟล์นี้ — ถ้าวันหนึ่งมีใบสั่งเขียนมาเป็น
- * บวกจริง ๆ ก็พิมพ์ลงไปได้ รายการเป็นข้อเสนอ ไม่ใช่รั้ว
+ * ตอนนี้เป็นรายการปิดแล้ว ตามที่ร้านขอ — ค่าบวกจึงใส่ไม่ได้อีก ถ้าวันหนึ่งมีใบ
+ * สั่งเขียนมาเป็นบวกจริง ๆ ต้องมาแก้ช่วงตรงนี้ ไม่ใช่พิมพ์ผ่านหน้าจอ
+ *
+ * ลงไปถึง -12.00 เท่ากับ SPH ตามที่ร้านขอ — สายตาเอียงหนัก ๆ มีจริง และก่อน
+ * หน้านี้หยุดที่ -6.00 ซึ่งเป็นเพดานที่ไม่มีใครตั้งใจตั้ง
  */
-export const CYL_LADDER = ladder(-6, 0);
+export const CYL_LADDER = ladder(-12, 0);
 
-/** The near-vision addition, which only a Progressive or a Bifocal carries. */
-export const ADD_LADDER = ladder(0.75, 3.5);
+/**
+ * The near-vision addition, which only a Progressive or a Bifocal carries.
+ *
+ * เริ่มที่ +0.25 ตามที่ร้านขอ — เดิมเริ่มที่ +0.75 ด้วยเหตุผลว่าค่าต่ำกว่านั้น
+ * ไม่มีใครสั่ง ซึ่งไม่จริงสำหรับที่นี่
+ */
+export const ADD_LADDER = ladder(0.25, 3.5);
 
 /**
  * One power, written the way the ladders write them.
@@ -82,6 +97,24 @@ export const asOptions = (xs: readonly string[]) =>
   xs.map((x) => ({ value: x, label: x }));
 
 /**
+ * A closed ladder, plus whatever the record being edited already holds.
+ *
+ * The powers are a closed list from today, but the catalogue has rows from
+ * before today, and some of them were typed by hand into a box that took
+ * anything. Opening one of those in a picker that does not list its value would
+ * show an empty box — and saving the form would quietly write the blank over a
+ * power the drawer is actually labelled with.
+ *
+ * So the old value is carried in as its own line, at the top where it reads as
+ * what this record says rather than as one of the steps. It can be kept or
+ * replaced; what it cannot do is disappear without anyone choosing that.
+ */
+export const withCurrent = (ladder: readonly string[], current: string) => {
+  const c = current.trim();
+  return asOptions(c === "" || ladder.includes(c) ? ladder : [c, ...ladder]);
+};
+
+/**
  * The coatings this shop sells, before the catalogue can name any itself.
  *
  * Shared because two screens now ask for one — the catalogue form and the RX
@@ -90,8 +123,37 @@ export const asOptions = (xs: readonly string[]) =>
  */
 export const COATING_SEED = ["Hard", "MultiCoat", "Blue", "Transition", "Transition-Blue"];
 
-/** The indexes stocked today. Not what physics allows — 1.71 is still typeable. */
-export const INDEX_SEED = ["1.50", "1.56", "1.59", "1.60", "1.67", "1.74"];
+/**
+ * ชนิดของเลนส์ตามการออกแบบกำลัง — คนละเรื่องกับ coating และคนละเรื่องกับ index
+ *
+ * เป็นคำถามแรกที่ผู้ขายถามลูกค้า และเป็นสิ่งที่ทำให้เลนส์สองตัวราคาต่างกัน
+ * หลายเท่าทั้งที่ index กับ coating เท่ากัน · เดิมใบสั่งไม่มีช่องนี้ ชนิดเลนส์
+ * จึงไปแอบอยู่ในชื่อรุ่นที่พนักงานพิมพ์เอง แล้วนับแยกไม่ได้ในรายงาน
+ *
+ * เป็นข้อเสนอ ไม่ใช่รั้ว เหมือน COATING_SEED และ INDEX_SEED — พิมพ์ชื่อที่
+ * ยังไม่มีในลิสต์ได้ วันที่ผู้ผลิตออกแบบใหม่มาขายจะได้ไม่ต้องรอแก้โค้ด
+ */
+export const LENS_DESIGN_SEED = [
+  "Single",
+  "Bifocal",
+  "Progressive",
+  "Degressive/Digital/Office",
+  "Myopia",
+  "Sport",
+];
+
+/**
+ * The indexes stocked today.
+ *
+ * 1.59 came off the list on the shop's word: it is not an index they are sold,
+ * and leaving it there was offering a lens nobody can order. 1.70 and 1.76 went
+ * on for the opposite reason — they are indexes the shop is offered.
+ *
+ * Still a suggestion rather than a fence, unlike the powers below it. An index
+ * is a material the trade names, and the first 1.71 has to be enterable on the
+ * day a rep brings it in.
+ */
+export const INDEX_SEED = ["1.50", "1.56", "1.60", "1.67", "1.70", "1.74", "1.76"];
 
 /**
  * Two trades, two lists.

@@ -6,6 +6,7 @@ namespace Optic\Service;
 
 use Optic\ApiError;
 use Optic\Db;
+use Optic\Optics;
 use Optic\Roles;
 use PDO;
 
@@ -287,6 +288,12 @@ final class Catalog
 
             $pdo->prepare('UPDATE stock_lots SET ' . implode(', ', $sets) . ' WHERE id = ?')->execute($args);
 
+            /* ต้นทุนที่เพิ่งรู้ ไล่ไปเติมทุกที่ที่รอมันอยู่ — สมุดคลัง ใบเบิก
+               สาขา และสำเนาต้นทุนฝั่งขาย · เหตุผลเต็มอยู่ที่ Costing */
+            if ($cost !== false && $cost !== null) {
+                Costing::fill($pdo, $lotId, (string) $cost);
+            }
+
             if ($delta !== 0) {
                 $pdo->prepare(
                     'INSERT INTO inventory_logs
@@ -468,6 +475,30 @@ final class Catalog
         }
 
         /**
+         * The powers are checked, even though the rest of `attributes` is open.
+         *
+         * A stock lens is stocked *by power* — a drawer of -2.00 is a different
+         * SKU from a drawer of -2.25 — so the power is half of what the product
+         * is, and it is composed straight into the product's name. A typo there
+         * does not sit in a spare column: it makes a lens the shop does not
+         * sell, under a name that reads like one it does.
+         *
+         * Only these four. A coating nobody has heard of is still enterable the
+         * day the rep brings it in, which is the whole reason `attributes` is
+         * open in the first place.
+         */
+        if (is_array($attributes)) {
+            foreach (['sph' => 'SPH', 'cyl' => 'CYL', 'add' => 'ADD'] as $key => $label) {
+                if (array_key_exists($key, $attributes)) {
+                    Optics::power($attributes[$key], $key, $label);
+                }
+            }
+            if (array_key_exists('axis', $attributes)) {
+                Optics::axis($attributes['axis']);
+            }
+        }
+
+        /**
          * A caller that never mentioned `attributes` keeps what is stored.
          *
          * Not a convenience: the price is corrected straight from the product
@@ -602,6 +633,13 @@ final class Catalog
                 // everything but their coating are two rows reading alike, and
                 // telling those apart is the whole job of a composed name.
                 $parts[] = $at('coating');
+
+                /* ชนิดเลนส์อยู่ในชื่อด้วย ไม่ใช่แค่ในสเปก — Single กับ Progressive
+                   ของรุ่นเดียวกัน index เดียวกัน coating เดียวกัน คือของคนละตัว
+                   ราคาต่างกันหลายเท่า · ถ้าชื่อไม่ต่าง ใบสั่ง Progressive จะไปเจอ
+                   รุ่น Single ที่ชื่อตรงกันแล้วใช้ตัวนั้นแทน แล้วสเปกบนใบจะผิดโดย
+                   ไม่มีใครเห็น — ดู `Rx::modelByName` ซึ่งจับคู่รุ่นด้วยชื่อ */
+                $parts[] = $at('lens_design');
 
                 $index = $at('lens_index');
                 if ($index !== null) {

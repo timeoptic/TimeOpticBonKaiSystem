@@ -45,13 +45,13 @@ final class StockGate
     /** A basket of ruined material, written off together. */
     public static function scrapMany(array $req): array
     {
-        return Stock::scrapMany(self::stamped($req));
+        return Stock::scrapMany(self::blamed($req));
     }
 
     /** Goods destroyed. Kept apart from `issue` so waste never inflates COGS. */
     public static function scrap(array $req): array
     {
-        return Stock::scrap(self::stamped($req));
+        return Stock::scrap(self::blamed($req));
     }
 
     /** Goods coming back, against the request that took them out. */
@@ -88,6 +88,32 @@ final class StockGate
         // when both sides have one, which would let a caller name someone else.
         $req['source'] = $req['source'] ?? 'web';
         $req['actor_id'] = $actor['id'];
+
+        return $req;
+    }
+
+    /**
+     * The same stamp, plus the one rule that only applies to ruined material.
+     *
+     * `issued_to_admin_id` reads as "who this went to" on a withdrawal and as
+     * "whose doing this was" on a scrap — the same column, because it is the
+     * same question of who the stock is attributed to. On a scrap that answer
+     * is an accusation the dashboard totals per person, so naming anyone but
+     * yourself is the owner's call. Naming yourself needs nothing: owning up is
+     * not a permission.
+     *
+     * @param array<string,mixed> $req
+     * @return array<string,mixed>
+     */
+    private static function blamed(array $req): array
+    {
+        $req = self::stamped($req);
+
+        $named = $req['issued_to_admin_id'] ?? null;
+        if ($named !== null && $named !== '' && (int) $named !== (int) $req['actor_id']) {
+            $actor = Auth::require();
+            Roles::require(Roles::blameScrap($actor['role']), 'ระบุคนอื่นเป็นคนทำของเสีย');
+        }
 
         return $req;
     }

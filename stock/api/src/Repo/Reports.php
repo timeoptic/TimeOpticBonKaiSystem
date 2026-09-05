@@ -115,6 +115,32 @@ final class Reports
             $args,
         );
 
+        /**
+         * ของเสีย แยกตามคนที่ทำเสีย
+         *
+         * แยกจาก `topPeople` ข้างบนซึ่งรวมของที่เบิกออกไปด้วย — ของที่เบิกคือ
+         * งานที่ทำ ยิ่งเยอะยิ่งดี ส่วนของเสียคือของที่หายไปจากร้าน สองอย่างนี้
+         * อ่านคนละความหมาย รวมเป็นตัวเลขเดียวแล้วคนขายเก่งจะขึ้นหัวตารางเดียว
+         * กับคนทำแตกบ่อย
+         *
+         * ตกลงชื่อที่ `issued_to_admin_id` เท่านั้น ไม่ถอยไปใช้ `created_by`
+         * เหมือนตารางข้างบน — คนคีย์ไม่ใช่คนทำเสีย และการเดาแทนตรงนี้คือการ
+         * กล่าวหาคนผิด · แถวที่ยังไม่มีใครถูกระบุจะไม่ขึ้นในตารางนี้
+         */
+        $scrapPeople = Db::all(
+            "SELECT who.display_name AS name,
+                    COALESCE(SUM(ABS(g.quantity)), 0) AS qty,
+                    COALESCE(SUM(ABS(g.quantity) * g.unit_cost), 0) AS cost,
+                    COUNT(*) AS rows_n
+             FROM inventory_logs g
+             JOIN admins who ON who.id = g.issued_to_admin_id
+             WHERE {$window} AND g.action_type = 'SCRAP'
+             GROUP BY who.id, who.display_name
+             ORDER BY qty DESC, rows_n DESC
+             LIMIT 10",
+            $args,
+        );
+
         return [
             'from'    => $from,
             'to'      => $to,
@@ -143,9 +169,246 @@ final class Reports
                 'qty'  => (int) $r['qty'],
                 'rows' => (int) $r['rows_n'],
             ], $people),
+            'scrapPeople' => array_map(static fn(array $r): array => [
+                'name' => $r['name'],
+                'qty'  => (int) $r['qty'],
+                'rows' => (int) $r['rows_n'],
+                // Same rule as everywhere else here: quantities are stock facts
+                // and go to everyone, buying prices do not.
+                'cost' => $money ? (float) $r['cost'] : null,
+            ], $scrapPeople),
             'branch' => self::branch($from, $to, $money),
+            'branchDraws' => self::branchDraws($from, $to, $money),
+            'rxBranches' => self::rxBranches($from, $to, $money),
             'sales'  => self::sales($window, $args, $money),
         ];
+    }
+
+    /**
+     * สาขาไหนเบิกอะไรไปบ้าง แยกเป็นสินค้าทีละรายการ
+     *
+     * ตัวเลขรวมของฝั่งสาขา (`branch`) ตอบว่า "ค้างอยู่เท่าไร" ซึ่งเป็นคำถามของ
+     * คนเก็บเงิน · ตารางนี้ตอบคำถามของคนคุมของ: เดือนนี้สาขานี้ขอเลนส์อะไรไป
+     * กี่ชิ้น — คำถามที่ก่อนหน้านี้ต้องเปิดหน้าค้างรับแล้วไล่อ่านทีละใบ
+     *
+     * อ่านจาก `branch_issues` ไม่ใช่ `inventory_logs` เพราะหนึ่งใบเบิกคือหนึ่ง
+     * ครั้งที่สาขามารับของ ส่วนสมุดแตกเป็นบรรทัดละล็อต — ใบเดียวที่ FIFO ตัดจาก
+     * สามล็อตจะกลายเป็นสามแถวและอ่านเหมือนมารับสามรอบ
+     *
+     * ทุกสถานะ ไม่ใช่เฉพาะที่ยังค้าง: คำถามคือของออกไปเท่าไร ไม่ใช่หนี้เหลือ
+     * เท่าไร · ใบที่ยกเลิกไปแล้วเท่านั้นที่ตัดออก เพราะของนั้นกลับเข้าคลังแล้ว
+     *
+     * @return list<array<string,mixed>>
+     */
+    private static function branchDraws(string $from, string $to, bool $money): array
+    {
+        $rows = Db::all(
+            "SELECT b.id   AS branch_id,
+                    b.name AS branch_name,
+                    i.sku,
+                    COALESCE(p.name, i.sku)  AS product_name,
+                    p.product_type,
+                    " . self::attr('lens_design') . " AS lens_design,
+                    " . self::attr('lens_index')  . " AS lens_index,
+                    " . self::attr('coating')     . " AS coating,
+                    COUNT(*)                          AS draws,
+                    COALESCE(SUM(i.quantity), 0)      AS qty,
+                    COALESCE(SUM(i.cost_total), 0)    AS cost,
+                    COALESCE(SUM(i.cost_unknown_qty), 0) AS qty_no_cost
+             FROM branch_issues i
+             JOIN branches b ON b.id = i.branch_id
+             LEFT JOIN products p ON p.id = i.product_id
+             WHERE i.issued_at >= ? AND i.issued_at < DATE_ADD(?, INTERVAL 1 DAY)
+               AND i.status <> 'cancelled'
+             GROUP BY b.id, b.name, i.sku, p.name, p.product_type,
+                      lens_design, lens_index, coating
+
+             UNION ALL
+
+             /* ของที่ร้านเองเบิกไป — ไม่มีสาขาผูกอยู่ จึงไม่เคยอยู่ในตารางนี้มาก่อน
+                ตารางที่มีแต่สาขาตอบไม่ได้ว่าของทั้งหมดที่ออกจากชั้นไปแบ่งกันอย่างไร
+                ซึ่งเป็นคำถามที่คนเปิดไฟล์ถามจริง ๆ
+
+                นับจากสมุดโดยตรง ไม่ใช่จาก branch_issues เพราะการเบิกของร้านเองไม่ได้
+                สร้างแถวหนี้ · จำนวนในสมุดเป็นลบสำหรับของออก จึงกลับเครื่องหมายด้วย
+                ABS ให้อ่านเป็นจำนวนชิ้นเหมือนฝั่งสาขา */
+             SELECT NULL AS branch_id,
+                    NULL AS branch_name,
+                    p.sku,
+                    COALESCE(p.name, p.sku)  AS product_name,
+                    p.product_type,
+                    " . self::attr('lens_design') . " AS lens_design,
+                    " . self::attr('lens_index')  . " AS lens_index,
+                    " . self::attr('coating')     . " AS coating,
+                    COUNT(*)                                AS draws,
+                    COALESCE(SUM(ABS(g.quantity)), 0)       AS qty,
+                    COALESCE(SUM(ABS(g.quantity) * g.unit_cost), 0) AS cost,
+                    SUM(CASE WHEN g.unit_cost IS NULL THEN ABS(g.quantity) ELSE 0 END) AS qty_no_cost
+             FROM inventory_logs g
+             JOIN products p ON p.id = g.product_id
+             WHERE g.created_at >= ? AND g.created_at < DATE_ADD(?, INTERVAL 1 DAY)
+               AND g.action_type = 'OUT' AND g.branch_issue_id IS NULL
+             GROUP BY p.id, p.sku, p.name, p.product_type,
+                      lens_design, lens_index, coating
+
+             ORDER BY branch_name IS NULL DESC, branch_name ASC, qty DESC, sku ASC",
+            [$from, $to, $from, $to],
+        );
+
+        /* ทำให้เป็นสาขาละก้อน ไม่ใช่แถวเรียงยาว — หน้าจอวาดทีละสาขาอยู่แล้ว
+           และการรวมยอดของสาขาตรงนี้แปลว่าหน้าจอไม่ต้องบวกเอง แล้วบวกไม่ตรงกับ
+           ที่ API บอกในวันที่กฎเปลี่ยน */
+        $out = [];
+        foreach ($rows as $r) {
+            /* ร้านเองไม่มี id ของสาขา — ใช้ 0 เป็นกุญแจในอาเรย์ แต่ส่งออกเป็น null
+               เพราะ 0 ไม่ใช่ id ของอะไรเลย · กฎเดียวกับฝั่ง `rxBranches` */
+            $id = $r['branch_id'] === null ? 0 : (int) $r['branch_id'];
+            if (!isset($out[$id])) {
+                $out[$id] = [
+                    'branchId' => $id === 0 ? null : $id,
+                    'branch'   => $r['branch_name'] ?? 'TimeOptic',
+                    'draws'    => 0,
+                    'qty'      => 0,
+                    'cost'     => 0.0,
+                    'qtyNoCost' => 0,
+                    'items'    => [],
+                ];
+            }
+
+            $out[$id]['draws'] += (int) $r['draws'];
+            $out[$id]['qty']   += (int) $r['qty'];
+            $out[$id]['cost']  += (float) $r['cost'];
+            $out[$id]['qtyNoCost'] += (int) $r['qty_no_cost'];
+
+            $out[$id]['items'][] = [
+                'sku'        => $r['sku'],
+                'name'       => $r['product_name'],
+                'type'       => $r['product_type'],
+                'lensDesign' => $r['lens_design'],
+                'lensIndex'  => $r['lens_index'],
+                'coating'    => $r['coating'],
+                'draws'      => (int) $r['draws'],
+                'qty'        => (int) $r['qty'],
+                'qtyNoCost'  => (int) $r['qty_no_cost'],
+                // กฎเดียวกับทั้งไฟล์: จำนวนเป็นข้อเท็จจริงของสต็อก ราคาทุนไม่ใช่
+                'cost'       => $money ? (float) $r['cost'] : null,
+            ];
+        }
+
+        foreach ($out as &$branch) {
+            $branch['cost'] = $money ? $branch['cost'] : null;
+        }
+        unset($branch);
+
+        return array_values($out);
+    }
+
+    /**
+     * ใบสั่งตัด RX แยกตามคนสั่ง — ร้านเองและสาขา อยู่ในตารางเดียวกัน
+     *
+     * คนละคำถามกับ `branchDraws` ข้างบน: นั่นคือของที่ออกจากชั้นไป นี่คือของที่
+     * ต้องไปสั่งจากผู้ขายมาให้ · สาขาหนึ่งอาจเบิกน้อยแต่สั่งตัดเยอะ ซึ่งเป็นคนละ
+     * เรื่องกันทั้งเรื่องเงินและเรื่องงาน
+     *
+     * ใบที่ไม่ได้ระบุสาขาคือร้านสั่งเอง และมีแถวของตัวเองในชื่อ TimeOptic —
+     * เคยตัดทิ้งเพราะคิดว่าเป็นค่าปกติที่ไม่ต้องบอก แต่ตารางที่มีแต่สาขาตอบไม่ได้
+     * ว่างานสั่งตัดทั้งหมดแบ่งกันอย่างไร ซึ่งเป็นคำถามที่คนเปิดหน้านี้ถามจริง ๆ
+     *
+     * รูปร่างเหมือน `branchDraws` ทุกอย่าง เพราะหน้าจอวาดสองก้อนนี้ด้วยโค้ดชุด
+     * เดียวกัน — สาขาละก้อน ข้างในเป็นรายการสินค้าที่สั่ง
+     *
+     * ใบที่ยกเลิกแล้วไม่นับ ด้วยเหตุผลเดียวกับฝั่งเบิก
+     *
+     * @return list<array<string,mixed>>
+     */
+    private static function rxBranches(string $from, string $to, bool $money): array
+    {
+        $rows = Db::all(
+            "SELECT r.branch_id,
+                    b.name AS branch_name,
+                    p.sku,
+                    p.name AS product_name,
+                    p.product_type,
+                    " . self::attr('lens_design') . " AS lens_design,
+                    " . self::attr('lens_index')  . " AS lens_index,
+                    " . self::attr('coating')     . " AS coating,
+                    COUNT(*)                              AS orders_n,
+                    COALESCE(SUM(ABS(g.quantity)), 0)     AS qty,
+                    COALESCE(SUM(ABS(g.quantity) * g.unit_cost), 0) AS cost,
+                    COALESCE(SUM(r.sale_price), 0)        AS revenue,
+                    SUM(CASE WHEN g.unit_cost IS NULL THEN 1 ELSE 0 END) AS awaiting_cost
+             FROM inventory_logs g
+             JOIN rx_orders r ON r.log_id = g.id
+             JOIN products p ON p.id = g.product_id
+             LEFT JOIN branches b ON b.id = r.branch_id
+             WHERE g.created_at >= ? AND g.created_at < DATE_ADD(?, INTERVAL 1 DAY)
+               AND g.action_type = 'RX_ORDER' AND r.cancelled_at IS NULL
+             GROUP BY r.branch_id, b.name, p.id, p.sku, p.name, p.product_type,
+                      lens_design, lens_index, coating
+             ORDER BY b.name IS NULL DESC, b.name ASC, qty DESC, p.sku ASC",
+            [$from, $to],
+        );
+
+        $out = [];
+        foreach ($rows as $r) {
+            /* ร้านเองไม่มี id ของสาขา — ใช้ 0 เป็นกุญแจของก้อนนี้ในอาเรย์ แต่ส่ง
+               `branchId` ออกไปเป็น null เพราะ 0 ไม่ใช่ id ของอะไรเลย และหน้าจอ
+               ที่เอาไปทำลิงก์ต่อจะได้ไม่ยิงไปหาสาขาหมายเลขศูนย์ */
+            $id = $r['branch_id'] === null ? 0 : (int) $r['branch_id'];
+            if (!isset($out[$id])) {
+                $out[$id] = [
+                    'branchId'     => $id === 0 ? null : $id,
+                    'branch'       => $r['branch_name'] ?? 'TimeOptic',
+                    'orders'       => 0,
+                    'qty'          => 0,
+                    'awaitingCost' => 0,
+                    'cost'         => 0.0,
+                    'revenue'      => 0.0,
+                    'items'        => [],
+                ];
+            }
+
+            $out[$id]['orders']       += (int) $r['orders_n'];
+            $out[$id]['qty']          += (int) $r['qty'];
+            $out[$id]['awaitingCost'] += (int) $r['awaiting_cost'];
+            $out[$id]['cost']         += (float) $r['cost'];
+            $out[$id]['revenue']      += (float) $r['revenue'];
+
+            $out[$id]['items'][] = [
+                'sku'          => $r['sku'],
+                'name'         => $r['product_name'],
+                'type'         => $r['product_type'],
+                'lensDesign'   => $r['lens_design'],
+                'lensIndex'    => $r['lens_index'],
+                'coating'      => $r['coating'],
+                'orders'       => (int) $r['orders_n'],
+                'qty'          => (int) $r['qty'],
+                'awaitingCost' => (int) $r['awaiting_cost'],
+                // กฎเดียวกับทั้งไฟล์: จำนวนเป็นข้อเท็จจริงของสต็อก ราคาทุนไม่ใช่
+                'cost'         => $money ? (float) $r['cost'] : null,
+                // ราคาขายไม่ใช่ราคาทุน แต่ก็เป็นตัวเลขเงินเหมือนกัน กฎเดียวกัน
+                'revenue'      => $money ? (float) $r['revenue'] : null,
+            ];
+        }
+
+        foreach ($out as &$branch) {
+            $branch['cost']    = $money ? $branch['cost'] : null;
+            $branch['revenue'] = $money ? $branch['revenue'] : null;
+        }
+        unset($branch);
+
+        return array_values($out);
+    }
+
+    /**
+     * ค่าในคอลัมน์ `attributes` ของสินค้า อ่านออกมาเป็นคอลัมน์ธรรมดา
+     *
+     * สำเนาของ `Inventory::attr` ตัวเดียวกัน — NULLIF เพราะ JSON_UNQUOTE เปลี่ยน
+     * null ของ JSON เป็นสตริงสี่ตัวอักษร "null" ไม่ใช่ NULL ของ SQL
+     */
+    private static function attr(string $key): string
+    {
+        return "NULLIF(JSON_UNQUOTE(JSON_EXTRACT(p.attributes, '$.{$key}')), 'null')";
     }
 
     /**

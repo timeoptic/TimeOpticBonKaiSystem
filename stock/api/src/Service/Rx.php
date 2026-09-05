@@ -6,6 +6,7 @@ namespace Optic\Service;
 
 use Optic\ApiError;
 use Optic\Db;
+use Optic\Optics;
 use Optic\Roles;
 use PDO;
 
@@ -46,6 +47,7 @@ final class Rx
         $note = self::optional($req, 'note', 500);
         $cost = self::cost($req);
         $spec = self::spec($req);
+        $branchId = self::branch($req);
 
         /**
          * Two prices on one sheet, and they are not the same permission.
@@ -86,7 +88,7 @@ final class Rx
             }
         }
 
-        $id = Db::tx(static function (PDO $pdo) use ($p, $doc, $note, $cost, $spec, $actorId): int {
+        $id = Db::tx(static function (PDO $pdo) use ($p, $doc, $note, $cost, $spec, $actorId, $branchId): int {
             /* ราคาขายลงสมุดด้วย ไม่ใช่อยู่แต่บน rx_orders — หน้าความเคลื่อนไหวอ่าน
                จากสมุดอย่างเดียว ถ้าไม่ลงไว้ ใบสั่งตัดจะเป็นแถวที่ไม่มีราคาขายเลย */
             $pdo->prepare(
@@ -101,10 +103,10 @@ final class Rx
             // The prescription belongs to this job, not to the lens model it was
             // cut from — see the note on the migration that made this table.
             $pdo->prepare(
-                'INSERT INTO rx_orders (log_id, eye_side, sph, cyl, axis, add_power, sale_price)
-                 VALUES (?, ?, ?, ?, ?, ?, ?)'
+                'INSERT INTO rx_orders (log_id, branch_id, eye_side, sph, cyl, axis, add_power, sale_price)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
             )->execute([
-                $logId, $spec['eye_side'], $spec['sph'], $spec['cyl'],
+                $logId, $branchId, $spec['eye_side'], $spec['sph'], $spec['cyl'],
                 $spec['axis'], $spec['add_power'], $spec['sale_price'],
             ]);
 
@@ -486,11 +488,13 @@ final class Rx
         $row = Db::one(
             'SELECT g.id, g.reference_doc, g.created_at, g.unit_cost, g.notes,
                     p.sku, p.name, a.display_name AS actor_name,
-                    r.eye_side, r.sph, r.cyl, r.axis, r.add_power, r.sale_price
+                    r.eye_side, r.sph, r.cyl, r.axis, r.add_power, r.sale_price,
+                    r.branch_id, b.name AS branch_name
              FROM inventory_logs g
              JOIN products p ON p.id = g.product_id
              LEFT JOIN rx_orders r ON r.log_id = g.id
              LEFT JOIN admins a ON a.id = g.created_by
+                 LEFT JOIN branches b ON b.id = r.branch_id
              WHERE g.id = ?',
             [$logId],
         );
@@ -650,6 +654,7 @@ final class Rx
                  JOIN products p ON p.id = g.product_id
                  LEFT JOIN rx_orders r ON r.log_id = g.id
                  LEFT JOIN admins a ON a.id = g.created_by
+                 LEFT JOIN branches b ON b.id = r.branch_id
                  WHERE ' . implode(' AND ', $where);
 
         $total = (int) Db::value('SELECT COUNT(*)' . $sql, $args);
@@ -659,7 +664,8 @@ final class Rx
         $rows = Db::all(
             'SELECT g.id, g.reference_doc, g.created_at, g.unit_cost, g.notes,
                     p.sku, p.name, a.display_name AS actor_name,
-                    r.eye_side, r.sph, r.cyl, r.axis, r.add_power, r.sale_price' . $sql .
+                    r.eye_side, r.sph, r.cyl, r.axis, r.add_power, r.sale_price,
+                    r.branch_id, b.name AS branch_name' . $sql .
             ' ORDER BY g.created_at DESC, g.id DESC LIMIT ' . $per . ' OFFSET ' . (($page - 1) * $per),
             $args,
         );
@@ -707,6 +713,9 @@ final class Rx
             'cyl'          => isset($r['cyl']) && $r['cyl'] !== null ? (float) $r['cyl'] : null,
             'axis'         => isset($r['axis']) && $r['axis'] !== null ? (int) $r['axis'] : null,
             'add'          => $r['add_power'] ?? null,
+            // สาขาที่สั่ง — null คือร้านนี้สั่งเอง ไม่ใช่ "ยังไม่ได้กรอก"
+            'branchId'     => isset($r['branch_id']) && $r['branch_id'] !== null ? (int) $r['branch_id'] : null,
+            'branch'       => $r['branch_name'] ?? null,
         ];
     }
 
@@ -735,6 +744,7 @@ final class Rx
                  JOIN products p ON p.id = g.product_id
                  LEFT JOIN rx_orders r ON r.log_id = g.id
                  LEFT JOIN admins a ON a.id = g.created_by
+                 LEFT JOIN branches b ON b.id = r.branch_id
                  WHERE g.action_type = \'RX_ORDER\' AND g.unit_cost IS NULL
                    AND r.cancelled_at IS NULL
                  ORDER BY g.created_at DESC, g.id DESC'
@@ -761,26 +771,13 @@ final class Rx
             throw ApiError::badRequest('ข้างตาต้องเป็น left หรือ right', 'bad_eye_side');
         }
 
-        $signed = static function (mixed $v, string $field): ?string {
-            if ($v === null || $v === '') {
-                return null;
-            }
-            $s = str_replace(['−', '+'], ['-', ''], trim((string) $v));
-            if (!preg_match('/^-?\d{1,3}(\.\d{1,2})?$/', $s)) {
-                throw ApiError::badRequest("{$field} ต้องเป็นตัวเลข ทศนิยมไม่เกินสองตำแหน่ง", 'bad_rx');
-            }
-            return $s;
-        };
-
-        $axis = $req['axis'] ?? null;
-        if ($axis !== null && $axis !== '') {
-            if (!preg_match('/^\d{1,3}$/', trim((string) $axis)) || (int) $axis > 180) {
-                throw ApiError::badRequest('AXIS ต้องเป็นจำนวนเต็ม 0–180', 'bad_axis');
-            }
-            $axis = (int) $axis;
-        } else {
-            $axis = null;
-        }
+        /* The powers, measured against the same ladders the pickers offer.
+           A figure off the ends of the run, or between two quarter steps, is
+           refused rather than stored — Optics carries the runs and the why. */
+        $sph  = Optics::power($req['sph'] ?? null, 'sph', 'SPH');
+        $cyl  = Optics::power($req['cyl'] ?? null, 'cyl', 'CYL');
+        $add  = Optics::power($req['add'] ?? null, 'add', 'ADD');
+        $axis = Optics::axis($req['axis'] ?? null);
 
         $price = $req['sale_price'] ?? null;
         if ($price !== null && $price !== '') {
@@ -794,12 +791,47 @@ final class Rx
 
         return [
             'eye_side'   => $eye,
-            'sph'        => $signed($req['sph'] ?? null, 'SPH'),
-            'cyl'        => $signed($req['cyl'] ?? null, 'CYL'),
+            // SPH and CYL land in DECIMAL columns, which keep the number and
+            // not the way it was written, so the leading plus is dropped. ADD
+            // is a VARCHAR that keeps its plus — that plus is how an addition
+            // is read on the job sheet.
+            'sph'        => $sph === null ? null : ltrim($sph, '+'),
+            'cyl'        => $cyl === null ? null : ltrim($cyl, '+'),
             'axis'       => $axis,
-            'add_power'  => self::optional($req, 'add', 10),
+            'add_power'  => $add,
             'sale_price' => $price,
         ];
+    }
+
+    /**
+     * สาขาที่สั่งใบนี้ — หรือ null เมื่อร้านนี้สั่งเอง
+     *
+     * ว่างได้ และเป็นค่าปกติ: ใบสั่งส่วนใหญ่เป็นงานของร้านนี้ · ถ้าบังคับให้
+     * เลือกทุกใบ คนหน้าร้านต้องเลือก "ร้านตัวเอง" วันละสิบครั้งเพื่อบอกสิ่งที่
+     * ระบบรู้อยู่แล้ว
+     *
+     * ตรวจว่าสาขามีจริงและยังเปิดใช้งาน — สาขาที่ปิดไปแล้วสั่งของใหม่ไม่ได้
+     * ด้วยเหตุผลเดียวกับที่มันเบิกของไม่ได้ (ดู `Stock::draw`)
+     *
+     * @param array<string,mixed> $req
+     */
+    private static function branch(array $req): ?int
+    {
+        $v = $req['branch_id'] ?? null;
+        if ($v === null || $v === '' || (int) $v === 0) {
+            return null;
+        }
+
+        $id = (int) $v;
+        $row = Db::one('SELECT id, is_active FROM branches WHERE id = ?', [$id]);
+        if ($row === null) {
+            throw ApiError::badRequest('ไม่พบสาขานี้', 'unknown_branch');
+        }
+        if (!(bool) $row['is_active']) {
+            throw ApiError::badRequest('สาขานี้ปิดใช้งานแล้ว', 'branch_inactive');
+        }
+
+        return $id;
     }
 
     /** @param array<string,mixed> $req */

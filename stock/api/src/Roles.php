@@ -162,6 +162,22 @@ final class Roles
     }
 
     /**
+     * Writing down that the ruined material was someone else's doing.
+     *
+     * Anyone may scrap, and anyone may scrap something they broke themselves —
+     * that needs no permission and is the case this shop meets every week.
+     * Naming a *colleague* is a different act: it is an accusation, the
+     * dashboard adds it up per person, and it has to come from whoever answers
+     * for the shop. Left open to everyone it would be worth nothing as
+     * evidence, because the cheapest way to keep your own tally clean would be
+     * to type somebody else's name.
+     */
+    public static function blameScrap(string $role): bool
+    {
+        return $role === self::SUPERUSER || $role === self::OWNER;
+    }
+
+    /**
      * หน้าแรกหลังล็อกอินของแต่ละบทบาท
      *
      * พนักงานมีงานเดียวและมีฝั่งเดียว จึงส่งเข้าไปให้ถึงที่ทำงานเลย — คนที่เปิด
@@ -245,6 +261,11 @@ final class Roles
                 'title' => 'การบันทึกสต็อก',
                 'rows' => [
                     ['label' => 'เบิก · ตัดของเสีย · คืนของ', 'cap' => 'moveStock'],
+                    [
+                        'label' => 'ระบุว่าคนอื่นเป็นคนทำของเสีย',
+                        'cap' => 'blameScrap',
+                        'note' => 'ตัดของเสียที่ตัวเองทำ ทำได้ทุกบทบาท — ที่กันไว้คือการลงชื่อคนอื่น',
+                    ],
                     ['label' => 'รับของเข้าคลัง · ปรับยอดล็อต', 'cap' => 'moveStock'],
                     ['label' => 'เปิดใบสั่งตัด RX', 'cap' => 'moveStock'],
                     [

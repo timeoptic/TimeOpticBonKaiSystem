@@ -1877,3 +1877,201 @@ test('บทบาทที่ไม่มีสิทธิ์เห็นร�
         ok($s['bills'] > 0, 'แต่จำนวนรายการยังบอกได้ — ไม่ใช่ราคา');
     });
 });
+
+test('กรอกต้นทุนทีหลัง แล้วใบค้างรับที่เบิกไปก่อนรู้ต้นทุนตามมาด้วย', function () {
+    withRollback(function () {
+        $branch = aBranch();
+
+        // ล็อตที่รับเข้าโดยยังไม่รู้ต้นทุน — ของมาก่อนใบกำกับ เรื่องปกติของร้านนี้
+        $sku = skuWithLots(1);
+        $product = Db::one('SELECT id FROM products WHERE sku = ?', [$sku]);
+        $lot = Receiving::receive([
+            'sku'           => $sku,
+            'quantity'      => 5,
+            'cost_per_unit' => null,
+            'received_date' => date('Y-m-d'),
+        ], Roles::OWNER, 1);
+
+        // เบิกให้สาขาจากล็อตนั้นโดยตรง ไม่ให้ FIFO ไปหยิบล็อตเก่าที่รู้ต้นทุนแล้ว
+        Db::conn()->prepare('UPDATE stock_lots SET remaining_qty = 0 WHERE product_id = ? AND id <> ?')
+            ->execute([(int) $product['id'], (int) $lot['lotId']]);
+
+        $out = Stock::issue(issueReq($sku, 3, idem('latecost'), [
+            'branch_id' => $branch,
+            'taken_by'  => 'ช่างบี',
+        ]));
+        $id = $out['branch_issue_id'];
+
+        $before = Db::one('SELECT * FROM branch_issues WHERE id = ?', [$id]);
+        eq((int) $before['cost_unknown_qty'], 3, 'ตอนเบิกยังไม่รู้ต้นทุนทั้งสามชิ้น');
+        eq(round((float) $before['cost_total'], 2), 0.0, 'ต้นทุนรวมจึงยังเป็นศูนย์');
+
+        // ใบกำกับมาถึง กรอกต้นทุนลงล็อต
+        Catalog::updateLot((int) $lot['lotId'], ['cost_per_unit' => '40.00'], Roles::OWNER, 1);
+
+        $after = Db::one('SELECT * FROM branch_issues WHERE id = ?', [$id]);
+        eq((int) $after['cost_unknown_qty'], 0, 'กรอกแล้วต้องไม่เหลือชิ้นที่ไม่รู้ต้นทุน');
+        eq(round((float) $after['cost_total'], 2), 120.0, 'ต้นทุนรวมต้องเป็น 3 x 40');
+
+        $log = Db::one(
+            "SELECT unit_cost FROM inventory_logs
+             WHERE branch_issue_id = ? AND action_type = 'OUT' LIMIT 1",
+            [$id],
+        );
+        eq(round((float) $log['unit_cost'], 2), 40.0, 'แถวในสมุดต้องได้ต้นทุนไปด้วย');
+    });
+});
+
+test('แก้ต้นทุนที่เคยกรอกไว้แล้ว ไม่ย้อนไปรื้อใบเบิกเก่า', function () {
+    withRollback(function () {
+        $branch = aBranch();
+        $sku = skuWithLots(1);
+        $product = Db::one('SELECT id FROM products WHERE sku = ?', [$sku]);
+
+        $lot = Receiving::receive([
+            'sku'           => $sku,
+            'quantity'      => 5,
+            'cost_per_unit' => '10.00',
+            'received_date' => date('Y-m-d'),
+        ], Roles::OWNER, 1);
+
+        Db::conn()->prepare('UPDATE stock_lots SET remaining_qty = 0 WHERE product_id = ? AND id <> ?')
+            ->execute([(int) $product['id'], (int) $lot['lotId']]);
+
+        $out = Stock::issue(issueReq($sku, 2, idem('fixcost'), [
+            'branch_id' => $branch,
+            'taken_by'  => 'ช่างซี',
+        ]));
+        $id = $out['branch_issue_id'];
+
+        // นี่คือการ "แก้" ไม่ใช่การ "เติม" — ตัวเลขที่ตัดสินใจไปแล้วต้องอยู่นิ่ง
+        Catalog::updateLot((int) $lot['lotId'], ['cost_per_unit' => '99.00'], Roles::OWNER, 1);
+
+        $after = Db::one('SELECT * FROM branch_issues WHERE id = ?', [$id]);
+        eq(round((float) $after['cost_total'], 2), 20.0, 'ต้นทุนรวมเดิมต้องไม่ขยับ');
+    });
+});
+
+group("สาขาที่สั่งใบ RX");
+
+/* `branchRxSku()` กับ `doc()` อยู่ในไฟล์เทสต์ RX ซึ่งไม่ถูกโหลดตอนรันเฉพาะไฟล์นี้
+   — ตัวช่วยสองตัวข้างล่างจึงมีชื่อของตัวเอง ไม่ไปพึ่งไฟล์อื่น */
+
+/** SKU ของเลนส์สั่งตัดตัวแรกที่เจอ */
+function branchRxSku(): string
+{
+    return (string) Db::value("SELECT sku FROM products WHERE is_custom_made = 1 LIMIT 1");
+}
+
+/** เลขที่ใบที่ไม่ชนกับของจริง */
+function branchRxDoc(string $prefix): string
+{
+    return $prefix . "-" . bin2hex(random_bytes(3));
+}
+
+/* ใบสั่งตัดที่สาขาอื่นเป็นคนสั่ง เป็นคนละคำถามกับใบเบิก — สาขาหนึ่งอาจเบิก
+   น้อยแต่สั่งตัดเยอะ · ที่ทดสอบตรงนี้คือค่าบนใบไปถึงฐานข้อมูล กลับออกมาทาง
+   รายการ และไปโผล่ในแดชบอร์ดแยกตามสาขาได้จริง */
+
+test('ระบุสาขาบนใบสั่ง แล้วค่าไปถึงฐานข้อมูลและกลับออกมาทางรายการ', function () {
+    withRollback(function () {
+        $branch = aBranch();
+        $ref = branchRxDoc('RX-BR');
+
+        $out = Rx::order(
+            ['sku' => branchRxSku(), 'reference_doc' => $ref, 'branch_id' => $branch],
+            Roles::SALES,
+            1,
+        );
+
+        // `id` ที่ Rx::order คืนมาคือ log_id ของสมุด ไม่ใช่ id ของแถวในตาราง rx_orders
+        $row = Db::one('SELECT branch_id FROM rx_orders WHERE log_id = ?', [(int) $out['id']]);
+        eq((int) $row['branch_id'], $branch, 'ใบต้องผูกกับสาขาที่สั่ง');
+
+        $listed = Rx::orders($ref, false, 1, 20)['rows'][0];
+        eq($listed['branchId'], $branch, 'รายการต้องคืน id ของสาขา');
+        ok(($listed['branch'] ?? '') !== '', 'รายการต้องคืนชื่อสาขาไว้ขึ้นใต้เลขที่ใบ');
+    });
+});
+
+test('ไม่ระบุสาขาคือร้านนี้สั่งเอง — ไม่ใช่ช่องที่ลืมกรอก', function () {
+    withRollback(function () {
+        $ref = branchRxDoc('RX-SELF');
+        $out = Rx::order(['sku' => branchRxSku(), 'reference_doc' => $ref], Roles::SALES, 1);
+
+        // `id` ที่ Rx::order คืนมาคือ log_id ของสมุด ไม่ใช่ id ของแถวในตาราง rx_orders
+        $row = Db::one('SELECT branch_id FROM rx_orders WHERE log_id = ?', [(int) $out['id']]);
+        eq($row['branch_id'], null, 'เว้นว่างต้องเก็บเป็น NULL');
+        eq(Rx::orders($ref, false, 1, 20)['rows'][0]['branchId'], null, 'รายการต้องคืน null ไม่ใช่ศูนย์');
+    });
+});
+
+test('สาขาที่ไม่มีจริง และสาขาที่ปิดใช้งานแล้ว ถูกปฏิเสธตั้งแต่ฝั่งเซิร์ฟเวอร์', function () {
+    withRollback(function () {
+        throwsReason(
+            'unknown_branch',
+            fn() => Rx::order(['sku' => branchRxSku(), 'branch_id' => 987654321], Roles::SALES, 1),
+            'สาขาที่ไม่มีจริง',
+        );
+
+        $branch = aBranch();
+        Branches::update($branch, ['is_active' => false], Roles::OWNER);
+        throwsReason(
+            'branch_inactive',
+            fn() => Rx::order(['sku' => branchRxSku(), 'branch_id' => $branch], Roles::SALES, 1),
+            'สาขาที่ปิดใช้งานแล้ว',
+        );
+    });
+});
+
+test('แดชบอร์ดนับใบสั่งแยกตามคนสั่ง — สาขาก้อนหนึ่ง TimeOptic อีกก้อนหนึ่ง', function () {
+    withRollback(function () {
+        $branch = aBranch();
+        $today = date('Y-m-d');
+
+        Rx::order(['sku' => branchRxSku(), 'reference_doc' => branchRxDoc('RX-A'), 'branch_id' => $branch], Roles::SALES, 1);
+        Rx::order(['sku' => branchRxSku(), 'reference_doc' => branchRxDoc('RX-B'), 'branch_id' => $branch], Roles::SALES, 1);
+        Rx::order(['sku' => branchRxSku(), 'reference_doc' => branchRxDoc('RX-C')], Roles::SALES, 1);
+
+        $rows = Reports::overview($today, $today, true)['rxBranches'];
+        $mine = null;
+        foreach ($rows as $r) {
+            if ($r['branchId'] === $branch) { $mine = $r; }
+        }
+
+        ok($mine !== null, 'สาขาที่สั่งต้องมีแถวของตัวเอง');
+        eq($mine['orders'], 2, 'นับเฉพาะสองใบที่สาขานี้สั่ง');
+        eq($mine['qty'], 2, 'จำนวนชิ้นต้องตรงกับจำนวนใบ');
+        eq($mine['awaitingCost'], 2, 'ทั้งสองใบยังไม่ลงต้นทุน');
+        ok($mine['items'] !== [], 'ต้องบอกด้วยว่าสาขาสั่งอะไรไป ไม่ใช่แค่กี่ใบ');
+
+        /* ใบที่ไม่ระบุสาขาไม่หายไปไหน — ไปอยู่ก้อน TimeOptic ซึ่งมี branchId
+           เป็น null เพราะร้านตัวเองไม่ใช่สาขาที่มี id */
+        $self = null;
+        foreach ($rows as $r) {
+            if ($r['branchId'] === null) { $self = $r; }
+        }
+        ok($self !== null, 'ใบที่ร้านสั่งเองต้องมีก้อนของตัวเองชื่อ TimeOptic');
+        eq($self['branch'], 'TimeOptic', 'ชื่อก้อนของร้านเอง');
+        ok($self['orders'] >= 1, 'ใบที่ร้านสั่งเองต้องถูกนับ');
+    });
+});
+
+test('ตัวเลขเงินของแผงสาขาสั่งตัด ถูกซ่อนจากคนที่ไม่มีสิทธิ์ดูต้นทุน', function () {
+    withRollback(function () {
+        $branch = aBranch();
+        $today = date('Y-m-d');
+        Rx::order(['sku' => branchRxSku(), 'reference_doc' => branchRxDoc('RX-M'), 'branch_id' => $branch], Roles::SALES, 1);
+
+        $rows = Reports::overview($today, $today, false)['rxBranches'];
+        $mine = null;
+        foreach ($rows as $r) {
+            if ($r['branchId'] === $branch) { $mine = $r; }
+        }
+
+        ok($mine !== null, 'แถวต้องยังอยู่ — จำนวนเป็นข้อเท็จจริงของสต็อก');
+        eq($mine['cost'], null, 'ต้นทุนต้องถูกซ่อน');
+        eq($mine['revenue'], null, 'ราคาขายต้องถูกซ่อนด้วย');
+        eq($mine['orders'], 1, 'จำนวนใบยังต้องเห็น');
+    });
+});

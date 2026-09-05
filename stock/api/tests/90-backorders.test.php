@@ -89,3 +89,62 @@ test('จำนวนบนชิปตรงกับจำนวนแถว�
         );
     });
 });
+
+test('ของที่ขายไปก่อนของมาถึง ได้ต้นทุนตอนของมาถึงจริง', function () {
+    withRollback(function () {
+        $p = backorderedSku(2);
+
+        // แถวขาออกที่ตัดจากล็อตค้างส่ง — ตอนขายยังไม่มีใครรู้ต้นทุน
+        $short = Db::one(
+            'SELECT id FROM stock_lots WHERE product_id = ? AND remaining_qty < 0',
+            [$p['id']],
+        );
+        ok($short !== null, 'ต้องมีล็อตค้างส่ง');
+
+        $blank = (int) Db::value(
+            'SELECT COUNT(*) FROM inventory_logs WHERE lot_id = ? AND unit_cost IS NULL',
+            [(int) $short['id']],
+        );
+        ok($blank > 0, 'ตอนขายต้องยังไม่มีต้นทุน');
+
+        // ของมาถึงพร้อมใบกำกับ
+        Receiving::receive([
+            'sku'           => $p['sku'],
+            'quantity'      => 5,
+            'cost_per_unit' => '77.00',
+            'received_date' => date('Y-m-d'),
+        ], Roles::OWNER, 1);
+
+        $lot = Db::one('SELECT cost_per_unit FROM stock_lots WHERE id = ?', [(int) $short['id']]);
+        eq(round((float) $lot['cost_per_unit'], 2), 77.0, 'ล็อตค้างส่งต้องได้ต้นทุนของกล่องที่มาจ่ายหนี้');
+
+        eq(
+            (int) Db::value(
+                'SELECT COUNT(*) FROM inventory_logs WHERE lot_id = ? AND unit_cost IS NULL',
+                [(int) $short['id']],
+            ),
+            0,
+            'แถวที่ออกไปตอนยังไม่รู้ต้นทุน ต้องได้ต้นทุนไปด้วย',
+        );
+    });
+});
+
+test('ของมาถึงโดยยังไม่รู้ต้นทุน ไม่ได้ไปเขียนอะไรทับ', function () {
+    withRollback(function () {
+        $p = backorderedSku(1);
+        $short = Db::one(
+            'SELECT id FROM stock_lots WHERE product_id = ? AND remaining_qty < 0',
+            [$p['id']],
+        );
+
+        Receiving::receive([
+            'sku'           => $p['sku'],
+            'quantity'      => 3,
+            'cost_per_unit' => null,
+            'received_date' => date('Y-m-d'),
+        ], Roles::OWNER, 1);
+
+        $lot = Db::one('SELECT cost_per_unit FROM stock_lots WHERE id = ?', [(int) $short['id']]);
+        eq($lot['cost_per_unit'], null, 'ไม่รู้ต้นทุนก็ยังไม่รู้ ไม่ใช่ศูนย์บาท');
+    });
+});
