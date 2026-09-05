@@ -334,6 +334,9 @@ export type RxOrderRow = {
   cyl: number | null;
   axis: number | null;
   add: string | null;
+  /** สาขาที่สั่งใบนี้ — null คือร้านนี้สั่งเอง ไม่ใช่ "ยังไม่ได้กรอก" */
+  branchId: number | null;
+  branch: string | null;
 };
 
 /**

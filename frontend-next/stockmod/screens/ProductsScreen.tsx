@@ -6,6 +6,7 @@ import { useToast } from "@/stockmod/components/Toaster";
 import Paginator from "@/stockmod/components/Paginator";
 import SortHead, { SortBar, useSort } from "@/stockmod/components/SortHead";
 import LensFilters from "@/stockmod/components/LensFilters";
+import { Filter, FilterBar, withCount } from "@/stockmod/components/FilterBar";
 import LensCells from "@/stockmod/components/LensCells";
 import ProductCell from "@/stockmod/components/ProductCell";
 import NewProductDialog from "@/stockmod/components/NewProductDialog";
@@ -300,70 +301,51 @@ export default function ProductsScreen({
         <SortBar id="prod" columns={SORTS} sort={sort} dir={dir} onSort={pick} />
       </div>
 
-      {/* Both filters on one wrapping row, in short chips.
-          They used to be two full-height rows stacked under the sort strip,
-          which is three bands of controls before the first product. Chips are
-          still the right control — one tap, and the answer is readable without
-          opening anything — so what changed is their height and their line,
-          not what they are. The separator is there so the two groups still read
-          as two questions when they share a line. */}
-      <div className="chipbar">
-        {/* หน้าที่ล็อกสถานะไว้แล้วไม่มีชิปกลุ่มนี้ — กดแล้วจะพาออกจากหน้าเอง
-            ตัดทิ้งทั้งก้อน ไม่ใช่ซ่อนด้วย `hidden` เพราะ `.chips` ตั้ง display ไว้
-            ซึ่งชนะ `[hidden]` ของเบราว์เซอร์ */}
+      {/* ตัวกรองทั้งหมดอยู่แถวเดียว เป็นดรอปดาวน์
+          เคยเป็นชิปสองกลุ่มบนแถวที่ห่อบรรทัด — สถานะหกปุ่ม ชนิดสินค้าหกปุ่ม
+          แล้วถ้าเลือกเลนส์จะมีอีกสามแถวต่อท้าย รวมเป็นสามสิบปุ่มก่อนถึงสินค้า
+          แถวแรก · ดรอปดาวน์คืนความสูงนั้นมา และจำนวนที่เคยอยู่บนชิปย้ายไปอยู่
+          ในบรรทัดของแต่ละตัวเลือก จึงไม่ได้หายไป
+
+          ช่องเฉพาะเลนส์โผล่ต่อท้ายแถวเดียวกันตอนเลือก "เลนส์" — อ่านเป็น
+          "เลือกเลนส์แล้วมีให้กรองเพิ่ม" ไม่ใช่แถบใหม่ที่งอกมาอีกชั้น */}
+      <FilterBar>
+        {/* หน้าที่ล็อกสถานะไว้แล้วไม่มีช่องนี้ — เลือกแล้วจะพาออกจากหน้าเอง */}
         {lockState === "" ? (
-        <div className="chips chips--tight" role="group" aria-label="กรองตามสถานะสต็อก">
-          {STATES.map((s) => {
-            const n = counts?.[s.key || "all"];
-            // A job rather than a view, and only while it has something in it.
-            // Zero of something is not a warning, so it is not drawn as one.
-            const job = ALERTS.includes(s.key) && (n ?? 0) > 0;
-            return (
-              <button
-                key={s.key}
-                type="button"
-                className={job ? "chip chip--alert" : "chip"}
-                aria-current={state === s.key ? "true" : undefined}
-                onClick={() => refine(() => setState(s.key))}
-              >
-                {s.label}
-                {n !== undefined ? <span className="chip__count">{count(n)}</span> : null}
-              </button>
-            );
-          })}
-        </div>
+          <Filter
+            id="pf-state"
+            label="สถานะสต็อก"
+            value={state}
+            onChange={(v) => refine(() => setState(v))}
+            options={STATES.map((s) => ({
+              value: s.key,
+              label: withCount(s.label, counts?.[s.key || "all"]),
+            }))}
+          />
         ) : null}
 
-        {lockState === "" ? <span className="chipbar__sep" aria-hidden="true" /> : null}
-
-        <div className="chips chips--tight" role="group" aria-label="กรองตามชนิดสินค้า">
-          {TYPES.map((t) => (
-            <button
-              key={t.key}
-              type="button"
-              className="chip"
-              aria-current={ptype === t.key ? "true" : undefined}
-              onClick={() => chooseType(t.key)}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {lensFilters ? (
-        <LensFilters
-          index={lindex}
-          design={design}
-          coating={coating}
-          onIndex={(v) => refine(() => setLindex(v))}
-          onDesign={(v) => refine(() => setDesign(v))}
-          onCoating={(v) => refine(() => setCoating(v))}
-          // Whatever else the table is narrowed by, so a chip's tally is a
-          // count of rows this screen would actually show.
-          scope={{ q: applied, make: ONLY_STOCK }}
+        <Filter
+          id="pf-type"
+          label="ชนิดสินค้า"
+          value={ptype}
+          onChange={chooseType}
+          options={TYPES.map((t) => ({ value: t.key, label: t.label }))}
         />
-      ) : null}
+
+        {lensFilters ? (
+          <LensFilters
+            index={lindex}
+            design={design}
+            coating={coating}
+            onIndex={(v) => refine(() => setLindex(v))}
+            onDesign={(v) => refine(() => setDesign(v))}
+            onCoating={(v) => refine(() => setCoating(v))}
+            // Whatever else the table is narrowed by, so a count is a count of
+            // rows this screen would actually show.
+            scope={{ q: applied, make: ONLY_STOCK }}
+          />
+        ) : null}
+      </FilterBar>
 
       {list.status === "loading" ? <div className="skeleton" /> : null}
 

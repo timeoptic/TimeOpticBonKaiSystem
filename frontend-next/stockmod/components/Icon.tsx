@@ -102,3 +102,22 @@ export const IconPlus = () => (
     <path d="M5 12h14" />
   </Frame>
 );
+
+/** ปฏิทิน — ช่องวันที่และป้ายบอกช่วงที่กำลังดูอยู่ */
+export const IconCalendar = () => (
+  <Frame>
+    <rect x="3" y="5" width="18" height="16" rx="2.5" />
+    <path d="M3 10h18" />
+    <path d="M8 3v4" />
+    <path d="M16 3v4" />
+  </Frame>
+);
+
+/** แท่งกราฟ — ปุ่มที่ให้ไฟล์ตัวเลขออกมา */
+export const IconChart = () => (
+  <Frame>
+    <path d="M5 20V11" />
+    <path d="M12 20V4" />
+    <path d="M19 20v-6" />
+  </Frame>
+);

@@ -11,20 +11,28 @@ import InlineEdit from "@/stockmod/components/InlineEdit";
 import NewProductDialog from "@/stockmod/components/NewProductDialog";
 import { IconTrash } from "@/stockmod/components/Icon";
 import RxEditDialog from "@/stockmod/components/RxEditDialog";
-import { api, ApiError, type Page, type ProductRow, type RxOrderRow } from "@/stockmod/lib/api";
+import {
+  api,
+  ApiError,
+  type BranchRow,
+  type Page,
+  type ProductRow,
+  type RxOrderRow,
+} from "@/stockmod/lib/api";
 import { qs, useApi } from "@/stockmod/lib/useApi";
 import { count, date, diopter, money } from "@/stockmod/lib/format";
 import {
   ADD_LADDER,
-  asOptions,
   AXIS_LADDER,
   COATING_SEED,
   CYL_LADDER,
   EYE_OPTIONS,
   INDEX_SEED,
+  LENS_DESIGN_SEED,
   power,
   RX_BRANDS,
   SPH_LADDER,
+  withCurrent,
 } from "@/stockmod/lib/optics";
 
 /**
@@ -443,6 +451,9 @@ function OrderRow({
     <tr className={waiting ? "grid__row grid__row--pending" : "grid__row"}>
       <th scope="row" className="grid__lot">
         {row.referenceDoc ?? "—"}
+        {/* ทุกแถวบอกว่าใครสั่ง — ใบที่ไม่มีสาขาคือ TimeOptic สั่งเอง · เขียนให้ครบ
+            ทุกแถวเพราะคอลัมน์ที่ว่างบ้างไม่ว่างบ้าง อ่านเหมือนข้อมูลหาย */}
+        <span className="grid__sub">{row.branch ?? "TimeOptic"}</span>
       </th>
       <td>
         <span className="grid__name">{row.name}</span>
@@ -648,6 +659,7 @@ export function NewOrderDialog({
   const [lensModel, setLensModel] = useState("");
   const [coating, setCoating] = useState("");
   const [index, setIndex] = useState("");
+  const [design, setDesign] = useState("");
 
   /**
    * Which of the two ways in is being used.
@@ -697,6 +709,15 @@ export function NewOrderDialog({
   const [problem, setProblem] = useState<string | null>(null);
 
   /**
+   * สาขาที่สั่งใบนี้ — ว่างไว้คือร้านนี้สั่งเอง
+   *
+   * ว่างเป็นค่าปกติ ไม่ใช่ช่องที่ลืมกรอก: ใบส่วนใหญ่เป็นงานของร้านนี้ · มีไว้
+   * เพื่อตอบคำถามเดียวกับที่ฝั่งเบิกของตอบได้อยู่แล้ว — เดือนนี้สาขาไหนสั่งอะไรไป
+   */
+  const [branch, setBranch] = useState("");
+  const branches = useApi<{ branches: BranchRow[] }>("/branches?active=1");
+
+  /**
    * Three questions, one at a time.
    *
    * On one scroll the sheet was long enough that the last group — the one
@@ -716,7 +737,7 @@ export function NewOrderDialog({
    * walk further to learn less.
    */
   function blocking(): string | null {
-    if (step === 0 && [brand, lensModel, coating, index].every((v) => v.trim() === "")) {
+    if (step === 0 && [brand, lensModel, coating, index, design].every((v) => v.trim() === "")) {
       return "บอกก่อนว่าสั่งเลนส์อะไร — กรอกอย่างน้อยหนึ่งช่อง แบรนด์ รุ่น Coating หรือ Index";
     }
     return null;
@@ -766,7 +787,7 @@ export function NewOrderDialog({
    * says the lens will be called is what the order files it as.
    */
   const composed = useApi<{ name: string }>(
-    [brand, lensModel, coating, index].some((v) => v.trim() !== "")
+    [brand, lensModel, coating, index, design].some((v) => v.trim() !== "")
       ? `/products/compose-name${qs({
           type: "Lens",
           custom: "1",
@@ -774,6 +795,7 @@ export function NewOrderDialog({
           model: lensModel,
           coating,
           lens_index: index,
+          lens_design: design,
         })}`
       : null,
   );
@@ -792,6 +814,7 @@ export function NewOrderDialog({
     setLensModel(r.model ?? "");
     setCoating(r.coating ?? "");
     setIndex(r.lensIndex ?? "");
+    setDesign(r.lensDesign ?? "");
     setPrice(r.basePrice > 0 ? String(r.basePrice) : "");
     setEye(r.eyeSide ?? "");
     // A made-to-order model carries no power, so copying one leaves these at
@@ -812,7 +835,7 @@ export function NewOrderDialog({
       return;
     }
 
-    if ([brand, lensModel, coating, index].every((v) => v.trim() === "")) {
+    if ([brand, lensModel, coating, index, design].every((v) => v.trim() === "")) {
       setProblem("บอกก่อนว่าสั่งเลนส์อะไร — กรอกอย่างน้อยหนึ่งช่อง แบรนด์ รุ่น Coating หรือ Index");
       return;
     }
@@ -836,7 +859,9 @@ export function NewOrderDialog({
         lens_model: lensModel.trim() || null,
         lens_coating: coating.trim() || null,
         lens_index: index.trim() || null,
+        lens_design: design.trim() || null,
         reference_doc: doc.trim(),
+        branch_id: branch === "" ? null : Number(branch),
         eye_side: eye || null,
         sph: sph.trim() || null,
         cyl: cyl.trim() || null,
@@ -946,6 +971,21 @@ export function NewOrderDialog({
                   options={offer([], hints.data?.values?.model)}
                 />
               </div>
+              {/* ชนิดเลนส์มาก่อน coating และ index เพราะเป็นคำถามแรกที่ถามลูกค้า
+                  และเป็นตัวที่ทำให้ราคาต่างกันมากที่สุด · เลือกได้หรือพิมพ์เองก็ได้
+                  เหมือนช่องอื่นในชุดนี้ */}
+              <div className="field">
+                <label className="field__label" htmlFor="rx-design">ชนิดเลนส์</label>
+                <Select
+                  free
+                  id="rx-design"
+                  value={design}
+                  onChange={setDesign}
+                  disabled={busy}
+                  placeholder="Single · Progressive · Bifocal"
+                  options={offer(LENS_DESIGN_SEED, hints.data?.values?.lens_design)}
+                />
+              </div>
               <div className="field">
                 <label className="field__label" htmlFor="rx-coating">Coating</label>
                 <Select
@@ -997,68 +1037,59 @@ export function NewOrderDialog({
                 <label className="field__label" htmlFor="rx-sph">
                   SPH (สายตาสั้น/ยาว)
                 </label>
-                {/* The same picker the catalogue asks a power with. One person,
-                    one job sheet, two screens — a list on one and a bare box on
-                    the other is how "-2.5" and "-2.50" end up in the same shop. */}
+                {/* The same picker the catalogue asks a power with, closed the
+                    same way. One person, one job sheet, two screens — a ladder
+                    on one and a box that takes anything on the other is how
+                    "-2.5" and "-2.50" end up in the same shop. */}
                 <Select
-                  free
                   id="rx-sph"
                   value={sph}
                   onChange={setSph}
                   disabled={busy}
                   placeholder="เลือก หรือพิมพ์ค่า"
-                  options={asOptions(SPH_LADDER)}
+                  options={withCurrent(SPH_LADDER, sph)}
                 />
               </div>
               <div className="field">
                 <label className="field__label" htmlFor="rx-cyl">
                   CYL (สายตาเอียง)
                 </label>
-                {/* The same picker the catalogue asks a power with. One person,
-                    one job sheet, two screens — a list on one and a bare box on
-                    the other is how "-2.5" and "-2.50" end up in the same shop. */}
+                {/* ปิดรายการเหมือนช่อง SPH — ดูเหตุผลที่ optics.ts */}
                 <Select
-                  free
                   id="rx-cyl"
                   value={cyl}
                   onChange={setCyl}
                   disabled={busy}
                   placeholder="เลือก หรือพิมพ์ค่า"
-                  options={asOptions(CYL_LADDER)}
+                  options={withCurrent(CYL_LADDER, cyl)}
                 />
               </div>
               <div className="field">
                 <label className="field__label" htmlFor="rx-axis">
                   AXIS (องศา)
                 </label>
-                {/* The same picker the catalogue asks a power with. One person,
-                    one job sheet, two screens — a list on one and a bare box on
-                    the other is how "-2.5" and "-2.50" end up in the same shop. */}
+                {/* ปิดรายการเหมือนช่อง SPH — ดูเหตุผลที่ optics.ts */}
                 <Select
-                  free
                   id="rx-axis"
                   value={axis}
                   onChange={setAxis}
                   disabled={busy}
                   placeholder="เลือก หรือพิมพ์ค่า"
-                  options={asOptions(AXIS_LADDER)}
+                  options={withCurrent(AXIS_LADDER, axis)}
                 />
               </div>
               <div className="field">
                 <label className="field__label" htmlFor="rx-add">
                   ADD (ระยะใกล้)
                 </label>
-                {/* The same picker the catalogue asks a power with. One person,
-                    one job sheet, two screens — a list on one and a bare box on
-                    the other is how "-2.5" and "-2.50" end up in the same shop. */}
+                {/* ปิดรายการเหมือนช่อง SPH — ดูเหตุผลที่ optics.ts */}
                 <Select
-                  free
                   id="rx-add"
                   value={add}
                   onChange={setAdd}
                   disabled={busy}
                   placeholder="เลือก หรือพิมพ์ค่า"
-                  options={asOptions(ADD_LADDER)}
+                  options={withCurrent(ADD_LADDER, add)}
                 />
               </div>
             </div>
@@ -1090,6 +1121,27 @@ export function NewOrderDialog({
               {autoDoc ? (
                 <span className="field__help">ระบบออกเลขให้เอง — พิมพ์ทับได้ถ้าใบสั่งมีเลขของตัวเอง</span>
               ) : null}
+            </div>
+            <div className="field">
+              <label className="field__label" htmlFor="rx-branch">
+                สาขาที่สั่ง
+              </label>
+              <Select
+                id="rx-branch"
+                value={branch}
+                onChange={setBranch}
+                disabled={busy || branches.status !== "ready"}
+                options={[
+                  { value: "", label: "TimeOptic" },
+                  ...(branches.status === "ready"
+                    ? branches.data.branches.map((b) => ({ value: String(b.id), label: b.name }))
+                    : []),
+                ]}
+              />
+              {/* บรรทัดนี้มีเพราะช่องว่างกับช่องที่ลืมกรอกหน้าตาเหมือนกัน — และ
+                  ที่นี่ว่างแปลว่า "TimeOptic" ซึ่งเป็นคำตอบที่ถูกต้องของ
+                  ใบส่วนใหญ่ ไม่ใช่งานที่ยังทำไม่เสร็จ */}
+              <span className="field__help">เลือกเมื่อสาขาอื่นเป็นคนสั่ง — ยอดจะไปรวมในแดชบอร์ดแยกตามสาขา</span>
             </div>
             <div className="field">
               <label className="field__label" htmlFor="rx-cost">

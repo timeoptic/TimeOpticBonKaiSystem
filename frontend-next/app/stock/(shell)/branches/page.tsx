@@ -9,16 +9,16 @@ import { IconTrash } from "@/stockmod/components/Icon";
 import Select from "@/stockmod/components/Select";
 import { api, ApiError, type BranchRow } from "@/stockmod/lib/api";
 import { useApi } from "@/stockmod/lib/useApi";
-import { count, money } from "@/stockmod/lib/format";
+import { count } from "@/stockmod/lib/format";
 
-type SortKey = "added" | "name" | "contact" | "pending" | "cost" | "active";
+type SortKey = "added" | "name" | "contact" | "pending" | "active";
 
 /** The sort chooser above the table — where ติดต่อ still sorts from. */
 const SORTS: readonly { col: SortKey; label: string }[] = [
   { col: "added", label: "เพิ่มล่าสุด" },
   { col: "name", label: "ชื่อสาขา" },
   { col: "contact", label: "ติดต่อ" },
-  { col: "pending", label: "จำนวนที่ค้างรับ" },
+  { col: "pending", label: "จำนวนใบเบิก" },
   { col: "active", label: "สถานะ" },
 ];
 const NATURAL_ASC: readonly SortKey[] = ["name", "contact"];
@@ -30,7 +30,6 @@ const PICK: Record<SortKey, (b: BranchRow) => string | number | null> = {
   name: (b) => b.name,
   contact: (b) => b.contact,
   pending: (b) => b.pendingCount,
-  cost: (b) => b.pendingCost,
   active: (b) => (b.isActive ? 1 : 0),
 };
 
@@ -63,7 +62,7 @@ export default function BranchesPage() {
     <main className="work-main">
       <WorkHead
         title="สาขา"
-        lede="รายชื่อสาขาที่มาเบิกของจากคลังนี้ได้ · ยอดค้างของแต่ละสาขาอยู่ในตาราง"
+        lede="รายชื่อสาขาที่มาเบิกของจากคลังนี้ได้ · ต้นทุนของที่เบิกไปอ่านได้ที่หน้าของที่สาขาเบิกไป"
       >
         {mayEdit ? (
           <button type="button" className="btn btn--primary" onClick={() => setAdding((v) => !v)}>
@@ -71,7 +70,7 @@ export default function BranchesPage() {
           </button>
         ) : null}
         <Link href="/stock/settlements" className="btn">
-          ค้างรับจากสาขา
+          ของที่สาขาเบิกไป
         </Link>
       </WorkHead>
 
@@ -129,8 +128,7 @@ export default function BranchesPage() {
                     column back and one less place to look. It still sorts, from
                     the chooser above the table. */}
                 <SortHead label="สาขา / ติดต่อ" col="name" sort={sort} dir={dir} onSort={sortBy} />
-                <SortHead label="ค้างรับ" col="pending" sort={sort} dir={dir} onSort={sortBy} num />
-                {money$ ? <SortHead label="ต้นทุนที่ค้าง" col="cost" sort={sort} dir={dir} onSort={sortBy} num /> : null}
+                <SortHead label="ใบเบิก" col="pending" sort={sort} dir={dir} onSort={sortBy} num />
                 <SortHead label="สถานะ" col="active" sort={sort} dir={dir} onSort={sortBy} />
                 <th scope="col">
                   <span className="sr-only">จัดการ</span>
@@ -139,7 +137,7 @@ export default function BranchesPage() {
             </thead>
             <tbody>
               {rows.map((b) => (
-<BranchRowView key={b.id} branch={b} mayEdit={mayEdit} money={money$} onDone={list.reload} />
+<BranchRowView key={b.id} branch={b} mayEdit={mayEdit} onDone={list.reload} />
               ))}
             </tbody>
           </table>
@@ -152,12 +150,10 @@ export default function BranchesPage() {
 function BranchRowView({
   branch,
   mayEdit,
-  money: showCost,
   onDone,
 }: {
   branch: BranchRow;
   mayEdit: boolean;
-  money: boolean;
   onDone: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -187,22 +183,6 @@ function BranchRowView({
             </Link>
           )}
         </td>
-        {showCost ? (
-        <td className="grid__num">
-          {branch.pendingCount === 0 || branch.pendingCost === null ? (
-            <span className="grid__muted">—</span>
-          ) : (
-            <>
-              {money(branch.pendingCost)}
-              {branch.pendingUnknown > 0 ? (
-                <span className="grid__sub grid__sub--warn">
-                  +{count(branch.pendingUnknown)} ชิ้นไม่รู้ต้นทุน
-                </span>
-              ) : null}
-            </>
-          )}
-        </td>
-        ) : null}
         <td>
           {branch.isActive ? (
             <span className="status status--stock">เปิดใช้งาน</span>
@@ -226,7 +206,7 @@ function BranchRowView({
 
       {open ? (
         <tr className="grid__row">
-          <td colSpan={showCost ? 5 : 4}>
+          <td colSpan={4}>
             <div className="lotedit">
               <BranchForm
                 branch={branch}
@@ -373,7 +353,7 @@ function BranchForm({
             ]}
           />
           <span className="field__help">
-            ปิดสาขาที่ยังค้างเงินอยู่ไม่ได้ — เคลียร์ที่หน้าค้างรับก่อน
+            ปิดสาขาที่ยังมีรายการค้างอยู่ไม่ได้ — ดูรายการได้ที่หน้าของที่สาขาเบิกไป
           </span>
         </div>
       ) : null}

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Paginator from "./Paginator";
 import SortHead, { SortBar, useSort } from "./SortHead";
 import LensFilters from "./LensFilters";
+import { Filter, FilterBar } from "./FilterBar";
 import LensCells from "./LensCells";
 import ProductCell from "./ProductCell";
 import LensDetail from "./LensDetail";
@@ -284,58 +285,48 @@ export default function ProductPicker({
           ) : null}
         </form>
 
-        {/* Sort and filter travel together at the end of the bar — both answer
-            "which of these am I looking at", and splitting them across the
-            toolbar makes the row read as three unrelated controls. */}
+        {/* Sort travels at the end of the bar; the narrowing moved to its own
+            row below, where every filter now sits together as dropdowns. */}
         <div className="listtools__end">
           <SortBar id="pick" columns={SORTS} sort={sort} dir={dir} onSort={pick} />
-
-          <div className="chips" role="group" aria-label="กรองตามข้างตา">
-            {EYES.map((e) => (
-              <button
-                key={e.key}
-                type="button"
-                className="chip"
-                aria-current={eye === e.key ? "true" : undefined}
-                onClick={() => refine(() => setEye(e.key))}
-              >
-                {e.label}
-              </button>
-            ))}
-          </div>
         </div>
       </div>
 
-      {/* On its own row: five chips plus "ทุกชนิด" do not share a line with the
-          search box without wrapping into a mess at tablet width. */}
-      <div className="chips chips--bar" role="group" aria-label="กรองตามชนิดสินค้า">
-        {TYPES.map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            className="chip"
-            aria-current={ptype === t.key ? "true" : undefined}
-            onClick={() => chooseType(t.key)}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      {lensFilters ? (
-        <LensFilters
-          index={lindex}
-          design={design}
-          coating={coating}
-          onIndex={(v) => refine(() => setLindex(v))}
-          onDesign={(v) => refine(() => setDesign(v))}
-          onCoating={(v) => refine(() => setCoating(v))}
-          // `only` is the important one: this picker may be showing stock only,
-          // or made-to-order only, and a chip counting the whole catalogue
-          // would offer a tap that empties the table.
-          scope={{ q: applied, eye, make: only === "all" ? "" : only }}
+      {/* แถวเดียว เป็นดรอปดาวน์ทั้งหมด — ข้างตา ชนิดสินค้า แล้วต่อด้วยช่องเฉพาะ
+          เลนส์ตอนเลือก "เลนส์" · เดิมเป็นชิปสามแถวซ้อนกันเหนือรายการสินค้า
+          ซึ่งบนแท็บเล็ตกินความสูงจนเห็นสินค้าแค่สองแถวแรก */}
+      <FilterBar>
+        <Filter
+          id="pk-eye"
+          label="ข้างตา"
+          value={eye}
+          onChange={(v) => refine(() => setEye(v))}
+          options={EYES.map((e) => ({ value: e.key, label: e.label }))}
         />
-      ) : null}
+
+        <Filter
+          id="pk-type"
+          label="ชนิดสินค้า"
+          value={ptype}
+          onChange={chooseType}
+          options={TYPES.map((t) => ({ value: t.key, label: t.label }))}
+        />
+
+        {lensFilters ? (
+          <LensFilters
+            index={lindex}
+            design={design}
+            coating={coating}
+            onIndex={(v) => refine(() => setLindex(v))}
+            onDesign={(v) => refine(() => setDesign(v))}
+            onCoating={(v) => refine(() => setCoating(v))}
+            // `only` is the important one: this picker may be showing stock only,
+            // or made-to-order only, and a count over the whole catalogue would
+            // offer a choice that empties the table.
+            scope={{ q: applied, eye, make: only === "all" ? "" : only }}
+          />
+        ) : null}
+      </FilterBar>
 
       {list.status === "loading" ? <div className="skeleton" /> : null}
 

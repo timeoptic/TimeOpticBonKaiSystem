@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useActor, WorkHead } from "@/stockmod/components/AppShell";
+import { can, useActor, WorkHead } from "@/stockmod/components/AppShell";
 import { useToast } from "@/stockmod/components/Toaster";
 import ProductPicker from "@/stockmod/components/ProductPicker";
 import TaskDialog from "@/stockmod/components/TaskDialog";
@@ -54,6 +54,21 @@ type MoveResult = {
 type Recipient = "staff" | "branch";
 
 /**
+ * ทำไมของถึงเสีย — ตามคำของร้าน
+ *
+ * รายการปิด (บวก "อื่น ๆ") เพราะสาเหตุมีอยู่ไม่กี่แบบและวนซ้ำทุกสัปดาห์ ต่างจาก
+ * หมายเหตุของใบเบิกที่เป็นเรื่องเฉพาะใบ · ปล่อยให้พิมพ์เองแล้วสาเหตุเดียวกันจะ
+ * ถูกเขียนสามแบบ แล้วคำถามว่า "เดือนนี้ของหายไปกับอะไรมากที่สุด" จะตอบไม่ได้
+ *
+ * ข้อความที่เลือกถูกบันทึกลง `inventory_logs.notes` ตรง ๆ ไม่ใช่รหัส — สมุด
+ * คลังอ่านด้วยตาคน และรหัสที่ต้องเปิดตารางแปลอีกทีไม่ได้ทำให้อะไรดีขึ้น
+ */
+const SCRAP_REASONS = ["เจียร์เสีย", "เลนส์ไม่ได้คุณภาพ", "หยิบเลนส์ผิด"];
+
+/** ทางออกสำหรับสาเหตุที่สี่ ซึ่งวันหนึ่งจะมี */
+const OTHER_REASON = "อื่น ๆ";
+
+/**
  * One line waiting to go out.
  *
  * `onHand` is kept beside the quantity so the basket can say "this one is
@@ -103,6 +118,29 @@ export default function IssuePage() {
   /** Bumped after a write, so the list underneath re-reads the new counts. */
   const [refresh, setRefresh] = useState(0);
 
+  /**
+   * Counted up on every trip into the basket, so the cart can say it heard.
+   *
+   * The row that was tapped is at eye level and the cart button is at the top
+   * of the page, which is exactly the distance over which "did that work?"
+   * lives — the answer used to be a number quietly changing off-screen. The
+   * count alone cannot carry it either: two of the same lens is one line, so
+   * the badge reads the same before and after. A counter that only ever goes up
+   * is what makes each tap its own event, and remounting the badge on it is
+   * what replays the animation.
+   */
+  const [taps, setTaps] = useState(0);
+
+  /**
+   * A basket line being retyped, keyed by SKU, while the box is briefly empty.
+   *
+   * Kept beside the basket rather than in it: `qty` is a number that the
+   * total, the short check and the request all read, and clearing the box to
+   * type "12" would take it through 0 and fight the cursor. The draft is what
+   * is on screen; the basket keeps the last figure that was actually a number.
+   */
+  const [typing, setTyping] = useState<Record<string, string>>({});
+
   const [kind, setKind] = useState<"issue" | "scrap">("issue");
   const [recipient, setRecipient] = useState<Recipient>("staff");
 
@@ -113,6 +151,14 @@ export default function IssuePage() {
   const [branchId, setBranchId] = useState("");
   const [doc, setDoc] = useState("");
   const [note, setNote] = useState("");
+
+  /**
+   * ตัวเลือกที่กดในดรอปดาวน์สาเหตุ — ของหน้าจอ ไม่ใช่ของสมุด
+   *
+   * สิ่งที่ถูกบันทึกคือ `note` เสมอ ตัวนี้แค่จำว่าดรอปดาวน์ค้างอยู่บรรทัดไหน
+   * เก็บแยกกันเพราะ "อื่น ๆ" ไม่ใช่ข้อความที่จะลงสมุด มันคือคำสั่งให้เปิดช่องพิมพ์
+   */
+  const [reason, setReason] = useState("");
 
   const [busy, setBusy] = useState(false);
   /** A refusal, and — when the API named one — the line it was about. */
@@ -138,13 +184,52 @@ export default function IssuePage() {
     if (kind === "scrap" && recipient === "branch") setRecipient("staff");
   }, [kind, recipient]);
 
+  /* สลับระหว่างเบิกกับตัดของเสีย = เปลี่ยนคำถาม ไม่ใช่เปลี่ยนแค่ปุ่ม · หมายเหตุ
+     ของใบเบิกที่ค้างอยู่จะกลายเป็นสาเหตุที่ของเสียทันทีถ้าไม่ล้าง */
+  useEffect(() => {
+    setNote("");
+    setReason("");
+  }, [kind]);
+
+  /**
+   * Naming a colleague on a scrap is the owner's call.
+   *
+   * On a withdrawal anyone may draw for anyone — a technician fetching a lens
+   * for the person at the counter is the ordinary case. On a scrap the same
+   * field says whose doing it was, the dashboard totals it per person, and the
+   * shop asked for that to come from the owner. Someone who set the picker on a
+   * withdrawal and then switched to scrap is put back on their own name here,
+   * rather than being let type an accusation the API will refuse on submit.
+   */
+  const mayBlame = can.blameScrap(actor);
+
+  useEffect(() => {
+    if (kind === "scrap" && !mayBlame && forOther) {
+      setForOther(false);
+      setStaffId(String(actor.id));
+    }
+  }, [kind, mayBlame, forOther, actor.id]);
+
   const isBranch = kind === "issue" && recipient === "branch";
   const activeBranches = branches.status === "ready" ? branches.data.branches : [];
+
+  /**
+   * เลือกสาเหตุแล้วสาเหตุนั้นกลายเป็นหมายเหตุเลย
+   *
+   * ยกเว้น "อื่น ๆ" ซึ่งเปิดช่องพิมพ์แทน — ล้างของเดิมทิ้งด้วย ไม่งั้นสาเหตุที่
+   * เพิ่งกดไว้จะค้างอยู่ในช่องที่กำลังจะพิมพ์ทับ
+   */
+  function pickReason(v: string) {
+    setReason(v);
+    setNote(v === OTHER_REASON ? "" : v);
+  }
 
   function reset() {
     setDoc("");
     setNote("");
+    setReason("");
     setBasket([]);
+    setTyping({});
     setIdemKey(`web:${uuid()}`);
   }
 
@@ -173,6 +258,7 @@ export default function IssuePage() {
     if (p === null) return;
     setProblem(null);
     setBasket((b) => stash(b, p, 1));
+    setTaps((n) => n + 1);
   }
 
   /** The steppers inside the basket, where a quantity is actually decided. */
@@ -183,8 +269,28 @@ export default function IssuePage() {
     );
   }
 
+  /**
+   * The same quantity, typed rather than stepped.
+   *
+   * Thirty of something is six taps of the plus button or two keystrokes. The
+   * draft holds whatever is in the box — including nothing, mid-retype — and
+   * only a real number reaches the basket, where it is clamped the way the
+   * stepper clamps it.
+   */
+  function typeQtyOf(sku: string, text: string) {
+    const digits = text.replace(/[^\d]/g, "");
+    setTyping((t) => ({ ...t, [sku]: digits }));
+    if (digits !== "") setQtyOf(sku, Number(digits));
+  }
+
+  /** Leaving the box gives up the draft, so the line shows the figure it kept. */
+  function settleQtyOf(sku: string) {
+    setTyping(({ [sku]: _gone, ...rest }) => rest);
+  }
+
   function drop(sku: string) {
     setBasket((b) => b.filter((l) => l.sku !== sku));
+    settleQtyOf(sku);
   }
 
   async function submit(e: React.FormEvent) {
@@ -264,7 +370,7 @@ export default function IssuePage() {
         (out.total_cost ? ` · ต้นทุนรวม ${money(Number(out.total_cost))} บาท` : "");
 
       const link = done.some((l) => l.branch_issue_id !== null)
-        ? { href: "/settlements", label: "บันทึกเป็นค้างรับ · ดูรายการ" }
+        ? { href: "/settlements", label: "บันทึกให้สาขาแล้ว · ดูรายการ" }
         : { href: "/movements", label: "ดูความเคลื่อนไหว" };
 
       if (short.length > 0) {
@@ -314,9 +420,17 @@ export default function IssuePage() {
           onClick={() => setReviewing(true)}
           aria-label={`ตะกร้า ${count(basket.length)} รายการ`}
         >
-          <IconCart />
+          {/* Remounted on every tap — that is what replays the nudge and the
+              pop, and it is why the counter exists rather than the count. */}
+          <span className="cart__icon" key={`cart-icon-${taps}`}>
+            <IconCart />
+          </span>
           ตะกร้า
-          {basket.length > 0 ? <span className="cartcount">{count(basket.length)}</span> : null}
+          {basket.length > 0 ? (
+            <span className="cartcount" key={`cart-count-${taps}`}>
+              {count(basket.length)}
+            </span>
+          ) : null}
         </button>
         <Link href="/stock/products" className="btn">
           สินค้าและสต็อก
@@ -463,9 +577,22 @@ export default function IssuePage() {
                       >
                         −
                       </button>
-                      <span className={l.qty > l.onHand ? "basket__qty basket__qty--short" : "basket__qty"}>
-                        {count(l.qty)}
-                      </span>
+                      {/* Typed as well as stepped: thirty of something is six
+                          taps of the plus button, or two keystrokes. */}
+                      <input
+                        className={
+                          l.qty > l.onHand
+                            ? "input basket__qtyinput basket__qtyinput--short"
+                            : "input basket__qtyinput"
+                        }
+                        inputMode="numeric"
+                        autoComplete="off"
+                        value={typing[l.sku] ?? String(l.qty)}
+                        onChange={(e) => typeQtyOf(l.sku, e.target.value)}
+                        onBlur={() => settleQtyOf(l.sku)}
+                        disabled={busy}
+                        aria-label={`จำนวน ${l.name}`}
+                      />
                       <button
                         type="button"
                         className="qty__step"
@@ -534,7 +661,7 @@ export default function IssuePage() {
               forOther ? (
                 <div className="field">
                   <label className="field__label" htmlFor="if-who">
-                    {kind === "scrap" ? "คนที่ตัดของเสีย" : "ผู้เบิก"}
+                    {kind === "scrap" ? "คนที่ทำของเสีย" : "ผู้เบิก"}
                   </label>
                   <Select
                     id="if-who"
@@ -566,28 +693,39 @@ export default function IssuePage() {
                     </button>
                   </div>
                   <span className="field__help">
-                    รายการนี้จะขึ้นชื่อ {actor.displayName} เป็นผู้บันทึกเสมอ ไม่ว่าเลือกใครเป็นผู้เบิก
+                    รายการนี้จะขึ้นชื่อ {actor.displayName} เป็นผู้บันทึกเสมอ ไม่ว่าเลือกใคร
+                    {kind === "scrap" ? "เป็นคนทำของเสีย" : "เป็นผู้เบิก"}
                   </span>
+                  {kind === "scrap" ? (
+                    <span className="field__help">
+                      ชื่อที่เลือกจะไปรวมเป็นยอดของเสียรายคนในแดชบอร์ด
+                    </span>
+                  ) : null}
                 </div>
               ) : (
                 <div className="whois">
                   <span className="whois__what">
                     <span className="whois__label">
-                      {kind === "scrap" ? "คนที่ตัดของเสีย" : "ผู้เบิก"}
+                      {kind === "scrap" ? "คนที่ทำของเสีย" : "ผู้เบิก"}
                     </span>
                     <span className="whois__name">
                       {actor.displayName}
                       {actor.jobTitle ? ` · ${actor.jobTitle}` : ""}
                     </span>
                   </span>
-                  <button
-                    type="button"
-                    className="btn btn--quiet btn--small"
-                    disabled={busy}
-                    onClick={() => setForOther(true)}
-                  >
-                    เบิกแทนคนอื่น
-                  </button>
+                  {/* On a scrap this button is an accusation, so only the owner
+                      gets it. Everyone else writes off what they broke under
+                      their own name, which needs no permission at all. */}
+                  {kind === "issue" || mayBlame ? (
+                    <button
+                      type="button"
+                      className="btn btn--quiet btn--small"
+                      disabled={busy}
+                      onClick={() => setForOther(true)}
+                    >
+                      {kind === "scrap" ? "คนอื่นเป็นคนทำ" : "เบิกแทนคนอื่น"}
+                    </button>
+                  ) : null}
                 </div>
               )
             ) : (
@@ -620,35 +758,79 @@ export default function IssuePage() {
                   </div>
                 ) : (
                   <div className="notice" role="status">
-                    สาขาเบิกจะถูกบันทึกเป็น <strong>ค้างรับเงิน</strong> — ตัดสต็อกและลงต้นทุนวันนี้
-                    แต่ยังไม่ลงกำไร จนกว่าจะบันทึกรับเงินที่หน้า{" "}
+                    สาขาเบิกจะ<strong>ตัดสต็อกและลงต้นทุนวันนี้</strong> — เรื่องเงินกับกำไร
+                    บัญชีคิดเองจาก Excel · ดูของที่ออกไปแล้วได้ที่หน้า{" "}
                     <Link href="/stock/settlements" className="grid__link">
-                      ค้างรับจากสาขา
+                      ของที่สาขาเบิกไป
                     </Link>
                   </div>
                 )}
               </>
             )}
 
-            {/* A plain note field. The suggestion chips that used to sit above
-                it drew on the ledger's own most-used notes, which sounded good
-                and read as a wall: eight chips of past sentences over a field
-                most people leave empty. Typing the note is faster than reading
-                the list of notes. */}
-            <div className="field">
-              <label className="field__label" htmlFor="if-note">
-                {kind === "scrap" ? "สาเหตุที่เสีย" : "หมายเหตุ"}
-              </label>
-              <input
-                id="if-note"
-                className="input"
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                placeholder={kind === "scrap" ? "เช่น ขอบบิ่นตอนเจียร" : "เช่น ขายหน้าร้าน"}
-                disabled={busy}
-                autoComplete="off"
-              />
-            </div>
+            {/* ของเสียเลือกจากรายการ ของเบิกพิมพ์เอง
+
+                สองช่องนี้ลงคอลัมน์เดียวกัน แต่ตอบคนละคำถาม · หมายเหตุของใบเบิก
+                เป็นเรื่องเฉพาะใบ ("ลูกค้าคุณสมชายมารับเอง") เดาแทนไม่ได้ จึงยัง
+                เป็นช่องพิมพ์ · สาเหตุที่ของเสียมีอยู่ไม่กี่แบบและวนซ้ำทุกสัปดาห์
+                ปล่อยให้พิมพ์เองแปลว่า "เจียร์เสีย" "เจียรเสีย" "เจียนเสีย" จะ
+                กลายเป็นสามสาเหตุตอนไล่ดูย้อนหลังว่าของหายไปกับอะไรมากที่สุด
+
+                เหลือ "อื่น ๆ" ไว้ให้พิมพ์ เพราะวันหนึ่งจะมีสาเหตุที่สี่ และการ
+                บังคับให้เลือกผิด ๆ ไปหนึ่งข้อแย่กว่าปล่อยให้เขียนตามจริง */}
+            {kind === "scrap" ? (
+              <>
+                <div className="field">
+                  <label className="field__label" htmlFor="if-reason">
+                    สาเหตุที่เสีย
+                  </label>
+                  <Select
+                    id="if-reason"
+                    value={reason}
+                    onChange={pickReason}
+                    disabled={busy}
+                    placeholder="เลือกสาเหตุ"
+                    options={[
+                      { value: "", label: "— ไม่ระบุ —" },
+                      ...SCRAP_REASONS.map((r) => ({ value: r, label: r })),
+                      { value: OTHER_REASON, label: OTHER_REASON },
+                    ]}
+                  />
+                </div>
+
+                {reason === OTHER_REASON ? (
+                  <div className="field">
+                    <label className="field__label" htmlFor="if-note">
+                      เขียนสาเหตุ
+                    </label>
+                    <input
+                      id="if-note"
+                      className="input"
+                      value={note}
+                      onChange={(e) => setNote(e.target.value)}
+                      placeholder="เช่น ขอบบิ่นตอนใส่กรอบ"
+                      disabled={busy}
+                      autoComplete="off"
+                    />
+                  </div>
+                ) : null}
+              </>
+            ) : (
+              <div className="field">
+                <label className="field__label" htmlFor="if-note">
+                  หมายเหตุ
+                </label>
+                <input
+                  id="if-note"
+                  className="input"
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  placeholder="เช่น ขายหน้าร้าน"
+                  disabled={busy}
+                  autoComplete="off"
+                />
+              </div>
+            )}
 
             {problem ? (
               <div className="notice notice--error" role="alert">

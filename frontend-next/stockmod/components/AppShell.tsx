@@ -60,6 +60,14 @@ export const can = {
   seeCost: (a: Actor) => isAdminUp(a),
   seeBranchMoney: (a: Actor) => isAdminUp(a),
   manageBranches: (a: Actor) => a.role === "owner" || a.role === "superuser",
+  /**
+   * ลงชื่อ "คนอื่น" ว่าเป็นคนทำของเสีย
+   *
+   * ตัดของเสียทำได้ทุกบทบาท และตัดของที่ตัวเองทำเสียก็ไม่ต้องขอใคร ที่กันไว้
+   * คือการลงชื่อเพื่อนร่วมงาน ซึ่งแดชบอร์ดเอาไปรวมเป็นยอดรายคน · ด่านจริงอยู่
+   * ที่ `StockGate::blamed` ตรงนี้แค่ไม่วาดปุ่มที่จะโดนปฏิเสธอยู่ดี
+   */
+  blameScrap: (a: Actor) => a.role === "owner" || a.role === "superuser",
 };
 
 /**

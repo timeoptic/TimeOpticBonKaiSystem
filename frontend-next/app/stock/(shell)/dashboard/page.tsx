@@ -7,8 +7,13 @@ import Select from "@/stockmod/components/Select";
 import { CHART_INK, DayBars, FlowChart, RankBars } from "@/stockmod/components/Charts";
 import { qs, useApi } from "@/stockmod/lib/useApi";
 import { count, date, money } from "@/stockmod/lib/format";
-import { PRODUCT_TYPE_LABEL, type Movers } from "@/stockmod/lib/api";
-import DateField from "@/stockmod/components/DateField";
+import { PRODUCT_TYPE_LABEL, PRODUCT_TYPES, type Movers } from "@/stockmod/lib/api";
+import DateRangeField from "@/stockmod/components/DateRangeField";
+import PickList from "@/stockmod/components/PickList";
+import { IconCalendar, IconChart } from "@/stockmod/components/Icon";
+import { Filter, FilterBar } from "@/stockmod/components/FilterBar";
+import { download, type Mode, type Sheet } from "@/stockmod/lib/workbook";
+import { daysPng, INK, rankPng } from "@/stockmod/lib/chartimage";
 
 type Slot = { rows: number; qty: number; value: number | null; qtyNoCost: number };
 
@@ -24,6 +29,71 @@ type Report = {
   byDay: { day: string; inQty: number; outQty: number; scrapQty: number; cogs: number | null }[];
   topProducts: { id: number; sku: string; name: string; qty: number; cost: number | null }[];
   topPeople: { name: string; qty: number; rows: number }[];
+  /**
+   * ของเสีย แยกตามคนที่ถูกระบุว่าเป็นคนทำ
+   *
+   * ไม่ใช่คนที่กดบันทึก — นับเฉพาะชื่อที่ลงไว้ในช่อง "คนที่ทำของเสีย" ตอนตัด
+   * ใบที่ไม่ได้ระบุใครไว้จะไม่ขึ้นในตารางนี้เลย ดีกว่าเดาแล้วไปโทษคนคีย์
+   */
+  scrapPeople: { name: string; qty: number; rows: number; cost: number | null }[];
+  /**
+   * สาขาไหนเบิกอะไรไปบ้าง แยกเป็นสินค้าทีละรายการ
+   *
+   * `branch` ข้างล่างตอบว่าค้างเงินอยู่เท่าไร — คำถามของคนเก็บเงิน · ตัวนี้ตอบ
+   * ว่าของอะไรออกไปที่ไหนบ้าง — คำถามของคนคุมของ
+   */
+  branchDraws: {
+    branchId: number;
+    branch: string;
+    draws: number;
+    qty: number;
+    qtyNoCost: number;
+    cost: number | null;
+    items: {
+      sku: string;
+      name: string;
+      type: string | null;
+      lensDesign: string | null;
+      lensIndex: string | null;
+      coating: string | null;
+      draws: number;
+      qty: number;
+      qtyNoCost: number;
+      cost: number | null;
+    }[];
+  }[];
+  /**
+   * ใบสั่งตัด RX แยกตามคนสั่ง แยกเป็นสินค้าทีละรายการ
+   *
+   * คนละคำถามกับ `branchDraws`: นั่นคือของที่ออกจากชั้นไป นี่คือของที่ต้องไปสั่ง
+   * จากผู้ขายมาให้ · สาขาที่เบิกน้อยแต่สั่งตัดเยอะเป็นคนละเรื่องกันทั้งเรื่องงาน
+   * และเรื่องเงิน
+   *
+   * ร้านเองอยู่ในตารางเดียวกันในชื่อ TimeOptic และมี `branchId` เป็น null —
+   * ตารางที่มีแต่สาขาตอบไม่ได้ว่างานสั่งตัดทั้งหมดแบ่งกันอย่างไร
+   */
+  rxBranches: {
+    branchId: number | null;
+    branch: string;
+    orders: number;
+    qty: number;
+    awaitingCost: number;
+    cost: number | null;
+    revenue: number | null;
+    items: {
+      sku: string;
+      name: string;
+      type: string | null;
+      lensDesign: string | null;
+      lensIndex: string | null;
+      coating: string | null;
+      orders: number;
+      qty: number;
+      awaitingCost: number;
+      cost: number | null;
+      revenue: number | null;
+    }[];
+  }[];
   branch: {
     issuedCount: number;
     issuedCost: number | null;
@@ -70,6 +140,25 @@ function monthRange(m: string): { from: string; to: string } {
   return { from: `${m}-01`, to: iso(new Date(Date.UTC(y, mm, 0))) };
 }
 
+/**
+ * ชีตทั้งหมดที่ไฟล์ Excel ออกได้ และคำอธิบายว่าแต่ละใบตอบคำถามอะไร
+ *
+ * มีรายการนี้เพราะการกดปุ่มเดียวแล้วได้แปดชีตคือการส่งของที่ไม่มีใครขอไปเจ็ดใบ
+ * คนที่ขอไฟล์ขอเป็นเรื่อง — "เดือนนี้สาขาไหนเบิกอะไรไป" ไม่ใช่ "ทุกอย่าง"
+ *
+ * `whole` คือชีตที่เป็นคำถามของทั้งร้าน ไม่มีคอลัมน์สาขาหรือชนิดสินค้าให้กรอง
+ * พอเลือกตัวกรองแล้วมันจะหลุดออกจากไฟล์เอง ดูเหตุผลตอนประกอบไฟล์
+ */
+const SHEETS: readonly { value: string; label: string; hint: string; whole?: true }[] = [
+  { value: "สรุปรายการ", label: "สรุปรายการ", hint: "รับเข้า จ่ายออก ของเสีย คืน ปรับยอด RX", whole: true },
+  { value: "รายวัน", label: "รายวัน", hint: "เข้า–ออก–เสีย และต้นทุนขาย ทีละวัน", whole: true },
+  { value: "ต้นทุนรวมแยกตามสาขา", label: "ต้นทุนรวมแยกตามสาขา", hint: "สาขาละแถว เอาไปดูว่าใครเบิกหนักสุด" },
+  { value: "สาขาเบิกอะไรไป", label: "สาขาเบิกอะไรไป", hint: "แถวละสินค้า มีแถวรวมย่อยของแต่ละสาขา" },
+  { value: "ใครสั่งตัด RX", label: "ใครสั่งตัด RX", hint: "ใบสั่งตัดแยกตามคนสั่ง รวม TimeOptic" },
+  { value: "สินค้าจ่ายออกมากสุด", label: "สินค้าจ่ายออกมากสุด", hint: "สิบอันดับแรกของช่วงนี้", whole: true },
+  { value: "ใครเบิกมากสุด", label: "ใครเบิกมากสุด", hint: "นับทั้งการเบิกและการตัดของเสีย", whole: true },
+  { value: "ของเสียแยกตามคน", label: "ของเสียแยกตามคน", hint: "เฉพาะใบที่ระบุชื่อคนทำไว้", whole: true },
+];
 const PRESETS = [
   { key: "today", label: "วันนี้", range: () => ({ from: shift(0), to: shift(0) }) },
   { key: "yesterday", label: "เมื่อวาน", range: () => ({ from: shift(-1), to: shift(-1) }) },
@@ -89,6 +178,11 @@ const PRESETS = [
       d.setMonth(d.getMonth() - 1);
       return monthRange(iso(d).slice(0, 7));
     },
+  },
+  {
+    key: "year",
+    label: "ปีนี้",
+    range: () => ({ from: `${new Date().getFullYear()}-01-01`, to: shift(0) }),
   },
 ] as const;
 
@@ -149,6 +243,33 @@ export default function DashboardPage() {
    */
   const [idle, setIdle] = useState("90");
 
+  /**
+   * กำลังเขียนไฟล์อยู่
+   *
+   * การเขียน .xlsx เกิดในเบราว์เซอร์ ไม่ใช่ที่เซิร์ฟเวอร์ — ช่วงยาว ๆ ที่มีกราฟ
+   * ด้วยใช้เวลาหลายวินาที ปุ่มที่ไม่บอกอะไรระหว่างนั้นจะถูกกดซ้ำแล้วได้ไฟล์
+   * ซ้อนกันสามใบ
+   */
+  const [saving, setSaving] = useState(false);
+  const [exportProblem, setExportProblem] = useState<string | null>(null);
+
+  /**
+   * ตัวกรองของไฟล์ Excel — ไม่ใช่ของหน้าจอ
+   *
+   * ช่วงวันที่อยู่ข้างบนแล้วและมีผลกับทั้งหน้า · สองตัวนี้ต่างออกไป: มันแคบลง
+   * เฉพาะตอนสร้างไฟล์ เพราะคนที่ขอไฟล์มักขอเป็นเรื่อง ๆ ("เดือนนี้สาขาบ่อนไก่
+   * เอาเลนส์ไปเท่าไร") ส่วนคนที่เปิดหน้านี้อยากเห็นทั้งร้านพร้อมกัน
+   *
+   * เลือกแล้วชีตที่ตอบคำถามนั้นไม่ได้จะไม่อยู่ในไฟล์ ไม่ใช่อยู่แบบไม่กรอง —
+   * สมุดที่ครึ่งหนึ่งเชื่อฟังตัวกรองและอีกครึ่งไม่เชื่อ คือสมุดที่บวกข้ามชีตแล้ว
+   * ได้เลขที่ไม่ตรงกับอะไรเลย
+   */
+  const [exBranch, setExBranch] = useState("");
+  const [exType, setExType] = useState("");
+  /* เลือกไว้ครบตอนเริ่ม เพราะคนที่ยังไม่รู้ว่ามีอะไรบ้างจะได้เห็นทั้งหมดก่อน
+     แล้วค่อยตัดออก — ตรงข้ามกับเริ่มจากว่าง ซึ่งกดปุ่มแล้วได้ไฟล์เปล่า */
+  const [exSheets, setExSheets] = useState<string[]>(() => SHEETS.map((s) => s.value));
+
   const report = useApi<Report>(`/report${qs({ from, to })}`);
   const movers = useApi<Movers>(`/movers${qs({ from, to, idle })}`);
 
@@ -157,6 +278,377 @@ export default function DashboardPage() {
     setFrom(next.from);
     setTo(next.to);
     setPreset(key);
+  }
+
+
+  /**
+   * ทั้งหน้า ลงเป็นไฟล์ Excel — ชีตละเรื่อง มีแถวรวม เลือกได้ว่าจะเอากราฟด้วยไหม
+   *
+   * ประกอบจากตัวเลขชุดเดียวกับที่วาดอยู่บนจอ ไม่ใช่ยิงถามใหม่ — ไฟล์ที่ได้จึง
+   * ตรงกับสิ่งที่คนกดกำลังมองอยู่เสมอ แม้ข้อมูลจะเปลี่ยนไปแล้วในวินาทีนั้น
+   *
+   * ราคาทุนลงไฟล์เฉพาะคนที่เห็นมันบนจอ · API ตัดตัวเลขพวกนี้ออกจากคำตอบให้คน
+   * อื่นอยู่แล้ว ตรงนี้จึงไม่ใช่ด่าน แต่ถ้าไม่เช็คก็จะได้คอลัมน์เปล่า ๆ ที่อ่าน
+   * เหมือนของฟรีทั้งคลัง
+   *
+   * กราฟถูกวาดตอนกด ไม่ได้เตรียมไว้ล่วงหน้า — คนส่วนใหญ่กดโหลดข้อมูลอย่างเดียว
+   * และการวาดภาพเจ็ดใบทิ้งไว้เผื่อทุกครั้งที่เปิดหน้าคือการทำงานที่ไม่มีใครขอ
+   */
+  async function exportBook(mode: Mode) {
+    if (report.status !== "ready" || saving) return;
+    const d = report.data;
+
+    setSaving(true);
+    setExportProblem(null);
+    try {
+      // ตัวเลขดิบ ไม่ผ่านตัวจัดรูปแบบ — Excel ต้องได้จำนวนไว้บวก ไม่ใช่ข้อความ
+      // ที่มีลูกน้ำคั่นหลักแล้วรวมไม่ได้ · คนที่ไม่มีสิทธิ์เห็นทุนได้ช่องว่าง
+      const cost$ = (v: number | null) => (money$ && v !== null ? v : null);
+      const wantCharts = mode !== "data";
+      const day = (s: string) => s.slice(5).replace("-", "/");
+
+      /**
+       * ตัวกรองของไฟล์ ตัดข้อมูลก่อนสร้างชีต
+       *
+       * `exBranch` เป็น id ของสาขา หรือ "self" สำหรับใบที่ TimeOptic สั่งเอง
+       * ซึ่งไม่มี id เพราะร้านตัวเองไม่ใช่สาขา
+       */
+      const keepBranch = (id: number | null) =>
+        exBranch === "" || (exBranch === "self" ? id === null : String(id) === exBranch);
+      const keepType = (t: string | null) => exType === "" || t === exType;
+
+      /* สาขาละก้อน โดยข้างในเหลือเฉพาะสินค้าชนิดที่เลือก · ยอดรวมของก้อนถูกบวก
+         ใหม่จากรายการที่เหลือ ไม่ใช่ยอดเดิมที่ API ส่งมา — ยอดเดิมคือทั้งสาขา
+         และวางไว้บนตารางที่กรองแล้วคือตัวเลขที่บวกจากแถวข้างล่างไม่ได้ */
+      const draws = d.branchDraws
+        .filter((b) => keepBranch(b.branchId))
+        .map((b) => {
+          const items = b.items.filter((it) => keepType(it.type));
+          return {
+            ...b,
+            items,
+            draws: items.reduce((n, it) => n + it.draws, 0),
+            qty: items.reduce((n, it) => n + it.qty, 0),
+            qtyNoCost: items.reduce((n, it) => n + it.qtyNoCost, 0),
+            cost: items.reduce<number | null>(
+              (n, it) => (n === null || it.cost === null ? null : n + it.cost),
+              0,
+            ),
+          };
+        })
+        .filter((b) => b.items.length > 0);
+
+      const rx = d.rxBranches
+        .filter((b) => keepBranch(b.branchId))
+        .map((b) => {
+          const items = b.items.filter((it) => keepType(it.type));
+          return {
+            ...b,
+            items,
+            orders: items.reduce((n, it) => n + it.orders, 0),
+            qty: items.reduce((n, it) => n + it.qty, 0),
+            awaitingCost: items.reduce((n, it) => n + it.awaitingCost, 0),
+            cost: items.reduce<number | null>(
+              (n, it) => (n === null || it.cost === null ? null : n + it.cost),
+              0,
+            ),
+            revenue: items.reduce<number | null>(
+              (n, it) => (n === null || it.revenue === null ? null : n + it.revenue),
+              0,
+            ),
+          };
+        })
+        .filter((b) => b.items.length > 0);
+
+      /* ชีตที่ไม่มีมิติสาขาหรือชนิดสินค้าอยู่ในตัว — สรุปรายการ รายวัน สินค้า
+         ขายดี ใครเบิก ของเสียแยกตามคน · พวกนี้ตอบคำถามของทั้งร้าน กรองไม่ได้
+         และการปล่อยให้อยู่ในไฟล์ที่กรองแล้วคือการบอกว่ามันถูกกรองด้วย */
+      const scoped = exBranch !== "" || exType !== "";
+
+      const branchLabel =
+        exBranch === "" ? null
+          : exBranch === "self" ? "TimeOptic"
+          : (d.branchDraws.find((b) => String(b.branchId) === exBranch)?.branch
+             ?? d.rxBranches.find((b) => String(b.branchId) === exBranch)?.branch
+             ?? "สาขา");
+      const typeLabel = exType === "" ? null : (PRODUCT_TYPE_LABEL[exType] ?? exType);
+      const scope = [branchLabel, typeLabel].filter(Boolean).join(" · ");
+      const scopeNote = scope === "" ? "" : ` · เฉพาะ ${scope}`;
+
+      const sheets: Sheet[] = [
+        {
+          name: "สรุปรายการ",
+          note: "นับตามวันที่ของเคลื่อนไหว — ไม่ใช่วันที่เงินเข้า",
+          columns: [
+            { header: "รายการ", width: 20 },
+            { header: "จำนวนใบ", total: true },
+            { header: "จำนวนชิ้น", total: true },
+            { header: "มูลค่า (บาท)", money: true, total: true },
+            { header: "ชิ้นที่ยังไม่รู้ต้นทุน", width: 20, total: true },
+          ],
+          rows: (
+            [
+              ["รับเข้า", d.in],
+              ["จ่ายออก", d.out],
+              ["ตัดของเสีย", d.scrap],
+              ["คืนของ", d.return],
+              ["ปรับยอด", d.adjust],
+              ["ใบสั่งตัด RX", d.rxOrder],
+            ] as const
+          ).map(([label, s]) => [label, s.rows, s.qty, cost$(s.value), s.qtyNoCost]),
+        },
+        {
+          name: "รายวัน",
+          columns: [
+            { header: "วันที่", width: 14 },
+            { header: "รับเข้า (ชิ้น)", total: true },
+            { header: "จ่ายออก (ชิ้น)", total: true },
+            { header: "ของเสีย (ชิ้น)", total: true },
+            { header: "ต้นทุนขาย (บาท)", money: true, total: true },
+          ],
+          rows: d.byDay.map((r) => [r.day, r.inQty, r.outQty, r.scrapQty, cost$(r.cogs)]),
+          chart: wantCharts
+            ? daysPng(
+                d.byDay.map((r) => day(r.day)),
+                [
+                  { label: "รับเข้า", color: INK.in, values: d.byDay.map((r) => r.inQty) },
+                  { label: "จ่ายออก", color: INK.out, values: d.byDay.map((r) => r.outQty) },
+                  { label: "ของเสีย", color: INK.scrap, values: d.byDay.map((r) => r.scrapQty) },
+                ],
+                `ความเคลื่อนไหวรายวัน ${d.from} ถึง ${d.to}`,
+              )
+            : undefined,
+        },
+        {
+          /* สรุปสาขาละแถว มาก่อนชีตรายการ — คำถาม "สาขาไหนเบิกไปเป็นทุนเท่าไร"
+             ตอบได้จากชีตรายการก็จริง แต่ต้อง pivot ก่อน · ตัวเลขชุดนี้ตรงกับที่
+             หน้าจอแสดง จึงเทียบกันได้โดยไม่ต้องเชื่อว่าใครบวกถูก */
+          name: "ต้นทุนรวมแยกตามสาขา",
+          note: "สาขาละแถว — รายละเอียดว่าเบิกอะไรไปอยู่ชีตถัดไป",
+          columns: [
+            { header: "สาขา", width: 24 },
+            { header: "ใบเบิก", total: true },
+            { header: "จำนวน (ชิ้น)", total: true },
+            { header: "ต้นทุนรวม (บาท)", money: true, total: true },
+            { header: "ชิ้นที่ยังไม่รู้ต้นทุน", width: 20, total: true },
+          ],
+          rows: draws.map((b) => [
+            b.branch,
+            b.draws,
+            b.qty,
+            cost$(b.cost),
+            b.qtyNoCost,
+          ]),
+          chart: wantCharts
+            ? rankPng(
+                draws.map((b) => ({
+                  label: b.branch,
+                  sub: `${b.draws} ใบ`,
+                  value: b.qty,
+                })),
+                INK.out,
+                "ชิ้น",
+                "สาขาไหนเบิกไปเท่าไร",
+              )
+            : undefined,
+        },
+        {
+          name: "สาขาเบิกอะไรไป",
+          // สาขาละก้อน มีแถวรวมย่อยคั่น — ไฟล์นี้ถูกอ่านทีละสาขา ไม่ใช่ทั้งใบ
+          groupBy: 0,
+          note: "ทุกใบที่ออกไปในช่วงนี้ ไม่ว่ารับเงินแล้วหรือยัง — ยกเว้นใบที่ยกเลิก",
+          columns: [
+            { header: "สาขา" },
+            { header: "รหัสสินค้า", width: 14 },
+            { header: "สินค้า", width: 40 },
+            { header: "ชนิด", width: 12 },
+            { header: "ชนิดเลนส์", width: 16 },
+            { header: "Index", width: 10 },
+            { header: "Coating", width: 14 },
+            { header: "ครั้งที่เบิก", total: true },
+            { header: "จำนวน (ชิ้น)", total: true },
+            { header: "ต้นทุนรวม (บาท)", money: true, total: true },
+            { header: "ชิ้นที่ยังไม่รู้ต้นทุน", width: 20, total: true },
+          ],
+          // แบนเป็นแถวเดียวต่อหนึ่งสินค้าของหนึ่งสาขา ชื่อสาขาซ้ำทุกแถว —
+          // ไฟล์นี้จะถูกเอาไป pivot ต่อ และ pivot ต้องการคอลัมน์ที่เต็มทุกแถว
+          rows: draws.flatMap((b) =>
+            b.items.map((it) => [
+              b.branch,
+              it.sku,
+              it.name,
+              it.type,
+              it.lensDesign,
+              it.lensIndex,
+              it.coating,
+              it.draws,
+              it.qty,
+              cost$(it.cost),
+              it.qtyNoCost,
+            ]),
+          ),
+          chart: wantCharts
+            ? rankPng(
+                draws.map((b) => ({
+                  label: b.branch,
+                  sub: `${b.draws} ใบ`,
+                  value: b.qty,
+                })),
+                INK.out,
+                "ชิ้น",
+                "สาขาเบิกไปเท่าไร",
+              )
+            : undefined,
+        },
+        {
+          name: "ใครสั่งตัด RX",
+          groupBy: 0,
+          note: "ใบสั่งตัดที่เปิดในช่วงนี้ ยกเว้นใบที่ยกเลิก — TimeOptic คือใบที่ร้านสั่งเอง",
+          columns: [
+            { header: "ผู้สั่ง", width: 18 },
+            { header: "รหัสสินค้า", width: 14 },
+            { header: "เลนส์", width: 40 },
+            { header: "ชนิด", width: 12 },
+            { header: "ชนิดเลนส์", width: 16 },
+            { header: "Index", width: 10 },
+            { header: "Coating", width: 14 },
+            { header: "ใบสั่ง", total: true },
+            { header: "จำนวน (ชิ้น)", total: true },
+            { header: "รอลงต้นทุน", total: true },
+            { header: "ต้นทุนรวม (บาท)", money: true, total: true },
+            { header: "ราคาขายรวม (บาท)", money: true, total: true },
+          ],
+          // แบนเหมือนชีตสาขาเบิก ด้วยเหตุผลเดียวกัน — ไฟล์นี้ถูกเอาไป pivot ต่อ
+          rows: rx.flatMap((b) =>
+            b.items.map((it) => [
+              b.branch,
+              it.sku,
+              it.name,
+              it.type,
+              it.lensDesign,
+              it.lensIndex,
+              it.coating,
+              it.orders,
+              it.qty,
+              it.awaitingCost,
+              cost$(it.cost),
+              cost$(it.revenue),
+            ]),
+          ),
+          chart: wantCharts
+            ? rankPng(
+                rx.map((b) => ({
+                  label: b.branch,
+                  sub: `${b.qty} ชิ้น`,
+                  value: b.orders,
+                })),
+                INK.cost,
+                "ใบ",
+                "ใครสั่งตัด RX ไปกี่ใบ",
+              )
+            : undefined,
+        },
+        {
+          name: "สินค้าจ่ายออกมากสุด",
+          columns: [
+            { header: "รหัสสินค้า", width: 14 },
+            { header: "สินค้า", width: 44 },
+            { header: "จำนวน (ชิ้น)", total: true },
+            { header: "ต้นทุนรวม (บาท)", money: true, total: true },
+          ],
+          rows: d.topProducts.map((p) => [p.sku, p.name, p.qty, cost$(p.cost)]),
+          chart: wantCharts
+            ? rankPng(
+                d.topProducts.map((p) => ({ label: p.name, sub: p.sku, value: p.qty })),
+                INK.out,
+                "ชิ้น",
+                "สินค้าที่จ่ายออกมากที่สุด",
+              )
+            : undefined,
+        },
+        {
+          name: "ใครเบิกมากสุด",
+          note: "นับทั้งการเบิกและการตัดของเสีย",
+          columns: [
+            { header: "ชื่อ", width: 26 },
+            { header: "จำนวนรายการ", total: true },
+            { header: "จำนวน (ชิ้น)", total: true },
+          ],
+          rows: d.topPeople.map((p) => [p.name, p.rows, p.qty]),
+          chart: wantCharts
+            ? rankPng(
+                d.topPeople.map((p) => ({ label: p.name, sub: `${p.rows} รายการ`, value: p.qty })),
+                INK.in,
+                "ชิ้น",
+                "ใครเบิกมากที่สุด",
+              )
+            : undefined,
+        },
+        {
+          name: "ของเสียแยกตามคน",
+          note: "เฉพาะใบที่ระบุชื่อคนทำไว้ — ใบที่ไม่ได้ระบุไม่ถูกเดาให้ใคร",
+          columns: [
+            { header: "ชื่อ", width: 26 },
+            { header: "จำนวนรายการ", total: true },
+            { header: "จำนวน (ชิ้น)", total: true },
+            { header: "มูลค่า (บาท)", money: true, total: true },
+          ],
+          rows: d.scrapPeople.map((p) => [p.name, p.rows, p.qty, cost$(p.cost)]),
+          chart: wantCharts
+            ? rankPng(
+                d.scrapPeople.map((p) => ({
+                  label: p.name,
+                  sub: `${p.rows} รายการ`,
+                  value: p.qty,
+                })),
+                INK.scrap,
+                "ชิ้น",
+                "ของเสีย แยกตามคนที่ทำ",
+              )
+            : undefined,
+        },
+      ];
+
+      /* ห้าชีตนี้เป็นคำถามของทั้งร้าน — ไม่มีคอลัมน์สาขาและไม่มีคอลัมน์ชนิดสินค้า
+         ให้กรอง · ตอนไม่ได้เลือกอะไรมันคือครึ่งหนึ่งของประโยชน์ของไฟล์ ตอนเลือก
+         แล้วมันคือตัวเลขทั้งร้านที่นั่งอยู่ข้างตัวเลขที่กรองแล้ว ซึ่งอ่านผิดง่าย
+         กว่าไม่มี · ชีตที่กรองแล้วไม่เหลือแถวก็ตัดออกด้วยเหตุผลเดียวกัน */
+      const wholeShop = SHEETS.filter((s) => s.whole).map((s) => s.value);
+      const book = sheets
+        // ที่ผู้ใช้เลือกไว้ก่อน — ทุกอย่างหลังจากนี้คือการตัดออกด้วยเหตุผลอื่น
+        .filter((s) => exSheets.includes(s.name))
+        .filter((s) => (scoped ? !wholeShop.includes(s.name) : true))
+        .filter((s) => s.rows.length > 0)
+        // ตัวกรองเขียนไว้ใต้ชื่อชีตทุกใบ — ไฟล์ที่ถูกส่งต่อไปอีกสองมือต้องบอก
+        // ตัวเองได้ว่ามันคือข้อมูลของอะไร โดยไม่ต้องถามคนที่กดปุ่ม
+        .map((s) => ({ ...s, note: `${s.note ?? ""}${scopeNote}`.trim() || undefined }));
+
+      if (book.length === 0) {
+        setExportProblem(
+          exSheets.length === 0
+            ? "ยังไม่ได้เลือกว่าจะเอาชีตไหน — เลือกอย่างน้อยหนึ่งอย่างที่ช่อง \"เอาอะไรลงไฟล์\""
+            : `ไม่มีข้อมูลใน ${d.from} ถึง ${d.to}${scopeNote} — ลองขยายช่วงวัน เอาตัวกรองออก หรือเลือกชีตเพิ่ม`,
+        );
+        return;
+      }
+
+      /* ชื่อไฟล์บอกโหมดด้วย — สามปุ่มที่ให้ชื่อเดียวกันคือสามไฟล์ที่ Chrome ต่อ
+         ท้ายเป็น (1) (2) แล้วเปิดมาแยกไม่ออกว่าอันไหนมีกราฟ ทั้งที่ข้างในต่างกัน
+         ตัวกรองก็อยู่ในชื่อด้วย ด้วยเหตุผลเดียวกัน */
+      const suffix = { data: "ข้อมูล", both: "ข้อมูล+กราฟ", charts: "กราฟ" }[mode];
+      const tag = scope === "" ? "" : `-${scope.replace(/ · /g, "-")}`;
+
+      await download(
+        `timeoptic-dashboard-${d.from}-ถึง-${d.to}${tag}-${suffix}.xlsx`,
+        `แดชบอร์ด ${d.from} ถึง ${d.to}${scopeNote}`,
+        book,
+        mode,
+      );
+    } catch (e) {
+      setExportProblem(e instanceof Error ? e.message : "สร้างไฟล์ไม่สำเร็จ");
+    } finally {
+      setSaving(false);
+    }
   }
 
   const days = report.status === "ready" ? report.data.byDay : [];
@@ -179,67 +671,149 @@ export default function DashboardPage() {
         </Link>
       </WorkHead>
 
+      {exportProblem ? (
+        <div className="notice notice--error" role="alert">
+          {exportProblem}
+        </div>
+      ) : null}
+
       {/* ------------------------------------------------------------ range */}
 
-      <section className="task task--wide">
-        <div className="chips chips--bar" role="group" aria-label="ช่วงเวลาที่ใช้บ่อย">
-          {PRESETS.map((p) => (
+      {/* แถบเดียวจบ — ช่วงเวลา ตัวกรอง และช่วงที่กำลังดูอยู่ อยู่บรรทัดเดียวกัน
+          เดิมเป็นสามชั้นซ้อนกัน: ชิปแถวหนึ่ง ช่องวันที่แถวหนึ่ง ตัวกรองอีกแถวหนึ่ง
+          รวมกันสูงเกือบครึ่งจอก่อนถึงตัวเลขตัวแรก · ทุกอย่างยังทำได้เหมือนเดิม
+          แค่ยืนอยู่บรรทัดเดียวกันและห่อบรรทัดเองตอนจอแคบ */}
+      {/* สองก้อน ไม่ใช่แถบเดียว — ข้างบนเปลี่ยนสิ่งที่เห็นบนจอ ข้างล่างเปลี่ยน
+          เฉพาะสิ่งที่ลงไฟล์ · เดิมยืนปนกันบนบรรทัดเดียว แล้วช่อง "สาขา" อ่านเหมือน
+          จะกรองตัวเลขบนจอด้วย ทั้งที่ไม่ได้ทำ — คำอธิบายใต้แถบแก้เรื่องนี้ไม่ได้
+          เพราะไม่มีใครอ่านคำอธิบายก่อนกด */}
+      <section className="task task--wide toolbar">
+        <div className="toolbar__row">
+          <span className="toolbar__title">ดูข้อมูลช่วง</span>
+
+          <div className="chips chips--tight toolbar__presets" role="group" aria-label="ช่วงเวลาที่ใช้บ่อย">
+            {PRESETS.map((p) => (
+              <button
+                key={p.key}
+                type="button"
+                className="chip chip--flat"
+                aria-current={preset === p.key ? "true" : undefined}
+                onClick={() => useRange(p.range(), p.key)}
+              >
+                {p.label}
+              </button>
+            ))}
+            {/* ชิปที่ไม่ได้ตั้งช่วงเอง แค่บอกว่าตอนนี้ช่วงมาจากปฏิทิน ไม่ได้มาจาก
+                ปุ่มสำเร็จรูป · กดแล้วเปิดปฏิทินให้เลย เพราะคนที่กดคำว่า "กำหนดเอง"
+                กำลังจะเลือกวันอยู่แล้ว */}
             <button
-              key={p.key}
               type="button"
-              className="chip"
-              aria-current={preset === p.key ? "true" : undefined}
-              onClick={() => useRange(p.range(), p.key)}
+              className="chip chip--flat"
+              aria-current={preset === "custom" ? "true" : undefined}
+              onClick={() => document.getElementById("db-range")?.click()}
             >
-              {p.label}
+              กำหนดเอง
             </button>
-          ))}
+          </div>
+
+          <DateRangeField
+            split
+            id="db-range"
+            from={from}
+            to={to}
+            onApply={(r) => useRange(r, "custom")}
+          />
+
+          {/* ป้ายท้ายแถวบอกช่วงที่ได้จริง — ชิปกับปฏิทินตั้งค่าได้จากสามทาง และ
+              ป้ายนี้คือที่เดียวที่บอกว่าผลลัพธ์คืออะไร */}
+          <span className="toolbar__now">
+            <IconCalendar />
+            {date(from)} – {date(to)} · {count(Math.max(1, Math.round(spanDays)))} วัน
+          </span>
         </div>
 
-        <div className="formgrid">
-          <div className="field">
-            <label className="field__label" htmlFor="db-month">
-              เลือกทั้งเดือน
-            </label>
-            <input
-              id="db-month"
-              className="input"
-              type="month"
-              value={from.slice(0, 7)}
-              onChange={(e) => {
-                if (e.target.value) useRange(monthRange(e.target.value), "custom");
-              }}
-            />
-          </div>
-          <div className="field">
-            <label className="field__label" htmlFor="db-from">
-              ตั้งแต่วันที่
-            </label>
-            <DateField
-              id="db-from"
-              value={from}
-              max={to}
-              clearable={false}
-              onChange={(v) => useRange({ from: v, to }, "custom")}
-            />
-          </div>
-          <div className="field">
-            <label className="field__label" htmlFor="db-to">
-              ถึงวันที่
-            </label>
-            <DateField
-              id="db-to"
-              value={to}
-              min={from}
-              clearable={false}
-              onChange={(v) => useRange({ from, to: v }, "custom")}
-            />
-          </div>
-        </div>
+        {report.status === "ready" ? (
+          <div className="toolbar__row toolbar__row--file">
+            <span className="toolbar__title">ส่งออกไฟล์ Excel</span>
 
-        <p className="field__help">
-          กำลังดู {date(from)} ถึง {date(to)} · รวม {count(Math.max(1, Math.round(spanDays)))} วัน
-        </p>
+            <div className="toolbar__pair">
+              <span className="toolbar__lead">เอาอะไร</span>
+              <PickList
+                id="ex-sheets"
+                items={SHEETS.map((s) => ({ value: s.value, label: s.label, hint: s.hint }))}
+                chosen={exSheets}
+                onChange={setExSheets}
+                allLabel={`ทุกชีต · ${SHEETS.length}`}
+              />
+            </div>
+
+            <div className="toolbar__pair">
+              <span className="toolbar__lead">สาขา</span>
+              <Select
+                id="ex-branch"
+                className="input--inline"
+                value={exBranch}
+                onChange={setExBranch}
+                options={[
+                  { value: "", label: "ทุกสาขา" },
+                  ...(report.data.rxBranches.some((b) => b.branchId === null)
+                    ? [{ value: "self", label: "TimeOptic" }]
+                    : []),
+                  ...Array.from(
+                    new Map(
+                      [...report.data.branchDraws, ...report.data.rxBranches]
+                        .filter((b) => b.branchId !== null)
+                        .map((b) => [String(b.branchId), b.branch]),
+                    ),
+                  ).map(([value, label]) => ({ value, label })),
+                ]}
+              />
+            </div>
+
+            <div className="toolbar__pair">
+              <span className="toolbar__lead">ชนิด</span>
+              <Select
+                id="ex-type"
+                className="input--inline"
+                value={exType}
+                onChange={setExType}
+                options={[
+                  { value: "", label: "ทุกชนิด" },
+                  ...PRODUCT_TYPES.map((t) => ({ value: t, label: PRODUCT_TYPE_LABEL[t] })),
+                ]}
+              />
+            </div>
+
+            <div className="toolbar__go">
+              {(
+                [
+                  ["data", "Excel: ข้อมูล"],
+                  ["both", "Excel: ข้อมูล + กราฟ"],
+                  ["charts", "Excel: กราฟ"],
+                ] as const
+              ).map(([mode, label]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  className="btn btn--primary btn--small"
+                  onClick={() => void exportBook(mode)}
+                  disabled={saving || exSheets.length === 0}
+                >
+                  <IconChart />
+                  {saving ? "กำลังสร้างไฟล์…" : `${label} · ${exSheets.length} ชีต`}
+                </button>
+              ))}
+            </div>
+
+            {exBranch !== "" || exType !== "" ? (
+              <p className="field__help toolbar__note">
+                สาขากับชนิดสินค้าแคบเฉพาะไฟล์ หน้าจอข้างบนยังแสดงทั้งร้าน · ชีตที่ไม่มี
+                คอลัมน์พวกนี้ให้กรอง (สรุปรายการ · รายวัน · สินค้าจ่ายออกมากสุด ·
+                ใครเบิกมากสุด · ของเสียแยกตามคน) จะไม่อยู่ในไฟล์ที่กรองแล้ว
+              </p>
+            ) : null}
+          </div>
+        ) : null}
       </section>
 
       {report.status === "loading" ? <div className="skeleton" /> : null}
@@ -460,7 +1034,208 @@ export default function DashboardPage() {
                 }))}
               />
             </section>
+
+            {/* ของเสียแยกออกมาเป็นแผงของตัวเอง ไม่รวมกับแผงข้างบน — ของที่เบิก
+                ออกไปคืองานที่ทำ ยิ่งเยอะยิ่งดี ส่วนของเสียคือของที่หายไปจาก
+                ร้าน สองอย่างนี้อ่านคนละความหมาย รวมเป็นแท่งเดียวเมื่อไหร่คน
+                ขายเก่งกับคนทำแตกบ่อยจะขึ้นหัวตารางเดียวกัน
+
+                ไม่มีของเสียในช่วงที่เลือก = ไม่ต้องมีแผงนี้ · แผงเปล่าที่เขียน
+                ว่า "ไม่มีข้อมูล" อ่านเหมือนระบบเสีย ทั้งที่เป็นข่าวดี */}
+            {report.data.scrapPeople.length > 0 ? (
+              <section className="panel">
+                <div className="panel__head">
+                  <h2 className="panel__title">ของเสีย แยกตามคนที่ทำ</h2>
+                  <span className="panel__note">
+                    เฉพาะใบที่ระบุชื่อคนทำไว้ · เจ้าของร้านเป็นคนระบุตอนตัด
+                  </span>
+                </div>
+                <RankBars
+                  ink={CHART_INK.scrap}
+                  unit="ชิ้น"
+                  rows={report.data.scrapPeople.map((p) => ({
+                    key: p.name,
+                    label: p.name,
+                    sub:
+                      `${count(p.rows)} รายการ` +
+                      (money$ && p.cost ? ` · มูลค่า ${money(p.cost)}` : ""),
+                    value: p.qty,
+                  }))}
+                />
+              </section>
+            ) : null}
           </div>
+
+          {/* --------------------------------------- what each branch took */}
+
+          {/* ยอดรวมของฝั่งสาขาอยู่ในการ์ดข้างบนแล้ว — ตรงนี้คือของจริงที่ออกไป
+              แยกทีละสาขาทีละรายการ · ก่อนหน้านี้คำถาม "เดือนนี้สาขานี้ขอเลนส์
+              อะไรไปบ้าง" ตอบได้ที่เดียวคือเปิดหน้าค้างรับแล้วไล่อ่านทีละใบ
+
+              ไม่มีสาขาเบิกในช่วงที่เลือก = ไม่ต้องมีตาราง · ตารางเปล่าที่เขียน
+              ว่า "ไม่มีข้อมูล" กินที่เท่าตารางจริงและไม่ได้บอกอะไรเพิ่ม */}
+          {report.status === "ready" && report.data.branchDraws.length > 0 ? (
+            <section className="task task--wide">
+              <div className="tasktools">
+                <h2 className="drawer__legend">สาขาเบิกอะไรไปบ้าง</h2>
+              </div>
+              <p className="field__help">
+                นับทุกใบที่ออกไปในช่วงนี้ ไม่ว่ารับเงินแล้วหรือยัง — ยกเว้นใบที่ยกเลิก
+                เพราะของกลับเข้าคลังไปแล้ว
+              </p>
+
+              {report.data.branchDraws.map((b) => (
+                /* กางไว้ก็ต่อเมื่อมีสาขาเดียว — สิบสาขาที่กางหมดคือหน้าที่ต้อง
+                   เลื่อนผ่านทุกสาขาเพื่อดูสาขาเดียว · หัวที่พับอยู่ยังบอกยอดรวม
+                   ครบ คนที่ถามแค่ "สาขาไหนเบิกเยอะ" จึงไม่ต้องกางอะไรเลย */
+                <details className="fold" key={b.branchId} open={report.data.branchDraws.length === 1}>
+                  {/* ชื่อสาขาเป็นหัวข้อเหนือตาราง ไม่ใช่ <caption> ในตาราง —
+                      caption ที่มองเห็นได้จะถูกจัดกึ่งกลางตามค่าปริยายของ
+                      เบราว์เซอร์ และลอยอยู่เหนือหัวคอลัมน์แบบไม่มีที่ยึด
+                      ผิดจากหัวข้ออื่นทั้งหน้าซึ่งชิดซ้ายเสมอ */}
+                  <summary className="fold__head">
+                    <h3 className="panel__title">{b.branch}</h3>
+                    <span className="panel__note">
+                      {count(b.draws)} ใบ · {count(b.qty)} ชิ้น
+                      {money$ && b.cost !== null ? ` · ต้นทุนรวม ${money(b.cost)}` : ""}
+                      {b.qtyNoCost > 0 ? ` · ${count(b.qtyNoCost)} ชิ้นยังไม่รู้ต้นทุน` : ""}
+                    </span>
+                  </summary>
+                  <div className="tablewrap">
+                  <table className="grid">
+                    <caption className="sr-only">{`สินค้าที่ ${b.branch} เบิกไป`}</caption>
+                    <thead>
+                      <tr>
+                        <th scope="col">สินค้า</th>
+                        <th scope="col">ชนิด</th>
+                        <th scope="col">สเปกเลนส์</th>
+                        <th scope="col" className="grid__num">ครั้ง</th>
+                        <th scope="col" className="grid__num">จำนวน</th>
+                        {money$ ? <th scope="col" className="grid__num">ต้นทุนรวม</th> : null}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {b.items.map((it) => (
+                        <tr key={`${b.branchId}-${it.sku}`} className="grid__row">
+                          <td>
+                            {it.name}
+                            <span className="grid__sub">{it.sku}</span>
+                          </td>
+                          <td>{it.type ? PRODUCT_TYPE_LABEL[it.type] ?? it.type : "—"}</td>
+                          {/* ชนิดเลนส์ · index · coating — สามอย่างที่ทำให้เลนส์
+                              สองตัวคนละตัวกัน ต่อกันด้วยจุดกลางเหมือนที่อื่น */}
+                          <td>
+                            {[it.lensDesign, it.lensIndex, it.coating].filter(Boolean).join(" · ") ||
+                              "—"}
+                          </td>
+                          <td className="grid__num">{count(it.draws)}</td>
+                          <td className="grid__num">
+                            {count(it.qty)}
+                            {it.qtyNoCost > 0 ? (
+                              <span className="grid__sub">{count(it.qtyNoCost)} ยังไม่รู้ต้นทุน</span>
+                            ) : null}
+                          </td>
+                          {money$ ? (
+                            <td className="grid__num">
+                              {it.cost === null ? <span className="grid__muted">—</span> : money(it.cost)}
+                            </td>
+                          ) : null}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  </div>
+                </details>
+              ))}
+            </section>
+          ) : null}
+
+          {/* ------------------------------------ what each branch ordered */}
+
+          {/* คู่กับตารางข้างบน และตั้งใจให้หน้าตาเหมือนกัน: ข้างบนคือของที่ออก
+              จากชั้นไป ตรงนี้คือของที่ต้องไปสั่งมาให้ · TimeOptic อยู่ในลิสต์
+              เดียวกับสาขา เพราะคำถามคือ "งานสั่งตัดทั้งหมดแบ่งกันอย่างไร" ซึ่ง
+              ตอบไม่ได้ถ้าก้อนที่ใหญ่ที่สุดไม่อยู่ในตาราง */}
+          {report.status === "ready" && report.data.rxBranches.length > 0 ? (
+            <section className="task task--wide">
+              <div className="tasktools">
+                <h2 className="drawer__legend">ใครสั่งตัด RX ไปเท่าไร</h2>
+              </div>
+              <p className="field__help">
+                ใบสั่งตัดที่เปิดในช่วงนี้ ยกเว้นใบที่ยกเลิก — TimeOptic คือใบที่ร้านสั่งเอง
+              </p>
+
+              {report.data.rxBranches.map((b) => (
+                <details
+                  className="fold"
+                  key={b.branchId ?? "self"}
+                  open={report.data.rxBranches.length === 1}
+                >
+                  <summary className="fold__head">
+                    <h3 className="panel__title">{b.branch}</h3>
+                    <span className="panel__note">
+                      {count(b.orders)} ใบ · {count(b.qty)} ชิ้น
+                      {money$ && b.cost !== null ? ` · ต้นทุนรวม ${money(b.cost)}` : ""}
+                      {money$ && b.revenue !== null ? ` · ราคาขายรวม ${money(b.revenue)}` : ""}
+                      {b.awaitingCost > 0 ? ` · ${count(b.awaitingCost)} ใบยังไม่ลงต้นทุน` : ""}
+                    </span>
+                  </summary>
+                  <div className="tablewrap">
+                  <table className="grid">
+                    <caption className="sr-only">{`เลนส์ที่ ${b.branch} สั่งตัด`}</caption>
+                    <thead>
+                      <tr>
+                        <th scope="col">เลนส์</th>
+                        <th scope="col">ชนิด</th>
+                        <th scope="col">สเปกเลนส์</th>
+                        <th scope="col" className="grid__num">ใบสั่ง</th>
+                        <th scope="col" className="grid__num">จำนวน</th>
+                        {money$ ? <th scope="col" className="grid__num">ต้นทุนรวม</th> : null}
+                        {money$ ? <th scope="col" className="grid__num">ราคาขายรวม</th> : null}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {b.items.map((it) => (
+                        <tr key={`${b.branchId ?? "self"}-${it.sku}`} className="grid__row">
+                          <td>
+                            {it.name}
+                            <span className="grid__sub">{it.sku}</span>
+                          </td>
+                          <td>{it.type ? PRODUCT_TYPE_LABEL[it.type] ?? it.type : "—"}</td>
+                          <td>
+                            {[it.lensDesign, it.lensIndex, it.coating].filter(Boolean).join(" · ") ||
+                              "—"}
+                          </td>
+                          <td className="grid__num">
+                            {count(it.orders)}
+                            {it.awaitingCost > 0 ? (
+                              <span className="grid__sub">{count(it.awaitingCost)} รอลงต้นทุน</span>
+                            ) : null}
+                          </td>
+                          <td className="grid__num">{count(it.qty)}</td>
+                          {money$ ? (
+                            <td className="grid__num">
+                              {it.cost === null ? <span className="grid__muted">—</span> : money(it.cost)}
+                            </td>
+                          ) : null}
+                          {money$ ? (
+                            <td className="grid__num">
+                              {it.revenue === null ? (
+                                <span className="grid__muted">—</span>
+                              ) : (
+                                money(it.revenue)
+                              )}
+                            </td>
+                          ) : null}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  </div>
+                </details>
+              ))}
+            </section>
+          ) : null}
 
           {/* ------------------------------------------- what to buy next */}
 

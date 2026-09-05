@@ -762,12 +762,28 @@ code {
 .grid__row--rx { background: var(--tint-lav); }
 .grid__row--pending { background: var(--tint-coral); }
 
+/* ตัวเลขชิดขวา — เขียนซ้ำให้ชนะ `.grid thead th` กับ `.grid tbody td` ข้างบน
+   ที่ตั้ง text-align: start ไว้
+
+   `.grid__num` คลาสเดียวมีน้ำหนัก (0,1,0) ส่วนสองกฎนั้นเป็น (0,1,2) — มัน
+   จึงชนะมาตลอด และคอลัมน์ตัวเลขทุกตารางในโมดูลนี้ชิดซ้ายมาตั้งแต่ต้น ทั้งที่
+   บรรทัดนี้เขียนว่าชิดขวา · ผลคือ "13" กับ "9,800.00" ในคอลัมน์เดียวกันไม่มี
+   หลักตรงกันสักหลัก ซึ่งเป็นเหตุผลทั้งหมดที่ตัวเลขต้องชิดขวา
+
+   ระบุ th/td ไปด้วยเพื่อให้ได้ (0,2,1) ไม่ใช่แค่เพิ่ม `.grid` แล้วได้ (0,2,0)
+   ซึ่งชนะเหมือนกันแต่ไม่ได้บอกว่ามันใช้กับช่องในตารางเท่านั้น */
+.grid th.grid__num,
+.grid td.grid__num { text-align: end; }
+
 .grid__num { text-align: end; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .grid__num--in { color: var(--color-mint-ink); font-weight: 600; }
 
 /* ช่องปุ่มท้ายแถว — แคบที่สุดเท่าที่ปุ่มจะพอ ตารางที่เหลือจึงไม่ถูกบีบ
    และปุ่มของทุกแถวเรียงตรงกันเป็นเส้นเดียว หาได้โดยไม่ต้องกวาดตา */
 .grid__act { inline-size: 1%; white-space: nowrap; text-align: end; }
+/* ด้วยเหตุผลเดียวกับ `.grid__num` ข้างบน — คลาสเดียวแพ้ `.grid tbody td` */
+.grid th.grid__act,
+.grid td.grid__act { text-align: end; }
 
 .grid__name { display: block; font-weight: 600; color: var(--color-ink); }
 
@@ -974,6 +990,16 @@ code {
   border: 0;
   padding: 0;
   margin: auto;
+  /* ไดอะล็อกถูกวาดไว้ตรงที่ปุ่มที่เปิดมันอยู่ ไม่ได้ย้ายไปแขวนที่ <body>
+     (ตั้งใจ — ดูเหตุผลที่ Select.tsx) ปุ่มบางตัวอยู่ในช่องตารางที่จัดข้อความ
+     ชิดขวา แล้ว text-align ก็ตกทอดเข้ามาทั้งไดอะล็อก ป้ายกำกับทุกช่องเลยไป
+     กองอยู่ขวา · ตั้งกลับที่นี่ทีเดียว ไดอะล็อกจะได้ไม่ขึ้นกับว่าใครเปิดมัน
+
+     `white-space` ร้ายกว่า: ช่องปุ่มท้ายแถวตั้ง `nowrap` ไว้เพื่อไม่ให้ปุ่มตก
+     บรรทัด และมันตกทอดเข้าไดอะล็อกทั้งใบ — ทุกประโยคในนั้นจึงเป็นบรรทัดเดียว
+     ยาวออกไปนอกกล่อง มีแถบเลื่อนแนวนอน และของทางขวาถูกตัดหาย */
+  text-align: start;
+  white-space: normal;
   /* fit-content, not auto. A modal dialog is laid out absolutely with both
      block insets at 0, and an auto height against that stretches to the whole
      viewport — which is how a three-field step ended up in a box with 300px of
@@ -998,7 +1024,24 @@ code {
   }
 }
 
-.drawer__inner { padding: var(--space-lg) var(--space-md); display: grid; gap: var(--space-lg); }
+/**
+ * `minmax(0, 1fr)` ไม่ใช่คอลัมน์ auto — ไม่งั้นไดอะล็อกกว้างตามประโยคที่ยาวที่สุด
+ *
+ * คอลัมน์ auto ของ grid ย่อได้ไม่ต่ำกว่าความกว้าง min-content ของลูกที่กว้างที่สุด
+ * และภาษาไทยเขียนติดกันไม่มีช่องว่าง ประโยคยาว ๆ หนึ่งประโยคจึงมี min-content
+ * เท่ากับความยาวทั้งประโยค · ผลคือคอลัมน์กว้าง 731px ในกล่องที่มีที่ว่างจริง
+ * 656px ไดอะล็อกเลยมีแถบเลื่อนแนวนอน และของทางขวา (ปุ่มปิด ยอดต้นทุน ป้ายกำกับ
+ * ช่องกรอก) ถูกตัดหาย
+ *
+ * ขั้นต่ำเป็น 0 แปลว่าคอลัมน์ยอมแคบเท่าที่ว่างที่มี แล้วข้อความไปตัดบรรทัดเอา
+ * ซึ่งเป็นสิ่งที่ควรเกิดตั้งแต่แรก
+ */
+.drawer__inner {
+  padding: var(--space-lg) var(--space-md);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-lg);
+}
 
 @media (min-width: 40rem) { .drawer__inner { padding-inline: var(--space-xl); } }
 
@@ -1030,11 +1073,38 @@ code {
   color: var(--color-muted);
 }
 
-.drawer__section form { display: grid; gap: var(--space-sm); justify-items: start; }
+/* เหตุผลเดียวกับ `.drawer__inner` ข้างบน — ฟอร์มก็เป็น grid อีกชั้น และประโยค
+   ไทยยาว ๆ ในฟอร์มก็ดันคอลัมน์ของมันได้เหมือนกัน · `justify-items: start` ยัง
+   อยู่ ช่องเดี่ยว ๆ จึงยังหดตามเนื้อหา ไม่ยืดเต็ม 46rem */
+.drawer__section form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-sm);
+  justify-items: start;
+}
 .drawer__section form > .field,
 .drawer__section form > .formgrid,
 .drawer__section form > .notice,
 .drawer__section form > .field__help { inline-size: 100%; }
+
+/**
+ * `min-inline-size: 0` คือคู่ที่ขาดไม่ได้ของ `minmax(0, 1fr)` ข้างบน
+ *
+ * บีบคอลัมน์อย่างเดียวไม่พอ: ลูกของ grid มี `min-width: auto` ตามค่าปริยาย
+ * ซึ่งแปลว่า "ห้ามแคบกว่า min-content ของฉัน" — พอ min-content คือประโยคไทย
+ * ที่ไม่มีช่องว่างทั้งประโยค ลูกก็ล้นออกนอกคอลัมน์ที่เพิ่งบีบไว้ · ศูนย์ตรงนี้
+ * คือการบอกว่ายอมแคบได้ แล้วข้อความไปตัดบรรทัดแทนที่จะดันกล่อง
+ *
+ * ไล่ทีละชั้นเพราะไดอะล็อกซ้อน grid ไว้สามชั้น (inner → section → form)
+ * ชั้นไหนไม่ได้บอก ชั้นนั้นก็ดันชั้นบนต่อ
+ *
+ * `max-inline-size` ที่ตามมาเป็นเพดาน ไม่ใช่การบังคับให้ยืดเต็ม — ตัวสั้นยังหด
+ * ตามเนื้อหาเหมือนที่ `justify-items: start` ตั้งใจ
+ */
+.drawer__inner > *,
+.drawer__section > *,
+.drawer__section form > *,
+.drawer__danger > * { min-inline-size: 0; max-inline-size: 100%; }
 
 /* The product wizard is the whole width of the dialog, not a column hugging the
    left edge. `justify-items: start` above suits the small drawers, where a lone
@@ -1274,6 +1344,9 @@ kbd {
   padding-block-start: var(--space-sm);
   border-block-start: 1px solid var(--color-rule);
   display: grid;
+  /* เหตุผลเดียวกับ `.drawer__inner` — คำอธิบายยาว ๆ ตรงนี้เป็นภาษาไทยที่ไม่มี
+     ช่องว่าง ถ้าปล่อยคอลัมน์เป็น auto มันจะกว้างเท่าทั้งประโยคแล้วดันไดอะล็อก */
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-xs);
   justify-items: start;
 }
@@ -2710,9 +2783,65 @@ kbd {
 .basket__step { display: flex; align-items: center; gap: var(--space-2xs); }
 .basket__step .basket__qty { min-inline-size: 2ch; text-align: center; }
 
+/* The same figure, typeable. Narrower than the form's `qty__input` because it
+   sits on a line between two buttons and a name, not in a field of its own —
+   wide enough for three digits, which is more than a drawer ever holds. */
+.basket__qtyinput {
+  inline-size: 3.75rem;
+  flex: none;
+  padding-inline: var(--space-2xs);
+  text-align: center;
+  font-family: var(--font-label);
+  font-variant-numeric: tabular-nums;
+}
+
+.basket__qtyinput--short { color: var(--color-error); font-weight: 700; }
+
 /* The row button that fills the basket reads as an action, not as a label. */
-.grid__pick { background: var(--color-paper); border: 1px solid var(--color-rule-2); }
+.grid__pick {
+  display: inline-block;
+  background: var(--color-paper);
+  border: 1px solid var(--color-rule-2);
+  transition: transform var(--dur-press) var(--ease-out);
+}
 .grid__row--clickable:hover .grid__pick { background: var(--color-accent); border-color: var(--color-accent); }
+
+/* --------------------------------------------------------------------------
+   Putting something in the basket, seen
+
+   The row that was tapped is at eye level; the cart button is at the top of the
+   page. That distance is where "did that work?" lives, and the answer used to
+   be a number changing off-screen. Three small movements answer it: the row
+   acknowledges the tap, the cart flinches, the badge lands.
+
+   All of it inside the no-preference query, so a machine set to reduce motion
+   gets the same screen and none of the movement. */
+.cart__icon { display: inline-flex; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .cart__icon { animation: cart-nudge var(--dur-long) var(--ease-out); }
+
+  @keyframes cart-nudge {
+    35% { transform: translateY(-0.2rem) rotate(-9deg); }
+  }
+
+  .cartcount { animation: cart-pop 360ms var(--ease-out); }
+
+  @keyframes cart-pop {
+    from { transform: scale(0.4); opacity: 0; }
+    60%  { transform: scale(1.22); }
+  }
+
+  /* The bar is the basket arriving, so it arrives rather than appears. */
+  .basketbar { animation: basketbar-in 240ms var(--ease-out); }
+
+  @keyframes basketbar-in {
+    from { transform: translateY(-0.4rem); opacity: 0; }
+  }
+
+  /* The tap itself, acknowledged under the finger that made it. */
+  .grid__row--clickable:active .grid__pick { transform: scale(0.94); }
+}
 
 /* --------------------------------------------------------------------------
    Inline edit — a figure corrected where it is read
@@ -2868,3 +2997,473 @@ kbd {
 
 /* ปุ่มยืนยันอยู่ขวาสุด ตามลำดับที่ปุ่มอันตรายควรอยู่ไกลจากนิ้วที่กำลังกดรัว */
 .confirm-money .chips { justify-content: flex-end; }
+
+/* ------------------------------------------------------------------ folds */
+
+/* กลุ่มที่พับได้ — ตารางแยกตามสาขาบนแดชบอร์ดยาวเท่าจำนวนสาขาคูณจำนวนสินค้า
+   สิบสาขาที่เบิกอย่างละห้ารายการคือห้าสิบแถวที่ต้องเลื่อนผ่านเพื่อหาสาขาเดียว
+
+   หัวที่พับอยู่ยังบอกยอดรวมของสาขานั้นครบ — คนที่อยากรู้แค่ "สาขาไหนเบิกเยอะ"
+   จึงได้คำตอบโดยไม่ต้องกางอะไรเลย ส่วนคนที่อยากรู้ว่าเบิกอะไรค่อยกด */
+.fold { border-top: 1px solid var(--color-rule-2); }
+.fold:first-of-type { border-top: 0; }
+
+.fold__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+  padding: var(--space-sm) var(--space-xs);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  /* ลูกศรของเบราว์เซอร์ถูกแทนด้วยของเราเอง เพราะรูปร่างและระยะห่างของมัน
+     ต่างกันทุกเบราว์เซอร์ และวางชิดซ้ายจนหลุดจากแนวข้อความอื่นในหน้า */
+  list-style: none;
+}
+.fold__head::-webkit-details-marker { display: none; }
+.fold__head:hover { background: var(--color-rule); }
+
+.fold__head::before {
+  content: "▸";
+  color: var(--color-muted);
+  font-size: var(--text-xs);
+  line-height: 1;
+}
+.fold[open] > .fold__head::before { content: "▾"; }
+
+/* ชื่อสาขากับลูกศรเดินคู่กัน ส่วนยอดรวมไปชิดขวา */
+.fold__head > .panel__title { margin-inline-end: auto; }
+
+/* ------------------------------------------------------------- filters */
+
+/* แถวตัวกรองแบบดรอปดาวน์ — แทนแถบชิปที่เคยยาวสามสิบปุ่ม
+   ห่อบรรทัดได้ตามความกว้างจอ ไม่ใช่ดันให้ตารางเลื่อนแนวนอน */
+.filterbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  /* ระยะแนวนอนกว้างกว่าแนวตั้ง — ช่องที่วางเรียงกันต้องอ่านเป็นคนละคำถาม
+     ระยะเท่ากันทั้งสองแกนทำให้ห้าช่องอ่านเป็นแถบเดียวยาว ๆ ที่ไม่มีขอบเขต */
+  gap: var(--space-sm) var(--space-lg);
+  margin-block: var(--space-md) var(--space-lg);
+}
+
+/* กว้างพอให้ชื่อยาวสุดของแต่ละกลุ่มอ่านจบ และไม่ยืดจนสองช่องกินทั้งแถว */
+.filterbar__item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2xs);
+  min-width: 10.5rem;
+  flex: 0 1 13rem;
+}
+
+.filterbar__label {
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+  padding-inline-start: var(--space-2xs);
+}
+
+/* ---------------------------------------------------------- date range */
+
+/* ปฏิทินสองเดือนคู่กัน — ช่วงที่คนเลือกส่วนใหญ่คร่อมเดือน และปฏิทินเดือนเดียว
+   บังคับให้กดเปลี่ยนเดือนกลางคัน โดยที่ปลายทางที่เพิ่งเลือกหายจากจอ */
+.daterange { position: relative; }
+
+.daterange__face {
+  inline-size: 100%;
+  text-align: start;
+  cursor: pointer;
+}
+
+.daterange__pop {
+  z-index: var(--z-dropdown);
+  padding: var(--space-lg);
+  border: 1px solid var(--color-rule-2);
+  border-radius: var(--radius-card);
+  background: var(--color-card);
+  box-shadow: var(--shadow-pop);
+}
+
+.daterange__months {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xl);
+}
+
+.daterange__cal { flex: 1 1 15rem; min-inline-size: 14.5rem; }
+
+.daterange__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-xs);
+  margin-block-end: var(--space-sm);
+}
+
+.daterange__title {
+  font-weight: 700;
+  font-size: var(--text-base);
+  letter-spacing: 0.01em;
+}
+
+.daterange__step {
+  inline-size: 2rem;
+  block-size: 2rem;
+  border: 1px solid var(--color-rule-2);
+  border-radius: var(--radius-pill);
+  background: var(--color-card);
+  color: var(--color-ink-soft);
+  font-size: var(--text-md);
+  line-height: 1;
+  cursor: pointer;
+  transition: background var(--dur-press) var(--ease-press),
+              border-color var(--dur-press) var(--ease-press);
+}
+.daterange__step:hover {
+  background: var(--tint-pear);
+  border-color: var(--edge-pear);
+  color: var(--color-cyan-ink);
+}
+.daterange__step--ghost { visibility: hidden; cursor: default; }
+
+.daterange__dow,
+.daterange__grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  /* ไม่มีช่องว่างระหว่างวัน — แถบของช่วงต้องต่อกันเป็นแถบเดียว ช่องว่างทำให้
+     มันขาดเป็นปล้อง ๆ แล้วอ่านเป็นหลายช่วง · ระยะห่างไปอยู่ที่ความสูงของแถวแทน */
+  gap: 0;
+}
+
+.daterange__dow {
+  margin-block-end: var(--space-2xs);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--color-ink-dim);
+  text-align: center;
+}
+
+.daterange__pad { block-size: 2.25rem; }
+
+.daterange__day {
+  position: relative;
+  block-size: 2.25rem;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--color-ink);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background var(--dur-press) var(--ease-press),
+              color var(--dur-press) var(--ease-press);
+}
+.daterange__day:hover { background: var(--color-field-hover); }
+
+/* เสาร์–อาทิตย์จางลงหนึ่งขั้น พอให้กวาดตาหาสัปดาห์ได้โดยไม่ต้องนับ */
+.daterange__day--rest { color: var(--color-ink-soft); }
+
+/* วันนี้มีจุดใต้เลข ไม่ใช่กรอบ — กรอบจะไปแข่งกับปลายช่วงที่เป็นวงกลมทึบ */
+.daterange__day--today::after {
+  content: "";
+  position: absolute;
+  inset-block-end: 0.3rem;
+  inset-inline-start: 50%;
+  translate: -50% 0;
+  inline-size: 3px;
+  block-size: 3px;
+  border-radius: var(--radius-pill);
+  background: var(--color-accent);
+}
+
+/* ตรงกลางช่วงเป็นแถบเหลี่ยมต่อกัน ปลายสองข้างมนออกด้านนอก */
+.daterange__day--in {
+  background: var(--tint-pear);
+  border-radius: 0;
+}
+.daterange__day--in:hover { background: var(--tint-lav-deep); }
+
+.daterange__day--on {
+  background: var(--color-accent);
+  color: var(--color-accent-ink);
+  font-weight: 700;
+  box-shadow: var(--shadow-brand);
+}
+.daterange__day--on.daterange__day--today::after { background: var(--color-accent-ink); }
+
+.daterange__day--start { border-start-end-radius: 0; border-end-end-radius: 0; }
+.daterange__day--end { border-start-start-radius: 0; border-end-start-radius: 0; }
+
+.daterange__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  margin-block-start: var(--space-lg);
+  padding-block-start: var(--space-md);
+  border-block-start: 1px solid var(--color-rule-2);
+}
+
+.daterange__read {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-ink-soft);
+}
+
+/* ---------------------------------------------------------- month pick */
+
+/* ปฏิทินเดือนของแอปเอง — ตัวของเบราว์เซอร์ทำงานถูก แต่เป็นเดือนภาษาอังกฤษ
+   ปี ค.ศ. และสีน้ำเงินของระบบปฏิบัติการ กลางหน้าที่เป็นไทยและเป็นสีเขียว */
+.monthpick { position: relative; }
+
+.monthpick__face {
+  inline-size: 100%;
+  text-align: start;
+  cursor: pointer;
+}
+
+.monthpick__pop {
+  z-index: var(--z-dropdown);
+  padding: var(--space-md);
+  border: 1px solid var(--color-rule-2);
+  border-radius: var(--radius-input);
+  background: var(--color-card);
+  box-shadow: var(--shadow-pop);
+}
+
+.monthpick__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-xs);
+  margin-block-end: var(--space-sm);
+}
+
+.monthpick__grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-2xs);
+}
+
+.monthpick__m {
+  padding-block: var(--space-xs);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: var(--color-field);
+  color: var(--color-ink);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: background var(--dur-press) var(--ease-press);
+}
+.monthpick__m:hover { background: var(--color-field-hover); }
+.monthpick__m--on {
+  background: var(--color-accent);
+  border-color: var(--color-accent-deep);
+  color: var(--color-accent-ink);
+  font-weight: 700;
+}
+
+.monthpick__foot {
+  display: flex;
+  justify-content: flex-end;
+  margin-block-start: var(--space-sm);
+  padding-block-start: var(--space-sm);
+  border-block-start: 1px solid var(--color-rule-2);
+}
+
+/* ------------------------------------------------------------ picklist */
+
+/* ดรอปดาวน์ที่ตอบได้หลายคำตอบ — ใช้กับคำถาม "เอาอะไรบ้าง" ซึ่งชิปทำได้เหมือนกัน
+   แต่กินพื้นที่เท่าจำนวนตัวเลือก และคำถามแบบนี้มักมีสิบตัวเลือกขึ้นไป */
+.picklist { position: relative; }
+
+.picklist__face {
+  inline-size: 100%;
+  text-align: start;
+  cursor: pointer;
+}
+
+.picklist__pop {
+  z-index: var(--z-dropdown);
+  padding: var(--space-sm);
+  border: 1px solid var(--color-rule-2);
+  border-radius: var(--radius-input);
+  background: var(--color-card);
+  box-shadow: var(--shadow-pop);
+}
+
+.picklist__tools {
+  display: flex;
+  gap: var(--space-xs);
+  padding-block-end: var(--space-xs);
+  margin-block-end: var(--space-2xs);
+  border-block-end: 1px solid var(--color-rule);
+}
+
+.picklist__list {
+  max-block-size: 17rem;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.picklist__row {
+  display: flex;
+  align-items: start;
+  gap: var(--space-xs);
+  padding: var(--space-xs);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.picklist__row:hover { background: var(--color-field); }
+
+.picklist__row input { margin-block-start: 0.15rem; accent-color: var(--color-accent); }
+
+.picklist__text { display: flex; flex-direction: column; gap: 1px; }
+.picklist__label { font-size: var(--text-sm); }
+.picklist__hint { font-size: var(--text-xs); color: var(--color-muted); }
+
+/* ช่องที่มีคำตอบยาวกว่าเพื่อน — "เลือกไว้ 5 จาก 8" ยาวกว่าชื่อสาขาทุกชื่อ */
+.filterbar__item--wide { flex: 0 1 17rem; min-inline-size: 13rem; }
+
+/* ------------------------------------------------------------- toolbar */
+
+/* แถบเครื่องมือแถวเดียวของแดชบอร์ด — ช่วงเวลา ตัวกรอง และช่วงที่กำลังดูอยู่
+   เดิมเป็นสามชั้นซ้อนกันสูงเกือบครึ่งจอก่อนถึงตัวเลขตัวแรก */
+.toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+/* หนึ่งแถว = หนึ่งคำถาม · แถวบนเปลี่ยนสิ่งที่เห็นบนจอ แถวล่างเปลี่ยนเฉพาะไฟล์ */
+.toolbar__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm) var(--space-md);
+}
+
+/* แถวไฟล์แยกตัวออกด้วยพื้นกับเส้น ไม่ใช่แค่ช่องว่าง — ช่องว่างอย่างเดียวยังอ่าน
+   เป็นแถบเดียวที่ห่อบรรทัด แล้วช่อง "สาขา" จะดูเหมือนกรองตัวเลขบนจอด้วย */
+.toolbar__row--file {
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-input);
+  background: var(--color-paper);
+}
+
+/* ชื่อของแถว ตัวเล็กหนา อยู่หัวแถว — สองแถวที่หน้าตาเหมือนกันต้องมีคำบอกว่า
+   คนละเรื่องกัน ไม่งั้นก็แค่แถบเดียวที่ถูกตัดครึ่ง */
+.toolbar__title {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--color-ink-soft);
+  white-space: nowrap;
+}
+
+/* เส้นคั่นบาง ๆ ระหว่างกลุ่ม — ช่องว่างอย่างเดียวไม่พอให้อ่านเป็นคนละคำถาม
+   ตอนที่แถบยาวเต็มบรรทัด · หายไปเองตอนห่อบรรทัด เพราะเส้นที่ขึ้นต้นบรรทัดใหม่
+   คือขีดลอยที่ไม่ได้คั่นอะไร */
+.toolbar__sep {
+  inline-size: 1px;
+  block-size: 1.5rem;
+  background: var(--color-rule-2);
+}
+
+/* ป้ายกับช่องอยู่บรรทัดเดียวกัน ไม่ใช่ป้ายบนช่องล่าง — แถวเดียวที่มีป้ายลอย
+   อยู่เหนือทุกช่องจะสูงเป็นสองเท่าโดยไม่ได้บอกอะไรเพิ่ม */
+.toolbar__pair {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2xs);
+  min-inline-size: 0;
+}
+
+.toolbar__lead {
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+
+/* ช่องในแถบแคบกว่าช่องในฟอร์ม — ที่นี่มีหกช่องบนบรรทัดเดียว */
+/* ช่องเดี่ยวกว้างเท่านี้ · แบบสองช่องกว้างตามลูกของมันเอง — ตัวเลือกที่ตายตัว
+   จะบีบสองช่องข้างในจนล้นไปทับช่องถัดไปในแถบ */
+.toolbar .daterange:not(.daterange--split) { inline-size: 12.5rem; }
+.toolbar .picklist { inline-size: 11rem; }
+.toolbar .select { inline-size: 9.5rem; }
+
+/* ผลลัพธ์ของทั้งแถบ ในสีของแบรนด์ — ชิปกับปฏิทินตั้งช่วงได้จากสามทาง
+   ป้ายนี้คือที่เดียวที่บอกว่าตกลงแล้วกำลังดูช่วงไหน */
+.toolbar__now {
+  margin-inline-start: auto;
+  padding: var(--space-2xs) var(--space-sm);
+  border: 1px solid var(--edge-pear);
+  border-radius: var(--radius-pill);
+  background: var(--tint-pear);
+  color: var(--color-cyan-ink);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* คำอธิบายตัวกรองกินเต็มบรรทัดของตัวเอง ใต้แถบ */
+.toolbar__note { flex-basis: 100%; margin: 0; }
+
+/* ชิปแบนในแถบเครื่องมือ — ไม่มีกรอบจนกว่าจะถูกเลือก แล้วเป็นเม็ดทึบสีหมึก
+   เจ็ดชิปที่มีกรอบทุกอันอ่านเป็นเจ็ดปุ่มเท่ากันหมด ซึ่งไม่บอกว่าอันไหนใช้อยู่ */
+.chip--flat {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+.chip--flat:hover { background: var(--color-field); }
+.chip--flat[aria-current="true"] {
+  background: var(--color-ink);
+  border-color: var(--color-ink);
+  color: var(--color-paper);
+  font-weight: 700;
+}
+
+.toolbar__presets { row-gap: var(--space-2xs); }
+
+/* สองช่องวันที่ยืนคู่กันในแถบ พร้อมป้าย "จาก"/"ถึง" คั่น */
+.daterange--split {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2xs);
+  inline-size: auto;
+  /* กันไม่ให้ช่องถัดไปในแถบไหลมาชิดจนอ่านเป็นช่องเดียวกัน */
+  margin-inline-end: var(--space-2xs);
+}
+
+.daterange__slot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-xs);
+  /* กว้างพอให้ "28 ก.พ. 2569" กับไอคอนอยู่ครบโดยไม่ต้องย่อ — วันที่ที่ถูกตัด
+     ท้ายอ่านเป็นปีคนละปี ซึ่งแย่กว่าช่องที่กว้างไปหน่อย */
+  inline-size: 10.5rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.daterange__slot .icon { color: var(--color-ink-dim); flex: none; }
+
+.toolbar__now { display: inline-flex; align-items: center; gap: var(--space-2xs); }
+.toolbar__now .icon { flex: none; }
+
+/* ปุ่มออกไฟล์: บรรทัดของตัวเอง ชิดขวา ในการ์ดเดียวกับตัวกรอง */
+.toolbar__go {
+  margin-inline-start: auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-xs);
+}
+.toolbar__go .btn { display: inline-flex; align-items: center; gap: var(--space-2xs); }
