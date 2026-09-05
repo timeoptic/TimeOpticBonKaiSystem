@@ -12,13 +12,15 @@
  * ใช้ `replace` ไม่ใช่ `push` ตอนกดปุ่มช่วงเวลา — กดสี่ปุ่มไล่ดูแล้วต้องกดย้อนกลับ
  * สี่ครั้งกว่าจะออกจากหน้ารายงาน คือประวัติที่ไม่มีใครอยากได้
  */
+import { useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Icon } from './Icon.jsx';
 import { api } from '../lib/apiClient.js';
 import { useAsync } from '../lib/hooks.js';
 import {
-  CHANNELS, PERIODS, filterQuery, periodOf, rangeFor, rangeLabel, readFilter,
+  CHANNELS, PERIODS, STATUSES, filterQuery, periodOf, rangeFor, rangeLabel, readFilter,
 } from '../lib/reportRange.js';
+import { DateField } from './DateField.jsx';
 
 export function useReportFilter() {
   const params = useSearchParams();
@@ -36,12 +38,19 @@ export function useReport(name) {
   const f = useReportFilter();
   const state = useAsync(
     () => api.get(`/api/reports/${name}`, f),
-    [name, f.from, f.to, f.channel],
+    [name, f.from, f.to, f.channel, f.status],
   );
   return { filter: f, ...state };
 }
 
-export function ReportFilter({ actions = null }) {
+/**
+ * `statusNote` = หน้านี้ไม่ได้กรองตามสถานะงาน ให้บอกเหตุผลไว้ตรงกล่อง
+ *
+ * หน้าการรับเงินนับจากรายการจ่ายเงิน และหน้าช่องทางลูกค้านับจากเคสทั้งหมดเพื่อ
+ * คิดอัตราปิดการขาย — กล่องสถานะจึงไม่มีผลกับสองหน้านั้น · ปิดกล่องทิ้งพร้อม
+ * บอกเหตุผล ดีกว่าปล่อยให้กดแล้วตัวเลขไม่ขยับ ซึ่งอ่านว่าระบบพัง
+ */
+export function ReportFilter({ actions = null, statusNote = '' }) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -70,29 +79,42 @@ export function ReportFilter({ actions = null }) {
         ))}
       </div>
 
-      <label className="rf-date">
+      {/* <div> ไม่ใช่ <label> — ป้ายส่งคลิกทุกครั้งไปที่ช่องกรอกที่มันคุมอยู่ ซึ่งแปลว่า
+          คลิกวันในปฏิทินที่ลอยอยู่ข้างในจะถูกส่งต่อไปหาช่องกรอกด้วย ปฏิทินจะกะพริบปิด-เปิด */}
+      <div className="rf-date">
         <span>จาก</span>
-        <input
-          type="date"
+        <DateField
           value={f.from}
           max={f.to}
-          onChange={(e) => go({ from: e.target.value || f.from })}
+          onChange={(v) => go({ from: v || f.from })}
         />
-      </label>
-      <label className="rf-date">
+      </div>
+      <div className="rf-date">
         <span>ถึง</span>
-        <input
-          type="date"
+        <DateField
           value={f.to}
           min={f.from}
-          onChange={(e) => go({ to: e.target.value || f.to })}
+          onChange={(v) => go({ to: v || f.to })}
         />
-      </label>
+      </div>
 
       <label className="rf-date">
         <span>ช่องทาง</span>
         <select value={f.channel} onChange={(e) => go({ channel: e.target.value })}>
           {CHANNELS.map(([key, label]) => (
+            <option key={key} value={key}>{label}</option>
+          ))}
+        </select>
+      </label>
+
+      <label className="rf-date" title={statusNote || 'งานที่จบแล้ว = ปิดการขาย / ลูกค้ารับของแล้ว'}>
+        <span>สถานะงาน</span>
+        <select
+          value={f.status}
+          disabled={!!statusNote}
+          onChange={(e) => go({ status: e.target.value })}
+        >
+          {STATUSES.map(([key, label]) => (
             <option key={key} value={key}>{label}</option>
           ))}
         </select>
@@ -113,12 +135,28 @@ export function ReportFilter({ actions = null }) {
  * PDF = สั่งพิมพ์ของเบราว์เซอร์แล้วเลือก "บันทึกเป็น PDF" ไม่ใช่สร้าง PDF เอง —
  * `globals.css` มีสไตล์สำหรับพิมพ์อยู่แล้ว และวิธีนี้ให้ผลที่พรีวิวเห็นก่อนพิมพ์ได้
  * โดยไม่ต้องลากไลบรารีสร้าง PDF เข้ามาทั้งก้อน
+ *
+ * `onExcel` คืน promise ได้ — หน้าภาพรวมให้เซิร์ฟเวอร์สร้างไฟล์ .xlsx ให้ ซึ่งกิน
+ * เวลาพอที่คนกดจะกดซ้ำเพราะคิดว่าไม่ติด · ระหว่างรอปุ่มจึงเปลี่ยนข้อความและปิด
+ * ตัวเอง ส่วนหน้าอื่นที่ประกอบ CSV ในเบราว์เซอร์เสร็จทันทีจะไม่ทันเห็นสถานะนี้
  */
-export function ExportButtons({ onCsv, disabled }) {
+export function ExportButtons({ onExcel, disabled }) {
+  const [busy, setBusy] = useState(false);
+
+  const run = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await onExcel();
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <>
-      <button type="button" className="btn btn-sm" onClick={onCsv} disabled={disabled}>
-        <Icon name="📊" /> Excel
+      <button type="button" className="btn btn-sm" onClick={run} disabled={disabled || busy}>
+        <Icon name="📊" /> {busy ? 'กำลังสร้างไฟล์…' : 'Excel'}
       </button>
       <button
         type="button"

@@ -133,6 +133,10 @@ function PosDetail() {
             <p>{fmtDateTime(sale.sale_date)}</p>
           </div>
           <span className="pos-bar-act">
+            {/* ใบขายที่ถูกยกเลิกไปแล้วต้องออกใบเสร็จไม่ได้ — ใบที่พิมพ์ออกไปคือหลักฐานว่ารับเงินจริง */}
+            {sale.status !== 'void' && (
+              <Link className="pos-btn" href={`/print/receipt?sale=${sale.id}`}>🧾 ใบเสร็จ</Link>
+            )}
             <Link className="pos-btn back" href="/pos/history/">← ประวัติ POS</Link>
           </span>
         </div>

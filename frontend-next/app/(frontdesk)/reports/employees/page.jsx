@@ -80,7 +80,7 @@ export default function EmployeeReport() {
 
   return (
     <>
-      <ReportFilter actions={<ExportButtons onCsv={csv} disabled={!rows.length} />} />
+      <ReportFilter actions={<ExportButtons onExcel={csv} disabled={!rows.length} />} />
 
       <ReportState loading={loading} error={error} data={data}>
         {data && !data.rows.length

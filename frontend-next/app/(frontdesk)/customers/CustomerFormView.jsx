@@ -16,6 +16,7 @@ import { ListSelect } from '../../../components/Selects.jsx';
 import { NATIONALITIES } from '../../../lib/constants.js';
 import { dateOnly } from '../../../lib/format.js';
 import { Icon } from '../../../components/Icon.jsx';
+import { DateField } from '../../../components/DateField.jsx';
 
 // editing must always be passed explicitly by the caller (true or false) — if a future
 // page forgets it, editing becomes undefined (falsy), silently serving a *create* form
@@ -82,7 +83,7 @@ export function CustomerFormView({ editing }) {
               <input name="nationality" defaultValue={c.nationality || ''} list="nat-list" />
             </Field>
             <Field label="วันเกิด / Birth date">
-              <input name="birth_date" type="date" defaultValue={dateOnly(c.birth_date)} />
+              <DateField name="birth_date" defaultValue={dateOnly(c.birth_date)} />
             </Field>
             <Field label="เบอร์โทร / Phone">
               <input name="phone" defaultValue={c.phone || ''} />

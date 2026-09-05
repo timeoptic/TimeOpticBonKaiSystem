@@ -35,6 +35,7 @@ import { EmployeeSelect, ListSelect } from '../../../../components/Selects.jsx';
 import { NATIONALITIES } from '../../../../lib/constants.js';
 import { custName, fmtDate } from '../../../../lib/format.js';
 import { Icon } from '../../../../components/Icon.jsx';
+import { DateField } from '../../../../components/DateField.jsx';
 
 /** ลูกค้าที่ระบบสงสัยว่าเป็นคนเดียวกัน — เลือกใช้ใบเดิม หรือยืนยันว่าคนละคน */
 function DuplicateWarning({ matches, onUse, onForce, onEdit, busy }) {
@@ -139,7 +140,7 @@ function NewCustomerForm({ onCreated }) {
           <input name="line_id" placeholder="LINE ID หรือเบอร์ WhatsApp" />
         </Field>
         <Field label="เพศ / Sex"><ListSelect name="sex" kind="sex" defaultValue="" blank="—" /></Field>
-        <Field label="วันเกิด / Birth date"><input name="birth_date" type="date" /></Field>
+        <Field label="วันเกิด / Birth date"><DateField name="birth_date" /></Field>
         <Field label="สัญชาติ / Nationality"><input name="nationality" list="nat-list" /></Field>
         <Field label="อีเมล / Email"><input name="email" type="email" /></Field>
       </FormGrid>

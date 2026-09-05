@@ -100,17 +100,34 @@ function invoiceCode(?DateTimeInterface $d = null): string
     return 'C' . ($d ?? new DateTime())->format('ymdHis');
 }
 
-/** Next sequential code for a year-scoped series, e.g. CASE-2026-0008 */
-function nextCode(string $prefix, string $table, string $column): string
+/**
+ * จำนวนหลักของเลขท้ายรหัสทุกชุด — CASE / INV / POS / BK ใช้ 5 หลักเท่ากันหมด
+ * เคยมีแค่ CASE ที่เป็น 5 ส่วนชุดอื่นเป็น 4 ทำให้รหัสบนใบเสร็จใบเดียวกัน
+ * (เลขเคส vs เลขที่ใบ) ยาวไม่เท่ากันและอ่านเทียบกันไม่ได้
+ */
+const CODE_PAD = 5;
+
+/**
+ * Next sequential code for a year-scoped series, e.g. CASE-2026-00008
+ *
+ * $withMonth คั่นเดือนไว้ระหว่างปีกับเลขลำดับ (Bill-2026-09-00042) — ใช้กับชุด
+ * เลขใบเสร็จ เดือนเป็น "ป้ายบอกช่วงเวลา" เฉย ๆ เลขลำดับยังเดินยาวทั้งปีไม่รีเซ็ต
+ * รายเดือน เงื่อนไข LIKE จึงกวาดทั้งปีเหมือนชุดอื่น ไม่ใช่กวาดเฉพาะเดือนนี้
+ */
+function nextCode(string $prefix, string $table, string $column, bool $withMonth = false): string
 {
     $year = (int) date('Y');
-    $row  = Db::get(
+    /* อ่านเลขท้ายเป็นตัวเลข ไม่ใช่สตริง — แถวเก่าที่ยังเป็น 4 หลัก (INV-2026-0006)
+       กับแถวใหม่ 5 หลักจึงเรียงลำดับต่อกันได้ถูกต้อง ไม่ต้องรอให้แปลงครบก่อน
+       LIKE ผูกกับ "$prefix-" ตรงตัว ชุด Bill กับ BillP จึงไม่กวาดเจอกันเอง */
+    $row = Db::get(
         "SELECT MAX(CAST(SUBSTRING_INDEX(`$column`, '-', -1) AS UNSIGNED)) AS n
            FROM `$table` WHERE `$column` LIKE ?",
         "$prefix-$year-%"
     );
-    $n = (int) ($row['n'] ?? 0) + 1;
-    return sprintf('%s-%d-%04d', $prefix, $year, $n);
+    $n     = (int) ($row['n'] ?? 0) + 1;
+    $month = $withMonth ? '-' . date('m') : '';
+    return sprintf('%s-%d%s-%0' . CODE_PAD . 'd', $prefix, $year, $month, $n);
 }
 
 /** sum a column across rows */

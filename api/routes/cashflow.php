@@ -54,13 +54,42 @@ foreach ($cashflowKinds as $kind) {
             $args[]  = $to;
         }
         $sqlWhere = $where ? 'WHERE ' . implode(' AND ', $where) : '';
-        $args[]   = min(int_or($q['limit'] ?? null, 300), 2000);
+        $limit    = min(int_or($q['limit'] ?? null, 300), 2000);
 
         $rows = Db::all(
             "SELECT * FROM `$table` $sqlWhere ORDER BY cf_date DESC, id DESC LIMIT ?",
+            ...[...$args, $limit]
+        );
+
+        /* ยอดสรุปนับจากทุกแถวที่เข้าเงื่อนไข ไม่ใช่จากแถวที่ส่งกลับไป — LIMIT มีไว้กัน
+           หน้าเว็บไม่ให้โหลดพันแถว ไม่ได้แปลว่าช่วงนั้นมีอยู่เท่านั้น รายจ่ายมีสามพันกว่าแถว
+           ยอดที่บวกจากสามร้อยแถวแรกคือยอดที่ผิด และผิดแบบที่คนอ่านดูไม่ออก */
+        $agg = Db::get(
+            "SELECT COUNT(*) n, COALESCE(SUM(amount), 0) s FROM `$table` $sqlWhere",
             ...$args
         );
-        return ['rows' => $rows, 'total' => round2(sumCol($rows, 'amount'))];
+
+        /* แยกตามประเภทให้ครบทุกประเภทแล้วเรียงมากไปน้อย ฝั่งหน้าเว็บค่อยตัดเอาเท่าที่จอรับไหว
+           — "อันดับหนึ่ง" ต้องเป็นอันดับของทั้งช่วง ไม่ใช่ของแถวที่บังเอิญถูกส่งไป */
+        $byType = Db::all(
+            "SELECT `$typeCol` t, COUNT(*) n, COALESCE(SUM(amount), 0) s
+               FROM `$table` $sqlWhere
+              GROUP BY `$typeCol`
+              ORDER BY s DESC, n DESC",
+            ...$args
+        );
+
+        return [
+            'rows'    => $rows,
+            'total'   => round2($agg['s'] ?? 0),
+            'count'   => (int) ($agg['n'] ?? 0),
+            /* แถวที่ไม่เคยกรอกประเภทมารวมกันเป็นก้อนเดียว ชื่อว่าง ๆ อ่านไม่ออกว่าคืออะไร */
+            'by_type' => array_map(fn(array $r) => [
+                'type'  => str_or($r['t'] ?? null) ?: '(ไม่ระบุประเภท)',
+                'count' => (int) $r['n'],
+                'total' => round2($r['s']),
+            ], $byType),
+        ];
     });
 
     POST("/api/$endpoint", function (array $req) use ($table, $cols, $vals) {

@@ -17,7 +17,7 @@ final class Telegram
     {
         self::$envOverride = array_filter([
             'telegram_bot_token' => $tg['bot_token'] ?? null,
-            'telegram_chat_id'   => $tg['-5157011023'] ?? null,
+            'telegram_chat_id'   => $tg['chat_id'] ?? null,
         ], fn($v) => $v !== null && $v !== '');
     }
 

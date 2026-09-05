@@ -12,7 +12,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { Badge, Empty, Row } from './ui.jsx';
 import { RxSetBlock } from './RxSets.jsx';
-import { fmtDate, power } from '../lib/format.js';
+import { cylPower, fmtDate, sphPower } from '../lib/format.js';
 import { Icon } from './Icon.jsx';
 
 export function ExamHistory({ sessions }) {
@@ -44,8 +44,8 @@ export function ExamHistory({ sessions }) {
 
             <Row className="exam-round-summary">
               <Badge kind={s.final ? 'ok' : 'gray'}>{s.final ? 'ค่าที่ใช้จริง' : 'ค่าที่วัดได้'}</Badge>
-              <span>{`R ${power(summary?.r_sphere)} / ${power(summary?.r_cylinder)} × ${summary?.r_axis || '—'}`}</span>
-              <span>{`L ${power(summary?.l_sphere)} / ${power(summary?.l_cylinder)} × ${summary?.l_axis || '—'}`}</span>
+              <span>{`R ${sphPower(summary?.r_sphere)} / ${cylPower(summary?.r_cylinder)} × ${summary?.r_axis || '—'}`}</span>
+              <span>{`L ${sphPower(summary?.l_sphere)} / ${cylPower(summary?.l_cylinder)} × ${summary?.l_axis || '—'}`}</span>
             </Row>
 
             {isOpen && (

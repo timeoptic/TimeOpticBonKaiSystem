@@ -7,7 +7,7 @@ import { useAsync, useDebounced } from '../../../lib/hooks.js';
 import { Badge, Card, Field, Loading, PageHead, Toolbar } from '../../../components/ui.jsx';
 import { DataTable } from '../../../components/DataTable.jsx';
 import { QueryParamPage } from '../../../components/QueryParamPage.jsx';
-import { custName, fmtDateTime, power, rxNum } from '../../../lib/format.js';
+import { custName, cylPower, fmtDateTime, rxNum, sphPower } from '../../../lib/format.js';
 import { Icon } from '../../../components/Icon.jsx';
 
 function PrescriptionListInner() {
@@ -53,11 +53,11 @@ function PrescriptionListInner() {
               { label: 'ชนิด', render: (t) => <Badge kind={t.kind === 'final' ? 'ok' : 'gray'}>{t.kind}</Badge> },
               { label: 'ลูกค้า', render: custName },
               { label: 'เบอร์โทร', key: 'phone', cls: 'nowrap' },
-              { label: 'R Sph', render: (t) => power(t.r_sphere), cls: 'num' },
-              { label: 'R Cyl', render: (t) => power(t.r_cylinder), cls: 'num' },
+              { label: 'R Sph', render: (t) => sphPower(t.r_sphere), cls: 'num' },
+              { label: 'R Cyl', render: (t) => cylPower(t.r_cylinder), cls: 'num' },
               { label: 'R Axis', render: (t) => rxNum(t.r_axis), cls: 'num' },
-              { label: 'L Sph', render: (t) => power(t.l_sphere), cls: 'num' },
-              { label: 'L Cyl', render: (t) => power(t.l_cylinder), cls: 'num' },
+              { label: 'L Sph', render: (t) => sphPower(t.l_sphere), cls: 'num' },
+              { label: 'L Cyl', render: (t) => cylPower(t.l_cylinder), cls: 'num' },
               { label: 'L Axis', render: (t) => rxNum(t.l_axis), cls: 'num' },
               { label: 'ใช้สำหรับ', key: 'test_for' },
               { label: 'ผู้วัด', key: 'employee_name' },

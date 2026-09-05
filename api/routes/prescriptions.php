@@ -75,7 +75,7 @@ function rxColsValues(array $b): array
 {
     $cols = array_merge(
         ['case_id', 'customer_id', 'kind', 'source', 'based_on_id', 'adjust_reason',
-            'test_date', 'test_for'],
+            'test_date', 'test_for', 'dominant_eye'],
         RX_VALUE_COLS,
         ['old_glasses_type', 'external_place', 'external_date'],
         RX_HEALTH,
@@ -92,6 +92,11 @@ function rxColsValues(array $b): array
             $vals[] = in_array($k, ['old', 'measured', 'final'], true) ? $k : 'measured';
         } elseif ($c === 'test_date') {
             $vals[] = str_or($b['test_date'] ?? null) ?: nowStamp();
+        } elseif ($c === 'dominant_eye') {
+            /* ตาหลัก/ตารอง มีได้สามคำตอบเท่านั้น อะไรที่ไม่ใช่ = ยังไม่ได้ระบุ (NULL)
+               ปล่อยข้อความอิสระลงช่องนี้ไม่ได้ ใบพิมพ์อ่านค่านี้ไปตัดสินว่าจะติดป้ายข้างไหน */
+            $d = strtolower(str_or($b['dominant_eye'] ?? null));
+            $vals[] = in_array($d, ['r', 'l', 'both'], true) ? $d : null;
         } elseif (in_array($c, RX_HEALTH, true)) {
             $vals[] = boolInt($b[$c] ?? null);
         } else {

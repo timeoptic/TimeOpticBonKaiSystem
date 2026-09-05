@@ -6,6 +6,8 @@
  * proxy the way Vite's server.proxy did.
  */
 
+import { fileNameFromDisposition, saveBlob } from './download.js';
+
 function apiOrigin() {
   return process.env.NEXT_PUBLIC_API_ORIGIN || '';
 }
@@ -51,11 +53,39 @@ async function upload(path, formData) {
   return data;
 }
 
+/**
+ * โหลดไฟล์ที่ API สร้างให้ (เช่นรายงาน .xlsx) แล้วบันทึกลงเครื่อง
+ *
+ * ทำไมไม่ใช้ `<a href>` ชี้ไปที่ API ตรง ๆ ทั้งที่สั้นกว่า — หน้าเว็บกับ API อยู่
+ * คนละพอร์ต คุกกี้ `optic_session` เป็น SameSite=Lax จึงไม่ถูกแนบไปกับการโหลด
+ * ข้ามที่อยู่แบบนั้น ผลคือดาวน์โหลดได้ไฟล์ที่ข้างในเป็น JSON ว่า "ต้องเข้าสู่ระบบ
+ * ก่อน" · fetch พร้อม credentials คือทางเดียวที่ได้ทั้งคุกกี้และข้อความผิดพลาด
+ * ที่เอาไปแสดงต่อได้
+ */
+async function download(path, fallbackName) {
+  const res = await fetch(apiOrigin() + path, { credentials: 'include' });
+  if (!res.ok) {
+    /* คำตอบที่ผิดพลาดยังเป็น JSON เหมือนเส้นอื่น — อ่านข้อความจริงมาโยนต่อ
+       ไม่ใช่บอกแค่ HTTP 403 ซึ่งคนกดปุ่มเอาไปทำอะไรไม่ได้ */
+    let message = `HTTP ${res.status}`;
+    try {
+      const data = await res.json();
+      if (data && data.error) message = data.error;
+    } catch {
+      /* ไม่ใช่ JSON ก็ใช้รหัสสถานะไปตามเดิม */
+    }
+    throw new Error(message);
+  }
+  const blob = await res.blob();
+  saveBlob(blob, fileNameFromDisposition(res.headers.get('content-disposition')) || fallbackName);
+}
+
 export const api = {
   get: (path, query, signal) => request('GET', path + qs(query), null, signal),
   post: (path, body) => request('POST', path, body || {}),
   put: (path, body) => request('PUT', path, body || {}),
   del: (path) => request('DELETE', path),
   upload: (path, formData) => upload(path, formData),
+  download: (path, fallbackName) => download(path, fallbackName),
   url: (path) => apiOrigin() + path,
 };

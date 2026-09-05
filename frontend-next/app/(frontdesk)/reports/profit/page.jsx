@@ -37,7 +37,7 @@ export default function ProfitReport() {
 
   return (
     <>
-      <ReportFilter actions={<ExportButtons onCsv={csv} disabled={!data?.daily?.length} />} />
+      <ReportFilter actions={<ExportButtons onExcel={csv} disabled={!data?.daily?.length} />} />
 
       <ReportState loading={loading} error={error} data={data}>
         {data && !m.bills && !data.pos.bills

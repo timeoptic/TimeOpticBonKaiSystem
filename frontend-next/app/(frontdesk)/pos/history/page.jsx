@@ -17,6 +17,7 @@ import { Card, Field, Loading, Toolbar } from '../../../../components/ui.jsx';
 import { DataTable } from '../../../../components/DataTable.jsx';
 import { posApi, PAY_METHODS } from '../../../../lib/pos/posApi.js';
 import { PaymentBadge, FulfillmentBadge } from '../../../../components/pos/PosStatusBadge.jsx';
+import { DateField } from '../../../../components/DateField.jsx';
 
 const COLS = [
   { label: 'เลขที่', render: (r) => <Link href={`/pos/detail/?id=${r.id}`}><b>{r.pos_no}</b></Link> },
@@ -86,10 +87,10 @@ export default function PosHistoryPage() {
             />
           </Field>
           <Field label="ตั้งแต่">
-            <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+            <DateField value={from} onChange={setFrom} />
           </Field>
           <Field label="ถึง">
-            <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+            <DateField value={to} onChange={setTo} />
           </Field>
           <Field label="การชำระ">
             <select value={pay} onChange={(e) => setPay(e.target.value)}>

@@ -28,17 +28,19 @@ import { useAsync } from '../../../../lib/hooks.js';
 import { Card, Loading } from '../../../../components/ui.jsx';
 import { QueryParamPage } from '../../../../components/QueryParamPage.jsx';
 import { Icon } from '../../../../components/Icon.jsx';
-import { custName, fmtDateTime, power, rxNum } from '../../../../lib/format.js';
+import {
+  addPower, custName, cylPower, fmtDateTime, rxNum, sphPower,
+} from '../../../../lib/format.js';
 
 const DASH = '—';
 
 /* หัวตาราง + วิธีอ่านค่าของแต่ละคอลัมน์ ลำดับนี้คือลำดับที่พิมพ์ออกมา */
 const RX_COLS = [
   ['VA', (rx, k) => rxNum(rx?.[`${k}_va`])],
-  ['Sph', (rx, k) => power(rx?.[`${k}_sphere`])],
-  ['Cyl', (rx, k) => power(rx?.[`${k}_cylinder`])],
+  ['Sph', (rx, k) => sphPower(rx?.[`${k}_sphere`])],
+  ['Cyl', (rx, k) => cylPower(rx?.[`${k}_cylinder`])],
   ['Axis', (rx, k) => rxNum(rx?.[`${k}_axis`])],
-  ['Add', (rx, k) => power(rx?.[`${k}_add`])],
+  ['Add', (rx, k) => addPower(rx?.[`${k}_add`])],
   /* PD ไม่ได้อยู่บนใบสายตา — อ่านจากขั้นวัด Center แยกซ้าย/ขวา */
   ['PD', (rx, k, ctr) => rxNum(ctr?.[`${k}_pd`])],
 ];

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { csvCell, safeName, toCsv } from '../exportCsv.js';
+import { csvCell, toCsv } from '../exportCsv.js';
 
 test('csvCell ปล่อยค่าธรรมดาไว้อย่างนั้น', () => {
   assert.equal(csvCell('เงินสด'), 'เงินสด');
@@ -47,9 +47,4 @@ test('toCsv ส่งออกตัวเลขดิบ ไม่ใช่ข�
   /* '฿185,500.00' ใน Excel เป็นข้อความ บวกลบไม่ได้ ซึ่งทำให้ไฟล์ไร้ประโยชน์ */
   const csv = toCsv([{ label: 'ยอด', value: (r) => r.amount }], [{ amount: 185500 }]);
   assert.equal(csv.split('\r\n')[1], '185500');
-});
-
-test('safeName เปลี่ยนอักขระที่ Windows ห้ามใช้ในชื่อไฟล์', () => {
-  assert.equal(safeName('รายงาน 2026/09/01'), 'รายงาน 2026-09-01');
-  assert.equal(safeName('a:b*c?d"e<f>g|h'), 'a-b-c-d-e-f-g-h');
 });

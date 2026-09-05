@@ -24,6 +24,7 @@ import { useMeta } from '../../../../../contexts/MetaContext.jsx';
 import {
   custName, dateOnly, fmtDate, fmtDateTime, money, nowLocal, todayISO, toStamp,
 } from '../../../../../lib/format.js';
+import { DateField } from '../../../../../components/DateField.jsx';
 
 /* "จ่ายบางส่วน" ออกแล้ว — มันกับ "มัดจำ" ตอบคำถามเดียวกัน (จ่ายมาไม่ครบ) ต่างกันแค่
    ว่าเป็นก้อนแรกหรือไม่ ซึ่งระบบดูจากประวัติเองได้ ตัวเลือกที่ต้องหยุดคิดว่าจะเลือก
@@ -50,7 +51,10 @@ const ACCEPT = 'image/jpeg,image/png,image/webp,application/pdf';
  * เห็นวันเดิม และกดแก้ทับได้ตลอด (PUT /api/orders/:id/appointment แตะคอลัมน์เดียว
  * PUT /api/orders/:id เขียนทับทั้งใบ ห้ามใช้ที่นี่)
  *
- * ไม่บังคับกรอก และไม่ผูกกับยอดค้าง — ค้างเงินอยู่ก็นัดวันรับแล้วไปขั้นถัดไปได้
+ * บังคับกรอกก่อนยืนยันขั้นชำระเงิน — คนที่จ่ายเงินคือคนที่ถามว่า "มารับได้วันไหน"
+ * ถ้าปล่อยให้ข้าม เคสจะไปถึงขั้นส่งมอบโดยไม่มีวันนัดให้ใครตามงาน (เงื่อนไขตัวจริง
+ * อยู่ที่ processMissing() ฝั่ง API — ที่นี่แค่บอกให้คนกรอกเห็นก่อนไปกดยืนยัน)
+ * ไม่ผูกกับยอดค้าง: นัดวันรับได้ตั้งแต่ยังจ่ายไม่ครบ
  * ปุ่มลัดมีเพราะร้านนัดเป็น "อีกกี่วัน" ไม่ใช่ "วันที่เท่าไหร่"
  */
 const QUICK_DAYS = [['วันนี้', 0], ['+3 วัน', 3], ['+7 วัน', 7], ['+14 วัน', 14]];
@@ -86,16 +90,20 @@ function PickupDateCard({ c, reload }) {
   };
 
   return (
-    <Card title="วันนัดรับ" right={<span className="muted">ไม่บังคับ — ข้ามได้</span>}>
+    <Card
+      title="วันนัดรับ"
+      right={saved
+        ? <span className="muted">บังคับ — กรอกแล้ว</span>
+        : <Badge kind="warn">บังคับ — ต้องกรอกก่อนยืนยัน</Badge>}
+    >
       <div className="pickup">
         <label htmlFor="pickup-date"><Icon name="calendar" /> วันนัดรับ</label>
-        <input
+        <DateField
           id="pickup-date"
           className="pickup-input"
-          type="date"
           value={date}
           disabled={saving}
-          onChange={(e) => setDate(e.target.value)}
+          onChange={setDate}
         />
         <button type="button" className="btn" disabled={!dirty || saving} onClick={() => save(date)}>
           <Icon name="check" /> บันทึก
@@ -125,7 +133,7 @@ function PickupDateCard({ c, reload }) {
           ? <>ยังไม่ได้บันทึก — กด “บันทึก” เพื่อเก็บ {date ? <b>{fmtDate(date)}</b> : 'การล้างวันนัด'}</>
           : saved
             ? <>บันทึกไว้แล้ว <b>{fmtDate(saved)}</b> · แก้ไขภายหลังได้</>
-            : <>ยังไม่ได้กำหนด <b>—</b> · ไปขั้นถัดไปได้โดยไม่ต้องกรอก</>}
+            : <>ยังไม่ได้กำหนด <b>—</b> · ต้องกรอกก่อนจึงจะยืนยันขั้นชำระเงินได้</>}
       </p>
     </Card>
   );
@@ -143,6 +151,7 @@ export function PaymentPanel({ c, reload }) {
   const [method, setMethod] = useState('Cash');
   const [kind, setKind] = useState(Number(c.paid) > 0 ? 'final' : 'deposit');
   const [amount, setAmount] = useState(Number(c.balance) > 0 ? String(c.balance) : '');
+  const [receivedBy, setReceivedBy] = useState('');
 
   const { data: files, reload: reloadFiles } = useAsync(
     () => api.get('/api/uploads', { case_id: c.id }),
@@ -175,6 +184,13 @@ export function PaymentPanel({ c, reload }) {
   const afterThis = Math.max(0, left - enteredAmount);
   const overpay = enteredAmount > left && left > 0;
 
+  /* สองอย่างที่ต้องมีก่อนเงินจะลงระบบ — วันนัดรับ (อยู่การ์ดบนสุด บันทึกแยก) และ
+     ผู้รับเงิน ปุ่มบันทึกจึงปิดไว้พร้อมบอกว่าขาดอะไร ดีกว่าให้กดแล้วค่อยเด้ง error */
+  const missingBeforeSave = [
+    c.order?.appointment_date ? null : 'วันนัดรับ',
+    receivedBy ? null : 'ผู้รับเงิน',
+  ].filter(Boolean);
+
   const chooseKind = (v) => {
     setKind(v);
     if ((v === 'full' || v === 'final') && left > 0) setAmount(String(left));
@@ -183,6 +199,9 @@ export function PaymentPanel({ c, reload }) {
 
   const add = async (e) => {
     e.preventDefault();
+    if (missingBeforeSave.length) {
+      return err(new Error(`กรอกให้ครบก่อนบันทึก — ขาด: ${missingBeforeSave.join(', ')}`));
+    }
     const body = readForm(e.currentTarget);
     try {
       const saved = await api.post('/api/payments', {
@@ -317,7 +336,14 @@ export function PaymentPanel({ c, reload }) {
 
           <FormGrid>
             <Field label="อ้างอิง (เลขที่โอน / เลขอนุมัติ)"><input name="reference" /></Field>
-            <Field label="ผู้รับเงิน"><EmployeeSelect name="received_by" defaultValue="" /></Field>
+            <Field label="ผู้รับเงิน *">
+              <EmployeeSelect
+                name="received_by"
+                value={receivedBy}
+                onChange={(e) => setReceivedBy(e.target.value)}
+                required
+              />
+            </Field>
             <Field label="รับเมื่อ">
               <input name="paid_at" type="datetime-local" defaultValue={nowLocal()} />
             </Field>
@@ -360,7 +386,15 @@ export function PaymentPanel({ c, reload }) {
           </div>
 
           <div className="pay-actions">
-            <button className="btn btn-lg" type="submit">
+            {missingBeforeSave.length ? (
+              <span className="process-blockers">{`ยังบันทึกไม่ได้ — ขาด: ${missingBeforeSave.join(', ')}`}</span>
+            ) : null}
+            <button
+              className="btn btn-lg"
+              type="submit"
+              disabled={missingBeforeSave.length > 0}
+              title={missingBeforeSave.length ? `ยังบันทึกไม่ได้ — ขาด: ${missingBeforeSave.join(', ')}` : undefined}
+            >
               <Icon name="check" /> บันทึกการรับเงิน {amount ? money(amount) : ''}
             </button>
           </div>

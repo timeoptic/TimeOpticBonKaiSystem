@@ -9,28 +9,39 @@ import { Card, Kpis } from '../../../components/ui.jsx';
 import { ExportButtons, ReportFilter, useReport } from '../../../components/ReportFilter.jsx';
 import { DrillKpi, NoData, ReportState, bucketNote, toSeries } from '../../../components/reports/bits.jsx';
 import { Bars, Donut, seriesColor } from '../../../components/charts.jsx';
+import { useToast } from '../../../components/Toast.jsx';
 import { count, money, moneyShort } from '../../../lib/format.js';
-import { downloadCsv } from '../../../lib/exportCsv.js';
+import { api } from '../../../lib/apiClient.js';
 import { filterQuery } from '../../../lib/reportRange.js';
 
 export default function OverviewPage() {
   const { filter, data, error, loading } = useReport('overview');
+  const { err } = useToast();
   const q = filterQuery(filter);
 
-  const csv = () => downloadCsv(
-    `รายงานภาพรวม ${filter.from} ถึง ${filter.to}`,
-    [
-      { label: 'วันที่', value: (r) => r.date },
-      { label: 'Main Process', value: (r) => r.main ?? 0 },
-      { label: 'POS', value: (r) => r.pos ?? 0 },
-      { label: 'รวม', value: (r) => (r.main ?? 0) + (r.pos ?? 0) },
-    ],
-    data?.daily || [],
-  );
+  /**
+   * ส่งออกเป็นสมุดงาน Excel — ชีทสรุปหนึ่งใบ แล้วแยกชีทรายเดือนตามช่วงที่กรองอยู่
+   *
+   * หน้านี้เป็นหน้าเดียวที่ให้เซิร์ฟเวอร์สร้างไฟล์ให้ อีกหกหน้ายังส่งออก CSV ของ
+   * ตารางที่เห็นอยู่ตรงหน้า ซึ่งตรงกับสิ่งที่คนกดต้องการในหน้าเหล่านั้น — ที่นี่
+   * คนกดอยากได้ "ทั้งปีแยกเป็นเดือน" ซึ่ง CSV ไฟล์เดียวทำไม่ได้ตั้งแต่ต้น
+   *
+   * ชื่อไฟล์ที่ส่งไปเป็นแค่ตัวสำรอง — ปกติใช้ชื่อที่มากับหัว Content-Disposition
+   */
+  const excel = async () => {
+    try {
+      await api.download(
+        `/api/reports/export.xlsx?${q}`,
+        `รายงานยอดขาย ${filter.from} ถึง ${filter.to}.xlsx`,
+      );
+    } catch (e) {
+      err(e);
+    }
+  };
 
   return (
     <>
-      <ReportFilter actions={<ExportButtons onCsv={csv} disabled={!data} />} />
+      <ReportFilter actions={<ExportButtons onExcel={excel} disabled={!data} />} />
 
       <ReportState loading={loading} error={error} data={data}>
         {data && !data.kpi.bills

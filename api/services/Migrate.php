@@ -262,6 +262,37 @@ final class Migrate
                 CONSTRAINT fk_cif_supplier FOREIGN KEY (supplier_id) REFERENCES suppliers (id) ON DELETE SET NULL,
                 CONSTRAINT fk_cif_emp      FOREIGN KEY (updated_by)  REFERENCES employees (id) ON DELETE SET NULL
               ) $c",
+
+            /* เลขใบเสร็จที่ออกให้ลูกค้าจริง (ใบเสร็จ / ใบกำกับภาษีอย่างย่อ)
+             *
+             * ทำไมเป็นตารางของตัวเอง ไม่ใช่คอลัมน์แปะที่ custom_orders:
+             *   - ใบเสร็จออกได้ทั้งจากเคสแว่นและจาก POS ถ้าเก็บเป็นคอลัมน์ในสองตาราง
+             *     ตัวนับจะเดินแยกกันและตรวจเลขซ้ำข้ามตารางไม่ได้
+             *   - ชุดเลขเอกสารภาษีต้องตอบได้ว่า "เลขนี้ออกเมื่อไหร่ ใครออก ให้ใบไหน"
+             *     ซึ่งเป็นแถวของเหตุการณ์ ไม่ใช่คุณสมบัติของออเดอร์
+             *
+             * UNIQUE สามตัวคือหัวใจ ไม่ใช่ของประดับ:
+             *   uq_receipt_no    เลขห้ามซ้ำ — ฐานกันเอง ไม่ต้องเชื่อว่าโค้ดถูก
+             *   uq_receipt_order หนึ่งออเดอร์ได้ใบเดียวตลอดกาล เปิดหน้าพิมพ์ซ้ำกี่ครั้ง
+             *   uq_receipt_sale  หรือพนักงานสองคนเปิดพร้อมกัน ก็ยังได้เลขเดิมใบเดิม
+             * (MySQL ยอมให้ NULL ซ้ำได้ในดัชนี unique แถวฝั่ง POS ที่ order_id เป็น NULL
+             *  จึงอยู่ร่วมกันได้หลายแถว และกลับกัน)
+             */
+            'receipts' => "CREATE TABLE IF NOT EXISTS receipts (
+                id           int(10) unsigned NOT NULL AUTO_INCREMENT,
+                receipt_no   varchar(40) NOT NULL COMMENT 'Bill-2026-09-00042 (เคส) / BillP-... (POS)',
+                order_id     int(10) unsigned DEFAULT NULL,
+                sale_id      int(10) unsigned DEFAULT NULL,
+                total_amount decimal(12,2) NOT NULL DEFAULT 0.00 COMMENT 'ยอดรวม VAT ณ วันที่ออกเลข',
+                issued_at    datetime NOT NULL DEFAULT current_timestamp(),
+                issued_by    int(10) unsigned DEFAULT NULL COMMENT 'admins.id ของคนที่เปิดหน้าใบเสร็จครั้งแรก',
+                PRIMARY KEY (id),
+                UNIQUE KEY uq_receipt_no (receipt_no),
+                UNIQUE KEY uq_receipt_order (order_id),
+                UNIQUE KEY uq_receipt_sale (sale_id),
+                CONSTRAINT fk_receipt_order FOREIGN KEY (order_id) REFERENCES custom_orders (id) ON DELETE CASCADE,
+                CONSTRAINT fk_receipt_sale  FOREIGN KEY (sale_id)  REFERENCES pos_sales (id)     ON DELETE CASCADE
+              ) $c",
         ];
     }
 
@@ -526,6 +557,9 @@ final class Migrate
                 'health_medication'    => 'tinyint(1) NOT NULL DEFAULT 0',
                 'external_place'       => 'varchar(120) DEFAULT NULL',
                 'external_date'        => 'date DEFAULT NULL',
+                /* ตาหลัก / ตารอง — 'r' | 'l' | 'both' | NULL (ยังไม่ได้ระบุ)
+                   'both' คือสองข้างเด่นเท่ากัน ไม่ใช่ "ติ๊กไว้ทั้งคู่" คนละความหมายกับว่าง */
+                'dominant_eye'         => "varchar(10) DEFAULT NULL COMMENT 'r | l | both'",
             ])
         );
         /* Views come after addColumns, not before: v_case_board selects columns that

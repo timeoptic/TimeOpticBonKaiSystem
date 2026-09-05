@@ -433,6 +433,178 @@ textarea{max-width:1320px}
 
 .kpi .k-sub{font-size:var(--t-xs);color:var(--ink-dim);margin-top:3px}
 
+/* กล่องสรุปใบที่แสดงหลายบรรทัดแทนตัวเลขก้อนเดียว — ยกเลิกขนาดตัวเลขใหญ่ของ .k-value
+   เพราะที่นี่ "ค่า" คือรายการสั้น ๆ ไม่ใช่ตัวเลขตัวเดียวที่ต้องอ่านข้ามห้อง
+   ความเด่นของกล่องนี้อยู่ที่ได้เห็นว่าเงินไปกองที่ไหน ไม่ใช่ที่ขนาดตัวอักษร */
+.kpi.breakdown .k-value{font-size:var(--t-base);font-weight:500;letter-spacing:0;line-height:1.5;margin-top:7px}
+.kpi-breakdown{display:flex;flex-direction:column;gap:3px}
+.kb-row{display:flex;align-items:baseline;gap:10px}
+/* ชื่อประเภทยาวได้ไม่จำกัด แต่ตัวเงินห้ามถูกบีบ — ชื่อที่ถูกตัดยังเดาออก ตัวเลขที่ถูกตัดอ่านผิด */
+.kb-name{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink-soft)}
+.kb-val{flex:0 0 auto;font-weight:650;font-variant-numeric:tabular-nums}
+
+/* ---------------- สมุดรายรับ/รายจ่าย ----------------
+ * .kpis ปกติใช้ auto-fill ซึ่งตัดคอลัมน์ตามความกว้างจอ — ดีกับหน้าที่มีตัวเลขหลายใบ
+ * แต่หน้านี้มีสามใบ พอจอกว้างมันเลยไปกองอยู่มุมซ้ายแล้วเหลือที่ว่างครึ่งจอ
+ * ตรึงเป็นสามคอลัมน์ไปเลย ใบที่สามกว้างกว่าเพราะข้างในเป็นรายการ ไม่ใช่ตัวเลขตัวเดียว */
+.kpis.ledger-sum{grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1.8fr)}
+
+/* ยอดรวมคือคำถามแรกของคนที่เปิดสมุดเงิน ให้ใหญ่กว่าเพื่อนหนึ่งขั้น
+   ความเด่นทั้งหน้าใช้ไปที่ตัวเลขนี้ตัวเดียว ที่เหลือเงียบไว้ */
+.ledger-sum .kpi:first-child .k-value{font-size:34px}
+
+/* ช่องค้นหาไม่ต้องยืดข้ามจอกว้าง ๆ — ยืดแล้วช่องวันที่ถูกผลักไปไกลจนอ่านเป็นคนละกลุ่มกัน
+   ทั้งที่มันคือชุดตัวกรองเดียวกัน */
+.ledger-tools .field.grow{flex:1 1 320px;max-width:520px}
+
+/* ---------------- ช่องเลือก-หรือ-พิมพ์เอง (ComboList) ----------------
+ * กล่องรายการวาดเองทั้งหมด เพราะกล่องของ <datalist> เป็นของระบบปฏิบัติการ
+ * แต่งด้วย CSS ไม่ได้เลย มันเลยมาเป็นกล่องคนละฟอนต์คนละสีกับทั้งแอป
+ * ยืมหน้าตามาจาก .picker ที่ใช้เลือกสินค้าอยู่แล้ว จะได้ไม่มีรายการแบบที่สามในระบบ */
+.combo{position:relative}
+/* เว้นที่ให้ลูกศรทางขวา ไม่งั้นตัวหนังสือยาว ๆ ลอดไปใต้ลูกศร
+   สองคลาสเพื่อให้ชนะกฎของหน้าอื่นที่เล็ง `input` ตรง ๆ ด้วยคลาสเดียว */
+.combo .combo-input{padding-right:38px}
+
+.combo-caret{
+  position:absolute;top:0;right:0;height:100%;width:34px;padding:0;border:0;background:none;
+  display:flex;align-items:center;justify-content:center;color:var(--ink-dim);cursor:pointer;
+  transition:color var(--dur-fast) var(--ease-out),transform var(--dur-fast) var(--ease-out);
+}
+.combo-caret svg{width:11px;height:7px}
+.combo-caret:hover{color:var(--ink-soft)}
+/* ลูกศรพลิกขึ้นตอนกาง — เป็นการตอบสิ่งที่คนเพิ่งกด ไม่ใช่ลูกเล่นที่วิ่งเอง */
+.combo.open .combo-caret{transform:rotate(180deg);color:var(--accent-deep)}
+
+.combo-list{
+  position:absolute;z-index:20;top:calc(100% + 5px);left:0;right:0;margin:0;padding:4px;
+  list-style:none;background:var(--card);border:1px solid var(--line);
+  border-radius:var(--radius-sm);box-shadow:var(--shadow-pop);max-height:190px;overflow-y:auto;
+}
+.combo-list li{margin:0}
+
+.combo-opt{
+  display:block;width:100%;text-align:left;padding:8px 11px;border:0;border-radius:9px;
+  background:none;font:inherit;font-size:var(--t-base);color:var(--ink);cursor:pointer;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+/* ตัวที่กำลังชี้อยู่ใช้สีเดียวกันไม่ว่าจะมาถึงด้วยเมาส์หรือปุ่มลูกศร คนใช้คีย์บอร์ด
+   จะได้เห็นว่าตัวไหนกำลังจะถูกเลือกเหมือนกับคนใช้เมาส์ */
+.combo-opt:hover,.combo-opt.on{background:var(--accent-soft);color:var(--accent-deep)}
+
+@media (prefers-reduced-motion:reduce){
+  .combo-caret{transition:none}
+}
+
+/* ---------------- ช่องวันที่ (DateField) ----------------
+ * ปฏิทินวาดเองทั้งหมด เพราะปฏิทินของ <input type="date"> เป็นของระบบปฏิบัติการ
+ * แต่งไม่ได้เลย ใช้สีกับระยะชุดเดียวกับที่เหลือของแอป */
+.datef{position:relative}
+/* เขียนเป็นสองคลาสเพื่อให้ชนะกฎของหน้าอื่นที่เล็ง `input` ตรง ๆ (.rf-date input, .pickup-input)
+   ถ้าแพ้ ที่ว่างทางขวาหายไปแล้วตัวเลขจะลอดไปอยู่ใต้ปุ่มปฏิทิน */
+.datef .datef-input{padding-right:40px;font-variant-numeric:tabular-nums}
+
+/* ช่องวันที่ถูกห่อด้วย .datef แล้ว ตัวที่เป็นลูกของ flex คือกล่องห่อ ไม่ใช่ <input>
+   ขนาดที่เคยตั้งไว้ที่ input จึงต้องย้ายมาที่กล่อง ส่วน input กางเต็มกล่อง */
+.pickup .datef{flex:0 1 190px;min-width:150px}
+.pickup .datef > .pickup-input{width:100%}
+.rf-date .datef{flex:0 0 auto;width:126px}
+.rf-date .datef > .datef-input{width:100%;padding-right:30px}
+.rf-date .datef .datef-open{width:26px}
+.rf-date .datef .datef-open .ico{width:.9em;height:.9em}
+
+.datef-open{
+  position:absolute;top:0;right:0;height:100%;width:36px;padding:0;border:0;background:none;
+  display:flex;align-items:center;justify-content:center;color:var(--ink-dim);cursor:pointer;
+  border-radius:0 var(--radius-sm) var(--radius-sm) 0;
+  transition:color var(--dur-fast) var(--ease-out),background var(--dur-fast) var(--ease-out);
+}
+.datef-open .ico{width:1.05em;height:1.05em}
+.datef-open:hover{color:var(--accent-deep);background:var(--accent-soft)}
+.datef.open .datef-open{color:var(--accent-deep)}
+
+.datef-pop{
+  position:absolute;z-index:30;top:calc(100% + 5px);left:0;width:232px;padding:8px;
+  background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  box-shadow:var(--shadow-pop);
+}
+/* ปฏิทินที่อยู่ท้ายแถวตัวกรองต้องกางเข้าหาจอ ไม่ใช่ล้นออกไปนอกขอบขวา */
+.datef.edge .datef-pop{left:auto;right:0}
+
+.datef-head{display:flex;align-items:center;justify-content:space-between;gap:1px;margin-bottom:6px}
+/* ชื่อเดือนกินที่ที่เหลือทั้งหมด ปุ่มเดินเดือน/ปีจึงอยู่ชิดขอบทั้งสองข้างเสมอ
+   ไม่ขยับไปมาตามความยาวของชื่อเดือน */
+.datef-head b{flex:1;text-align:center;font-size:var(--t-sm);font-weight:650;white-space:nowrap}
+
+.datef-nav{
+  flex:0 0 auto;width:22px;height:24px;padding:0;border:0;border-radius:7px;background:none;
+  font-size:15px;line-height:1;color:var(--ink-faint);cursor:pointer;
+}
+.datef-nav:hover{background:var(--surface-alt);color:var(--ink)}
+
+.datef-dow,.datef-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:1px}
+.datef-dow{margin-bottom:2px}
+.datef-dow span{text-align:center;font-size:10.5px;color:var(--ink-dim);font-weight:600;padding:2px 0}
+
+.datef-day{
+  height:27px;padding:0;border:0;border-radius:7px;background:none;
+  font:inherit;font-size:12.5px;color:var(--ink);cursor:pointer;font-variant-numeric:tabular-nums;
+}
+.datef-day:hover:not(:disabled){background:var(--accent-soft);color:var(--accent-deep)}
+/* วันนอกช่วงที่อนุญาต — จางลงและกดไม่ได้ ดีกว่าซ่อนทิ้งซึ่งทำให้ตารางวันเบี้ยว */
+.datef-day:disabled{color:var(--ink-dim);opacity:.4;cursor:default}
+/* วันนี้ทำเครื่องหมายด้วยเส้นขอบ ส่วนวันที่เลือกไว้เป็นพื้นทึบ — สองสถานะนี้เกิดพร้อมกันได้
+   ถ้าใช้พื้นสีทั้งคู่จะแยกไม่ออกว่าอันไหนคืออันที่เลือก */
+.datef-day.today{box-shadow:inset 0 0 0 1.5px var(--line)}
+.datef-day.sel,.datef-day.sel:hover{background:var(--accent);color:#fff;font-weight:650}
+.datef-day.sel.today{box-shadow:none}
+
+.datef-foot{
+  display:flex;justify-content:space-between;gap:8px;
+  margin-top:6px;padding-top:6px;border-top:1px solid var(--line-soft);
+}
+.datef-link{
+  border:0;background:none;padding:3px 6px;border-radius:7px;
+  font:inherit;font-size:12.5px;color:var(--ink-faint);cursor:pointer;
+}
+.datef-link:hover{background:var(--surface-alt);color:var(--ink-soft)}
+.datef-link.now{color:var(--accent-deep);font-weight:600}
+
+@media (max-width:560px){
+  /* นิ้วโป้งต้องกดโดนวันที่ถูกช่อง ปฏิทินจึงกว้างเท่าช่องกรอกและช่องวันสูงขึ้น */
+  .datef-pop{width:100%;min-width:250px;left:0;right:0;padding:11px}
+  .datef-day{height:38px;font-size:14.5px}
+  .datef-nav{width:30px;height:32px;font-size:17px}
+  .datef-dow span{font-size:11.5px}
+}
+
+/* ปุ่มเพิ่มอยู่ท้ายแถวตัวกรอง ชิดขวาสุด — ตัวกรองกับปุ่มเพิ่มคือแถบเครื่องมือของตารางเดียวกัน
+   แยกปุ่มไปไว้บนหัวเพจแล้วมันอยู่คนละสายตากับของที่มันกระทำ */
+.ledger-tools .ledger-add{margin-left:auto}
+
+/* กล่องกรอกรายการเงิน: จำนวนเงินอยู่บนสุดและใหญ่ที่สุด เพราะเป็นเหตุผลที่รายการนี้มีอยู่
+   ที่เหลือเป็นรายละเอียดประกอบ เรียงสองคอลัมน์ให้กรอกจบโดยไม่ต้องเลื่อน
+   ต้องเจาะจงกว่า .modal .form-grid (สองคลาส) ไม่งั้นได้สามคอลัมน์ 150px ที่บีบจนอ่านยาก */
+.ledger-form{display:flex;flex-direction:column;gap:15px}
+.modal .ledger-form .form-grid{grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px}
+/* ให้พื้นช่องเงินเป็นสีเดียวกับช่องอื่นในกล่อง ไม่ใช่เทาคนละเฉดเพราะยืมคลาสมาจากหน้าชำระเงิน */
+.ledger-form .pay-amount-input{background:var(--field)}
+
+/* จอที่ยังไม่มีอะไร บอกว่าทำไมถึงว่าง แล้วยื่นปุ่มที่ควรกดต่อให้เลย
+   ไม่ใช่ประโยคลอยกลางกล่องเปล่า */
+.ledger-empty{display:flex;flex-direction:column;align-items:center;gap:5px;padding:14px 0 4px}
+.ledger-empty .le-title{margin:0;font-size:var(--t-md);font-weight:600;color:var(--ink-soft)}
+.ledger-empty .le-sub{margin:0 0 10px;font-size:var(--t-sm);color:var(--ink-dim)}
+
+/* iPad แนวตั้งลงไป: สามคอลัมน์แคบเกินไปสำหรับชื่อประเภทกับตัวเงินในบรรทัดเดียว
+   กฎนี้ต้องอยู่ในมีเดียของตัวเอง เพราะ .kpis.ledger-sum ชนะกฎ .kpis เปล่า ๆ
+   ของบล็อกโทรศัพท์เสมอ (สองคลาสชนะคลาสเดียว) ปล่อยไว้จะยืนสามคอลัมน์ถึงจอ 390 */
+@media (max-width:900px){
+  .kpis.ledger-sum{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .kpis.ledger-sum .kpi.breakdown{grid-column:1/-1}
+  .ledger-sum .kpi:first-child .k-value{font-size:26px}
+}
+
 .kpi.accent .k-value{color:var(--accent)}
 
 .kpi.ok .k-value{color:var(--ok)}
@@ -485,6 +657,26 @@ table.grid tfoot td{font-weight:700;background:var(--surface-alt);border-top:2px
 .form-grid.intake{grid-template-columns:repeat(4,minmax(0,1fr))}
 @media (max-width:1200px){.form-grid.intake{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (max-width:640px){.form-grid.intake{grid-template-columns:1fr}}
+
+/* ---------------- ตำแหน่งสินค้า (/locations) ---------------- */
+/* ฟอร์มมีสองช่องตายตัว ปล่อยให้ auto-fill คิดเองจะได้ห้าคอลัมน์บนจอกว้าง
+   ช่องกรอกสองช่องเลยไปกองซ้ายแล้วเหลือที่ว่างค้างครึ่งการ์ด ล็อกเป็นสองคอลัมน์
+   แล้วคุมความกว้างรวมไว้ ช่องจะกว้างขึ้นและดูตั้งใจ */
+.loc-form .form-grid{grid-template-columns:repeat(2,minmax(0,1fr));max-width:760px}
+@media (max-width:640px){.loc-form .form-grid{grid-template-columns:1fr}}
+
+/* ช่องค้นหายาวเต็มจอไม่ได้ช่วยอะไร — คำค้นเป็นชื่อสินค้าสั้น ๆ */
+.loc-search{max-width:520px}
+
+/* ตารางมีสามคอลัมน์สั้น ๆ ปล่อยเต็มจอ 1600px แล้วช่องว่างระหว่างคอลัมน์กว้างจน
+   สายตาวิ่งจากชื่อสินค้าไปหาตำแหน่งไม่ทัน · คอลัมน์ปุ่มบีบให้พอดีปุ่ม ไม่ให้กินที่เหลือทั้งหมด */
+.loc-table{max-width:1100px}
+.loc-table table.grid th:last-child,.loc-table table.grid td:last-child{width:1%;white-space:nowrap}
+
+.loc-groups{display:flex;flex-direction:column;gap:12px;max-width:1100px}
+/* รายชื่อสินค้าในตู้ — คอลัมน์อัตโนมัติ ตู้ที่มีของเยอะจะได้ไม่ยาวเป็นหางว่าว */
+.loc-items{margin:0;padding-left:20px;columns:280px;column-gap:24px}
+.loc-items li{margin:0 0 4px;break-inside:avoid}
 
 .field{display:flex;flex-direction:column;gap:6px;min-width:0}
 
@@ -709,7 +901,18 @@ dl.kv dd{margin:0;font-weight:600}
 
 .modal-back{position:fixed;inset:0;background:rgba(15,23,42,.38);display:flex;align-items:center;justify-content:center;padding:20px;z-index:900}
 
-.modal{background:var(--card);border-radius:var(--radius-lg);max-width:520px;width:100%;box-shadow:var(--shadow-pop);overflow:hidden}
+/* กล่องลอยที่เนื้อในสูงกว่าจอต้องเลื่อนข้างในตัวเอง ไม่ใช่ล้นออกไปจนปุ่มบันทึกอยู่นอกจอ
+   — เจอบน iPad แนวนอนกับจอโน้ตบุ๊กเตี้ยที่ฟอร์มมีหลายช่อง หัวเรื่องกับแถบปุ่มอยู่กับที่
+   ส่วน .m-body เป็นตัวเลื่อน ปุ่มยืนยันจึงเห็นเสมอ (โทรศัพท์ ≤560px มีกฎของตัวเองอยู่แล้ว)
+   min-height:0 ต้องมี ไม่งั้นลูกของ flex ไม่ยอมหดต่ำกว่าเนื้อในแล้วไม่มีอะไรเลื่อนเลย */
+.modal{
+  background:var(--card);border-radius:var(--radius-lg);max-width:520px;width:100%;
+  box-shadow:var(--shadow-pop);overflow:hidden;
+  max-height:calc(100vh - 40px);max-height:calc(100dvh - 40px);
+  display:flex;flex-direction:column;
+}
+.modal > form{display:flex;flex-direction:column;min-height:0}
+.modal .m-body{overflow-y:auto;min-height:0}
 
 .modal.wide{max-width:760px;max-height:88vh;overflow:auto}
 
@@ -1612,6 +1815,15 @@ table.doc td.lbl{background:var(--surface-alt);font-weight:700;text-align:left;w
 .rx-missing-note{margin:8px 0 0;font-size:12.5px;color:var(--danger,#b32020);
   display:flex;align-items:center;gap:4px;flex-wrap:wrap}
 
+/* ตาหลัก/ตารอง ที่ข้อ 5 อ่านอย่างเดียว — กินที่เท่าช่องกรอกพอดี ให้บรรทัดเดียวกับ
+   "ใช้สำหรับ / Test For" ข้าง ๆ ไม่เหลื่อม และใช้เส้นขอบจางแบบเดียวกับ input[readonly]
+   บอกว่าแตะไม่ได้ ส่วนตัวหนังสือยังเข้มเพราะมันคือข้อมูล ไม่ใช่ช่องที่รอให้กรอก */
+.rx-dom-read{
+  margin:0;padding:11px 14px;border:1px solid var(--line-soft);
+  border-radius:var(--radius-sm);background:var(--card);
+  font-size:var(--t-base);font-weight:600;color:var(--ink);
+}
+
 /* table-layout:fixed คือสิ่งที่ทำให้ตาราง MEASURED กับ FINAL คอลัมน์ตรงกันเป๊ะ
    ปล่อยให้เบราว์เซอร์คิดเองไม่ได้ — ตารางหนึ่งมี <input> อีกตารางมีแต่ "—"
    ความกว้างที่คิดจากเนื้อในจึงไม่มีทางเท่ากัน แล้วสองตารางจะเหลื่อมกันทั้งใบ
@@ -2024,7 +2236,7 @@ table.doc td.lbl{background:var(--surface-alt);font-weight:700;text-align:left;w
 
 .pay-after.over b{color:var(--danger)}
 
-.pay-actions{display:flex;justify-content:flex-end;margin-top:14px}
+.pay-actions{display:flex;justify-content:flex-end;align-items:center;gap:12px;flex-wrap:wrap;margin-top:14px}
 
 /* วันนัดรับ: ป้าย + ช่องวันที่ + ปุ่มบันทึก อยู่บรรทัดเดียวบนจอกว้าง
    จอแคบให้ช่องวันที่กินเต็มบรรทัดแล้วปุ่มลงมาเรียงใต้ — ปุ่มยังกว้างพอให้นิ้วกดโดน */
@@ -2096,6 +2308,7 @@ table.doc td.lbl{background:var(--surface-alt);font-weight:700;text-align:left;w
   .pay-row{grid-template-columns:1fr}
   .pay-row-slips{grid-column:1;grid-row:auto}
   .pickup-input{flex:1 1 100%}
+  .pickup .datef{flex:1 1 100%}
 }
 
 
@@ -2437,6 +2650,9 @@ table.doc td.lbl{background:var(--surface-alt);font-weight:700;text-align:left;w
   /* ตัวเลขสรุปเรียงสองใบต่อแถว จะได้เห็นหลายค่าพร้อมกันโดยไม่ต้องปัดยาว */
   .kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:14px}
   .kpi{padding:12px 13px}
+  /* ครึ่งจอกว้างไม่พอให้ชื่อประเภทกับตัวเงินอยู่บรรทัดเดียวกัน กินเต็มแถวไปเลย */
+  .kpi.breakdown{grid-column:1/-1}
+  .kpi.breakdown .k-value{font-size:13.5px}
   .kpi .k-value{font-size:20px}
   .kpi .k-label{font-size:11.5px}
   .tiles{gap:10px}
@@ -2457,6 +2673,9 @@ table.doc td.lbl{background:var(--surface-alt);font-weight:700;text-align:left;w
   .card-head{padding:11px 13px;flex-wrap:wrap}
   .card-head h2{font-size:15px}
   .modal .form-grid{grid-template-columns:1fr}
+  /* ทั้งสองบรรทัดนี้ต้องเจาะจงเท่ากฎเดสก์ท็อปของมัน ไม่งั้นแพ้แล้วยืนสองคอลัมน์ที่จอ 390 */
+  .modal .ledger-form .form-grid{grid-template-columns:1fr}
+  .ledger-tools .ledger-add{margin-left:0;flex:1 1 100%;justify-content:center}
   fieldset{padding:12px 12px 14px}
 
   /* ขั้นตอนงาน: แถบปุ่มท้ายการ์ดกางเต็มความกว้าง กดด้วยนิ้วโป้งได้
@@ -2968,6 +3187,10 @@ table.grid.data-grid tr.row-danger td:first-child{border-left-color:var(--danger
 }
 
 .rf-date input:focus,.rf-date select:focus{background:#fff;border-color:var(--accent);outline:0}
+
+/* กล่องที่หน้านั้นกรองตามไม่ได้ (สถานะงานในหน้าการรับเงิน/ช่องทางลูกค้า) — จางลง
+   และชี้ให้รู้ว่ากดไม่ได้เพราะตั้งใจ ไม่ใช่ค้าง · เหตุผลอยู่ใน title ของป้าย */
+.rf-date select:disabled{opacity:.5;cursor:not-allowed}
 
 .rf-range{
   display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;

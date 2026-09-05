@@ -5,7 +5,7 @@ import { AdminOnly } from '../../../components/AdminOnly.jsx';
 function IncomePageInner() {
   return (
     <Ledger
-      title="Menu Income" subtitle="รายรับ" icon="💰"
+      title="Income" subtitle="รายรับ" icon="💰"
       endpoint="/api/income" typeKey="income_type" typeList="income_type" withPayType={false}
     />
   );

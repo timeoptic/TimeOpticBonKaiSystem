@@ -97,7 +97,9 @@ export function Kpi({ label, value, sub, kind = '' }) {
   );
 }
 
-export const Kpis = ({ children }) => <div className="kpis">{children}</div>;
+export const Kpis = ({ children, className = '' }) => (
+  <div className={`kpis ${className}`.trim()}>{children}</div>
+);
 
 export function Fieldset({ legend, children }) {
   return <fieldset><legend>{legend}</legend>{children}</fieldset>;

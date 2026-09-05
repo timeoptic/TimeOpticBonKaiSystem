@@ -46,7 +46,10 @@ export default function PaymentsReport() {
 
   return (
     <>
-      <ReportFilter actions={<ExportButtons onCsv={csv} disabled={!data?.by_method?.length} />} />
+      <ReportFilter
+        actions={<ExportButtons onExcel={csv} disabled={!data?.by_method?.length} />}
+        statusNote="หน้านี้นับจากรายการรับเงิน ไม่ได้แยกตามสถานะงาน"
+      />
 
       <ReportState loading={loading} error={error} data={data}>
         {data && !data.count

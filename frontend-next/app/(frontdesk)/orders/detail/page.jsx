@@ -12,7 +12,7 @@ import { DataTable } from '../../../../components/DataTable.jsx';
 import { QueryParamPage } from '../../../../components/QueryParamPage.jsx';
 import { RX_KIND_LABEL } from '../../../../lib/constants.js';
 import {
-  custName, fmtDateTime, money, power, rxNum,
+  addPower, custName, cylPower, fmtDateTime, money, rxNum, sphPower,
 } from '../../../../lib/format.js';
 import { Icon } from '../../../../components/Icon.jsx';
 
@@ -68,6 +68,8 @@ function OrderDetailInner() {
               <Link className="btn btn-ghost" href={'/cases/detail?id=' + o.case_id}><Icon name="board" /> {o.case_code || 'เคส'}</Link>
             )}
             <Link className="btn btn-ghost" href={'/customers/detail?id=' + o.customer_id}><Icon name="user" /> ลูกค้า</Link>
+            <Link className="btn btn-ghost" href={'/print/order?id=' + o.id}><Icon name="printer" /> ใบสั่ง</Link>
+            <Link className="btn btn-ghost" href={'/print/receipt?order=' + o.id}><Icon name="receipt" /> ใบเสร็จ</Link>
           </>
         )}
       />
@@ -120,8 +122,8 @@ function OrderDetailInner() {
                 ['ชนิด', RX_KIND_LABEL[t.kind] || t.kind],
                 ['วัดเมื่อ', fmtDateTime(t.test_date)],
                 ['ใช้สำหรับ', t.test_for || '-'],
-                ['R (Sph/Cyl/Axis/Add)', `${power(t.r_sphere)} / ${power(t.r_cylinder)} / ${rxNum(t.r_axis)} / ${power(t.r_add)}`],
-                ['L (Sph/Cyl/Axis/Add)', `${power(t.l_sphere)} / ${power(t.l_cylinder)} / ${rxNum(t.l_axis)} / ${power(t.l_add)}`],
+                ['R (Sph/Cyl/Axis/Add)', `${sphPower(t.r_sphere)} / ${cylPower(t.r_cylinder)} / ${rxNum(t.r_axis)} / ${addPower(t.r_add)}`],
+                ['L (Sph/Cyl/Axis/Add)', `${sphPower(t.l_sphere)} / ${cylPower(t.l_cylinder)} / ${rxNum(t.l_axis)} / ${addPower(t.l_add)}`],
               ]}
               />
               <FormActions style={{ marginTop: 10 }}>

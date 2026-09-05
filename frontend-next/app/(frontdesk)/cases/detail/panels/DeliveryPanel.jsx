@@ -129,7 +129,9 @@ export function DeliveryPanel({ c, reload, actorId }) {
   const amountError = !entered
     ? null
     : overpay ? `จำนวนเงินที่รับต้องไม่เกินยอดคงเหลือ ${money(balance)}` : null;
-  const canSubmit = entered > 0 && !overpay && !!method && !saving;
+  /* ผู้รับเงินบังคับเหมือนขั้นชำระเงิน — POST /api/payments ปฏิเสธแถวที่ไม่มีคนรับ
+     จอนี้จึงต้องถามก่อน ไม่ใช่ปล่อยให้กดแล้วเด้ง error จากเซิร์ฟเวอร์ */
+  const canSubmit = entered > 0 && !overpay && !!method && !!receivedBy && !saving;
 
   const sendSlip = async (file, paymentId) => {
     const form = new FormData();
@@ -147,6 +149,7 @@ export function DeliveryPanel({ c, reload, actorId }) {
     if (!entered) return err(new Error('กรุณาระบุจำนวนเงินที่รับ'));
     if (overpay) return err(new Error(amountError));
     if (!method) return err(new Error('กรุณาเลือกช่องทางการชำระเงิน'));
+    if (!receivedBy) return err(new Error('กรุณาเลือกผู้รับเงิน'));
     setSaving(true);
     try {
       const saved = await api.post('/api/payments', {
@@ -155,7 +158,7 @@ export function DeliveryPanel({ c, reload, actorId }) {
         kind: kindFor(paid, entered, balance),
         method,
         amount: entered,
-        received_by: receivedBy || null,
+        received_by: receivedBy,
         paid_at: toStamp(paidAt),
         notes: note.trim() || null,
         source: 'delivery',
@@ -426,11 +429,12 @@ export function DeliveryPanel({ c, reload, actorId }) {
                 </div>
 
                 <FormGrid>
-                  <Field label="ผู้รับเงิน">
+                  <Field label="ผู้รับเงิน *">
                     <EmployeeSelect
                       name="received_by"
                       value={receivedBy}
                       onChange={(e) => setReceivedBy(e.target.value)}
+                      required
                     />
                   </Field>
                   <Field label="วันที่รับเงิน">

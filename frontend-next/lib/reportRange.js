@@ -37,6 +37,19 @@ export const CHANNELS = [
 ];
 
 /**
+ * สถานะงาน — "จบแล้ว" คืองานตัดแว่นที่กดปิดการขายแล้ว หรือใบขายหน้าร้านที่ลูกค้า
+ * รับของไปแล้ว · สองฝั่งเก็บคนละคอลัมน์ แต่ตอบคำถามเดียวกันว่างานนี้จบหรือยัง
+ *
+ * ค่าตั้งต้นเป็น 'all' เพราะตัวเลขที่หายไปโดยไม่มีใครสั่งให้หายคือที่มาของคำถาม
+ * "ทำไมรายงานไม่ตรงกับที่ขายจริง"
+ */
+export const STATUSES = [
+  ['all', 'ทั้งหมด'],
+  ['closed', 'จบแล้ว'],
+  ['open', 'ยังไม่จบ'],
+];
+
+/**
  * ทุกช่วงจบที่ "วันนี้" ไม่ใช่วันสิ้นสัปดาห์หรือวันสิ้นเดือน
  *
  * วันที่ยังไม่มาถึงไม่มียอดขายอยู่แล้ว การลากช่วงไปถึงสิ้นเดือนแปลว่ากราฟรายวัน
@@ -94,17 +107,25 @@ export function readFilter(searchParams, now = new Date()) {
      ครอบคลุมแทนที่จะคืนช่วงว่างที่อ่านว่า "ไม่มียอดขาย" */
   if (to < from) to = from;
   const channel = get('channel');
+  const status = get('status');
   return {
     from,
     to,
     channel: CHANNELS.some(([c]) => c === channel) ? channel : 'all',
+    status: STATUSES.some(([s]) => s === status) ? status : 'all',
   };
 }
 
-/** ตัวกรอง -> query string สำหรับทั้ง URL ของหน้าเว็บและคำขอที่ยิงไป API */
-export function filterQuery({ from, to, channel }) {
+/**
+ * ตัวกรอง -> query string สำหรับทั้ง URL ของหน้าเว็บและคำขอที่ยิงไป API
+ *
+ * ค่า 'all' ไม่ถูกเขียนลง URL — URL ที่สั้นที่สุดที่ยังให้ผลเดิมคือ URL ที่คนส่ง
+ * ต่อกันแล้วอ่านออก และฝั่ง API ก็ตกกลับเป็น 'all' อยู่แล้วเมื่อไม่มีค่าส่งมา
+ */
+export function filterQuery({ from, to, channel, status }) {
   const p = new URLSearchParams({ from, to });
   if (channel && channel !== 'all') p.set('channel', channel);
+  if (status && status !== 'all') p.set('status', status);
   return p.toString();
 }
 

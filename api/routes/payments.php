@@ -44,11 +44,17 @@ POST('/api/payments', function (array $req) {
     if (!($amount > 0)) {
         bad('จำนวนเงินต้องมากกว่า 0');
     }
+    /* ทุกก้อนที่รับเข้ามาต้องมีชื่อคนรับติดอยู่ — ตอนยอดไม่ตรงตอนปิดร้าน คำถามแรก
+       คือ "ใครรับ" แถวที่ไม่มีคนรับตอบคำถามนั้นไม่ได้ และไปตามทีหลังก็ไม่มีใครจำ */
+    $receivedBy = int_or($body['received_by'] ?? null);
+    if (!$receivedBy) {
+        bad('กรุณาเลือกผู้รับเงิน');
+    }
     $kindIn = str_or($body['kind'] ?? null);
     $kind   = in_array($kindIn, ['deposit', 'partial', 'full', 'final'], true) ? $kindIn : 'partial';
     $method = str_or($body['method'] ?? null, 'Cash') ?: 'Cash';
 
-    $id = Db::tx(function (Tx $q) use ($body, $amount, $kind, $method) {
+    $id = Db::tx(function (Tx $q) use ($body, $amount, $kind, $method, $receivedBy) {
         $r = $q->run(
             'INSERT INTO payments (case_id, order_id, sale_id, kind, method, amount,
                reference, received_by, paid_at, notes, source)
@@ -60,7 +66,7 @@ POST('/api/payments', function (array $req) {
             $method,
             $amount,
             nul($body['reference'] ?? null),
-            int_or($body['received_by'] ?? null),
+            $receivedBy,
             str_or($body['paid_at'] ?? null) ?: nowStamp(),
             nul($body['notes'] ?? null),
             /* ขั้นที่กดรับเงิน — ค่าอื่นที่ไม่รู้จักไม่เก็บ จะได้ไม่กลายเป็นช่องข้อความอิสระ */
@@ -79,7 +85,7 @@ POST('/api/payments', function (array $req) {
             'action'      => 'payment',
             'entity'      => 'payment',
             'entity_id'   => $r['insertId'],
-            'employee_id' => int_or($body['received_by'] ?? null),
+            'employee_id' => $receivedBy,
             'note'        => "$kind $amount ($method)",
         ]);
         return $r['insertId'];

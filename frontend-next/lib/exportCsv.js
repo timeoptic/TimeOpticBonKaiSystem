@@ -6,7 +6,11 @@
  * ผู้ใช้จะรายงานว่า "ระบบส่งออกไฟล์เสีย" ทั้งที่ข้อมูลถูกทุกไบต์
  *
  * ใช้ CRLF ด้วยเหตุผลเดียวกัน — Excel รุ่นเก่าบน Windows ไม่แยกบรรทัดที่ LF เดี่ยว
+ *
+ * การตั้งชื่อไฟล์กับการสั่งบันทึกอยู่ที่ `download.js` เพราะรายงาน .xlsx ที่
+ * เซิร์ฟเวอร์สร้างให้ก็ใช้ขั้นตอนเดียวกันนี้ แต่ไม่ได้ผ่าน CSV เลยสักบรรทัด
  */
+import { saveBlob } from './download.js';
 
 /**
  * ครอบค่าหนึ่งช่องตามกฎ RFC 4180
@@ -36,23 +40,10 @@ export function toCsv(columns, rows) {
   return [head, ...body].join('\r\n');
 }
 
-/** ชื่อไฟล์ที่ Windows ยอมรับ — อักขระต้องห้ามกลายเป็นขีด ไม่ใช่ถูกลบจนชื่อติดกัน */
-export function safeName(name) {
-  return String(name).replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim();
-}
-
 /** สร้างไฟล์แล้วสั่งดาวน์โหลด — เรียกได้เฉพาะฝั่งเบราว์เซอร์ */
 export function downloadCsv(filename, columns, rows) {
   const csv = toCsv(columns, rows);
   /* '﻿' นำหน้า = BOM ของ UTF-8 หลังผ่าน TextEncoder ของ Blob */
   const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = safeName(filename.endsWith('.csv') ? filename : `${filename}.csv`);
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  /* คืนหน่วยความจำของ blob — ไม่ปล่อยแล้วไฟล์ค้างอยู่จนกว่าจะปิดแท็บ */
-  setTimeout(() => URL.revokeObjectURL(url), 0);
+  saveBlob(blob, filename.endsWith('.csv') ? filename : `${filename}.csv`);
 }

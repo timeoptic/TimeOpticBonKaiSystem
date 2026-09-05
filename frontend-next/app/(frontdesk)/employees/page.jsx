@@ -9,6 +9,7 @@ import { ListSelect } from '../../../components/Selects.jsx';
 import { fmtDate } from '../../../lib/format.js';
 import { Icon } from '../../../components/Icon.jsx';
 import { AdminOnly } from '../../../components/AdminOnly.jsx';
+import { DateField } from '../../../components/DateField.jsx';
 
 function EmployeeListInner() {
   const { reload: reloadMeta } = useMeta();
@@ -51,7 +52,7 @@ function EmployeeListInner() {
             <Field label="ชื่อจริง"><input name="first_name" /></Field>
             <Field label="นามสกุล"><input name="last_name" /></Field>
             <Field label="เพศ"><ListSelect name="sex" kind="sex" defaultValue="Female" /></Field>
-            <Field label="วันเกิด"><input name="birth_date" type="date" /></Field>
+            <Field label="วันเกิด"><DateField name="birth_date" /></Field>
             <Field label="หน้าที่ / Roles">
               <input name="roles" placeholder="เช่น sales, optometrist, technician" />
             </Field>

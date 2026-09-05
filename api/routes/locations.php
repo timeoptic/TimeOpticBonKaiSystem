@@ -34,6 +34,14 @@ POST('/api/locations', function (array $req) {
 
 PUT('/api/locations/:id', function (array $req) {
     $id = int_or($req['params']['id']);
+    /* การ์ดชุดเดียวกับ POST — เดิมทางนี้ไม่มี ส่งค่าว่างมาคือชื่อสินค้าในแถวนั้น
+       หายทันทีโดยไม่มีอะไรเตือน ตอนนี้หน้าเว็บแก้แถวได้แล้วจึงต้องกันไว้ */
+    if (str_or($req['body']['product_name'] ?? null) === '') {
+        bad('กรุณากรอกชื่อสินค้า');
+    }
+    if (str_or($req['body']['location'] ?? null) === '') {
+        bad('กรุณากรอกตำแหน่ง');
+    }
     Db::run(
         'UPDATE product_locations SET product_name=?, location=? WHERE id=?',
         str_or($req['body']['product_name'] ?? null),

@@ -34,9 +34,40 @@ import { useAsync } from '../../../../lib/hooks.js';
 import { Card, Loading } from '../../../../components/ui.jsx';
 import { QueryParamPage } from '../../../../components/QueryParamPage.jsx';
 import { Icon } from '../../../../components/Icon.jsx';
-import { custName, fmtDate, money, power, rxNum } from '../../../../lib/format.js';
+import {
+  addPower, custName, cylPower, dominantEyeLabel, fmtDate, money, rxNum, sphPower,
+} from '../../../../lib/format.js';
 
 const DASH = '—';
+
+/* ชื่อวันบนใบเป็นภาษาอังกฤษเสมอ ไม่ผูกกับภาษาของเครื่องที่สั่งพิมพ์
+   (toLocaleDateString ให้ผลต่างกันได้ถ้า ICU ของเบราว์เซอร์ไม่ครบ) */
+const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+/** วันนัดบนใบ — เติมชื่อวันหน้าวันที่ เช่น "Sunday, 31/08/2026" */
+function fmtApptDate(v) {
+  const date = fmtDate(v);
+  if (!date) return '';
+  const d = new Date(String(v).replace(' ', 'T'));
+  return isNaN(d) ? date : `${WEEKDAYS[d.getDay()]}, ${date}`;
+}
+
+/** เวลาเปิด-ปิดร้านบนใบ — ค่าในฐานเก็บเป็น 24 ชม. (`09:30`) ใบพิมพ์แสดงแบบอังกฤษ 12 ชม. */
+function to12h(t) {
+  const [h, m] = String(t || '').split(':');
+  const hh = Number(h);
+  if (!Number.isFinite(hh) || m === undefined) return String(t || '');
+  const suffix = hh < 12 ? 'AM' : 'PM';
+  return `${String(hh % 12 || 12).padStart(2, '0')}:${m} ${suffix}`;
+}
+
+/* เลขบนหัวใบคือ "รหัสเคสเต็ม" ตามที่เก็บในฐาน — ใบเก่าที่ย้ายมาจาก Access เป็น OLD-010299
+   ใบที่เปิดในระบบใหม่เป็น CASE-2026-00001 ต้องพิมพ์ให้ครบทั้งคำนำหน้าและปี ไม่ใช่ตัดเหลือแต่เลข
+   เพราะเลขเปล่าของสองชุดนี้ชนกันได้ และรหัสที่พิมพ์ต้องค้นในระบบเจอตรงตัว
+   ออเดอร์ที่ไม่ได้ผูกเคส (มีอยู่ไม่กี่ใบ) ตกกลับไปใช้เลขออเดอร์เติมศูนย์ 5 หลัก
+   จะได้ไม่มีใบไหนไม่มีเลข */
+const caseNo = (o) =>
+  String(o?.case_code || '').trim() || String(o?.id ?? '').padStart(5, '0');
 
 /* ที่ติดต่อของร้านที่พิมพ์ลงใบให้ลูกค้า — ยังไม่มีช่องเก็บในตาราง settings
    (มีแค่ shop_name / เวลาเปิด-ปิด) แก้ตรงนี้ที่เดียวเมื่อร้านย้ายหรือเปลี่ยนเบอร์ */
@@ -55,15 +86,19 @@ const QRS = [
 /** ค่าสายตาหนึ่งข้าง — ลำดับนี้คือลำดับที่พิมพ์ออกมา */
 const RX_ROWS = [
   ['VA', (rx, k) => rxNum(rx?.[`${k}_va`])],
-  ['Sphere', (rx, k) => power(rx?.[`${k}_sphere`])],
-  ['Cylinder', (rx, k) => power(rx?.[`${k}_cylinder`])],
+  ['Sphere', (rx, k) => sphPower(rx?.[`${k}_sphere`])],
+  ['Cylinder', (rx, k) => cylPower(rx?.[`${k}_cylinder`])],
   ['Axis', (rx, k) => rxNum(rx?.[`${k}_axis`])],
-  ['Add', (rx, k) => power(rx?.[`${k}_add`])],
+  ['Add', (rx, k) => addPower(rx?.[`${k}_add`])],
   /* PD มาจากขั้นวัด Center ไม่ใช่ใบสายตา — ใบเก่าบางใบกรอก r_pd ไว้เอง จึงถอยไปใช้ได้ */
   ['PD', (rx, k, ctr) => rxNum(ctr?.[`${k}_pd`] ?? rx?.[`${k}_pd`])],
 ];
 
 const EYES = [['r', 'Right'], ['l', 'Left']];
+
+/* ป้ายตาหลัก/ตารอง ต่อท้ายหัว Right / Left — มาจากช่องเดียวบนใบ Final ไม่ใช่ค่าต่อตา
+   ตัวตัดสินอยู่ที่ lib/format.js เพราะติดผิดข้างแล้วเลนส์ออกมาผิด ต้องมีเทสต์คุม */
+const dominantTag = (rx, k) => dominantEyeLabel(rx?.dominant_eye, k);
 
 /** ขั้นตอนงานหลังบ้าน — ช่างติ๊ก/เซ็นกำกับทีละช่องตามที่งานเดินไป */
 const STAGES = ['สั่งเลนส์', 'เจียร์เลนส์', 'QC', 'เก็บแว่น'];
@@ -184,12 +219,19 @@ function F({ k, v, fill = false }) {
   );
 }
 
+/** โลโก้หัวใบ — ไฟล์รูปหายก็ยังพิมพ์ได้ ตกกลับไปเป็นไอคอนแว่น+ชื่อร้านแบบเดิม */
+function BrandMark() {
+  const [bad, setBad] = useState(false);
+  if (bad) return <div className="iv-brand-mark"><Icon name="glasses" /><b>TIME OPTIC</b></div>;
+  return <img className="iv-logo" src="/logo-timeoptic.png" alt="TIME OPTIC" onError={() => setBad(true)} />;
+}
+
 /** หัวใบ — ใช้ซ้ำทั้งครึ่งบนและครึ่งล่าง สองครึ่งต้องอ่านเป็นใบเดียวกัน */
 function Head({ order, copy }) {
   return (
     <div className="iv-head">
       <div className="iv-brand">
-        <div className="iv-brand-mark"><Icon name="glasses" /><b>TIME OPTIC</b></div>
+        <BrandMark />
         <small>{copy}</small>
       </div>
       <div className="iv-title">
@@ -198,7 +240,7 @@ function Head({ order, copy }) {
       </div>
       <div className="iv-ref">
         <span>{fmtDate(order.order_date) || DASH}</span>
-        <b>{order.invoice_code || `#${order.id}`}</b>
+        <b>{caseNo(order)}</b>
       </div>
     </div>
   );
@@ -247,10 +289,10 @@ function OrderSheet() {
   const net = Number(o.total_price || 0) - Number(o.discount || 0);
   const paid = Number(o.paid || 0);
   const remain = Number(o.balance || 0);
-  const appt = o.appointment_date ? fmtDate(o.appointment_date) : '';
+  const appt = o.appointment_date ? fmtApptDate(o.appointment_date) : '';
   const methodLabel = meta?.lists?.pay_type_labels || {};
   const hours = settings?.shop_open_time && settings?.shop_close_time
-    ? `${settings.shop_open_time} – ${settings.shop_close_time} น.`
+    ? `${to12h(settings.shop_open_time)} – ${to12h(settings.shop_close_time)}`
     : '';
 
   /* บล็อกเงิน — ชุดเดียวกันทั้งครึ่งบนและครึ่งล่าง ลูกค้ากับช่างต้องเห็นเลขเดียวกัน */
@@ -292,8 +334,9 @@ function OrderSheet() {
           แปลว่ามาตราส่วนไม่ใช่ 100% หรือระยะขอบไม่ใช่ None
         </p>
         <p className="iv-qr-note">
-          ช่อง QR: วางไฟล์ <b>qr-line.png</b> และ <b>qr-location.png</b> ไว้ที่
-          <b> frontend-next/public/</b> แล้วรูปจะขึ้นเอง — ยังไม่มีไฟล์ก็พิมพ์ได้ ช่องจะเป็นกรอบเปล่า
+          รูปบนใบอ่านจาก <b>frontend-next/public/</b> — โลโก้หัวใบ <b>logo-timeoptic.png</b>
+          และ QR <b>qr-line.png</b> / <b>qr-location.png</b> เปลี่ยนรูปคือทับไฟล์เดิม ไม่ต้องแก้โค้ด
+          ไฟล์หายก็ยังพิมพ์ได้ โลโก้กลับไปเป็นไอคอนแว่น+ชื่อร้าน ช่อง QR เป็นกรอบเปล่าที่กว้างเท่าเดิม
         </p>
       </div>
 
@@ -337,25 +380,28 @@ function OrderSheet() {
           <Head order={o} copy="Internal Copy / สำหรับร้าน" />
 
           <div className="iv-job">
-            <div className="iv-job-no">{o.id}</div>
             <div className="iv-job-appt">
               <span>Appointment</span>
               <b className="iv-box">{appt || ''}</b>
             </div>
-            <div className="iv-job-code">{o.case_code || ''}</div>
           </div>
 
           <div className="iv-who">
             <F k="Customer" v={name} />
             <F k="Phone no." v={o.phone} />
-            <F k="Craftsman" fill />
+            <F k="WhatsApp" fill />
           </div>
 
           {/* ค่าสายตา — สองข้างวางคู่กัน ช่างอ่านทีเดียวเห็นทั้งคู่ ไม่ต้องไล่แถว */}
           <div className="iv-rx">
             {EYES.map(([k, label]) => (
               <div className="iv-rx-eye" key={k}>
-                <div className="iv-rx-title">{label}</div>
+                <div className="iv-rx-title">
+                  {label}
+                  {dominantTag(rx, k)
+                    ? <span className="iv-rx-dom">{dominantTag(rx, k)}</span>
+                    : null}
+                </div>
                 {RX_ROWS.map(([rowLabel, read]) => (
                   <div className="iv-rx-row" key={rowLabel}>
                     <span className="iv-rx-k">{rowLabel}</span>
@@ -469,6 +515,8 @@ const sheetCss = `
   padding-bottom:2mm;border-bottom:0.4mm solid var(--line)}
 .iv-head .iv-brand{display:flex;flex-direction:column;align-items:flex-start;gap:0;min-width:34mm}
 .iv-head .iv-brand-mark{display:flex;align-items:center;gap:1.6mm}
+.iv-head .iv-logo{display:block;height:5mm;width:auto}
+.iv-half.iv-bottom .iv-head .iv-logo{height:4mm}
 .iv-head .iv-brand .ico{width:6mm;height:6mm;margin:0;flex:0 0 auto}
 .iv-half.iv-bottom .iv-head .iv-brand .ico{width:4.8mm;height:4.8mm}
 .iv-head .iv-brand b{font-size:11pt;letter-spacing:1.2px;line-height:1.1}
@@ -480,7 +528,7 @@ const sheetCss = `
 .iv-head .iv-title span{font-size:8pt;letter-spacing:3px;color:var(--data)}
 .iv-head .iv-ref{text-align:right;min-width:34mm;display:flex;flex-direction:column}
 .iv-head .iv-ref span{font-size:8pt;color:var(--data);font-weight:400}
-.iv-head .iv-ref b{font-size:9.5pt;letter-spacing:.5px}
+.iv-head .iv-ref b{font-size:9.5pt;letter-spacing:.5px;white-space:nowrap}
 
 /* ---- แถวป้าย: ค่า ---- */
 .iv-f{display:flex;gap:2mm;align-items:baseline;min-width:0;padding:0.6mm 0}
@@ -519,12 +567,10 @@ const sheetCss = `
 
 /* ---- ครึ่งล่าง ---- */
 .iv-job{display:flex;align-items:center;gap:6mm;padding:2.5mm 0 2mm}
-.iv-job-no{font-size:14pt;font-weight:800;letter-spacing:1px;min-width:20mm}
 .iv-job-appt{display:flex;align-items:center;gap:2mm}
 .iv-job-appt span{font-weight:700;color:var(--head)}
 .iv-job-appt .iv-box{display:inline-block;min-width:32mm;padding:0.8mm 2mm;
   border:0.3mm solid var(--rule);text-align:center;font-size:8.5pt}
-.iv-job-code{margin-left:auto;font-size:8pt;letter-spacing:.5px;color:var(--data)}
 
 .iv-who{display:grid;grid-template-columns:1.4fr 1fr 1fr;column-gap:6mm;
   padding:2mm 0;border-top:0.25mm solid var(--rule);border-bottom:0.25mm solid var(--rule)}
@@ -535,6 +581,11 @@ const sheetCss = `
 .iv-rx-eye{display:flex;flex-direction:column;gap:1mm}
 .iv-rx-title{text-align:center;font-weight:800;font-size:9pt;letter-spacing:1px;
   border-bottom:0.3mm solid var(--line);padding-bottom:1mm;margin-bottom:1mm}
+/* ป้ายตาหลัก/ตารอง เกาะท้ายหัว Right / Left — เล็กกว่าและไม่ยืดตัวอักษร
+   เพื่อให้ยังอ่านหัวตารางเป็น Right / Left ก่อน แล้วค่อยเห็นป้าย ไม่ใช่แข่งกันเด่น */
+.iv-rx-dom{margin-left:1.5mm;font-size:7pt;font-weight:700;letter-spacing:0;
+  color:var(--head);border:0.25mm solid var(--rule);border-radius:0.8mm;
+  padding:0.2mm 1.2mm;white-space:nowrap;vertical-align:middle}
 .iv-rx-row{display:flex;align-items:center;gap:2mm}
 .iv-rx-k{flex:0 0 15mm;font-weight:700;color:var(--head)}
 .iv-rx-v{flex:1 1 auto;border:0.25mm solid var(--rule);padding:0.9mm 2mm;

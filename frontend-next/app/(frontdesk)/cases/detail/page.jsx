@@ -362,6 +362,7 @@ function CaseDetailInner() {
             <Link className="btn btn-ghost" href={'/customers/detail?id=' + c.customer_id}><Icon name="user" /> ข้อมูลลูกค้า</Link>
             {c.order && <Link className="btn btn-ghost" href={'/orders/detail?id=' + c.order.id}><Icon name="glasses" /> ออเดอร์</Link>}
             {c.order && <Link className="btn btn-ghost" href={'/print/order?id=' + c.order.id}><Icon name="printer" /> ใบสั่ง</Link>}
+            {c.order && <Link className="btn btn-ghost" href={'/print/receipt?order=' + c.order.id}><Icon name="receipt" /> ใบเสร็จ</Link>}
           </>
         )}
       />

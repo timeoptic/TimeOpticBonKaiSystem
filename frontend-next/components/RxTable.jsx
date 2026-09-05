@@ -1,6 +1,6 @@
 'use client';
 /** The R/L prescription grid, shared by the case, order and print views. Port of frontend/src/components/RxTable.jsx. */
-import { power, rxNum } from '../lib/format.js';
+import { addPower, cylPower, rxNum, sphPower } from '../lib/format.js';
 
 export function RxTable({ t, withPrism = false, labels = ['R', 'L'] }) {
   const heads = ['', 'SPH', 'CYL', 'AXIS', 'ADD', 'PD', 'VA', ...(withPrism ? ['PRISM'] : [])];
@@ -9,10 +9,10 @@ export function RxTable({ t, withPrism = false, labels = ['R', 'L'] }) {
     <tr key={k}>
       <td className="lbl">{label}</td>
       {[
-        power(t[`${k}_sphere`]),
-        power(t[`${k}_cylinder`]),
+        sphPower(t[`${k}_sphere`]),
+        cylPower(t[`${k}_cylinder`]),
         rxNum(t[`${k}_axis`]),
-        power(t[`${k}_add`]),
+        addPower(t[`${k}_add`]),
         rxNum(t[`${k}_pd`]),
         rxNum(t[`${k}_va`]),
         ...(withPrism ? [t[`${k}_prism`] || '—'] : []),

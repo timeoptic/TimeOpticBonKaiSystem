@@ -77,7 +77,7 @@ export default function PosReport() {
 
   return (
     <>
-      <ReportFilter actions={<ExportButtons onCsv={csv} disabled={!rows.length} />} />
+      <ReportFilter actions={<ExportButtons onExcel={csv} disabled={!rows.length} />} />
 
       <ReportState loading={loading} error={error} data={data}>
         {/* ใบที่ถูกยกเลิกไม่นับเป็นยอดขาย แต่ต้องบอกว่ามีอยู่ — 14 ใบที่หายไป

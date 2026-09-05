@@ -76,10 +76,13 @@ function processMissing(array $c): array
         $ce && empty($ce['pd_total']) ? 'PD' : null,
     ]));
 
+    /* วันนัดรับบังคับที่ขั้นนี้ — คนที่จ่ายเงินคือคนที่ถามว่า "มารับได้วันไหน"
+       ถ้าปล่อยให้ข้าม เคสจะไปถึงขั้นส่งมอบโดยไม่มีวันนัดให้ใครตามงาน */
     $m['payment'] = array_values(array_filter([
         !count($c['payments'] ?? []) ? 'การรับเงิน' : null,
         $balance !== null && (float) $balance > 0
             ? 'ยอดคงเหลือ ' . round2($balance) : null,
+        empty($order['appointment_date']) ? 'วันนัดรับ' : null,
     ]));
 
     /* ยอดค้างชำระไม่ใช่เงื่อนไขของการส่งมอบ — ลูกค้ารับแว่นได้ แล้วเก็บเงินที่ขั้น
@@ -448,6 +451,7 @@ function caseStageMap(array $caseIds): array
                     AND o.lens_name IS NOT NULL AND o.lens_name <> ''
                     AND o.total_price > 0) AS filled,
                 SUM(o.total_price - o.discount) AS net,
+                MAX(o.appointment_date IS NOT NULL) AS has_appt,
                 COUNT(*) AS n
            FROM custom_orders o WHERE o.case_id IN ($in) GROUP BY o.case_id",
         ...$ids
@@ -489,7 +493,8 @@ function caseStageMap(array $caseIds): array
             'reception' => true,                                     // the case exists
             'exam'      => !empty($rx[$id]['has_final']),
             'sales'     => !empty($orders[$id]['filled']),
-            'payment'   => !empty($pay[$id]['n']) && $net > 0 && $paid >= $net - 0.001,
+            'payment'   => !empty($pay[$id]['n']) && $net > 0 && $paid >= $net - 0.001
+                           && !empty($orders[$id]['has_appt']),   // เกณฑ์เดียวกับ processMissing()
             'centering' => !empty($centering[$id]['done']),
             'delivery'  => !empty($dlv[$id]['delivered']),
         ];

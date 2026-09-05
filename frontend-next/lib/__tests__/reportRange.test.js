@@ -74,9 +74,11 @@ test('periodOf จับคู่ช่วงกลับเป็นปุ่�
   assert.equal(periodOf('2026-01-01', '2026-03-31', WED), 'custom');
 });
 
-test('readFilter ไม่มีอะไรใน URL = เดือนนี้ ทุกช่องทาง', () => {
+test('readFilter ไม่มีอะไรใน URL = เดือนนี้ ทุกช่องทาง ทุกสถานะ', () => {
   const f = readFilter(new URLSearchParams(''), WED);
-  assert.deepEqual(f, { from: '2026-09-01', to: '2026-09-02', channel: 'all' });
+  assert.deepEqual(f, {
+    from: '2026-09-01', to: '2026-09-02', channel: 'all', status: 'all',
+  });
 });
 
 test('readFilter ช่วงกลับหัวกลับหาง ถูกยืดให้ครอบคลุม ไม่ใช่คืนช่วงว่าง', () => {
@@ -90,15 +92,32 @@ test('readFilter ช่องทางที่ไม่รู้จัก ต�
   assert.equal(readFilter(new URLSearchParams('channel=pos'), WED).channel, 'pos');
 });
 
-test('filterQuery ไม่ใส่ channel=all ลง URL', () => {
+test('readFilter สถานะงานที่ไม่รู้จัก ตกกลับเป็น all', () => {
+  assert.equal(readFilter(new URLSearchParams('status=เสร็จแล้วมั้ง'), WED).status, 'all');
+  assert.equal(readFilter(new URLSearchParams('status=open'), WED).status, 'open');
+  assert.equal(readFilter(new URLSearchParams('status=closed'), WED).status, 'closed');
+});
+
+test('filterQuery ไม่ใส่ค่า all ลง URL ทั้ง channel และ status', () => {
   assert.equal(
-    filterQuery({ from: '2026-09-01', to: '2026-09-02', channel: 'all' }),
+    filterQuery({ from: '2026-09-01', to: '2026-09-02', channel: 'all', status: 'all' }),
     'from=2026-09-01&to=2026-09-02',
   );
   assert.equal(
-    filterQuery({ from: '2026-09-01', to: '2026-09-02', channel: 'pos' }),
+    filterQuery({ from: '2026-09-01', to: '2026-09-02', channel: 'pos', status: 'all' }),
     'from=2026-09-01&to=2026-09-02&channel=pos',
   );
+  assert.equal(
+    filterQuery({ from: '2026-09-01', to: '2026-09-02', channel: 'all', status: 'open' }),
+    'from=2026-09-01&to=2026-09-02&status=open',
+  );
+});
+
+test('ตัวกรองเดินทางไป-กลับ URL ได้ครบทุกช่อง', () => {
+  /* แท็บทุกอันส่งตัวกรองต่อกันด้วย filterQuery แล้วอ่านกลับด้วย readFilter —
+     ช่องที่หล่นหายระหว่างทางแปลว่ากดสลับแท็บแล้วตัวกรองรีเซ็ตเอง */
+  const f = { from: '2026-01-01', to: '2026-12-31', channel: 'main', status: 'closed' };
+  assert.deepEqual(readFilter(new URLSearchParams(filterQuery(f)), WED), f);
 });
 
 test('rangeLabel ยุบส่วนที่ซ้ำ และนับเป็น พ.ศ.', () => {

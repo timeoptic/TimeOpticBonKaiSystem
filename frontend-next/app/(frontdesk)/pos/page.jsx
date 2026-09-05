@@ -31,6 +31,7 @@ import { ProductPicker } from '../../../components/pos/ProductPicker.jsx';
 import { CartItemRow } from '../../../components/pos/CartItemRow.jsx';
 import { ConfirmSaleModal } from '../../../components/pos/ConfirmSaleModal.jsx';
 import { PosField, PosOut } from '../../../components/pos/PosField.jsx';
+import { DateField } from '../../../components/DateField.jsx';
 
 const blankForm = () => ({
   customerName: '',
@@ -238,11 +239,10 @@ export default function PosPage() {
               <PosField label="วันที่ขาย" icon="📅">
                 {/* วันที่ย้อนหลังเปลี่ยนตัวเลขปิดยอดของวันที่ปิดไปแล้ว จึงเปิดเฉพาะแอดมิน
                     ขึ้นไป คนอื่นเห็นวันที่แต่แก้ไม่ได้ — API ตรวจซ้ำอยู่ดี */}
-                <input
-                  type="date"
+                <DateField
                   value={saleDate}
                   readOnly={!isAdminUp(actor)}
-                  onChange={(e) => setSaleDate(e.target.value)}
+                  onChange={setSaleDate}
                 />
               </PosField>
               <PosField label="ช่องทางชำระเงิน" icon="💳" select>

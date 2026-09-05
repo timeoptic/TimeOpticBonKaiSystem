@@ -88,6 +88,7 @@ final class Lookups
             ['ai', 'AI'],
             ['google', 'Google'],
             ['walk_in', 'Walk In'],
+            ['friend', 'Friend'],
             ['other', 'อื่นๆ'],
         ];
 

@@ -54,7 +54,17 @@ final class SalesReport
     public const CHANNELS = ['all', 'main', 'pos'];
 
     /**
-     * ช่วงวันที่ + ช่องทาง จาก query string
+     * สถานะงานที่รับ — 'closed' คืองานที่จบแล้ว 'open' คืองานที่ยังเดินอยู่
+     *
+     * ฝั่งงานตัดแว่นอ่านจาก `custom_orders.order_closed` (กดปุ่มปิดการขายแล้วหรือยัง)
+     * ฝั่งขายหน้าร้านอ่านจาก `pos_sales.fulfillment_status` ซึ่งเป็น waiting/delivered
+     * — คนละคอลัมน์แต่ตอบคำถามเดียวกันว่า "ลูกค้าได้ของแล้วและงานนี้จบแล้วหรือยัง"
+     * · ใบขายของระบบเดิมในตาราง `sales` ไม่มีสถานะเลย นับเป็นจบแล้วทุกใบ
+     */
+    public const STATUSES = ['all', 'closed', 'open'];
+
+    /**
+     * ช่วงวันที่ + ช่องทาง + สถานะงาน จาก query string
      *
      * ไม่มีอะไรส่งมา = วันนี้วันเดียว · ส่ง from มาอย่างเดียว = วันนั้นวันเดียว
      * ส่งกลับหัวกลับหาง (to < from) ก็สลับให้ ไม่ใช่คืนช่วงว่างที่อ่านว่าไม่มียอดขาย
@@ -70,7 +80,11 @@ final class SalesReport
         if (!in_array($channel, self::CHANNELS, true)) {
             $channel = 'all';
         }
-        return ['from' => $from, 'to' => $to, 'channel' => $channel];
+        $status = str_or($query['status'] ?? null, 'all');
+        if (!in_array($status, self::STATUSES, true)) {
+            $status = 'all';
+        }
+        return ['from' => $from, 'to' => $to, 'channel' => $channel, 'status' => $status];
     }
 
     public static function wantsMain(string $channel): bool
@@ -84,6 +98,22 @@ final class SalesReport
     }
 
     /**
+     * ท่อน SQL ที่กรองสถานะงาน — คืนค่าว่างเมื่อเอาทั้งหมด
+     *
+     * รับชื่อคอลัมน์เข้ามาเพราะสองฝั่งเก็บสถานะคนละแบบ · เขียนเป็นสตริงตรง ๆ ได้
+     * เพราะค่าที่เข้ามาถูกจำกัดไว้แล้วด้วย STATUSES ตั้งแต่ range() ไม่มีทางที่ค่า
+     * จากผู้ใช้จะเดินมาถึงบรรทัดนี้
+     */
+    public static function statusSql(string $status, string $closedWhen, string $openWhen): string
+    {
+        return match ($status) {
+            'closed' => " AND $closedWhen",
+            'open'   => " AND $openWhen",
+            default  => '',
+        };
+    }
+
+    /**
      * บิลของงานตัดแว่นในช่วงวันที่ — หนึ่งแถวคือหนึ่งออเดอร์
      *
      * `paid` มาจาก `payments` ไม่ใช่จาก `custom_orders.deposit` — คอลัมน์นั้นเป็น
@@ -94,8 +124,9 @@ final class SalesReport
      * กับกระดานจึงพูดสถานะชุดเดียวกัน · ออเดอร์ที่ไม่มีเคส (เปิดจากหน้าออเดอร์
      * ตรง ๆ) จะได้ค่าว่างและตกไปเป็น "ไม่ผูกเคส" ที่หน้าเว็บ
      */
-    public static function mainBills(string $from, string $to): array
+    public static function mainBills(string $from, string $to, string $status = 'all'): array
     {
+        $onlyStatus = self::statusSql($status, 'o.order_closed = 1', 'o.order_closed = 0');
         return Db::all(
             "SELECT o.id, o.invoice_code, o.order_date, o.lens_type,
                     o.order_closed, o.case_id,
@@ -124,7 +155,7 @@ final class SalesReport
                LEFT JOIN v_stock_lot fl ON fl.id = o.frame_product_id
                LEFT JOIN v_stock_lot ll ON ll.id = o.lens_product_id
                LEFT JOIN v_stock_lot lr ON lr.id = o.right_lens_product_id
-              WHERE DATE(o.order_date) BETWEEN ? AND ?
+              WHERE DATE(o.order_date) BETWEEN ? AND ? $onlyStatus
               ORDER BY o.order_date DESC, o.id DESC",
             $from,
             $to
@@ -137,8 +168,13 @@ final class SalesReport
      * ใบที่ถูกยกเลิก (status='void') ไม่นับเป็นยอดขาย แต่ไม่ได้หายไปจากฐาน —
      * ถ้าวันหนึ่งอยากได้รายงาน "ใบที่ถูกยกเลิก" ข้อมูลยังอยู่ครบ
      */
-    public static function posBills(string $from, string $to): array
+    public static function posBills(string $from, string $to, string $status = 'all'): array
     {
+        $onlyStatus = self::statusSql(
+            $status,
+            "s.fulfillment_status = 'delivered'",
+            "s.fulfillment_status <> 'delivered'"
+        );
         $pos = Db::all(
             "SELECT s.id, s.pos_no AS bill_no, s.sale_date,
                     ROUND(s.total_amount, 2)   AS revenue,
@@ -160,15 +196,18 @@ final class SalesReport
                                  GROUP_CONCAT(product_name_snapshot
                                               ORDER BY sort_order SEPARATOR ', ') names
                             FROM pos_sale_items GROUP BY sale_id) it ON it.sale_id = s.id
-              WHERE s.status = 'active' AND DATE(s.sale_date) BETWEEN ? AND ?",
+              WHERE s.status = 'active' AND DATE(s.sale_date) BETWEEN ? AND ? $onlyStatus",
             $from,
             $to
         );
 
         /* ระบบเดิม: หนึ่งแถว = หนึ่งชิ้นจากคลัง จึงเป็นทั้งใบและทั้งรายการในตัวเอง
            เงินของมันอยู่ใน `payments` (kind='full', ผูกด้วย sale_id) ไม่ใช่
-           `pos_payments` — สองรางแยกกัน ไม่มีทางนับซ้ำ */
-        $legacy = Db::all(
+           `pos_payments` — สองรางแยกกัน ไม่มีทางนับซ้ำ
+
+           ตารางนี้ไม่มีคอลัมน์สถานะเลย ทุกใบจึงนับเป็นงานที่จบแล้ว — ถามหา
+           "งานที่ยังไม่จบ" เมื่อไหร่ ฝั่งนี้ไม่มีอะไรจะตอบ ข้ามทั้งคิวรีไปเลย */
+        $legacy = $status === 'open' ? [] : Db::all(
             "SELECT sa.id, sa.invoice_code AS bill_no, sa.sale_date,
                     ROUND(sa.price - sa.discount, 2)                        AS revenue,
                     ROUND(COALESCE(pay.paid, 0), 2)                         AS paid,
@@ -377,7 +416,7 @@ final class SalesReport
      *
      * รายการที่ให้เลือกตอนนี้อยู่ใน `Lookups::lists()['referral_source']` แต่ในฐาน
      * มีค่าที่เลิกใช้แล้วปนอยู่ด้วย เพราะเคยเก็บด้วยชุดตัวเลือกเก่า — `facebook`
-     * (สมัยที่ยังไม่มี IG/TikTok ในตัวเลือกเดียวกัน) และ `friend`
+     * (สมัยที่ยังไม่มี IG/TikTok ในตัวเลือกเดียวกัน) และ `referral`
      *
      * **ค่าเก่าถูกยุบเข้ากลุ่มปัจจุบัน ไม่ใช่แยกเป็นแท่งของตัวเอง** — สองแท่งที่
      * แปลว่าช่องทางเดียวกันทำให้เจ้าของร้านอ่านสัดส่วนผิด ซึ่งเป็นสิ่งเดียวที่
@@ -393,8 +432,8 @@ final class SalesReport
         'ai'       => 'AI',
         'google'   => 'Google',
         'walk_in'  => 'Walk In',
-        'friend'   => 'ลูกค้าแนะนำ',
-        'referral' => 'ลูกค้าแนะนำ',
+        'friend'   => 'Friend / ลูกค้าแนะนำ',
+        'referral' => 'Friend / ลูกค้าแนะนำ',
         'other'    => 'อื่นๆ',
     ];
 

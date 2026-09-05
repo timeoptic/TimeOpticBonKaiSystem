@@ -32,7 +32,7 @@ import { EmployeeSelect } from '../../../components/Selects.jsx';
 import { StockEmbedModal } from '../../../components/StockEmbedModal.jsx';
 import { RX_KIND_LABEL } from '../../../lib/constants.js';
 import {
-  custName, fmtDateTime, money, power, rxNum,
+  custName, cylPower, fmtDateTime, money, rxNum, sphPower,
 } from '../../../lib/format.js';
 import { Icon } from '../../../components/Icon.jsx';
 
@@ -421,8 +421,8 @@ export function OrderFormView({
                     <b>{RX_KIND_LABEL[rx.kind] || rx.kind}</b>{' '}
                     <span className="muted">{fmtDateTime(rx.test_date)}</span>
                     <span className="muted">
-                      {`  R ${power(rx.r_sphere)}/${power(rx.r_cylinder)}×${rxNum(rx.r_axis)}`
-                        + `   L ${power(rx.l_sphere)}/${power(rx.l_cylinder)}×${rxNum(rx.l_axis)}`
+                      {`  R ${sphPower(rx.r_sphere)}/${cylPower(rx.r_cylinder)}×${rxNum(rx.r_axis)}`
+                        + `   L ${sphPower(rx.l_sphere)}/${cylPower(rx.l_cylinder)}×${rxNum(rx.l_axis)}`
                         + (rx.test_for ? '  · ' + rx.test_for : '')}
                     </span>
                   </span>

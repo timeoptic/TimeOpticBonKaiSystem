@@ -209,6 +209,7 @@ try {
     }
     $payment = hit('รับชำระเงิน', 'POST', '/api/payments', [
         'case_id' => $caseId, 'customer_id' => $customerId, 'amount' => 500, 'method' => 'cash',
+        'received_by' => $employeeRef,
     ]);
     $paymentId = (int) ($payment['id'] ?? 0);
     /* การขายหน้าร้านผูกกับล็อตจริงหนึ่งชิ้น ไม่ใช่ยอดเงินลอย ๆ — ต้องหยิบล็อตที่

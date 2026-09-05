@@ -25,6 +25,7 @@ import { Picker } from '../../../components/Picker.jsx';
 import { EmployeeSelect, Select } from '../../../components/Selects.jsx';
 import { custName, dateOnly, hhmm, todayISO } from '../../../lib/format.js';
 import { Icon } from '../../../components/Icon.jsx';
+import { DateField } from '../../../components/DateField.jsx';
 
 export function BookingFormView({ editing }) {
   // `editing` must always be passed explicitly (true or false) by the caller —
@@ -84,10 +85,13 @@ export function BookingFormView({ editing }) {
     }
   };
 
-  /* when a customer is linked, the free-text fields are hidden and left blank */
+  /* when a customer is linked, the free-text fields are hidden and left blank
+     · form="booking-form" เพราะการ์ดนี้อยู่เหนือ <form> คนละก้อนกันตามเลย์เอาต์
+       ถ้าไม่ผูกไว้ readForm() ซึ่งอ่านแค่ form.elements จะไม่เห็นสี่ช่องนี้เลย
+       แล้วการจองลูกค้าใหม่จะโดน API ตีกลับว่าไม่ได้กรอกชื่อ/เบอร์ */
   const freeText = (name, label) => (
     <Field label={label}>
-      <input name={name} defaultValue={b.customer_id ? '' : (b[name] || '')} />
+      <input form="booking-form" name={name} defaultValue={b.customer_id ? '' : (b[name] || '')} />
     </Field>
   );
 
@@ -134,13 +138,12 @@ export function BookingFormView({ editing }) {
         </Card>
       </Split>
 
-      <form onSubmit={save}>
+      <form id="booking-form" onSubmit={save}>
         <Card title="รายละเอียดการจอง">
           <FormGrid>
             <Field label="วันที่จอง *">
-              <input
+              <DateField
                 name="booking_date"
-                type="date"
                 required
                 defaultValue={dateOnly(b.booking_date) || queryDate || todayISO(1)}
               />

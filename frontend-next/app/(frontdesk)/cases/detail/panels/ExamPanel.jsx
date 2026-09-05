@@ -29,8 +29,12 @@ import {
 } from '../../../../../components/ui.jsx';
 import { EmployeeSelect, ListSelect } from '../../../../../components/Selects.jsx';
 import { useProcessActions } from '../../../../../components/ProcessShell.jsx';
-import { dtLocal, fmtDate, fmtDateTime, nowLocal, power, toStamp } from '../../../../../lib/format.js';
+import {
+  cylPower, dtLocal, fmtDate, fmtDateTime, normAdd, normAxis, normCyl, normSphere,
+  nowLocal, sphPower, toStamp,
+} from '../../../../../lib/format.js';
 import { Icon } from '../../../../../components/Icon.jsx';
+import { DateField } from '../../../../../components/DateField.jsx';
 
 const HEALTH = [
   ['health_diabetes', 'เบาหวาน'], ['health_bp', 'ความดัน'], ['health_heart', 'โรคหัวใจ'],
@@ -62,6 +66,13 @@ const FINAL_REQUIRED = [['sphere', 'SPH'], ['cylinder', 'CYL'], ['axis', 'AXIS']
 
 const EYE_LABEL = { r: 'R / ขวา', l: 'L / ซ้าย' };
 
+/* ช่องที่มีรูปแบบตายตัว จัดให้ตอน "ออกจากช่อง" ไม่ใช่ตอนกำลังพิมพ์ — คนกรอกใบสายตา
+   พิมพ์รวดเดียวแล้ว Tab ไปช่องถัดไป ถ้าไปขัดกลางคันจะพิมพ์ไม่ทันมากกว่าจะได้ค่าถูก
+   คีย์คือชื่อคอลัมน์ ตารางไหนมีคอลัมน์นี้ก็ได้กติกาเดียวกันทั้งหมด */
+const RX_NORMALIZE = {
+  sphere: normSphere, cylinder: normCyl, axis: normAxis, add: normAdd,
+};
+
 const OLD_SOURCES = [
   ['history', 'ดึงจากประวัติในระบบ'],
   ['lensmeter', 'วัดจากแว่นเดิม'],
@@ -75,6 +86,52 @@ const FINAL_SOURCES = [
   ['adjusted', 'ปรับค่าเอง / Adjusted'],
 ];
 
+/* ตาหลัก / ตารอง — ข้างที่ลูกค้าใช้นำ เป็นคำตอบเดียวต่อรอบตรวจ ไม่ใช่ค่าต่อตา
+   จึงไม่ได้อยู่ในตาราง R/L แต่เป็นช่องเดียวข้างบน
+   'both' = เด่นเท่ากันทั้งคู่ ซึ่งเป็นคำตอบ ไม่ใช่ "ยังไม่ได้ตอบ" — ว่างต่างหากที่แปลว่ายังไม่ระบุ */
+const DOMINANT_EYES = [['r', 'R / ขวา'], ['l', 'L / ซ้าย'], ['both', 'ทั้งสองข้าง']];
+
+const DOMINANT_TEXT = {
+  r: 'ตาหลัก = R / ขวา · ตารอง = L / ซ้าย',
+  l: 'ตาหลัก = L / ซ้าย · ตารอง = R / ขวา',
+  both: 'เด่นเท่ากันทั้งสองข้าง — ไม่มีตารอง',
+};
+
+/**
+ * ตาหลัก/ตารอง — ค่าเดียวกันแต่โผล่สองที่คนละหน้าที่
+ *
+ *   มี onPick   ปุ่มติ๊ก (ข้อ 4) กดตัวที่ติ๊กค้างอยู่ซ้ำ = ยกเลิก กลับเป็น "ยังไม่ได้ระบุ"
+ *   ไม่มี       อ่านอย่างเดียว (ข้อ 5) บอกว่าเลือกอะไรไว้เฉย ๆ
+ *
+ * ติ๊กได้ที่เดียวโดยตั้งใจ — ข้อ 5 เป็นที่ "อ่านผลสรุปก่อนยืนยัน" ถ้าติ๊กได้ทั้งสองที่
+ * คนอ่านจะไม่รู้ว่าอันไหนเป็นตัวจริง ทั้งที่มันเป็นช่องเดียวกัน
+ */
+function DominantEye({ value, onPick = null, className = '' }) {
+  const picked = DOMINANT_EYES.find(([v]) => v === value);
+  const blank = onPick ? 'ยังไม่ได้ระบุ' : 'ยังไม่ได้ระบุ — ติ๊กที่ข้อ 4 MEASURED';
+  return (
+    <Field label="ตาหลัก / ตารอง" hint={DOMINANT_TEXT[value] || blank} className={className}>
+      {onPick ? (
+        <Row style={{ gap: 8 }}>
+          {DOMINANT_EYES.map(([v, label]) => (
+            <button
+              type="button"
+              key={v}
+              className={`chip-btn ${value === v ? 'active' : ''}`}
+              aria-pressed={value === v}
+              onClick={() => onPick(value === v ? '' : v)}
+            >
+              {label}
+            </button>
+          ))}
+        </Row>
+      ) : (
+        <p className="rx-dom-read">{picked ? picked[1] : '—'}</p>
+      )}
+    </Field>
+  );
+}
+
 /** R above L, one column per measurement — the two eyes must never look alike
  * enough to be read off the wrong row. A blank stays blank: 0.00 is a real
  * power, so it can never stand in for "ไม่มีข้อมูล".
@@ -82,11 +139,26 @@ const FINAL_SOURCES = [
  * `missing` marks the cells a save is waiting on, so "กรุณากรอก SPH" points at
  * a box rather than leaving the reader to hunt for which of eight it meant. */
 function RxGrid({ cols, get, set, readOnly = false, lockedCols = [], missing = null }) {
+  /* ช่องที่พิมพ์ผิดกติกา — เป็นเรื่องของการพิมพ์ในตารางนี้ ไม่ใช่ของค่าที่บันทึกไปแล้ว
+     จึงอยู่ในตาราง ไม่ต้องยกขึ้นไปให้ทั้งหน้ารู้ */
+  const [wrong, setWrong] = useState({});
+
+  /* ออกจากช่องแล้วค่อยจัด: ถูกกติกาก็เขียนรูปแบบมาตรฐานกลับลงไป ผิดก็ปล่อยค่าที่พิมพ์
+     ไว้อย่างนั้นแล้วทำเครื่องหมาย — แก้ให้เองทั้งที่เดาไม่ออกคือทางที่ค่าผิดหลุดแบบเงียบ ๆ */
+  const fix = (k, f) => {
+    const rule = RX_NORMALIZE[f];
+    if (!rule) return;
+    const raw = get(k, f);
+    const { value, error } = rule(raw);
+    setWrong((w) => (w[`${k}_${f}`] === error ? w : { ...w, [`${k}_${f}`]: error }));
+    if (!error && value !== raw) set(k, f, value);
+  };
+
   const eye = (k) => (
     <tr key={k}>
       <th scope="row">{EYE_LABEL[k]}</th>
       {cols.map(([f]) => {
-        const bad = !!missing?.[`${k}_${f}`];
+        const bad = !!missing?.[`${k}_${f}`] || !!wrong[`${k}_${f}`];
         /* ล็อกไว้แต่ยังเป็น <input> ตัวเดียวกัน คอลัมน์จะได้กว้างและวางตัวเลขตรงกับช่องอื่น */
         const locked = lockedCols.includes(f);
         return (
@@ -100,9 +172,10 @@ function RxGrid({ cols, get, set, readOnly = false, lockedCols = [], missing = n
                   className={bad ? 'rx-missing' : undefined}
                   disabled={locked || undefined}
                   readOnly={locked || undefined}
-                  title={locked ? 'มาจากขั้น “วัด Center” — แก้ที่นี่ไม่ได้' : undefined}
+                  title={locked ? 'มาจากขั้น “วัด Center” — แก้ที่นี่ไม่ได้' : (wrong[`${k}_${f}`] || undefined)}
                   value={locked ? (get(k, f) || '—') : get(k, f)}
                   onChange={locked ? undefined : (e) => set(k, f, e.target.value)}
+                  onBlur={locked ? undefined : () => fix(k, f)}
                 />
               )}
           </td>
@@ -110,6 +183,10 @@ function RxGrid({ cols, get, set, readOnly = false, lockedCols = [], missing = n
       })}
     </tr>
   );
+  /* เหตุผลเดียวกันที่โผล่ทั้งสองตาเขียนบรรทัดเดียวพอ คนอ่านต้องการรู้ว่า "ผิดยังไง"
+     ส่วน "ช่องไหน" ขอบแดงบอกอยู่แล้ว */
+  const notes = [...new Set(Object.values(wrong).filter(Boolean))];
+
   return (
     <div className="rx-grid-wrap">
       <table className="rx-grid">
@@ -124,6 +201,12 @@ function RxGrid({ cols, get, set, readOnly = false, lockedCols = [], missing = n
           {eye('l')}
         </tbody>
       </table>
+      {notes.length > 0 && (
+        <p className="rx-missing-note">
+          <Icon name="warning" />
+          {` ${notes.join(' · ')}`}
+        </p>
+      )}
     </div>
   );
 }
@@ -151,6 +234,29 @@ const eyeOf = (row, k) => ({
   base: row?.[`${k}_base`] || '',
 });
 const bothEyes = (row) => ({ r: eyeOf(row, 'r'), l: eyeOf(row, 'l') });
+
+/**
+ * จัดรูปแบบ AXIS/ADD ของแถวที่เพิ่งอ่านมาจากฐานข้อมูล
+ *
+ * ใบที่กรอกไว้ก่อนมีกติกานี้เก็บเป็น '2.00' หรือ '090' ถ้าไม่จัดตอนอ่าน ตารางเดียวกัน
+ * จะมีตาขวาเป็น 2.00 ตาซ้ายเป็น +02.00 ซึ่งทำลายเหตุผลทั้งหมดของการเติมศูนย์
+ * (จุดทศนิยมต้องตรงกันถึงจะกวาดตาเทียบสองข้างได้)
+ *
+ * เปลี่ยนแค่รูปแบบ ไม่เปลี่ยนตัวเลข และค่าที่ผิดกติกาไม่ถูกแตะ — ปล่อยให้ขอบแดงบอก
+ * แล้วให้คนที่รู้เรื่องเป็นคนแก้
+ */
+const tidyRx = (row) => {
+  const out = { ...(row || {}) };
+  for (const k of ['r', 'l']) {
+    for (const [f, rule] of Object.entries(RX_NORMALIZE)) {
+      const raw = out[`${k}_${f}`];
+      if (raw === undefined || raw === null || raw === '') continue;
+      const { value, error } = rule(raw);
+      if (!error) out[`${k}_${f}`] = value;
+    }
+  }
+  return out;
+};
 const hasValues = (row) => ['r_sphere', 'l_sphere', 'r_cylinder', 'l_cylinder', 'r_add', 'l_add']
   .some((k) => (row?.[k] ?? '') !== '');
 
@@ -195,8 +301,8 @@ export function ExamPanel({ c, reload }) {
     return ['history', 'lensmeter', 'external_rx'].includes(row.source) ? 'old' : 'measured';
   };
 
-  const [form, setForm] = useState(() => ({ ...(draftRow || {}) }));
-  const [oldForm, setOldForm] = useState(() => ({ ...(oldRow || legacyOldOf(draftRow) || {}) }));
+  const [form, setForm] = useState(() => tidyRx(draftRow));
+  const [oldForm, setOldForm] = useState(() => tidyRx(oldRow || legacyOldOf(draftRow)));
   const [finalSource, setFinalSource] = useState(() => finalSourceOf(finalRow));
   const [finalRx, setFinalRx] = useState(() => ({ ...(finalRow || {}) }));
   const [adjustReason, setAdjustReason] = useState(finalRow?.adjust_reason || '');
@@ -205,10 +311,10 @@ export function ExamPanel({ c, reload }) {
 
   /* re-seed when the case reloads (a save lands, or another step wrote) */
   useEffect(() => {
-    setForm({ ...(draftRow || {}) });
-    setOldForm({ ...(oldRow || legacyOldOf(draftRow) || {}) });
+    setForm(tidyRx(draftRow));
+    setOldForm(tidyRx(oldRow || legacyOldOf(draftRow)));
     if (finalRow) {
-      setFinalRx({ ...finalRow });
+      setFinalRx(tidyRx(finalRow));
       setAdjustReason(finalRow.adjust_reason || '');
       setFinalSource(finalSourceOf(finalRow));
     }
@@ -379,6 +485,19 @@ export function ExamPanel({ c, reload }) {
       err(missingFinal.labels.join('\n'));
       return false;
     }
+    /* AXIS/ADD ที่ผิดรูปแบบต้องไม่หลุดไปถึงห้องผลิต — ตรวจซ้ำตรงนี้ ไม่พึ่งขอบแดงในตาราง
+       เพราะค่าที่ Final ใช้อาจถูกคัดลอกมาจากตารางอื่นที่ยังไม่มีใครคลิกเข้าไปเลยสักช่อง */
+    const rxWrong = [];
+    for (const k of ['r', 'l']) {
+      for (const [f, rule] of Object.entries(RX_NORMALIZE)) {
+        const { error } = rule(values[k][f]);
+        if (error) rxWrong.push(`${EYE_LABEL[k]} — ${error}`);
+      }
+    }
+    if (rxWrong.length) {
+      err([...new Set(rxWrong)].join('\n'));
+      return false;
+    }
     const saved = await saveDraft();
     const originId = finalSource === 'old'
       ? (saved.old?.id || oldRow?.id || null)
@@ -397,6 +516,9 @@ export function ExamPanel({ c, reload }) {
       adjust_reason: finalSource === 'adjusted' ? adjustReason : null,
       test_date: toStamp(nowLocal()),
       test_for: form.test_for || '',
+      /* ใบพิมพ์อ่านตาหลัก/ตารอง จากใบ final ใบเดียว — คัดลอกมาเหมือนค่าสายตา ไม่ชี้กลับไปที่
+         ใบ measured ไม่งั้นแก้ใบวัดทีหลังแล้วใบที่สั่งตัดไปแล้วจะเปลี่ยนความหมายตาม */
+      dominant_eye: form.dominant_eye || '',
       performed_by: form.performed_by || null,
       /* ไม่ส่ง pd_total / r_pd / l_pd — PD เป็นของขั้นวัด Center (ตาราง centerings)
          ใบสายตาถือค่านั้นไม่ได้ ไม่งั้นจะมีสองแหล่งที่ขัดกันได้ */
@@ -534,8 +656,8 @@ export function ExamPanel({ c, reload }) {
                   return (
                     <button type="button" key={s.key} className="rx-history-row" onClick={() => pullFrom(s)}>
                       <b>{`${fmtDate(s.exam_date)}${s.case_code ? ` · ${s.case_code}` : ''}`}</b>
-                      <span>{`R ${power(src?.r_sphere)} / ${power(src?.r_cylinder)} x ${src?.r_axis || '—'}`}</span>
-                      <span>{`L ${power(src?.l_sphere)} / ${power(src?.l_cylinder)} x ${src?.l_axis || '—'}`}</span>
+                      <span>{`R ${sphPower(src?.r_sphere)} / ${cylPower(src?.r_cylinder)} x ${src?.r_axis || '—'}`}</span>
+                      <span>{`L ${sphPower(src?.l_sphere)} / ${cylPower(src?.l_cylinder)} x ${src?.l_axis || '—'}`}</span>
                       <span className="muted">{s.final ? 'ค่าที่ใช้จริง' : 'ค่าที่วัดได้'}</span>
                     </button>
                   );
@@ -552,10 +674,9 @@ export function ExamPanel({ c, reload }) {
               <input value={oldForm.external_place ?? ''} onChange={(e) => setOld('external_place', e.target.value)} />
             </Field>
             <Field label="วันที่ในใบ Prescription">
-              <input
-                type="date"
+              <DateField
                 value={(oldForm.external_date || '').slice(0, 10)}
-                onChange={(e) => setOld('external_date', e.target.value)}
+                onChange={(v) => setOld('external_date', v)}
               />
             </Field>
           </FormGrid>
@@ -603,6 +724,13 @@ export function ExamPanel({ c, reload }) {
               onChange={(e) => set('test_date', e.target.value)}
             />
           </Field>
+          {/* ถามตรงนี้เพราะเป็นสิ่งที่รู้ตอนวัด ไม่ใช่ตอนตัดสินใจ — แต่ตอบที่ Final ก็ได้
+              เป็นช่องเดียวกัน กินเต็มแถวเพราะสามปุ่มไม่พอในคอลัมน์เดียวของกริดนี้ (240px) */}
+          <DominantEye
+            className="full"
+            value={form.dominant_eye ?? ''}
+            onPick={(v) => set('dominant_eye', v)}
+          />
         </FormGrid>
         {/* PD ไม่มีช่องรวมตรงนี้แล้ว — เป็นคอลัมน์ท้ายตาราง แยกตาม R / L และอ่านอย่างเดียว */}
         <RxGrid
@@ -627,6 +755,9 @@ export function ExamPanel({ c, reload }) {
               blank="— เลือกการใช้งาน —"
             />
           </Field>
+          {/* อ่านอย่างเดียว — ค่าเดียวกับข้อ 4 บอกไว้ให้เห็นว่าใบสั่งตัดจะติดป้ายข้างไหน
+              โดยไม่ต้องเลื่อนขึ้นไปดู แต่แก้ที่นี่ไม่ได้ */}
+          <DominantEye value={form.dominant_eye ?? ''} />
         </FormGrid>
 
         <Row style={{ gap: 8, marginBottom: 10 }}>

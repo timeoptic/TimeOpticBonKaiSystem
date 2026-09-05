@@ -28,6 +28,7 @@ function reportMeta(array $r): array
         'from'    => $r['from'],
         'to'      => $r['to'],
         'channel' => $r['channel'],
+        'status'  => $r['status'],
         /* ขอบเขตของข้อมูลที่ร้านมีจริง — หน้าจอที่ว่างใช้บอกว่าทำไมถึงว่าง
            และเสนอช่วงที่มีข้อมูลให้กดได้ แทนที่จะขึ้น ฿0 เฉย ๆ */
         'bounds'  => SalesReport::bounds($r['channel']),
@@ -46,8 +47,8 @@ GET('/api/reports/overview', function (array $req) {
     $r  = SalesReport::range($req['query']);
     $ch = $r['channel'];
 
-    $main = SalesReport::wantsMain($ch) ? SalesReport::mainBills($r['from'], $r['to']) : [];
-    $pos  = SalesReport::wantsPos($ch)  ? SalesReport::posBills($r['from'], $r['to'])  : [];
+    $main = SalesReport::wantsMain($ch) ? SalesReport::mainBills($r['from'], $r['to'], $r['status']) : [];
+    $pos  = SalesReport::wantsPos($ch)  ? SalesReport::posBills($r['from'], $r['to'], $r['status'])  : [];
 
     $mt  = SalesReport::totals($main);
     $pt  = SalesReport::totals($pos);
@@ -112,7 +113,7 @@ GET('/api/reports/main-process', function (array $req) {
             'by_lens' => [], 'by_employee' => [], 'daily' => [], 'profit' => null];
     }
 
-    $bills  = SalesReport::mainBills($r['from'], $r['to']);
+    $bills  = SalesReport::mainBills($r['from'], $r['to'], $r['status']);
     $labels = SalesReport::lensTypeLabels();
 
     $profit    = 0.0;
@@ -178,7 +179,7 @@ GET('/api/reports/pos', function (array $req) {
             'by_category' => [], 'daily' => [], 'voided' => ['bills' => 0, 'amount' => 0.0]];
     }
 
-    $bills = SalesReport::posBills($r['from'], $r['to']);
+    $bills = SalesReport::posBills($r['from'], $r['to'], $r['status']);
     $qty   = 0;
     $rows  = [];
     foreach ($bills as $b) {
@@ -250,8 +251,8 @@ GET('/api/reports/payments', function (array $req) {
     usort($methods, fn($a, $b) => $b['amount'] <=> $a['amount']);
 
     /* บิลที่ผ่อนอยู่ — จ่ายมาแล้วบางส่วน ยังไม่ครบ นับจากบิลที่เปิดในช่วงนี้ */
-    $main = SalesReport::wantsMain($r['channel']) ? SalesReport::mainBills($r['from'], $r['to']) : [];
-    $pos  = SalesReport::wantsPos($r['channel'])  ? SalesReport::posBills($r['from'], $r['to'])  : [];
+    $main = SalesReport::wantsMain($r['channel']) ? SalesReport::mainBills($r['from'], $r['to'], $r['status']) : [];
+    $pos  = SalesReport::wantsPos($r['channel'])  ? SalesReport::posBills($r['from'], $r['to'], $r['status'])  : [];
     $inst = ['bills' => 0, 'balance' => 0.0, 'paid' => 0.0];
     foreach (array_merge($main, $pos) as $b) {
         if ((float) $b['paid'] > 0.001 && (float) $b['balance'] > 0.001) {
@@ -294,8 +295,8 @@ GET('/api/reports/payments', function (array $req) {
 GET('/api/reports/profit', function (array $req) {
     $r = SalesReport::range($req['query']);
 
-    $main    = SalesReport::wantsMain($r['channel']) ? SalesReport::mainBills($r['from'], $r['to']) : [];
-    $posRows = SalesReport::wantsPos($r['channel'])  ? SalesReport::posBills($r['from'], $r['to'])  : [];
+    $main    = SalesReport::wantsMain($r['channel']) ? SalesReport::mainBills($r['from'], $r['to'], $r['status']) : [];
+    $posRows = SalesReport::wantsPos($r['channel'])  ? SalesReport::posBills($r['from'], $r['to'], $r['status'])  : [];
 
     /* `revenue` คือยอดขายทั้งหมด · `costed_revenue` คือยอดขายเฉพาะใบที่รู้ต้นทุน
        — อัตรากำไรต้องหารด้วยตัวหลัง ไม่ใช่ตัวแรก · หารด้วยยอดรวมทั้งก้อนแปลว่า
@@ -376,8 +377,8 @@ GET('/api/reports/profit', function (array $req) {
 GET('/api/reports/employees', function (array $req) {
     $r = SalesReport::range($req['query']);
 
-    $main = SalesReport::wantsMain($r['channel']) ? SalesReport::mainBills($r['from'], $r['to']) : [];
-    $pos  = SalesReport::wantsPos($r['channel'])  ? SalesReport::posBills($r['from'], $r['to'])  : [];
+    $main = SalesReport::wantsMain($r['channel']) ? SalesReport::mainBills($r['from'], $r['to'], $r['status']) : [];
+    $pos  = SalesReport::wantsPos($r['channel'])  ? SalesReport::posBills($r['from'], $r['to'], $r['status'])  : [];
 
     $blank = 'ไม่ระบุพนักงาน';
     $rows  = [];
@@ -603,4 +604,39 @@ GET('/api/reports/channels', function (array $req) {
         /* โค้ดเก่าที่ถูกยุบเข้ากลุ่มปัจจุบัน — หน้าเว็บเอาไปบอกผู้อ่าน */
         'merged'      => (object) $seenLegacy,
     ];
+});
+
+/**
+ * ส่งออกเป็นไฟล์ Excel — ชีทสรุปหนึ่งใบ แล้วแยกชีทรายเดือน
+ *
+ * รับพารามิเตอร์ชุดเดียวกับอีกเจ็ดเส้น (`?from=&to=&channel=`) เพราะปุ่มบนหน้าเว็บ
+ * ส่งตัวกรองที่ผู้ใช้เห็นอยู่ตรงหน้ามาตรง ๆ — ไฟล์ที่ได้จึงเป็นช่วงเดียวกับที่
+ * กำลังดู ไม่ใช่ช่วงที่ต้องไปกรอกซ้ำในหน้าต่างส่งออก
+ *
+ * เส้นนี้ตอบเป็นไบต์ของไฟล์ ไม่ใช่ JSON จึงต้อง `exit` เอง — ปล่อยให้ค่ากลับไปถึง
+ * `index.php` เมื่อไหร่ มันจะห่อเป็น JSON ทับไฟล์ที่พิมพ์ไปแล้ว (routes/uploads.php
+ * ที่ส่งไฟล์แนบใช้วิธีเดียวกัน)
+ */
+GET('/api/reports/export.xlsx', function (array $req) {
+    $r     = SalesReport::range($req['query']);
+    $bytes = SalesExport::workbook($r['from'], $r['to'], $r['channel'], $r['status'])->toBytes();
+    $name  = SalesExport::fileName($r['from'], $r['to']);
+
+    /* ชื่อไฟล์ภาษาไทยต้องส่งเป็น filename* ตาม RFC 5987 · filename= ธรรมดาที่มี
+       ไบต์นอก ASCII เบราว์เซอร์แต่ละตัวเดาการเข้ารหัสคนละแบบ บางตัวได้ชื่อเป็น
+       ขยะ · ใส่ชื่อสำรองแบบ ASCII ไว้ให้ตัวที่ยังไม่รู้จัก filename* ด้วย */
+    $ascii = 'sales-report-' . $r['from'] . '_' . $r['to'] . '.xlsx';
+    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    header(sprintf(
+        "Content-Disposition: attachment; filename=\"%s\"; filename*=UTF-8''%s",
+        $ascii,
+        rawurlencode($name)
+    ));
+    /* หน้าเว็บอยู่คนละพอร์ตกับ API — ไม่ประกาศตรงนี้ JavaScript อ่านชื่อไฟล์
+       ที่แนบมากับ response ไม่ได้ แล้วต้องเดาชื่อเองทั้งที่เราส่งมาให้แล้ว */
+    header('Access-Control-Expose-Headers: Content-Disposition');
+    header('Content-Length: ' . strlen($bytes));
+    header('Cache-Control: no-store');
+    echo $bytes;
+    exit;
 });
