@@ -19,30 +19,30 @@
    ตามที่มันเดินไปข้างหน้า — กวาดตาดูกระดานแล้วรู้ทันทีว่างานกองอยู่ช่วงต้นหรือท้าย
    ทุกค่าคอนทราสต์ ≥ 4.5:1 บนพื้นขาว จึงเอาไปเป็นสีตัวหนังสือได้ ไม่ใช่แค่จุดสี */
 export const CASE_PROCESSES = [
-  { id: 'reception', label: 'รับลูกค้า', color: '#1D7F8F', icon: '🛎', completeLabel: 'เปิดเคสเรียบร้อย' },
-  { id: 'exam', label: 'วัดสายตา', color: '#1D8184', icon: '👁', completeLabel: 'ยืนยันผลวัดสายตา' },
-  { id: 'sales', label: 'ขาย/เลือกกรอบ', color: '#1D8278', icon: '🛍', completeLabel: 'ยืนยันรายการขาย' },
-  { id: 'payment', label: 'ชำระเงิน', color: '#1D846B', icon: '💳', completeLabel: 'ยืนยันการชำระเงิน' },
-  { id: 'centering', label: 'วัด Center', color: '#1D8658', icon: '🎯', completeLabel: 'ยืนยันค่า Center' },
-  { id: 'delivery', label: 'ส่งมอบ', color: '#1D8832', icon: '📦', completeLabel: 'ส่งมอบเสร็จ — ปิดเคส' },
+  { id: 'reception', label: 'รับลูกค้า', color: '#1D7F8F', icon: 'bellDesk', completeLabel: 'เปิดเคสเรียบร้อย' },
+  { id: 'exam', label: 'วัดสายตา', color: '#1D8184', icon: 'eye', completeLabel: 'ยืนยันผลวัดสายตา' },
+  { id: 'sales', label: 'ขาย/เลือกกรอบ', color: '#1D8278', icon: 'bag', completeLabel: 'ยืนยันรายการขาย' },
+  { id: 'payment', label: 'ชำระเงิน', color: '#1D846B', icon: 'card', completeLabel: 'ยืนยันการชำระเงิน' },
+  { id: 'centering', label: 'วัด Center', color: '#1D8658', icon: 'target', completeLabel: 'ยืนยันค่า Center' },
+  { id: 'delivery', label: 'ส่งมอบ', color: '#1D8832', icon: 'box', completeLabel: 'ส่งมอบเสร็จ — ปิดเคส' },
 ];
 
 /** สถานะปิดเคส — ไม่ใช่ขั้นตอน แต่กระดานงานต้องมีคอลัมน์ให้เคสที่จบแล้วไปอยู่ */
-export const DONE_STAGE = { id: 'done', label: 'จบงาน', color: '#64748B', icon: '✅' };
+export const DONE_STAGE = { id: 'done', label: 'จบงาน', color: '#64748B', icon: 'checkCircle' };
 
 export const processInfo = (id) =>
   CASE_PROCESSES.find((p) => p.id === id)
   || (id === DONE_STAGE.id ? DONE_STAGE : null)
-  || { id, label: id || '-', color: '#64748B', icon: '•' };
+  || { id, label: id || '-', color: '#64748B', icon: 'circle' };
 
 /** the 6 statuses a process can be in — icon and colour class for the stepper */
 export const PROCESS_STATE_META = {
-  not_started: { label: 'ยังไม่เริ่ม', icon: '○', cls: '' },
-  in_progress: { label: 'กำลังดำเนินการ', icon: '●', cls: 'warn' },
-  completed: { label: 'เสร็จแล้ว', icon: '✓', cls: 'done' },
-  waiting: { label: 'รอ', icon: '⏳', cls: 'warn' },
-  problem: { label: 'มีปัญหา', icon: '⚠', cls: 'danger' },
-  locked: { label: 'ยังทำไม่ได้', icon: '🔒', cls: 'locked' },
+  not_started: { label: 'ยังไม่เริ่ม', icon: 'circle', cls: '' },
+  in_progress: { label: 'กำลังดำเนินการ', icon: 'circleHalf', cls: 'warn' },
+  completed: { label: 'เสร็จแล้ว', icon: 'check', cls: 'done' },
+  waiting: { label: 'รอ', icon: 'hourglass', cls: 'warn' },
+  problem: { label: 'มีปัญหา', icon: 'warning', cls: 'danger' },
+  locked: { label: 'ยังทำไม่ได้', icon: 'lock', cls: 'locked' },
 };
 
 export const stateMeta = (status) => PROCESS_STATE_META[status] || PROCESS_STATE_META.not_started;

@@ -30,6 +30,7 @@ import { useAsync } from '../../../../lib/hooks.js';
 import { Card, Loading } from '../../../../components/ui.jsx';
 import { QueryParamPage } from '../../../../components/QueryParamPage.jsx';
 import { Icon } from '../../../../components/Icon.jsx';
+import { useConfirm } from '../../../../components/Confirm.jsx';
 import { fmtDate } from '../../../../lib/format.js';
 import { bahtText, bahtTextEn } from '../../../../lib/bahttext.js';
 import { orderReceipt, saleReceipt, vatBreakdown } from '../../../../lib/receipt.js';
@@ -228,6 +229,7 @@ function Copy({ r, cust, t, lang, vat, kind }) {
 }
 
 function ReceiptSheet() {
+  const confirm = useConfirm();
   const params = useSearchParams();
   const orderId = params.get('order');
   const saleId = params.get('sale');
@@ -288,7 +290,13 @@ function ReceiptSheet() {
   }));
   /* ล้างทั้งสี่ช่อง — ใบจะพิมพ์ออกมาเป็นเส้นประเปล่าให้เขียนมือ ซึ่งเป็นวิธีที่
      ฟอร์ม Excel เดิมของร้านใช้ กดผิดก็กด "ดึงชื่อ+เบอร์จากระบบ" เอาคืนได้ */
-  const clearAll = () => setCust(EMPTY_CUST);
+  /* ถามก่อนล้าง — ชื่อกับเบอร์ที่พิมพ์ไว้หายทั้งคู่ และปุ่มอยู่ติดกับ "ดึงชื่อ+เบอร์
+     จากระบบ" ซึ่งเป็นปุ่มที่คนตั้งใจจะกดจริง */
+  const clearAll = async () => {
+    const filled = Boolean(String(cust.name || '').trim() || String(cust.phone || '').trim());
+    if (filled && !await confirm('ล้างข้อมูลลูกค้า', 'ล้างชื่อกับเบอร์ที่กรอกไว้ในใบเสร็จ?', { confirmText: 'ล้าง', danger: true })) return;
+    setCust(EMPTY_CUST);
+  };
 
   const vat = vatBreakdown(data.total);
   const back = orderId
@@ -367,7 +375,7 @@ function ReceiptSheet() {
             </label>
           </div>
           <div className="rc-form-foot">
-            <button type="button" className="btn btn-ghost" onClick={clearAll}>
+            <button type="button" className="btn btn-ghost" onClick={() => void clearAll()}>
               <Icon name="x" /> ล้างข้อมูล
             </button>
             <button type="button" className="btn btn-light" onClick={pullFromSystem}>

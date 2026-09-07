@@ -40,35 +40,35 @@ export { crumbFor };
  */
 const NAV = [
   ['หน้าหลัก', [
-    ['🏠', 'ภาพรวม', '/'],
+    ['home', 'ภาพรวม', '/'],
   ]],
   ['งานในร้าน', [
-    ['📅', 'ปฏิทินจองคิว', '/bookings'],
-    ['🗂', 'กระดานงาน', '/cases'],
+    ['calendar', 'ปฏิทินจองคิว', '/bookings'],
+    ['board', 'กระดานงาน', '/cases'],
   ]],
   /* ครบ 6 ขั้นตามหัวข้อ — ขั้นแรกไม่มีหน้ารวมของตัวเอง จึงชี้ไปที่ "เปิดเคสใหม่" */
   ['ขั้นตอนงาน 6 ขั้น', [
-    ['🛎', 'รับลูกค้า', '/cases/new'],
-    ['👁', 'วัดสายตา', '/exam'],
-    ['🛍', 'ขาย-เลือกกรอบ', '/case-sales'],
-    ['💳', 'ชำระเงิน', '/case-payments'],
-    ['🎯', 'วัด Center', '/centering'],
-    ['📦', 'ส่งมอบ', '/delivery'],
+    ['bellDesk', 'รับลูกค้า', '/cases/new'],
+    ['eye', 'วัดสายตา', '/exam'],
+    ['bag', 'ขาย-เลือกกรอบ', '/case-sales'],
+    ['card', 'ชำระเงิน', '/case-payments'],
+    ['target', 'วัด Center', '/centering'],
+    ['box', 'ส่งมอบ', '/delivery'],
   ]],
   /* "วัดสายตา" มีสองรายการโดยตั้งใจ และไปคนละหน้า:
        ขั้นตอนงาน → /exam          คิวเคสที่รอวัดวันนี้
        งานหน้าร้าน → /prescriptions ประวัติค่าสายตาย้อนหลังของลูกค้า
      กลุ่มที่มันอยู่คือสิ่งที่บอกความต่าง ไม่ใช่ชื่อ */
   ['งานหน้าร้าน', [
-    ['👥', 'ลูกค้า', '/customers'],
-    ['👁', 'วัดสายตา', '/prescriptions'],
-    ['👓', 'ออเดอร์ตัดแว่น', '/orders'],
-    ['🛍', 'ขายสินค้า', '/pos'],
-    ['📍', 'ตำแหน่งสินค้า', '/locations'],
+    ['users', 'ลูกค้า', '/customers'],
+    ['eye', 'วัดสายตา', '/prescriptions'],
+    ['glasses', 'ออเดอร์ตัดแว่น', '/orders'],
+    ['bag', 'ขายสินค้า', '/pos'],
+    ['pin', 'ตำแหน่งสินค้า', '/locations'],
   ]],
   ['การเงิน', [
-    ['💰', 'รายรับ', '/income'],
-    ['💸', 'รายจ่าย', '/expense'],
+    ['coins', 'รายรับ', '/income'],
+    ['banknote', 'รายจ่าย', '/expense'],
   ], true],
   ['ข้อมูลระบบ', [
     ['🧑‍💼', 'พนักงาน', '/employees'],
@@ -79,10 +79,10 @@ const NAV = [
        อยู่ที่ /users ของทั้งเว็บ และมีทางเข้าที่เดียวคือตรงนี้ — แถบข้างฝั่ง
        คลังไม่มีปุ่มนี้แล้ว · ตอนนี้หน้านั้นเขียนด้วยของหน้าร้านแล้ว จึงเป็น
        <Link> เหมือนเมนูอื่น ไม่ใช่การโหลดหน้าใหม่ */
-    ['🔒', 'ผู้ใช้และสิทธิ์', '/users'],
-    ['🏭', 'ซัพพลายเออร์', '/suppliers'],
-    ['📊', 'รายงาน', '/reports'],
-    ['⚙️', 'ตั้งค่า/แจ้งเตือน', '/settings'],
+    ['lock', 'ผู้ใช้และสิทธิ์', '/users'],
+    ['factory', 'ซัพพลายเออร์', '/suppliers'],
+    ['chart', 'รายงาน', '/reports'],
+    ['gear', 'ตั้งค่า/แจ้งเตือน', '/settings'],
   ], true],
 ];
 
@@ -210,10 +210,10 @@ export function Shell({ children }) {
             <>
               <div className="nav-group">ระบบอื่น</div>
               <a href={STOCK_APP}>
-                <span className="ic"><Icon name="📦" /></span><span className="lbl">คลังและต้นทุน</span>
+                <span className="ic"><Icon name="box" /></span><span className="lbl">คลังและต้นทุน</span>
               </a>
               <a href="/hub/">
-                <span className="ic"><Icon name="🏠" /></span><span className="lbl">เลือกระบบ</span>
+                <span className="ic"><Icon name="home" /></span><span className="lbl">เลือกระบบ</span>
               </a>
             </>
           ) : null}

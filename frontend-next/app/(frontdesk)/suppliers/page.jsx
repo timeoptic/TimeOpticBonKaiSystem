@@ -4,6 +4,7 @@ import { api } from '../../../lib/apiClient.js';
 import { useAsync, onSubmit } from '../../../lib/hooks.js';
 import { useMeta } from '../../../contexts/MetaContext.jsx';
 import { useToast } from '../../../components/Toast.jsx';
+import { useConfirm } from '../../../components/Confirm.jsx';
 import { Badge, Card, Field, FormGrid, Loading, PageHead, Toolbar } from '../../../components/ui.jsx';
 import { DataTable } from '../../../components/DataTable.jsx';
 import { Pager } from '../../../components/Pager.jsx';
@@ -22,6 +23,7 @@ const STATUS = [
 function SupplierListInner() {
   const { reload: reloadMeta } = useMeta();
   const { ok, err } = useToast();
+  const confirm = useConfirm();
   const { data: rows, loading, reload } = useAsync(() => api.get('/api/suppliers'), []);
 
   /* กรองในเครื่อง ไม่ยิง API ใหม่ทุกตัวอักษร — /api/suppliers คืนทั้งตารางมาอยู่แล้ว
@@ -86,7 +88,14 @@ function SupplierListInner() {
     return () => document.removeEventListener('keydown', onKey);
   }, [adding]);
 
+  /* ปิดใช้งาน = เอาชื่อออกจากช่องเลือกผู้ขายทุกหน้า ซึ่งเป็นสิ่งที่ใกล้เคียง
+     การลบที่สุดในหน้านี้ · เปิดกลับไม่ต้องถาม ไม่มีอะไรหายไป */
   const toggle = async (r) => {
+    if (Number(r.active) && !await confirm(
+      'ปิดใช้งานซัพพลายเออร์',
+      `${r.name} จะหายจากช่องเลือกผู้ขาย — ของเก่าที่อ้างชื่อไว้ยังอยู่ครบ`,
+      { confirmText: 'ปิดใช้งาน', danger: true },
+    )) return;
     try {
       await api.put('/api/suppliers/' + r.id, { ...r, active: Number(r.active) ? 0 : 1 });
       await reloadMeta();
@@ -98,7 +107,7 @@ function SupplierListInner() {
 
   return (
     <>
-      <PageHead icon="🏭" title="Suppliers" subtitle="ซัพพลายเออร์เลนส์/สินค้า" />
+      <PageHead icon="factory" title="Suppliers" subtitle="ซัพพลายเออร์เลนส์/สินค้า" />
 
       <Toolbar className="crud-tools">
         <Field label="ค้นหา" className="grow crud-search">

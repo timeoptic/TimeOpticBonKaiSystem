@@ -274,7 +274,7 @@ textarea{max-width:1320px}
 .page-head .ph-actions{margin-left:auto;display:flex;gap:9px;flex-wrap:wrap;align-items:center}
 
 /* ---------------- ไทล์เมนูหลัก ---------------- */
-.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(232px,1fr));gap:14px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(232px,1fr));gap:14px}
 
 .tile{
   display:flex;align-items:center;gap:14px;background:var(--card);color:var(--ink);
@@ -458,7 +458,8 @@ textarea{max-width:1320px}
 
 .card-body.tight{padding:0}
 
-.kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(196px,1fr));gap:14px;margin-bottom:22px}
+/* auto-fit — การ์ดตัวเลขยืดจนเต็มแถวแทนที่จะกองอยู่ซ้ายแล้วเหลือที่ว่างทางขวา */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(196px,1fr));gap:14px;margin-bottom:22px}
 
 .kpi{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:17px 19px;
   box-shadow:var(--shadow-sm);
@@ -711,6 +712,9 @@ textarea{max-width:1320px}
   border-radius:var(--radius-sm);box-shadow:var(--shadow-pop);
   min-width:max-content;max-height:288px;overflow-y:auto;
 }
+/* วางเองด้วยพิกัดจอ — ใช้เมื่อกล่องแม่เป็นกล่องที่ตัดของล้นทิ้ง (แผ่นตัวกรอง
+   บนมือถือ) · ตำแหน่งกับความสูงมาจาก inline style ที่ Select คำนวณให้ */
+.sel-list--fixed{position:fixed;z-index:940;left:auto;right:auto;top:auto}
 .sel-list li{margin:0}
 
 .sel-opt{
@@ -866,6 +870,11 @@ table.grid tbody tr.clickable{cursor:pointer}
 
 table.grid td.num,table.grid th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 
+/* คอลัมน์ปุ่มประจำแถว — ชิดขวาสุดของตาราง และกว้างเท่าปุ่มพอดี ไม่กินที่ของ
+   คอลัมน์ที่มีข้อมูลจริง (DataTable ติดคลาสนี้ให้เองเมื่อคอลัมน์ไม่มีชื่อ) */
+table.grid td.act,table.grid th.act{text-align:right;white-space:nowrap;width:1%}
+table.grid td.act > *{margin-left:auto}
+
 table.grid td.mono{font-family:var(--font-mono);font-size:var(--t-sm);color:var(--ink-soft);letter-spacing:-.2px}
 
 table.grid tfoot td{font-weight:700;background:var(--surface-alt);border-top:2px solid var(--line)}
@@ -874,9 +883,13 @@ table.grid tfoot td{font-weight:700;background:var(--surface-alt);border-top:2px
 .empty{padding:46px 20px;text-align:center;color:var(--ink-faint);font-size:var(--t-base)}
 
 /* ---------------- forms ---------------- */
-.form-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px}
+/* auto-fit ไม่ใช่ auto-fill — ต่างกันตรงคอลัมน์ที่ไม่มีช่องกรอกอยู่ข้างใน
+   auto-fill เก็บคอลัมน์เปล่าไว้ ฟอร์มสี่ช่องบนจอกว้างจึงจบก่อนถึงขอบขวาแล้วเหลือ
+   ช่องว่างค้างไว้หนึ่งคอลัมน์เต็ม ๆ · auto-fit ยุบคอลัมน์เปล่าทิ้ง ช่องที่มีจริง
+   จึงยืดกันจนเต็มแถวพอดี (ความกว้างสูงสุดยังคุมด้วย max-width:1320px เหมือนเดิม) */
+.form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
 
-.form-grid.two{grid-template-columns:repeat(auto-fill,minmax(320px,1fr))}
+.form-grid.two{grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}
 
 /* สี่ช่องบนของ "ข้อมูลการเปิดเคส" — จำนวนช่องรู้แน่ว่าสี่ จึงล็อกคอลัมน์ไว้
    4 / 2 / 1 ให้เต็มแถวพอดีทุกขนาด แทนที่จะให้ auto-fill คิดจากความกว้าง
@@ -976,7 +989,11 @@ legend{font-size:12px;font-weight:700;color:var(--accent-deep);letter-spacing:.3
 
 /* align-items:center — ข้อความอธิบายที่วางข้างปุ่ม ("เลือกลูกค้าก่อนจึงจะเปิดเคสได้")
    ถูกยืดเต็มความสูงแถวแล้วไปเกาะเส้นฐานบน ทำให้ดูเหมือนหลุดออกมาจากแถว */
-.form-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;padding-top:8px}
+/* แถวปุ่มท้ายฟอร์ม/ท้ายการ์ดชิดขวา — ขอบขวาคือที่ที่สายตาไปจบหลังอ่านฟอร์มจบ
+   และเป็นที่เดียวกับปุ่มในกล่องยืนยันกับปุ่มบนหัวเพจ · ข้อความอธิบายที่อยู่ใน
+   แถวเดียวกันดันไปชิดซ้ายด้วย mr:auto เพื่อไม่ให้ไปเบียดปุ่ม */
+.form-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:flex-end;padding-top:8px}
+.form-actions > .muted,.form-actions > p{margin-right:auto}
 
 /* ---------------- buttons ---------------- */
 /* ปุ่มหลักเป็นเขียวแบรนด์เต็ม ๆ กับตัวหนังสือหมึกเข้ม ไม่ใช่ขาว
@@ -1099,7 +1116,10 @@ dl.kv dt{color:var(--ink-faint);font-size:12.5px;padding-top:2px}
 dl.kv dd{margin:0;font-weight:600}
 
 /* picker list (choose a stock item / customer) */
-.picker{border:1px solid var(--line);border-radius:var(--radius-sm);max-height:230px;overflow:auto;background:#fff}
+/* ไม่มีเพดานความสูงกับแถบเลื่อนในตัวเองอีกแล้ว — รายชื่อถูกหั่นเป็นหน้าละห้า
+   ด้วย <Pager> ข้างล่างกล่องนี้ · กล่องที่เลื่อนได้ซ้อนอยู่ในหน้าที่เลื่อนได้
+   คือกล่องที่นิ้วโป้งบนมือถือไถผิดตัวตลอด และไม่มีอะไรบอกว่ายังเหลืออีกกี่ชื่อ */
+.picker{border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff}
 
 .picker .p-row{display:flex;gap:10px;align-items:center;padding:7px 11px;border-bottom:1px solid var(--line-soft);cursor:pointer;font-size:13.5px}
 
@@ -3110,7 +3130,11 @@ table.doc td.lbl{background:var(--surface-alt);font-weight:700;text-align:left;w
   .page-head h1{font-size:18px;flex:1 1 auto;min-width:0}
   .page-head h1 span{display:block;margin-left:0;font-size:13px;line-height:1.4}
   .page-head .ph-actions{margin-left:0;flex:1 1 100%;gap:8px}
-  .page-head .ph-actions > *{flex:1 1 auto;justify-content:center;white-space:nowrap}
+  /* ปุ่มแคบลงบนจอมือถือ: ระยะข้างในจาก 20px เหลือ 12px ตัวอักษรลงมาหนึ่งขั้น
+     ปุ่มสองใบอย่าง "+ จองคิวใหม่" กับ "ตั้งค่าแจ้งเตือน" รวมกันเกินความกว้างจอ
+     ไปไม่กี่สิบพิกเซล พอเกินก็ห่อลงคนละบรรทัด แล้วแต่ละใบยืดเต็มแถวเพราะ
+     flex-grow — หัวเพจสูงขึ้นสองเท่าเพื่อคำที่สั้นกว่าครึ่งบรรทัด */
+  .page-head .ph-actions > *{flex:0 1 auto;justify-content:center;white-space:nowrap;padding-inline:12px;font-size:14px}
 
   /* ตัวเลขสรุปเรียงสองใบต่อแถว จะได้เห็นหลายค่าพร้อมกันโดยไม่ต้องปัดยาว */
   .kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:14px}
@@ -3146,7 +3170,16 @@ table.doc td.lbl{background:var(--surface-alt);font-weight:700;text-align:left;w
   .btn-lg{padding:12px 20px;font-size:15px}
   .form-actions .btn{flex:1 1 auto;justify-content:center}
   .card-body{padding:13px}
-  .card-head{padding:11px 13px;flex-wrap:wrap}
+  /* ระยะในหัวการ์ดแคบลงบนมือถือ — แถวอย่าง [‹] [กันยายน 2569] [›] … [วันนี้]
+     เกินความกว้างจอไปไม่กี่พิกเซล แล้วปุ่มขวาตกลงไปกินอีกทั้งบรรทัด */
+  /* แถวหัวเคส: ป้ายขั้นตอนกับปุ่มงานด่วนอยู่บรรทัดเดียวกัน — รวมกันเกินจอไปไม่กี่
+     พิกเซล พอห่อแล้วปุ่มงานด่วนได้ทั้งบรรทัดของตัวเองเพื่อคำสองคำ */
+  .row{gap:8px}
+  .badge,.rush-toggle{padding-inline:9px}
+
+  .card-head{padding:11px 13px;flex-wrap:wrap;gap:6px}
+  .card-head .right{gap:6px}
+  .card-head .btn-sm{padding-inline:10px}
   .card-head h2{font-size:15px}
   .modal .form-grid{grid-template-columns:1fr}
   /* ทั้งสองบรรทัดนี้ต้องเจาะจงเท่ากฎเดสก์ท็อปของมัน ไม่งั้นแพ้แล้วยืนสองคอลัมน์ที่จอ 390 */
@@ -3585,6 +3618,10 @@ table.grid.data-grid tr.row-danger td:first-child{border-left-color:var(--danger
 .hub-card{display:block;text-decoration:none;color:inherit;transition:transform .12s ease,box-shadow .12s ease}
 .hub-card:hover{transform:translateY(-2px);box-shadow:0 10px 24px rgba(15,23,42,.10)}
 .hub-card .card-body{text-align:center;padding:22px 18px}
+/* ไอคอนใบใหญ่กลางการ์ดเลือกระบบ — เดิมเป็นอีโมจิ 28px ตอนนี้เป็น SVG จึงคุมขนาด
+   ที่ตัวกล่อง ไม่ใช่ที่ font-size ของตัวอักษร */
+.hub-tile-icon{display:flex;justify-content:center;margin-bottom:6px}
+.hub-tile-icon .ico{width:34px;height:34px;margin:0}
 @media (max-width:640px){.hub-grid{grid-template-columns:1fr}}
 
 /* ── ประตูหน้า (/login, /hub) ────────────────────────────────────────────────
@@ -4141,8 +4178,13 @@ html,body{overflow-x:clip}
 
 .dtc-extra{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 
-/* ปุ่มหลักของการ์ด — เต็มความกว้าง สูงพอให้นิ้วโป้งกดโดนโดยไม่ต้องเล็ง */
-.dtc-go{width:100%;justify-content:center;min-height:44px;font-size:15px}
+/* ท้ายการ์ด: ปุ่มเสริมของแถวกับปุ่มหลัก บรรทัดเดียวกัน */
+.dtc-foot{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+
+/* ปุ่มหลักของการ์ด — กินที่ที่เหลือของแถว สูงพอให้นิ้วโป้งกดโดนโดยไม่ต้องเล็ง
+   ปุ่มเสริมข้าง ๆ กว้างตามตัวหนังสือ ไม่ยืดแย่งที่ */
+.dtc-go{flex:1 1 8rem;justify-content:center;min-height:44px;font-size:15px}
+.dtc-foot > :not(.dtc-go){flex:0 0 auto}
 
 /* กล่องเลือกการเรียง — แทนหัวคอลัมน์ที่กดเรียงได้ ซึ่งอยู่ใน <thead> ที่การ์ดไม่มี */
 .dt-sort{

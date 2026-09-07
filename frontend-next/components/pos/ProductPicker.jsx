@@ -59,7 +59,7 @@ export function ProductPicker({ products, onPick }) {
 
   return (
     <div className="pos-search" ref={box}>
-      <PosField label="ชื่อสินค้า:" icon="🧺">
+      <PosField label="ชื่อสินค้า:" icon="bag">
         <input
           value={term}
           placeholder="ค้นหาหรือเลือกสินค้า — ชื่อ หรือ SKU"

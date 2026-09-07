@@ -94,7 +94,7 @@ export default function PosReport() {
             <b>ช่วงนี้มีใบขายที่ถูกยกเลิก {count(data.voided.bills)} ใบ</b>
             {' '}(มูลค่ารวม {money(data.voided.amount)}) — ไม่ถูกนับเป็นยอดขาย
             และไม่อยู่ในตารางข้างล่าง{' '}
-            <Link href="/pos/history">ดูประวัติการขายทั้งหมด →</Link>
+            <Link href="/pos/history">ดูประวัติการขายทั้งหมด <Icon name="arrowRight" /></Link>
           </div>
         ) : null}
         {data && !data.kpi.bills
@@ -104,13 +104,13 @@ export default function PosReport() {
           <>
             <Kpis>
               <DrillKpi
-                label="ยอดขาย POS" icon="🛍" kind="accent" value={money(data.kpi.revenue)}
+                label="ยอดขาย POS" icon="bag" kind="accent" value={money(data.kpi.revenue)}
               />
-              <DrillKpi label="จำนวนบิล" icon="🧾" value={`${count(data.kpi.bills)} ใบ`} />
-              <DrillKpi label="จำนวนสินค้า" icon="📦" value={`${count(data.kpi.products)} ชิ้น`} />
-              <DrillKpi label="เฉลี่ยต่อบิล" icon="📈" value={money(data.kpi.avg)} />
+              <DrillKpi label="จำนวนบิล" icon="receipt" value={`${count(data.kpi.bills)} ใบ`} />
+              <DrillKpi label="จำนวนสินค้า" icon="box" value={`${count(data.kpi.products)} ชิ้น`} />
+              <DrillKpi label="เฉลี่ยต่อบิล" icon="trending" value={money(data.kpi.avg)} />
               <DrillKpi
-                label="ค้างชำระ" icon="⏳" kind={data.kpi.balance > 0 ? 'warn' : ''}
+                label="ค้างชำระ" icon="hourglass" kind={data.kpi.balance > 0 ? 'warn' : ''}
                 value={money(data.kpi.balance)}
               />
             </Kpis>

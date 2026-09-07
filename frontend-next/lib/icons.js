@@ -145,6 +145,10 @@ export const EMOJI = {
   '☰': 'menu', '💳': 'card', '🎯': 'target', '○': 'circle', '●': 'circleHalf',
   '⏳': 'hourglass', '🔒': 'lock', '↧': 'download', '📷': 'camera', '📄': 'file',
   '✏': 'pencil', '✨': 'sparkle', '⛔': 'xCircle',
+  /* อีโมจิที่เคยหลุดออกจอเป็นตัวอักษรจริง เพราะไม่มีในตารางนี้ — Icon จะคืน
+     ข้อความดิบเมื่อหาไม่เจอ ซึ่งคือสาเหตุที่บางป้ายยังเป็นอีโมจิอยู่ */
+  '⚖️': 'circleHalf', '⚖': 'circleHalf', '💵': 'banknote', '📞': 'phone',
+  '💬': 'clipboard', '⚠️': 'warning', '🧺': 'bag', '•': 'circle',
 };
 
 

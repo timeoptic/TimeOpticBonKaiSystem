@@ -68,6 +68,54 @@ export function Select({
     };
   }, [open]);
 
+  /**
+   * ตำแหน่งของรายการ — คำนวณเองแล้ววางแบบ fixed ไม่ใช่ absolute ใต้ปุ่ม
+   *
+   * รายการตัวกรองบนมือถืออยู่ในแผ่นที่ขอบล่างจอ ซึ่งเป็นกล่อง `overflow-y:auto`
+   * รายการที่กางแบบ absolute จึงถูกกล่องนั้นตัดหายไปทั้งอัน (เห็นแต่ปุ่ม ไม่เห็น
+   * ตัวเลือก) และการที่มันไปเพิ่มความสูงข้างในทำให้แผ่นกระตุกตอนกาง
+   *
+   * fixed อ้างอิงจอ ไม่ใช่กล่องแม่ จึงไม่ถูกตัด · ทิศทางเลือกจากที่ว่างจริง: ใต้ปุ่ม
+   * ไม่พอเมื่อไหร่ก็กางขึ้นข้างบนแทน ซึ่งเป็นกรณีปกติของแผ่นที่ติดขอบล่างจอ
+   */
+  const [drop, setDrop] = useState(null);
+
+  useEffect(() => {
+    if (!open) { setDrop(null); return undefined; }
+
+    const place = () => {
+      const t = trigger.current;
+      if (!t) return;
+      const r = t.getBoundingClientRect();
+      const gap = 5;
+      const below = window.innerHeight - r.bottom - gap;
+      const above = r.top - gap;
+      /* สูงเท่าที่รายการอยากได้จริง แต่ไม่เกินเพดานเดิมของ .sel-list */
+      const want = Math.min(288, (list.current?.scrollHeight ?? 0) + 8 || 288);
+      /* กางขึ้นเมื่อข้างบนมีที่มากกว่าและพอสำหรับสามสี่บรรทัด — ในแผ่นตัวกรองที่
+         ติดขอบล่างจอ ใต้ปุ่มมักเหลืออยู่บ้างแต่ไม่พอ รายการจึงไปทับปุ่มท้ายแผ่น
+         ส่วนช่องที่อยู่ครึ่งบนของจอยังกางลงตามปกติ เพราะข้างบนแคบกว่า */
+      const up = above > below && above >= 140;
+      setDrop({
+        up,
+        left: r.left,
+        width: r.width,
+        maxHeight: Math.max(120, Math.min(want, up ? above : below)),
+        top: up ? undefined : r.bottom + gap,
+        bottom: up ? window.innerHeight - r.top + gap : undefined,
+      });
+    };
+
+    place();
+    /* เลื่อนหน้าหรือหมุนจอแล้วปุ่มย้ายที่ รายการที่ค้างอยู่ที่เดิมคือรายการที่ชี้ผิดช่อง */
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', place, true);
+    return () => {
+      window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', place, true);
+    };
+  }, [open]);
+
   /* เลื่อนไปที่ตัวที่กำลังชี้อยู่ ทั้งตอนเพิ่งกางและตอนเดินด้วยลูกศรหรือพิมพ์ —
      รายการพนักงานยาวเกินกล่อง ตัวที่เลือกอยู่จะอยู่นอกจอถ้าไม่เลื่อนให้ */
   useEffect(() => {
@@ -149,7 +197,18 @@ export function Select({
       </button>
 
       {open && !disabled && (
-        <ul className="sel-list" role="listbox" ref={list}>
+        <ul
+          className={`sel-list ${drop ? 'sel-list--fixed' : ''} ${drop?.up ? 'up' : ''}`.trim()}
+          role="listbox"
+          ref={list}
+          style={drop ? {
+            left: drop.left,
+            width: drop.width,
+            top: drop.top,
+            bottom: drop.bottom,
+            maxHeight: drop.maxHeight,
+          } : undefined}
+        >
           {norm.map(([v, text], i) => (
             <li key={String(v)}>
               <button

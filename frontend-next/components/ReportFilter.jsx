@@ -96,7 +96,7 @@ export function ReportFilter({ actions = null, statusNote = '' }) {
           </div>
 
           <span className="rf-range" title="ช่วงที่กำลังดูอยู่">
-            <Icon name="📅" /> {rangeLabel(f.from, f.to)}
+            <Icon name="calendar" /> {rangeLabel(f.from, f.to)}
           </span>
         </>
       )}
@@ -166,7 +166,7 @@ export function ExportButtons({ onExcel, disabled }) {
   return (
     <>
       <button type="button" className="btn btn-sm" onClick={run} disabled={disabled || busy}>
-        <Icon name="📊" /> {busy ? 'กำลังสร้างไฟล์…' : 'Excel'}
+        <Icon name="chart" /> {busy ? 'กำลังสร้างไฟล์…' : 'Excel'}
       </button>
       <button
         type="button"

@@ -65,15 +65,15 @@ export default function PaymentsReport() {
 
             <Kpis>
               <DrillKpi
-                label="รับเงินรวม" icon="💰" kind="accent" value={money(data.total)}
+                label="รับเงินรวม" icon="coins" kind="accent" value={money(data.total)}
                 sub={`${count(data.count)} รายการ`}
               />
               <DrillKpi
-                label="จากงานตัดแว่น" icon="👓" value={money(data.by_channel.main)}
+                label="จากงานตัดแว่น" icon="glasses" value={money(data.by_channel.main)}
               />
-              <DrillKpi label="จากหน้าร้าน" icon="🛍" value={money(data.by_channel.pos)} />
+              <DrillKpi label="จากหน้าร้าน" icon="bag" value={money(data.by_channel.pos)} />
               <DrillKpi
-                label="บิลที่ผ่อนอยู่" icon="⏳"
+                label="บิลที่ผ่อนอยู่" icon="hourglass"
                 kind={data.installment.bills > 0 ? 'warn' : ''}
                 value={`${count(data.installment.bills)} ใบ`}
                 /* "ผ่อนชำระ" ไม่ใช่ช่องทางจ่ายเงิน จึงไม่อยู่ในกราฟวงกลม —

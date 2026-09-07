@@ -359,7 +359,7 @@ function CaseBoardInner() {
   return (
     <div>
       <PageHead
-        icon="🗂"
+        icon="board"
         title="Case Board"
         subtitle="กระดานงานในร้าน"
         actions={(

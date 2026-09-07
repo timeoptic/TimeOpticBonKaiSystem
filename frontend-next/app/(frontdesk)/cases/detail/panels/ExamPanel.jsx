@@ -24,6 +24,7 @@ import Link from 'next/link';
 import { api } from '../../../../../lib/apiClient.js';
 import { useAsync, useNowLocal } from '../../../../../lib/hooks.js';
 import { useToast } from '../../../../../components/Toast.jsx';
+import { useConfirm } from '../../../../../components/Confirm.jsx';
 import {
   Badge, Field, FormGrid, Row,
 } from '../../../../../components/ui.jsx';
@@ -290,6 +291,7 @@ function legacyOldOf(measured) {
 
 export function ExamPanel({ c, reload }) {
   const { ok, err } = useToast();
+  const confirm = useConfirm();
   const actions = useProcessActions();
 
   const rows = useMemo(
@@ -409,7 +411,12 @@ export function ExamPanel({ c, reload }) {
     ok(`คัดลอกค่าจากรอบวันที่ ${fmtDate(session.exam_date)} มาเป็นค่าเดิมแล้ว`);
   };
 
-  const clearOld = () => {
+  /* ถามก่อนล้างค่าเดิม — ค่าสายตาเดิมคือสองตาคูณหกช่อง ที่อ่านมาจากแว่นเก่าหรือ
+     คัดลอกมาจากรอบก่อน · กดล้างพลาดคือต้องไปวัดหรือไล่คัดมาใหม่ทั้งชุด
+     ช่องว่างอยู่แล้วไม่ต้องถาม — ไม่มีอะไรให้เสีย */
+  const clearOld = async () => {
+    const filled = ['r', 'l'].some((k) => OLD_COLS.some(([f]) => String(oldForm[`${k}_${f}`] || '').trim() !== ''));
+    if (filled && !await confirm('ล้างค่าเดิม', 'ล้างค่าสายตาเดิมทั้งสองตา?', { confirmText: 'ล้าง', danger: true })) return;
     touch();
     const blank = { source: '', based_on_id: null, external_place: '', external_date: '', old_glasses_type: '' };
     for (const k of ['r', 'l']) {
@@ -639,7 +646,7 @@ export function ExamPanel({ c, reload }) {
         title="OLD GLASSES"
         sub="ค่าสายตาเดิมที่ลูกค้าใช้อยู่ก่อนเคสนี้"
         hint="ไม่บังคับ ข้ามได้ถ้าลูกค้าไม่มีแว่นเดิม — เก็บเป็นค่าของรอบนี้ ไม่ทับค่าที่วัดครั้งนี้"
-        right={oldSource ? <button type="button" className="btn btn-sm btn-light" onClick={clearOld}>ล้างค่าเดิม</button> : null}
+        right={oldSource ? <button type="button" className="btn btn-sm btn-light" onClick={() => void clearOld()}>ล้างค่าเดิม</button> : null}
       >
         <Row style={{ gap: 8, marginBottom: 10 }}>
           {OLD_SOURCES.map(([v, label]) => (
@@ -647,7 +654,7 @@ export function ExamPanel({ c, reload }) {
               type="button"
               key={v || 'none'}
               className={`chip-btn ${oldSource === v ? 'active' : ''}`}
-              onClick={() => { if (v === '') clearOld(); else { touch(); setOldForm((f) => ({ ...f, source: v })); } }}
+              onClick={() => { if (v === '') void clearOld(); else { touch(); setOldForm((f) => ({ ...f, source: v })); } }}
             >
               {label}
             </button>

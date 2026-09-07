@@ -103,7 +103,7 @@ function BookingCalendarInner() {
   return (
     <div>
       <PageHead
-        icon="📅"
+        icon="calendar"
         title="Queue Booking"
         subtitle="ปฏิทินจองคิวลูกค้า"
         actions={(

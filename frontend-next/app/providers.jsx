@@ -14,7 +14,7 @@ function Gate({ children }) {
   if (error) {
     return (
       <Shell>
-        <PageHead icon="⚠️" title="เชื่อมต่อเซิร์ฟเวอร์ไม่ได้" subtitle="Cannot reach the API" />
+        <PageHead icon="warning" title="เชื่อมต่อเซิร์ฟเวอร์ไม่ได้" subtitle="Cannot reach the API" />
         <Card>
           <p className="muted">{error.message}</p>
           <p>ตรวจสอบว่า PHP API และ MySQL/MariaDB ของ XAMPP รันอยู่</p>

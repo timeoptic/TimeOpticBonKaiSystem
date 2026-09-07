@@ -148,7 +148,7 @@ export default function LocationsPage() {
 
   return (
     <div className="loc-page">
-      <PageHead icon="📍" title="Product Location" subtitle="ตำแหน่งจัดเก็บสินค้า" />
+      <PageHead icon="pin" title="Product Location" subtitle="ตำแหน่งจัดเก็บสินค้า" />
 
       {/* ตัวเลขสรุปอยู่เหนือช่องค้นหา — เปิดหน้ามาเห็นก่อนว่ามีของกี่รายการ กระจายกี่ตู้
           แล้วค่อยลงมือค้นหา ไม่ใช่รู้ทีหลังตอนเลื่อนผ่านไปแล้ว

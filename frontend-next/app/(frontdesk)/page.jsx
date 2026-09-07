@@ -10,12 +10,12 @@ import { custName, fmtDate, fmtDateTime, hhmm, money } from '../../lib/format.js
 import { Icon } from '../../components/Icon.jsx';
 
 const TILES = [
-  ['📅', 'ปฏิทินจองคิว', 'Queue Booking', '/bookings'],
-  ['➕', 'เปิดเคสใหม่', 'New Case', '/cases/new'],
-  ['👥', 'ลูกค้าใหม่', 'New Customer', '/customers/new'],
-  ['👁', 'วัดสายตา', 'Eye Exam', '/exam'],
-  ['📦', 'ส่งมอบ', 'Delivery', '/delivery'],
-  ['📜', 'ประวัติการสั่งซื้อ', 'Order History', '/orders'],
+  ['calendar', 'ปฏิทินจองคิว', 'Queue Booking', '/bookings'],
+  ['plus', 'เปิดเคสใหม่', 'New Case', '/cases/new'],
+  ['users', 'ลูกค้าใหม่', 'New Customer', '/customers/new'],
+  ['eye', 'วัดสายตา', 'Eye Exam', '/exam'],
+  ['box', 'ส่งมอบ', 'Delivery', '/delivery'],
+  ['file', 'ประวัติการสั่งซื้อ', 'Order History', '/orders'],
 ];
 /* เคยมีอีกแปดใบ ตัดออกแล้วทั้งหมด ด้วยเหตุผลคนละแบบ:
      "จองคิวใหม่" · "กระดานงาน" · "เปิดออเดอร์ตัดแว่น"
@@ -69,7 +69,7 @@ export default function Home() {
   return (
     <div>
       <PageHead
-        icon="👓"
+        icon="glasses"
         title="Main Menu"
         subtitle="เมนูหลัก"
         /* เคยมีปุ่ม "สรุปรายวัน" ชี้ไป /reports/daily ตรงนี้ — หน้านั้นยังไม่ถูก

@@ -21,6 +21,7 @@ import { isAdminUp } from '../../../lib/roles.js';
 import { Card, Loading } from '../../../components/ui.jsx';
 import { Icon } from '../../../components/Icon.jsx';
 import { useToast } from '../../../components/Toast.jsx';
+import { useConfirm } from '../../../components/Confirm.jsx';
 
 import { posApi, PAY_METHODS } from '../../../lib/pos/posApi.js';
 import {
@@ -54,6 +55,7 @@ const newRef = () => (globalThis.crypto?.randomUUID
 export default function PosPage() {
   const { actor } = useAuth();
   const toast = useToast();
+  const confirm = useConfirm();
 
   const { data: products, loading, error } = useAsync(() => posApi.products(), []);
 
@@ -65,6 +67,18 @@ export default function PosPage() {
   const [saveError, setSaveError] = useState(null);
   const [done, setDone] = useState(null);
   const clientRef = useRef(newRef());
+
+  /**
+   * ถามก่อนเอาสินค้าออกจากบิล
+   *
+   * แถวในบิลไม่ได้มีแค่ชื่อสินค้า — จำนวนกับราคาที่แก้มือไปแล้วอยู่ในแถวนั้นด้วย
+   * กดกากบาทพลาดหนึ่งครั้งคือพิมพ์ใหม่ทั้งแถว และตอนนั้นลูกค้ายืนรออยู่ตรงหน้า
+   */
+  const dropItem = useCallback(async (it) => {
+    const name = (it.pos_custom ? it.custom_name : it.name) || 'รายการนี้';
+    if (!await confirm('เอาออกจากบิล', `เอา "${name}" ออกจากบิล?`, { confirmText: 'เอาออก', danger: true })) return;
+    setItems((c) => removeItem(c, it.key));
+  }, [confirm]);
 
   const set = useCallback((k, v) => setForm((f) => ({ ...f, [k]: v })), []);
   const sums = useMemo(() => totals(items), [items]);
@@ -154,7 +168,7 @@ export default function PosPage() {
         <div className="pos-card">
           <div className="pos-card-in">
             <div className="pos-done">
-              <div className="pos-tick">✅</div>
+              <div className="pos-tick"><Icon name="checkCircle" /></div>
               <h2>บันทึกการขายสำเร็จ</h2>
               <div className="pos-no">{done.pos_no}</div>
               <div className="pos-done-figs">
@@ -163,11 +177,11 @@ export default function PosPage() {
                 <div className="pos-sum-row"><span>ยอดค้าง</span><b>{money(done.balance_amount)}</b></div>
               </div>
             </div>
-            <button type="button" className="pos-btn primary" onClick={resetAll}>🛒 ขายรายการใหม่</button>
+            <button type="button" className="pos-btn primary" onClick={resetAll}><Icon name="bag" /> ขายรายการใหม่</button>
             <Link className="pos-btn link" href={`/pos/detail/?id=${done.id}`}>ดูรายละเอียดใบนี้</Link>
-            <Link className="pos-btn link" href="/pos/history/">↻ ดูประวัติการขาย POS</Link>
+            <Link className="pos-btn link" href="/pos/history/"><Icon name="refresh" /> ดูประวัติการขาย POS</Link>
             {/* [พิมพ์ใบเสร็จ] จะมาลงตรงนี้ — เว้นที่ไว้แล้ว ยังไม่มีแบบใบเสร็จ */}
-            <Link className="pos-btn back" href="/">← กลับไปหน้าระบบแว่นตา (Main)</Link>
+            <Link className="pos-btn back" href="/"><Icon name="arrowLeft" /> กลับไปหน้าระบบแว่นตา (Main)</Link>
           </div>
         </div>
       </div>
@@ -182,7 +196,7 @@ export default function PosPage() {
   return (
     <div className="pos">
       <div className="pos-head">
-        <span className="pos-mark"><Icon name="🛍" /></span>
+        <span className="pos-mark"><Icon name="bag" /></span>
         <div className="pos-head-txt">
           <h1>ขายหน้าร้าน</h1>
           <p>บิลด่วน ไม่ต้องเปิดเคส</p>
@@ -220,7 +234,7 @@ export default function PosPage() {
                   onPrice={(v) => setItems((c) => setPrice(c, it.key, v))}
                   onMeta={(k, v) => setItems((c) => setMeta(c, it.key, k, v))}
                   onCustomName={(v) => setItems((c) => setCustomName(c, it.key, v))}
-                  onRemove={() => setItems((c) => removeItem(c, it.key))}
+                  onRemove={() => void dropItem(it)}
                 />
               ))}
           </div>
@@ -237,7 +251,7 @@ export default function PosPage() {
             </div>
 
             <div className="pos-row">
-              <PosField label="วันที่ขาย" icon="📅">
+              <PosField label="วันที่ขาย" icon="calendar">
                 {/* วันที่ย้อนหลังเปลี่ยนตัวเลขปิดยอดของวันที่ปิดไปแล้ว จึงเปิดเฉพาะแอดมิน
                     ขึ้นไป คนอื่นเห็นวันที่แต่แก้ไม่ได้ — API ตรวจซ้ำอยู่ดี */}
                 <DateField
@@ -246,13 +260,13 @@ export default function PosPage() {
                   onChange={setSaleDate}
                 />
               </PosField>
-              <PosField label="ช่องทางชำระเงิน" icon="💳">
+              <PosField label="ช่องทางชำระเงิน" icon="card">
                 <Select value={form.method} onChange={(e) => set('method', e.target.value)} options={PAY_METHODS} />
               </PosField>
             </div>
 
             <div className="pos-row one">
-              <PosField label="รูปแบบการชำระ" icon="⚖️">
+              <PosField label="รูปแบบการชำระ" icon="circleHalf">
                 <Select
                   value={form.mode}
                   onChange={(e) => set('mode', e.target.value)}
@@ -263,7 +277,7 @@ export default function PosPage() {
 
             {form.mode === 'deposit' && (
               <div className="pos-row one">
-                <PosField label="ยอดที่รับวันนี้ (บาท)" icon="🧾">
+                <PosField label="ยอดที่รับวันนี้ (บาท)" icon="receipt">
                   <input
                     inputMode="decimal"
                     value={form.amount}
@@ -276,7 +290,7 @@ export default function PosPage() {
 
             {form.method === 'cash' && payNow > 0 && (
               <div className="pos-row">
-                <PosField label="รับเงินมา (บาท)" icon="💵">
+                <PosField label="รับเงินมา (บาท)" icon="banknote">
                   <input
                     inputMode="decimal"
                     value={form.received}
@@ -284,7 +298,7 @@ export default function PosPage() {
                     onChange={(e) => set('received', e.target.value)}
                   />
                 </PosField>
-                <PosOut label="เงินทอน (บาท)" icon="💸" tone="change">
+                <PosOut label="เงินทอน (บาท)" icon="banknote" tone="change">
                   {money(change)}
                 </PosOut>
               </div>
@@ -292,7 +306,7 @@ export default function PosPage() {
 
             {balance > 0 && (
               <div className="pos-row one">
-                <PosOut label="ยอดค้างชำระ (บาท)" icon="⏳" tone="money">
+                <PosOut label="ยอดค้างชำระ (บาท)" icon="hourglass" tone="money">
                   {money(balance)}
                 </PosOut>
               </div>
@@ -301,14 +315,14 @@ export default function PosPage() {
             <hr className="pos-sep" />
 
             <div className="pos-row">
-              <PosField label="ชื่อลูกค้า" icon="👤">
+              <PosField label="ชื่อลูกค้า" icon="user">
                 <input
                   value={form.customerName}
                   placeholder="เฉพาะมัดจำ / สั่งของ"
                   onChange={(e) => set('customerName', e.target.value)}
                 />
               </PosField>
-              <PosField label="เบอร์โทร" icon="📞">
+              <PosField label="เบอร์โทร" icon="phone">
                 <input
                   inputMode="tel"
                   value={form.customerPhone}
@@ -319,7 +333,7 @@ export default function PosPage() {
             </div>
 
             <div className="pos-row one">
-              <PosField label="หมายเหตุ" icon="💬">
+              <PosField label="หมายเหตุ" icon="clipboard">
                 <textarea
                   rows={1}
                   value={form.note}

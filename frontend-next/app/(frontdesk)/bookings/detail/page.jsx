@@ -101,7 +101,7 @@ function BookingDetailInner() {
   return (
     <div>
       <PageHead
-        icon="📅"
+        icon="calendar"
         title={b.booking_code}
         subtitle={bookingName(b)}
         actions={(

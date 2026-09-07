@@ -216,7 +216,7 @@ function CaseFormInner() {
 
   return (
     <>
-      <PageHead icon="🗂" title="New Case" subtitle="เปิดเคสใหม่" />
+      <PageHead icon="board" title="New Case" subtitle="เปิดเคสใหม่" />
 
       {/* เลือกลูกค้าได้แล้วก็ยุบทั้งขั้นตอนเหลือแค่การ์ดสรุป — ปุ่มโหมดกับช่องค้นหา
           ไม่ต้องค้างอยู่ให้เกะกะ ยังไงก็เลือกได้ทีละคน กด "เลือกใหม่" ถึงกางกลับ */}

@@ -5,7 +5,7 @@ import { AdminOnly } from '../../../components/AdminOnly.jsx';
 function ExpensePageInner() {
   return (
     <Ledger
-      title="Expense" subtitle="รายจ่าย" icon="💸"
+      title="Expense" subtitle="รายจ่าย" icon="banknote"
       endpoint="/api/expense" typeKey="expense_type" typeList="expense_type" withPayType
     />
   );

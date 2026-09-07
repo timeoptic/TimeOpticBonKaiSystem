@@ -49,7 +49,7 @@ function CustomerDetailInner() {
   return (
     <div>
       <PageHead
-        icon="👤"
+        icon="user"
         title={custName(c)}
         subtitle={`รหัสลูกค้า #${c.id}`}
         actions={(

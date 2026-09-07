@@ -60,7 +60,7 @@ export function CustomerFormView({ editing }) {
   return (
     <>
       <PageHead
-        icon="👥"
+        icon="users"
         title={editing ? 'Edit Customer' : 'New Customer'}
         subtitle={editing ? 'แก้ไขข้อมูลลูกค้า' : 'ลูกค้าใหม่'}
       />

@@ -15,6 +15,7 @@ import Link from 'next/link';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import { isAdminUp } from '../lib/roles.js';
 import { Card, Loading, PageHead } from './ui.jsx';
+import { Icon } from './Icon.jsx';
 
 export function AdminOnly({ children }) {
   const { actor, ready } = useAuth();
@@ -24,7 +25,7 @@ export function AdminOnly({ children }) {
 
   return (
     <>
-      <PageHead icon="🔒" title="เมนูนี้สำหรับผู้ดูแลระบบ" subtitle="Admin only" />
+      <PageHead icon="lock" title="เมนูนี้สำหรับผู้ดูแลระบบ" subtitle="Admin only" />
       <Card>
         <p>
           บัญชีของคุณ ({actor?.roleLabel || '—'}) ไม่มีสิทธิ์เข้าถึงส่วน
@@ -34,7 +35,7 @@ export function AdminOnly({ children }) {
           ถ้าต้องใช้งานส่วนนี้ ให้ผู้ดูแลระบบเปลี่ยนบทบาทของบัญชีคุณเป็นแอดมินขึ้นไป
         </p>
         <p style={{ marginTop: 14 }}>
-          <Link className="btn" href="/">← กลับไปเมนูหลัก</Link>
+          <Link className="btn" href="/"><Icon name="arrowLeft" /> กลับไปเมนูหลัก</Link>
         </p>
       </Card>
     </>

@@ -51,31 +51,31 @@ export default function OverviewPage() {
           <>
             <Kpis>
               <DrillKpi
-                label="ยอดขายรวม" icon="💰" kind="accent"
+                label="ยอดขายรวม" icon="coins" kind="accent"
                 value={money(data.kpi.revenue)}
                 sub={`${count(data.kpi.bills)} บิล · รับเงินแล้ว ${moneyShort(data.kpi.paid)}`}
               />
               <DrillKpi
-                label="จำนวนบิล" icon="🧾"
+                label="จำนวนบิล" icon="receipt"
                 value={`${count(data.kpi.bills)} ใบ`}
                 sub="กดดูรายการทั้งหมด"
                 to={`/reports/main-process?${q}`}
               />
               <DrillKpi
-                label="ลูกค้า" icon="👥"
+                label="ลูกค้า" icon="users"
                 value={`${count(data.kpi.customers)} คน`}
                 sub={data.kpi.walk_in
                   ? `+ ขาจรอีก ${count(data.kpi.walk_in)} บิล`
                   : 'ที่มีประวัติในระบบ'}
               />
               <DrillKpi
-                label="ยอดค้างชำระ" icon="⏳" kind={data.kpi.balance > 0 ? 'warn' : ''}
+                label="ยอดค้างชำระ" icon="hourglass" kind={data.kpi.balance > 0 ? 'warn' : ''}
                 value={money(data.kpi.balance)}
                 sub={`จากบิลในช่วงนี้ · ค้างสะสมทั้งร้าน ${moneyShort(data.kpi.outstanding_all_time)}`}
                 to={`/reports/payments?${q}`}
               />
               <DrillKpi
-                label="เฉลี่ยต่อบิล" icon="📈"
+                label="เฉลี่ยต่อบิล" icon="trending"
                 value={money(data.kpi.avg_bill)}
               />
             </Kpis>

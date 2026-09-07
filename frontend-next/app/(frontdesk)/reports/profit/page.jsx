@@ -47,21 +47,21 @@ export default function ProfitReport() {
           <>
             <Kpis>
               <DrillKpi
-                label="ยอดขายรวม" icon="💰" value={money(m.revenue + data.pos.revenue)}
+                label="ยอดขายรวม" icon="coins" value={money(m.revenue + data.pos.revenue)}
                 sub={`งานตัดแว่น ${moneyShort(m.revenue)} · หน้าร้าน ${moneyShort(data.pos.revenue)}`}
               />
               <DrillKpi
-                label="ต้นทุนที่บันทึกไว้" icon="📦"
+                label="ต้นทุนที่บันทึกไว้" icon="box"
                 value={money(m.frame_cost + m.lens_cost)}
                 sub="กรอบ + เลนส์ จากราคาทุนของล็อต"
               />
               <DrillKpi
-                label="กำไรขั้นต้น" icon="📈" kind="ok"
+                label="กำไรขั้นต้น" icon="trending" kind="ok"
                 value={m.has_cost ? money(m.profit) : '—'}
                 sub={m.has_cost ? `เฉพาะงานตัดแว่น ${m.costed} เคส` : 'ยังไม่มีเคสที่มีต้นทุน'}
               />
               <DrillKpi
-                label="อัตรากำไร" icon="🎯" kind="accent"
+                label="อัตรากำไร" icon="target" kind="accent"
                 value={m.margin === null ? '—' : `${m.margin}%`}
                 /* อัตรากำไรหารด้วยยอดขายของเคสที่รู้ต้นทุน ไม่ใช่ยอดขายทั้งช่วง —
                    ไม่งั้นเอากำไรของ 17 เคส ไปหารยอดขายของ 20 เคส */
@@ -102,7 +102,7 @@ export default function ProfitReport() {
                 </table>
                 {m.uncosted ? (
                   <p className="muted sm" style={{ marginTop: 10 }}>
-                    <Icon name="⚠" /> {count(m.uncosted)} เคสจาก {count(m.bills)} เคส
+                    <Icon name="warning" /> {count(m.uncosted)} เคสจาก {count(m.bills)} เคส
                     ยังไม่ได้เลือกกรอบหรือเลนส์จากคลัง จึงยังไม่มีต้นทุน —
                     ยอดขายของเคสเหล่านั้นรวมอยู่ในบรรทัดแรก แต่ไม่ถูกนำไปคิดกำไร
                   </p>

@@ -100,6 +100,15 @@ export function planCards(columns) {
 /** ค่าของช่องหนึ่ง — ตารางกับการ์ดต้องผ่านทางนี้ทั้งคู่ ผลจะได้ตรงกันเสมอ */
 const cellOf = (c, row, i) => (c.render ? c.render(row, i) : (row[c.key] ?? ''));
 
+/**
+ * คอลัมน์ปุ่มประจำแถว (แก้ไข / ลบ / ปิดใช้งาน) — รู้จากการที่มันไม่มีชื่อคอลัมน์
+ *
+ * ชิดขวาเสมอ เพราะนั่นคือขอบที่ปุ่มพวกนี้อยู่ในทุกตารางที่มีมัน · ชิดซ้ายแปลว่า
+ * ปุ่มไปยืนติดกับตัวเลขของคอลัมน์ก่อนหน้า แล้วขอบขวาของตารางเหลือช่องว่างยาว
+ * เท่าความกว้างของคอลัมน์นั้นทั้งคอลัมน์
+ */
+const actionCol = (c) => !c.label;
+
 /** คู่ป้าย/ค่า ที่การ์ดใช้ทั้งส่วนที่เห็นและส่วนที่พับไว้ */
 function CardRows({ items, row, i }) {
   if (!items.length) return null;
@@ -178,20 +187,23 @@ function Card({ plan, row, i, rowClass, onRowClick, cardAction }) {
         </>
       ) : null}
 
-      {extra.length ? (
-        <div className="dtc-extra">
+      {/* ปุ่มเสริมของแถว (เช่น "เปิดเคส") กับปุ่มหลักของการ์ดอยู่แถวเดียวกัน —
+          เดิมเป็นสองบล็อกซ้อนกัน การ์ดหนึ่งใบจึงจบด้วยปุ่มเต็มความกว้างสองใบ
+          ปุ่มหลักยังกินที่ที่เหลือทั้งหมด จึงยังเป็นเป้าที่ใหญ่ที่สุดในการ์ด
+
+          แถวที่คลิกได้บนเดสก์ท็อปกลายเป็นปุ่มบนมือถือ — การ์ดทั้งใบกดได้ทำให้
+          กดปุ่มข้างในไม่โดน และไม่มีอะไรบอกว่ากดแล้วจะไปไหน */}
+      {extra.length || onRowClick ? (
+        <div className="dtc-foot">
           {extra.map(({ col }, n) => (
             <Fragment key={col.label + n}>{cellOf(col, row, i)}</Fragment>
           ))}
+          {onRowClick ? (
+            <button type="button" className="btn btn-primary dtc-go" onClick={() => onRowClick(row)}>
+              {cardAction}
+            </button>
+          ) : null}
         </div>
-      ) : null}
-
-      {/* แถวที่คลิกได้บนเดสก์ท็อปกลายเป็นปุ่มเต็มความกว้างบนมือถือ — การ์ดทั้งใบ
-          กดได้ทำให้กดปุ่มข้างในไม่โดน และไม่มีอะไรบอกว่ากดแล้วจะไปไหน */}
-      {onRowClick ? (
-        <button type="button" className="btn btn-primary dtc-go" onClick={() => onRowClick(row)}>
-          {cardAction}
-        </button>
       ) : null}
     </li>
   );
@@ -267,7 +279,7 @@ export function DataTable({
                 const key = c.sortKey ?? c.key ?? c.label;
                 const on = sort && sort.key === key;
                 return (
-                  <th key={c.label + i} className={`${c.cls || ''} ${can ? 'sortable' : ''}`.trim()}>
+                  <th key={c.label + i} className={`${c.cls || ''} ${actionCol(c) ? 'act' : ''} ${can ? 'sortable' : ''}`.trim()}>
                     {can ? (
                       <button
                         type="button"
@@ -298,7 +310,7 @@ export function DataTable({
                 }}
               >
                 {columns.map((c, j) => (
-                  <td key={c.label + j} className={c.cls || ''}>
+                  <td key={c.label + j} className={`${c.cls || ''} ${actionCol(c) ? 'act' : ''}`.trim()}>
                     {cellOf(c, row, i)}
                   </td>
                 ))}

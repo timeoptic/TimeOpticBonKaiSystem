@@ -99,7 +99,7 @@ export function BookingFormView({ editing }) {
   return (
     <>
       <PageHead
-        icon="📅"
+        icon="calendar"
         title={editing ? 'Edit Booking' : 'New Booking'}
         subtitle={editing ? 'แก้ไขการจองคิว' : 'จองคิวลูกค้า'}
       />

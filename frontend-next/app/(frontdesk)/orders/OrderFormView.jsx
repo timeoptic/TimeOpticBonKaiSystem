@@ -324,7 +324,7 @@ export function OrderFormView({
     <>
       {!embedded && (
         <PageHead
-          icon="👓"
+          icon="glasses"
           title="Custom Order"
           subtitle={editing ? 'แก้ไขออเดอร์ตัดแว่น' : 'เปิดออเดอร์ตัดแว่นใหม่'}
         />

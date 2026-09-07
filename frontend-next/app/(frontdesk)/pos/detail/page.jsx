@@ -11,6 +11,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
+import { Icon } from '../../../../components/Icon.jsx';
 
 import { useAsync } from '../../../../lib/hooks.js';
 import { fmtDateTime, money } from '../../../../lib/format.js';
@@ -138,7 +139,7 @@ function PosDetail() {
             {sale.status !== 'void' && (
               <Link className="pos-btn" href={`/print/receipt?sale=${sale.id}`}>🧾 ใบเสร็จ</Link>
             )}
-            <Link className="pos-btn back" href="/pos/history/">← ประวัติ POS</Link>
+            <Link className="pos-btn back" href="/pos/history/"><Icon name="arrowLeft" /> ประวัติ POS</Link>
           </span>
         </div>
       </div>

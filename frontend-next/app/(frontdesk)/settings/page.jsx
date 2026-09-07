@@ -75,7 +75,7 @@ function SettingsPageInner() {
 
   return (
     <div>
-      <PageHead icon="⚙️" title="Settings" subtitle="ตั้งค่าระบบแจ้งเตือน" />
+      <PageHead icon="gear" title="Settings" subtitle="ตั้งค่าระบบแจ้งเตือน" />
 
       <div className="card">
         <div className="card-head">

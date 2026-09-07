@@ -90,15 +90,15 @@ export default function EmployeeReport() {
           <>
             <Kpis>
               <DrillKpi
-                label="ยอดขายรวมทุกคน" icon="💰" kind="accent" value={money(total)}
+                label="ยอดขายรวมทุกคน" icon="coins" kind="accent" value={money(total)}
               />
               <DrillKpi
-                label="ทำยอดสูงสุด" icon="🎉"
+                label="ทำยอดสูงสุด" icon="sparkle"
                 value={top ? top.employee : '—'}
                 sub={top ? money(top.total) : null}
               />
               <DrillKpi
-                label="พนักงานที่มียอด" icon="🧑‍💼"
+                label="พนักงานที่มียอด" icon="employee"
                 value={`${count(data.rows.length)} คน`}
               />
             </Kpis>

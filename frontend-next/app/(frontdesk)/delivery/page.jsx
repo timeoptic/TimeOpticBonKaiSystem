@@ -18,6 +18,7 @@ import { Badge, Card, Loading, PageHead } from '../../../components/ui.jsx';
 import { DataTable } from '../../../components/DataTable.jsx';
 import { FilterBar } from '../../../components/FilterBar.jsx';
 import { Pager } from '../../../components/Pager.jsx';
+import { PAGE_SIZES } from '../../../lib/pager.js';
 import { Icon } from '../../../components/Icon.jsx';
 import { CaseTags } from '../../../components/CaseTags.jsx';
 import { custName, fmtDate, fmtDateTime, money } from '../../../lib/format.js';
@@ -59,7 +60,7 @@ export default function DeliveryListPage() {
   const [client, setClient] = useState('');
   const [span, setSpan] = useState('today');
   const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(10);
+  const [perPage, setPerPage] = useState(PAGE_SIZES[0]);
   const q = useDebounced(term, 250);
   const done = bucket === 'delivered';
 

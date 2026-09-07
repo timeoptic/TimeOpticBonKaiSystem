@@ -81,22 +81,22 @@ export default function ChannelsReport() {
 
             <Kpis>
               <DrillKpi
-                label="ช่องทางที่ทำเงินสูงสุด" icon="🎉" kind="accent"
+                label="ช่องทางที่ทำเงินสูงสุด" icon="sparkle" kind="accent"
                 value={data.kpi.top_label || '—'}
                 sub={`${money(data.kpi.top_revenue)} จากทั้งหมด ${moneyShort(data.kpi.revenue)}`}
               />
-              <DrillKpi label="เคสทั้งหมด" icon="🗂" value={`${count(data.kpi.cases)} เคส`} />
+              <DrillKpi label="เคสทั้งหมด" icon="board" value={`${count(data.kpi.cases)} เคส`} />
               <DrillKpi
-                label="ลูกค้าใหม่" icon="✨" kind="ok"
+                label="ลูกค้าใหม่" icon="sparkle" kind="ok"
                 value={`${count(data.kpi.new_customers)} คน`}
                 sub={`จาก ${count(data.kpi.cases)} เคสในช่วงนี้`}
               />
               <DrillKpi
-                label="ช่องทางที่ใช้อยู่" icon="📈"
+                label="ช่องทางที่ใช้อยู่" icon="trending"
                 value={`${count(data.kpi.channels)} ช่องทาง`}
               />
               <DrillKpi
-                label="ไม่ได้ถาม" icon="⚠"
+                label="ไม่ได้ถาม" icon="warning"
                 kind={data.kpi.unasked > 0 ? 'warn' : ''}
                 value={`${count(data.kpi.unasked)} เคส`}
                 /* ยิ่งช่องนี้เยอะ ตัวเลขทั้งหน้ายิ่งเชื่อได้น้อยลง — ต้องบอกตรง ๆ

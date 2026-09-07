@@ -356,7 +356,7 @@ function CaseDetailInner() {
   return (
     <div>
       <PageHead
-        icon="🗂"
+        icon="board"
         title={c.case_code}
         subtitle={custName(c)}
         actions={(
@@ -371,7 +371,9 @@ function CaseDetailInner() {
 
       <div className="card">
         <div className="card-body">
-          <Row style={{ gap: 14, alignItems: 'center', marginBottom: 12 }}>
+          {/* ระยะห่างมาจาก .row ไม่ได้ตั้งทับด้วย inline style — ค่าที่เขียนติดกับ
+              แท็กชนะ media query ของมือถือเสมอ แล้วป้ายกับปุ่มก็ห่อคนละบรรทัด */}
+          <Row style={{ alignItems: 'center', marginBottom: 12 }}>
             <StatusChip row={c} />
             <RushToggle c={c} reload={reload} />
             {Number(c.is_waiting) ? <Badge kind="warn">สถานะรอ</Badge> : null}

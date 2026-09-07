@@ -32,7 +32,7 @@ function CustomerListInner() {
   return (
     <div>
       <PageHead
-        icon="👥"
+        icon="users"
         title="Customer Search"
         subtitle="ค้นหาข้อมูลลูกค้า"
         actions={<Link className="btn btn-ghost" href="/customers/new">+ ลูกค้าใหม่</Link>}

@@ -12,6 +12,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../../../lib/apiClient.js';
 import { homeFor, isSuperuser, worksBothSides } from '../../../lib/roles.js';
 import { Loading } from '../../../components/ui.jsx';
+import { Icon } from '../../../components/Icon.jsx';
 
 export default function HubPage() {
   const [actor, setActor] = useState(null);
@@ -64,7 +65,7 @@ export default function HubPage() {
       <div className="hub-grid">
         <a className="card hub-card" href="/">
           <div className="card-body">
-            <div style={{ fontSize: 28 }}>🛍</div>
+            <div className="hub-tile-icon"><Icon name="bag" /></div>
             <h2 style={{ margin: '8px 0 4px', fontSize: 18 }}>หน้าร้าน</h2>
             <p className="muted" style={{ margin: 0 }}>
               เคส ลูกค้า วัดสายตา ขาย ชำระเงิน ส่งมอบ
@@ -74,7 +75,7 @@ export default function HubPage() {
 
         <a className="card hub-card" href="/stock/">
           <div className="card-body">
-            <div style={{ fontSize: 28 }}>📦</div>
+            <div className="hub-tile-icon"><Icon name="box" /></div>
             <h2 style={{ margin: '8px 0 4px', fontSize: 18 }}>คลังและต้นทุน</h2>
             <p className="muted" style={{ margin: 0 }}>
               รับของ เบิก ล็อต ต้นทุน ใบสั่งตัด RX สาขา

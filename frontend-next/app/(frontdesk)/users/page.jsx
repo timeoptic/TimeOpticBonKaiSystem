@@ -60,7 +60,7 @@ function UsersInner() {
 
   return (
     <>
-      <PageHead icon="🔒" title="Users & Roles" subtitle="ผู้ใช้และสิทธิ์" />
+      <PageHead icon="lock" title="Users & Roles" subtitle="ผู้ใช้และสิทธิ์" />
 
       {error && (
         <Card>

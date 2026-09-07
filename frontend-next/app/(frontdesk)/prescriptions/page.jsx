@@ -34,7 +34,7 @@ function PrescriptionListInner() {
       {/* หน้านี้อ่านอย่างเดียว — ค่าสายตาเกิดและถูกแก้ในเคสของมันเอง ที่นี่ไว้ค้นย้อนหลัง
           กดแถวแล้วไปที่เคสที่วัดใบนั้น ไม่ใช่ฟอร์มแก้ใบเดี่ยว ๆ */}
       <PageHead
-        icon="👁"
+        icon="eye"
         title="Prescriptions"
         subtitle="ประวัติการวัดสายตา — กดแถวเพื่อเปิดเคสที่วัดใบนั้น"
         actions={<Link className="btn btn-ghost" href="/exam"><Icon name="eye" /> ขั้นวัดสายตา</Link>}

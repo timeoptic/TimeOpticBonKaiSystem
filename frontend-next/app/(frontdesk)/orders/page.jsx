@@ -51,7 +51,7 @@ function OrderListInner() {
   return (
     <div>
       <PageHead
-        icon="👓"
+        icon="glasses"
         title="Order History"
         subtitle="ประวัติการสั่งตัดแว่น"
         actions={<Link className="btn btn-ghost" href="/orders/new">+ เปิดออเดอร์ใหม่</Link>}

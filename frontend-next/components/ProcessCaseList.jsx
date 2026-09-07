@@ -17,6 +17,7 @@ import { Badge, Card, Loading, PageHead } from './ui.jsx';
 import { DataTable } from './DataTable.jsx';
 import { FilterBar } from './FilterBar.jsx';
 import { Pager } from './Pager.jsx';
+import { PAGE_SIZES } from '../lib/pager.js';
 import { StatusChip } from './StatusChip.jsx';
 import { Icon } from './Icon.jsx';
 import { CaseTags } from './CaseTags.jsx';
@@ -42,7 +43,7 @@ export function ProcessCaseList({ stageGroup, icon, title, subtitle }) {
   const [view, setView] = useState('');
   const [client, setClient] = useState('');
   const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(10);
+  const [perPage, setPerPage] = useState(PAGE_SIZES[0]);
   const q = useDebounced(term, 250);
 
   const { data, loading, error } = useAsync(

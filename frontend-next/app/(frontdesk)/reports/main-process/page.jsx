@@ -86,18 +86,18 @@ export default function MainProcessReport() {
         {data && data.kpi.bills ? (
           <>
             <Kpis>
-              <DrillKpi label="จำนวนเคส" icon="🗂" value={`${count(data.kpi.bills)} เคส`} />
+              <DrillKpi label="จำนวนเคส" icon="board" value={`${count(data.kpi.bills)} เคส`} />
               <DrillKpi
-                label="ยอดขายรวม" icon="💰" kind="accent" value={money(data.kpi.revenue)}
+                label="ยอดขายรวม" icon="coins" kind="accent" value={money(data.kpi.revenue)}
                 sub={`เฉลี่ย ${moneyShort(data.kpi.avg)} ต่อเคส`}
               />
-              <DrillKpi label="ชำระแล้ว" icon="✅" kind="ok" value={money(data.kpi.paid)} />
+              <DrillKpi label="ชำระแล้ว" icon="checkCircle" kind="ok" value={money(data.kpi.paid)} />
               <DrillKpi
-                label="ค้างชำระ" icon="⏳" kind={data.kpi.balance > 0 ? 'warn' : ''}
+                label="ค้างชำระ" icon="hourglass" kind={data.kpi.balance > 0 ? 'warn' : ''}
                 value={money(data.kpi.balance)}
               />
               <DrillKpi
-                label="กำไร" icon="📈"
+                label="กำไร" icon="trending"
                 value={data.kpi.profit === null ? '—' : money(data.kpi.profit)}
                 /* บอกให้ชัดว่ากำไรก้อนนี้คิดจากกี่เคสในกี่เคส — ไม่งั้นตัวเลขนี้
                    ถูกอ่านว่าเป็นกำไรของทั้งช่วง ทั้งที่เคสที่ยังไม่ได้เลือกของ

@@ -4,6 +4,7 @@ import { api } from '../../../lib/apiClient.js';
 import { useAsync, onSubmit } from '../../../lib/hooks.js';
 import { useMeta } from '../../../contexts/MetaContext.jsx';
 import { useToast } from '../../../components/Toast.jsx';
+import { useConfirm } from '../../../components/Confirm.jsx';
 import { Badge, Card, Field, FormGrid, Loading, PageHead, Toolbar } from '../../../components/ui.jsx';
 import { DataTable } from '../../../components/DataTable.jsx';
 import { Pager } from '../../../components/Pager.jsx';
@@ -25,6 +26,7 @@ const STATUS = [
 function EmployeeListInner() {
   const { reload: reloadMeta } = useMeta();
   const { ok, err } = useToast();
+  const confirm = useConfirm();
   const { data: rows, loading, reload } = useAsync(() => api.get('/api/employees'), []);
 
   /* กรองในเครื่อง ไม่ยิง API ใหม่ทุกตัวอักษร — /api/employees คืนทั้งตารางมาอยู่แล้ว
@@ -93,7 +95,14 @@ function EmployeeListInner() {
     return () => document.removeEventListener('keydown', onKey);
   }, [adding]);
 
+  /* ปิดใช้งาน = เอาชื่อออกจากช่องเลือกพนักงานทุกหน้า ซึ่งเป็นสิ่งที่ใกล้เคียง
+     การลบที่สุดในหน้านี้ · เปิดกลับไม่ต้องถาม ไม่มีอะไรหายไป */
   const toggle = async (r) => {
+    if (Number(r.active) && !await confirm(
+      'ปิดใช้งานพนักงาน',
+      `${r.employee_name || r.first_name || `ID ${r.id}`} จะหายจากช่องเลือกพนักงานทุกหน้า — ประวัติเดิมยังอยู่ครบ`,
+      { confirmText: 'ปิดใช้งาน', danger: true },
+    )) return;
     try {
       await api.put('/api/employees/' + r.id, { ...r, active: Number(r.active) ? 0 : 1 });
       await reloadMeta();
@@ -107,7 +116,7 @@ function EmployeeListInner() {
 
   return (
     <>
-      <PageHead icon="🧑‍💼" title="Employee" subtitle="พนักงาน" />
+      <PageHead icon="employee" title="Employee" subtitle="พนักงาน" />
 
       <Toolbar className="crud-tools">
         <Field label="ค้นหา" className="grow crud-search">

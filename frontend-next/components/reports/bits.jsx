@@ -20,7 +20,7 @@ export function ReportState({ loading, error, data, children }) {
     return (
       <Card>
         <div className="empty">
-          <Icon name="⚠" /> โหลดรายงานไม่สำเร็จ — {String(error.message || error)}
+          <Icon name="warning" /> โหลดรายงานไม่สำเร็จ — {String(error.message || error)}
         </div>
       </Card>
     );
@@ -67,7 +67,7 @@ export function NoData({ bounds, channel, what = 'บิล' }) {
     return (
       <Card>
         <div className="no-data">
-          <div className="nd-icon"><Icon name="📊" /></div>
+          <div className="nd-icon"><Icon name="chart" /></div>
           <b>ยังไม่มี{what}ในระบบ</b>
           <p className="muted">
             รายงานจะเริ่มมีตัวเลขเมื่อมีการเปิดออเดอร์หรือขายหน้าร้านใบแรก
@@ -81,7 +81,7 @@ export function NoData({ bounds, channel, what = 'บิล' }) {
   return (
     <Card>
       <div className="no-data">
-        <div className="nd-icon"><Icon name="📅" /></div>
+        <div className="nd-icon"><Icon name="calendar" /></div>
         <b>ไม่มี{what}ในช่วงที่เลือก</b>
         <p className="muted">
           ข้อมูลที่ร้านมีอยู่ตอนนี้คือช่วง <b>{rangeLabel(bounds.first, bounds.last)}</b>
@@ -91,7 +91,7 @@ export function NoData({ bounds, channel, what = 'บิล' }) {
           className="btn btn-accent"
           onClick={() => router.replace(`${pathname}?${filterQuery(all)}`, { scroll: false })}
         >
-          <Icon name="🔎" /> ดูข้อมูลทั้งหมดที่มี
+          <Icon name="search" /> ดูข้อมูลทั้งหมดที่มี
         </button>
       </div>
     </Card>
@@ -136,7 +136,7 @@ export function bucketNote(rows) {
 export function TableSearch({ value, onChange, placeholder = 'ค้นหาในตาราง…', count = null }) {
   return (
     <div className="table-search no-print">
-      <Icon name="🔍" />
+      <Icon name="search" />
       <input
         type="search"
         value={value}

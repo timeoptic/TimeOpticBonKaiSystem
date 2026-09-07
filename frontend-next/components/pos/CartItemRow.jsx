@@ -10,6 +10,7 @@
  */
 import { money } from '../../lib/format.js';
 import { lineTotal } from '../../lib/pos/cart.js';
+import { Icon } from '../Icon.jsx';
 
 export function CartItemRow({ item, bad, onQty, onBump, onPrice, onMeta, onCustomName, onRemove }) {
   return (
@@ -30,7 +31,7 @@ export function CartItemRow({ item, bad, onQty, onBump, onPrice, onMeta, onCusto
             {item.category_name ? ` · ${item.category_name}` : ''}
           </small>
         </div>
-        <button type="button" className="pos-del" onClick={onRemove} aria-label="ลบรายการ">✕</button>
+        <button type="button" className="pos-del" onClick={onRemove} aria-label="ลบรายการ"><Icon name="x" /></button>
       </div>
 
       <div className="pos-line-ctl">

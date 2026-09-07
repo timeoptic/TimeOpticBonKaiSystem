@@ -336,6 +336,8 @@
 .pos-done{text-align:center}
 
 .pos-done .pos-tick{font-size:48px}
+/* เครื่องหมายถูกเป็น SVG แล้ว ขนาดจึงมาจากกล่อง ไม่ใช่ font-size */
+.pos-done .pos-tick .ico{width:48px;height:48px;margin:0;color:var(--ok,#16a34a)}
 
 .pos-done h2{margin:8px 0 2px;color:var(--green-deep);font-size:var(--t-lg)}
 

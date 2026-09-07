@@ -10,7 +10,7 @@ export const STAGE_META = Object.fromEntries(
 );
 
 export const stageInfo = (g) =>
-  STAGE_META[g] || { label: g || '-', color: '#6b7a90', icon: '•' };
+  STAGE_META[g] || { label: g || '-', color: '#6b7a90', icon: 'circle' };
 
 /** the board's columns, in workflow order (จบงาน is added by the board itself) */
 export const STAGE_GROUPS = CASE_PROCESSES.map((p) => p.id);

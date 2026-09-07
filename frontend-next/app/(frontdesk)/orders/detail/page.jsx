@@ -58,7 +58,7 @@ function OrderDetailInner() {
   return (
     <div>
       <PageHead
-        icon="👓"
+        icon="glasses"
         title={o.invoice_code}
         subtitle={custName(o)}
         actions={(
