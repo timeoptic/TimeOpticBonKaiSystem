@@ -26,6 +26,7 @@ import { EmployeeSelect, Select } from '../../../components/Selects.jsx';
 import { custName, dateOnly, hhmm, todayISO } from '../../../lib/format.js';
 import { Icon } from '../../../components/Icon.jsx';
 import { DateField } from '../../../components/DateField.jsx';
+import { TimeField } from '../../../components/TimeField.jsx';
 
 export function BookingFormView({ editing }) {
   // `editing` must always be passed explicitly (true or false) by the caller —
@@ -149,7 +150,7 @@ export function BookingFormView({ editing }) {
               />
             </Field>
             <Field label="เวลา *">
-              <input name="booking_time" type="time" required defaultValue={hhmm(b.booking_time) || '10:00'} />
+              <TimeField name="booking_time" required defaultValue={hhmm(b.booking_time) || '10:00'} />
             </Field>
             <Field label="บริการที่ต้องการ">
               <Select name="service_type" options={serviceTypes} defaultValue={b.service_type || 'eye_exam'} />

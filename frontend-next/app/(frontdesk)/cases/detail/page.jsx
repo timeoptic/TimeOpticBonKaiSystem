@@ -264,9 +264,11 @@ function OverviewTab({ c, showTab }) {
             <Kv
               rows={(c.events || []).slice(0, 5).map((ev) => [
                 fmtDateTime(ev.created_at),
-                `${ACTION_LABEL[ev.action] || ev.action}`
-                + `${ev.to_label ? ` <Icon name="arrowRight" /> ${ev.to_label}` : ''}`
-                + `${eventNote(ev) ? ` · ${eventNote(ev)}` : ''}`,
+                <>
+                  {ACTION_LABEL[ev.action] || ev.action}
+                  {ev.to_label ? <> <Icon name="arrowRight" /> {ev.to_label}</> : null}
+                  {eventNote(ev) ? ` · ${eventNote(ev)}` : ''}
+                </>,
               ])}
             />
           ) : <p className="muted">ยังไม่มีกิจกรรม</p>}

@@ -172,17 +172,26 @@ function CaseFormInner() {
   const [picked, setPicked] = useState(null);
   const [created, setCreated] = useState(null);
   const [busy, setBusy] = useState(false);
+  /* กด "เลือกใหม่" ต้องทิ้งลูกค้าที่ติดมากับ ?customer= ด้วย ไม่งั้นเคลียร์ picked
+     แล้วมันเด้งกลับมาเป็นคนเดิม — ปุ่มกดแล้วเหมือนไม่มีอะไรเกิดขึ้น */
+  const [dropInitial, setDropInitial] = useState(false);
 
   if (loading) return <Loading />;
 
-  const customer = created ?? picked ?? initial;
+  const customer = created ?? picked ?? (dropInitial ? null : initial);
   const isNewCustomer = mode === 'new';
+
+  /* กลับไปหน้าเลือก — ลูกค้าใหม่ที่บันทึกไปแล้วยังอยู่ในระบบ แค่ไม่ผูกกับเคสใบนี้ */
+  const reselect = () => {
+    setPicked(null);
+    setCreated(null);
+    setDropInitial(true);
+  };
 
   const chooseMode = (next) => {
     if (next === mode) return;
     setMode(next);
-    setPicked(null);
-    setCreated(null);
+    reselect();
   };
 
   const save = async (e) => {
@@ -209,51 +218,54 @@ function CaseFormInner() {
     <>
       <PageHead icon="🗂" title="New Case" subtitle="เปิดเคสใหม่" />
 
+      {/* เลือกลูกค้าได้แล้วก็ยุบทั้งขั้นตอนเหลือแค่การ์ดสรุป — ปุ่มโหมดกับช่องค้นหา
+          ไม่ต้องค้างอยู่ให้เกะกะ ยังไงก็เลือกได้ทีละคน กด "เลือกใหม่" ถึงกางกลับ */}
       <Card title="1. ลูกค้ารายนี้เป็นใคร">
-        <Row style={{ gap: 8, marginBottom: 12 }}>
-          <button
-            type="button"
-            className={`chip-btn ${mode === 'existing' ? 'active' : ''}`}
-            onClick={() => chooseMode('existing')}
-          >
-            <Icon name="user" /> ลูกค้าเก่า — มีข้อมูลในระบบแล้ว
-          </button>
-          <button
-            type="button"
-            className={`chip-btn ${mode === 'new' ? 'active' : ''}`}
-            onClick={() => chooseMode('new')}
-          >
-            <Icon name="sparkle" /> ลูกค้าใหม่ — ยังไม่เคยมีข้อมูล
-          </button>
-        </Row>
+        {!customer && (
+          <>
+            <Row style={{ gap: 8, marginBottom: 12 }}>
+              <button
+                type="button"
+                className={`chip-btn ${mode === 'existing' ? 'active' : ''}`}
+                onClick={() => chooseMode('existing')}
+              >
+                <Icon name="user" /> ลูกค้าเก่า — มีข้อมูลในระบบแล้ว
+              </button>
+              <button
+                type="button"
+                className={`chip-btn ${mode === 'new' ? 'active' : ''}`}
+                onClick={() => chooseMode('new')}
+              >
+                <Icon name="sparkle" /> ลูกค้าใหม่ — ยังไม่เคยมีข้อมูล
+              </button>
+            </Row>
 
-        {mode === null && <p className="muted">เลือกก่อนว่าเป็นลูกค้าเก่าหรือลูกค้าใหม่</p>}
+            {mode === null && <p className="muted">เลือกก่อนว่าเป็นลูกค้าเก่าหรือลูกค้าใหม่</p>}
 
-        {mode === 'existing' && !created && (
-          <Picker
-            placeholder="ค้นหาลูกค้า (ชื่อ / นามสกุล / เบอร์โทร / รหัสลูกค้า)"
-            fetcher={(q) => api.get('/api/customers', { q, limit: 40 })}
-            label={custName}
-            sub={(r) => [r.phone, r.line_id, '#' + r.id].filter(Boolean).join(' · ')}
-            selectedId={customer?.id}
-            onPick={setPicked}
-          />
+            {mode === 'existing' && (
+              <Picker
+                placeholder="ค้นหาลูกค้า (ชื่อ / นามสกุล / เบอร์โทร / รหัสลูกค้า)"
+                fetcher={(q) => api.get('/api/customers', { q, limit: 40 })}
+                label={custName}
+                sub={(r) => [r.phone, r.line_id, '#' + r.id].filter(Boolean).join(' · ')}
+                onPick={setPicked}
+              />
+            )}
+
+            {mode === 'new' && <NewCustomerForm onCreated={setCreated} />}
+          </>
         )}
 
-        {mode === 'new' && !created && <NewCustomerForm onCreated={setCreated} />}
-
         {customer && (
-          <div className="ws-inset" style={{ marginTop: 12 }}>
+          <div className="ws-inset">
             <Row style={{ marginBottom: 8 }}>
               <Badge kind={isNewCustomer ? 'blue' : 'gray'}>{isNewCustomer ? 'ลูกค้าใหม่' : 'ลูกค้าเก่า'}</Badge>
               <b>{custName(customer)}</b>
               <span className="muted">{`รหัสลูกค้า #${customer.id}`}</span>
               <Link className="btn btn-sm btn-light" href={'/customers/detail?id=' + customer.id}>ดูประวัติ</Link>
-              {!created && (
-                <button type="button" className="btn btn-sm btn-light" onClick={() => setPicked(null)}>
-                  เลือกใหม่
-                </button>
-              )}
+              <button type="button" className="btn btn-sm btn-light" onClick={reselect}>
+                เลือกใหม่
+              </button>
             </Row>
             <Kv
               rows={[

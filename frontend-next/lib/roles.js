@@ -68,10 +68,17 @@ export const mayUseStock = (actor) => rank(actor) > 0 && actor.role !== ROLE.SAL
  * เป็นแค่คำตอบสำหรับหน้าจอว่า "จะวาดเมนูนี้ไหม" · ด่านจริงอยู่ที่ `api/index.php`
  * ซึ่งกันด้วยคำนำหน้าเส้นทางชุดเดียวกับลิสต์ข้างล่างนี้ · สองที่ต้องตรงกัน
  * เพิ่มหน้าใหม่ในกลุ่มนี้เมื่อไหร่ ต้องเติมทั้งสองที่
+ *
+ * ข้อยกเว้นเดียวคือ `/users` ที่ไม่มีคู่ของมันใน `ADMIN_PREFIXES` ฝั่ง PHP —
+ * ข้อมูลบัญชีอยู่ในตาราง `admins` ซึ่งเป็นของ API ฝั่งคลัง (`/stock-api/users`)
+ * และถูกกันด้วย `Roles::require()` ที่นั่นทุกคำขออยู่แล้ว · ที่ต้องมีในลิสต์นี้
+ * เพราะ `Shell.jsx` ใช้ลิสต์เดียวกันตัดสินว่ากำลังอยู่ "โซนแอดมิน" ไหม ถ้าไม่มี
+ * แถบข้างจะสลับกลับไปเป็นเมนูหน้าร้านทันทีที่เปิดหน้านี้ — เมนูที่พาไปกระโดด
+ * ออกจากกลุ่มของตัวเอง
  */
 export const ADMIN_PATHS = [
   '/income', '/expense',
-  '/employees', '/suppliers', '/reports', '/settings',
+  '/employees', '/users', '/suppliers', '/reports', '/settings',
 ];
 
 export const isAdminPath = (path) => ADMIN_PATHS.some(

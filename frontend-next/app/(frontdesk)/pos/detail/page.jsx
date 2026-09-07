@@ -24,9 +24,10 @@ import { DataTable } from '../../../../components/DataTable.jsx';
 import { useToast } from '../../../../components/Toast.jsx';
 import { posApi, PAY_METHODS, payMethodLabel } from '../../../../lib/pos/posApi.js';
 import { PaymentBadge, FulfillmentBadge } from '../../../../components/pos/PosStatusBadge.jsx';
+import { Select } from '../../../../components/Selects.jsx';
 
 const ITEM_COLS = [
-  { label: 'สินค้า', render: (r) => (
+  { label: 'สินค้า', mobile: 'title', render: (r) => (
     <>
       <b>{r.product_name_snapshot}</b>
       {r.sku_snapshot && <small style={{ display: 'block', color: 'var(--pos-muted)' }}>{r.sku_snapshot}</small>}
@@ -41,18 +42,18 @@ const ITEM_COLS = [
       })()}
     </>
   ) },
-  { label: 'จำนวน', cls: 'num', key: 'quantity' },
-  { label: 'ราคา/ชิ้น', cls: 'num', render: (r) => money(r.unit_price) },
-  { label: 'รวม', cls: 'num', render: (r) => <b>{money(r.line_total)}</b> },
+  { label: 'จำนวน', cls: 'num', key: 'quantity', mobile: 'body' },
+  { label: 'ราคา/ชิ้น', cls: 'num', render: (r) => money(r.unit_price), mobile: 'body' },
+  { label: 'รวม', cls: 'num', render: (r) => <b>{money(r.line_total)}</b>, mobile: 'body' },
 ];
 
 const PAY_COLS = [
-  { label: 'วันที่', render: (r) => fmtDateTime(r.paid_at) },
-  { label: 'ช่องทาง', render: (r) => payMethodLabel(r.payment_method) },
-  { label: 'จำนวนเงิน', cls: 'num', render: (r) => <b>{money(r.amount)}</b> },
-  { label: 'รับมา', cls: 'num', render: (r) => (r.amount_received ? money(r.amount_received) : '—') },
-  { label: 'ทอน', cls: 'num', render: (r) => (r.change_amount ? money(r.change_amount) : '—') },
-  { label: 'ผู้รับเงิน', key: 'created_by_name' },
+  { label: 'วันที่', render: (r) => fmtDateTime(r.paid_at), mobile: 'title' },
+  { label: 'ช่องทาง', render: (r) => payMethodLabel(r.payment_method), mobile: 'subtitle' },
+  { label: 'จำนวนเงิน', cls: 'num', render: (r) => <b>{money(r.amount)}</b>, mobile: 'body' },
+  { label: 'รับมา', cls: 'num', render: (r) => (r.amount_received ? money(r.amount_received) : '—'), mobile: 'meta' },
+  { label: 'ทอน', cls: 'num', render: (r) => (r.change_amount ? money(r.change_amount) : '—'), mobile: 'meta' },
+  { label: 'ผู้รับเงิน', key: 'created_by_name', mobile: 'meta' },
 ];
 
 function PosDetail() {
@@ -177,9 +178,7 @@ function PosDetail() {
       {sale.status !== 'void' && balance > 0 && (
         <Card title={`+ รับชำระเพิ่ม (ค้างอยู่ ${money(balance)})`}>
           <Field label="ช่องทางชำระเงิน">
-            <select value={method} onChange={(e) => setMethod(e.target.value)}>
-              {PAY_METHODS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
-            </select>
+            <Select value={method} onChange={(e) => setMethod(e.target.value)} options={PAY_METHODS} />
           </Field>
           <Field label="จำนวนเงิน (บาท)">
             <input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} />

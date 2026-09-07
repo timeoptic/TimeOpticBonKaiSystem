@@ -74,3 +74,71 @@ export function parseTypedDate(text) {
 
   return `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 }
+
+/**
+ * อ่านเวลาที่คนพิมพ์เอง แล้วคืน 'HH:MM' — อ่านไม่ออกหรือไม่มีเวลานั้นจริงคืน null
+ *
+ * กติกาเดียวกับ parseTypedDate: ตัวคั่นเป็นอะไรก็ได้ที่ไม่ใช่ตัวเลข (9:30 · 9.30 ·
+ * 9 30) และไม่มีตัวคั่นเลยก็ได้ (930 · 0930) เพราะคนกรอกพิมพ์รวดเดียวแล้ว Tab ต่อ
+ * ตัวเลขก้อนเดียวสั้น ๆ คือชั่วโมงล้วน — พิมพ์ 9 แล้วออกจากช่องได้ 09:00
+ *
+ * คืน null เมื่ออ่านไม่ออก ไม่ใช่ปัดให้ใกล้เคียง — 25:00 ที่ถูกปัดเป็น 23:59 เงียบ ๆ
+ * คือนัดที่ผิดเวลาโดยไม่มีอะไรเตือน
+ */
+export function parseTypedTime(text) {
+  const parts = String(text ?? '').trim().split(/[^0-9]+/).filter(Boolean);
+  if (!parts.length) return null;
+
+  let h;
+  let mi;
+  if (parts.length >= 2) {
+    [h, mi] = parts.map(Number);
+  } else if (parts[0].length <= 2) {
+    h = Number(parts[0]);
+    mi = 0;
+  } else if (parts[0].length === 3 || parts[0].length === 4) {
+    h = Number(parts[0].slice(0, parts[0].length - 2));
+    mi = Number(parts[0].slice(-2));
+  } else {
+    return null;
+  }
+
+  if (!Number.isInteger(h) || !Number.isInteger(mi)) return null;
+  if (h < 0 || h > 23 || mi < 0 || mi > 59) return null;
+  return `${String(h).padStart(2, '0')}:${String(mi).padStart(2, '0')}`;
+}
+
+/** ทุกเวลาในหนึ่งวันห่างกันทีละ `step` นาที — รายการที่ TimeField กางออกมาให้เลือก */
+export function timeOptions(step = 15) {
+  const out = [];
+  for (let m = 0; m < 24 * 60; m += step) {
+    out.push(`${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`);
+  }
+  return out;
+}
+
+/** 'HH:MM' -> จำนวนนาทีนับจากเที่ยงคืน · อ่านไม่ออกคืน null (ใช้หาตัวเลือกที่ใกล้ที่สุด) */
+export function minutesOf(hhmm) {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(hhmm ?? '').trim());
+  if (!m) return null;
+  return Number(m[1]) * 60 + Number(m[2]);
+}
+
+/**
+ * แยกค่าแบบที่ <input type="datetime-local"> เคยส่งออก เป็น ['YYYY-MM-DD', 'HH:MM']
+ *
+ * รับค่าที่มีวินาทีต่อท้ายและค่าที่คั่นด้วยเว้นวรรคด้วย เพราะค่าที่อ่านกลับมาจาก API
+ * เป็น '2026-09-05 14:30:00' ตามที่ MySQL เก็บ ไม่ใช่รูปแบบที่ช่องเคยส่งไป
+ */
+export function splitLocal(value) {
+  const raw = String(value ?? '').trim();
+  const m = /^(\d{4}-\d{2}-\d{2})(?:[T ](\d{2}:\d{2}))?/.exec(raw);
+  if (!m) return ['', ''];
+  return [m[1], m[2] || ''];
+}
+
+/** ประกอบกลับเป็น 'YYYY-MM-DDTHH:MM' — ไม่มีวันที่ก็ไม่มีค่า เวลาที่ลอยอยู่เดี่ยว ๆ ไม่มีความหมาย */
+export function joinLocal(date, time) {
+  if (!date) return '';
+  return `${date}T${time || '00:00'}`;
+}

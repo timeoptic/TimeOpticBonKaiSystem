@@ -16,9 +16,12 @@ import { api } from '../../../lib/apiClient.js';
 import { useAsync, useDebounced } from '../../../lib/hooks.js';
 import { Badge, Card, Loading, PageHead } from '../../../components/ui.jsx';
 import { DataTable } from '../../../components/DataTable.jsx';
+import { FilterBar } from '../../../components/FilterBar.jsx';
+import { Pager } from '../../../components/Pager.jsx';
 import { Icon } from '../../../components/Icon.jsx';
 import { CaseTags } from '../../../components/CaseTags.jsx';
 import { custName, fmtDate, fmtDateTime, money } from '../../../lib/format.js';
+import { Select } from '../../../components/Selects.jsx';
 
 const BUCKET = {
   ready: { label: 'พร้อมส่งมอบ', kind: 'ok', row: 'ok' },
@@ -49,21 +52,6 @@ const BOOKS = [
   ['shop', 'ลูกค้าร้าน'],
 ];
 
-const PER_PAGE = [10, 25, 50];
-
-/** 1 … 4 5 [6] 7 8 … 12 — never more than seven buttons wide */
-function pageWindow(page, pages) {
-  if (pages <= 7) return Array.from({ length: pages }, (_, i) => i + 1);
-  const out = [1];
-  const from = Math.max(2, page - 1);
-  const to = Math.min(pages - 1, page + 1);
-  if (from > 2) out.push('…');
-  for (let n = from; n <= to; n++) out.push(n);
-  if (to < pages - 1) out.push('…');
-  out.push(pages);
-  return out;
-}
-
 export default function DeliveryListPage() {
   const router = useRouter();
   const [term, setTerm] = useState('');
@@ -85,15 +73,10 @@ export default function DeliveryListPage() {
 
   useEffect(() => { setPage(1); }, [q, bucket, client, span, perPage]);
 
-  const total = rows.length;
-  const pages = Math.max(1, Math.ceil(total / perPage));
-  const current = Math.min(page, pages);
-  const from = total ? (current - 1) * perPage + 1 : 0;
-  const to = Math.min(current * perPage, total);
-  const shown = rows.slice((current - 1) * perPage, current * perPage);
-
   const openCase = (r) => router.push(`/cases/detail?id=${r.id}&step=delivery`);
-  const hasFilter = Boolean(term || bucket || client);
+  /* ตัวเลขในวงเล็บบนปุ่ม "ตัวกรอง (N)" — นับเฉพาะตัวที่ถูกเปลี่ยนจากค่าเริ่มต้น
+     ช่วงเวลานับเฉพาะตอนดูของที่ส่งไปแล้ว เพราะคิวที่ยังไม่ส่งไม่มีช่องนั้นให้เลือก */
+  const activeFilters = [term, bucket, client, done && span !== 'today'].filter(Boolean).length;
 
   return (
     <div>
@@ -122,41 +105,38 @@ export default function DeliveryListPage() {
         ))}
       </div>
 
-      <div className="filter-bar">
-        <div className="search-field">
-          <Icon name="search" />
-          <input
-            type="search"
-            placeholder="ค้นหา Case / ชื่อลูกค้า / เบอร์ / กรอบ / เลนส์"
-            value={term}
-            onChange={(e) => setTerm(e.target.value)}
-          />
-        </div>
-        <select value={client} onChange={(e) => setClient(e.target.value)}>
-          {BOOKS.map(([k, label]) => <option key={k || 'all'} value={k}>{label}</option>)}
-        </select>
-        <select
+      <FilterBar
+        count={activeFilters}
+        resultCount={rows.length}
+        onReset={() => { setTerm(''); setBucket(''); setClient(''); setSpan('today'); }}
+        resetLabel="รีเซ็ต"
+        search={(
+          <div className="search-field">
+            <Icon name="search" />
+            <input
+              type="search"
+              placeholder="ค้นหา Case / ชื่อลูกค้า / เบอร์ / กรอบ / เลนส์"
+              value={term}
+              onChange={(e) => setTerm(e.target.value)}
+            />
+          </div>
+        )}
+      >
+        <Select value={client} onChange={(e) => setClient(e.target.value)} options={BOOKS} />
+        <Select
           value={bucket}
           onChange={(e) => { setBucket(e.target.value); setSpan('today'); }}
-        >
-          <option value="">ความพร้อม — ทั้งหมด</option>
-          {Object.entries(BUCKET).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-        </select>
+          options={[['', 'ความพร้อม — ทั้งหมด'], ...Object.entries(BUCKET).map(([k, v]) => [k, v.label])]}
+        />
         {/* ช่วงเวลามีความหมายเฉพาะกับของที่ส่งไปแล้ว — คิวที่ยังไม่ส่งไม่มีวันที่ให้ย้อน */}
         {done && (
-          <select value={span} onChange={(e) => setSpan(e.target.value)}>
-            {SPANS.map(([k, label]) => <option key={k} value={k}>{`ส่งมอบเมื่อ — ${label}`}</option>)}
-          </select>
+          <Select
+            value={span}
+            onChange={(e) => setSpan(e.target.value)}
+            options={SPANS.map(([k, label]) => [k, `ส่งมอบเมื่อ — ${label}`])}
+          />
         )}
-        <button
-          type="button"
-          className="btn btn-light"
-          disabled={!hasFilter}
-          onClick={() => { setTerm(''); setBucket(''); setClient(''); setSpan('today'); }}
-        >
-          <Icon name="refresh" /> รีเซ็ต
-        </button>
-      </div>
+      </FilterBar>
 
       {loading && <Loading />}
       {error && <Card><p className="muted">{error.message}</p></Card>}
@@ -169,6 +149,7 @@ export default function DeliveryListPage() {
               {
                 label: 'Case ID',
                 cls: 'nowrap',
+                mobile: 'title',
                 render: (r) => (
                   <div className="cell-2">
                     <b className="mono">
@@ -184,6 +165,7 @@ export default function DeliveryListPage() {
               },
               {
                 label: 'ลูกค้า',
+                mobile: 'subtitle',
                 render: (r) => (
                   <div className="cell-2">
                     <span>{custName(r)}</span>
@@ -191,8 +173,10 @@ export default function DeliveryListPage() {
                   </div>
                 ),
               },
+              /* กรอบ/เลนส์ไม่ได้ตัดสินว่าจะส่งมอบได้หรือยัง — พับไว้ใต้ "ดูเพิ่มเติม" */
               {
                 label: 'สินค้า',
+                mobile: 'meta',
                 render: (r) => (
                   <div className="cell-2">
                     <span>{r.frame_name || '—'}</span>
@@ -203,6 +187,7 @@ export default function DeliveryListPage() {
               {
                 label: 'ความพร้อม',
                 cls: 'nowrap',
+                mobile: 'status',
                 render: (r) => {
                   const b = BUCKET[r.bucket] || BUCKET.not_ready;
                   return (
@@ -216,6 +201,7 @@ export default function DeliveryListPage() {
               {
                 label: 'ยอดคงเหลือ',
                 cls: 'nowrap',
+                mobile: 'body',
                 /* ไม่มีออเดอร์ = ยังไม่มียอด อย่าไปบอกว่า "ชำระครบ" */
                 render: (r) => {
                   if (!r.order_id || r.balance === null) return <span className="muted">—</span>;
@@ -228,15 +214,21 @@ export default function DeliveryListPage() {
               done ? {
                 label: 'ส่งมอบเมื่อ',
                 cls: 'nowrap',
+                mobile: 'body',
                 render: (r) => (r.delivered_at ? fmtDateTime(r.delivered_at) : '—'),
               } : {
                 label: 'นัดรับ',
                 cls: 'nowrap',
+                mobile: 'body',
                 render: (r) => (r.appointment_date ? fmtDate(r.appointment_date) : '—'),
               },
+              /* ปุ่ม ⋮ ซ้ำกับปุ่ม "เปิดขั้นส่งมอบ" ที่ท้ายการ์ดพอดี — บนมือถือจึงตัดทิ้ง
+                 ไม่ใช่เพราะกดไม่ได้ แต่เพราะปุ่มสองอันที่ทำงานเดียวกันในการ์ดใบเดียว
+                 ทำให้ต้องหยุดคิดว่ามันต่างกันตรงไหน */
               {
                 label: 'จัดการ',
                 cls: 'nowrap right',
+                mobile: false,
                 render: (r) => (
                   <button
                     type="button"
@@ -250,55 +242,21 @@ export default function DeliveryListPage() {
                 ),
               },
             ]}
-            rows={shown}
+            rows={rows}
+            page={page}
+            perPage={perPage}
             onRowClick={openCase}
+            cardAction="เปิดขั้นส่งมอบ"
             empty="ไม่มีเคสที่ตรงกับตัวกรอง"
           />
 
-          {total > 0 && (
-            <div className="pager">
-              <span>{`แสดง ${from} - ${to} จาก ${total} รายการ`}</span>
-              <div className="pages">
-                <button
-                  type="button"
-                  className="pg"
-                  disabled={current === 1}
-                  aria-label="หน้าก่อนหน้า"
-                  onClick={() => setPage(current - 1)}
-                >
-                  ‹
-                </button>
-                {pageWindow(current, pages).map((n, i) => (n === '…' ? (
-                  <span className="pg-gap" key={`gap${i}`}>…</span>
-                ) : (
-                  <button
-                    type="button"
-                    key={n}
-                    className={`pg ${n === current ? 'active' : ''}`}
-                    onClick={() => setPage(n)}
-                  >
-                    {n}
-                  </button>
-                )))}
-                <button
-                  type="button"
-                  className="pg"
-                  disabled={current === pages}
-                  aria-label="หน้าถัดไป"
-                  onClick={() => setPage(current + 1)}
-                >
-                  ›
-                </button>
-              </div>
-              <label className="pg-per">
-                แสดง
-                <select value={perPage} onChange={(e) => setPerPage(Number(e.target.value))}>
-                  {PER_PAGE.map((n) => <option key={n} value={n}>{n}</option>)}
-                </select>
-                รายการ / หน้า
-              </label>
-            </div>
-          )}
+          <Pager
+            total={rows.length}
+            page={page}
+            perPage={perPage}
+            onPage={setPage}
+            onPerPage={setPerPage}
+          />
         </Card>
       )}
     </div>

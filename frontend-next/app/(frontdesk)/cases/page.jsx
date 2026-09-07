@@ -12,11 +12,37 @@
  * had to say what kind of job the case was — one column answering two questions
  * means neither answer is reliable.
  *
- * Filtering happens in the browser on purpose: the counts on every chip stay
- * live and switching views costs nothing. The same filters exist on
- * GET /api/cases for anything that needs them server-side.
+ * ─────────────────────────────────────────────────────────────────────────
+ * ค้นหา กรอง นับ และแบ่งหน้า ทำที่ฝั่ง API ทั้งหมด
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * เดิมหน้านี้ขอเคสมาทีเดียวทั้งกอง (`limit: 3000`) แล้วกรองในเบราว์เซอร์
+ * เหตุผลตอนนั้นคือ "ตัวเลขบนชิปจะได้ตรง และสลับมุมมองไม่ต้องยิงซ้ำ" ซึ่งพังลง
+ * เมื่อข้อมูลจริงเข้ามา:
+ *
+ *   · เคสที่ยังทำไม่จบมี 1,173 ใบ = ส่งข้อมูลราว 1 MB **ใหม่ทุกครั้ง**
+ *     ที่พิมพ์ค้นหาหรือกดชิป แล้ววาดการ์ดครบ 1,173 ใบลง DOM พร้อมกัน
+ *   · กด "เคสที่จบแล้ว" มี 7,752 ใบ แต่เพดานอยู่ที่ 3,000 → หายไปเงียบ ๆ
+ *     4,752 ใบ และตัวเลขบนชิปที่นับจากแถวที่โหลดมาก็ผิดตามไปด้วย
+ *
+ * ตอนนี้ API คืน 20 ใบต่อคอลัมน์ พร้อม `counts` และ `by_stage` ที่นับจากของจริง
+ * ทั้งกอง — ยอดบนหัวคอลัมน์จึงตรงเสมอโดยไม่ต้องโหลดทุกใบมานับเอง และไม่มี
+ * เพดานให้ชนอีก (ดู `caseBoardPage()` ใน api/routes/cases.php)
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * ตัวกรองสี่กลุ่ม ไม่ใช่ชิปกองเดียว
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * ของเดิมวางชิปสี่อันไว้แถวเดียวกันหน้าตาเหมือนกันหมด: ด่วน / ค้างชำระ /
+ * ซ่อนขั้นที่ว่าง / เคสที่จบแล้ว · สามอันแรกกดสะสมกันได้ อันที่สามไม่ใช่ตัวกรอง
+ * เคสด้วยซ้ำ (มันซ่อนคอลัมน์) ผลคือกด "จบแล้ว + ด่วน + ค้างชำระ" แล้วได้กระดาน
+ * ว่างเปล่าโดยไม่มีอะไรบอกว่าเพราะอะไร
+ *
+ * จึงแยกเป็นสี่กลุ่มที่มีป้ายกำกับของตัวเอง — ประเภทลูกค้า / ตัวกรองเคส /
+ * ขั้นตอน เลือกได้กลุ่มละหนึ่งและใช้ร่วมกันได้ ส่วน "ซ่อนขั้นที่ว่าง" เป็นสวิตช์
+ * ในกลุ่ม "การแสดงผล" เพราะมันไม่ได้กรองเคสออก มันซ่อนคอลัมน์
  */
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api } from '../../../lib/apiClient.js';
@@ -24,41 +50,29 @@ import { useAsync, useDebounced } from '../../../lib/hooks.js';
 import { Badge, Card, Field, Loading, PageHead } from '../../../components/ui.jsx';
 import { QueryParamPage } from '../../../components/QueryParamPage.jsx';
 import { DataTable } from '../../../components/DataTable.jsx';
+import { FilterSheet } from '../../../components/FilterBar.jsx';
+import { Pager } from '../../../components/Pager.jsx';
+import { BOARD_PAGE_SIZES } from '../../../lib/pager.js';
 import { STAGE_GROUPS, stageInfo } from '../../../lib/constants.js';
-import { DONE_STAGE } from '../../../lib/caseProcesses.js';
+import {
+  CARD_PAGE, CASE_FILTERS, boardColumns, boardQuery, stageOptions,
+} from '../../../lib/caseBoard.js';
 import { custName, fmtDate, moneyShort } from '../../../lib/format.js';
 import { Icon } from '../../../components/Icon.jsx';
 import { CaseTags, SIGHT_FIRST } from '../../../components/CaseTags.jsx';
+import { Select } from '../../../components/Selects.jsx';
 
-/* the four yes/no views of the board. Four bare checkboxes in a row read as a
-   settings dialog; the same four as chips read as "what am I looking at".
-   "ซ่อนขั้นที่ว่าง" ไม่มีความหมายตอนดูเคสที่จบแล้ว — ทุกใบอยู่กองเดียวกัน */
-const TOGGLES = [
-  ['rush', 'ด่วนเท่านั้น', 'flame'],
-  ['unpaid', 'ค้างชำระ', 'coins'],
-  ['hideEmpty', 'ซ่อนขั้นที่ว่าง', null],
-  ['showDone', 'เคสที่จบแล้ว', 'checkCircle'],
+/** the two books of work, plus everything at once */
+const CLIENTS = [
+  ['', 'ทั้งหมด', 'all'],
+  ['sightfirst', 'SightFirst', 'sightfirst'],
+  ['shop', 'ลูกค้าร้าน', 'shop'],
 ];
 
 /** การ์ดคือกระดาน ลิสต์คือตาราง — ข้อมูลชุดเดียวกัน คนละวิธีกวาดตา */
 const VIEWS = [
   ['card', 'การ์ด', 'board'],
   ['list', 'ลิสต์', 'clipboard'],
-];
-
-/**
- * ขอเคสมาทีเดียวให้ครบ — ฝั่ง API เพดานอยู่ที่ 5,000
- *
- * กระดานกรองและนับในเบราว์เซอร์ทั้งหมด (ดูหัวไฟล์) ตัวเลขบนชิปจึงถูกต้องได้
- * ก็ต่อเมื่อโหลดมาครบ · ร้านนี้มีเคสที่ยังทำไม่จบราว 1,200 เคส
- */
-const BOARD_LIMIT = 3000;
-
-/** the two books of work, plus everything at once */
-const CLIENTS = [
-  ['', 'ทั้งหมด', null],
-  ['sightfirst', 'SightFirst', (c) => c.customer_category === SIGHT_FIRST],
-  ['shop', 'ลูกค้าร้าน', (c) => c.customer_category !== SIGHT_FIRST],
 ];
 
 function CaseCard({ c, onOpen }) {
@@ -107,11 +121,13 @@ function CaseList({ rows, showDone, onOpen }) {
       className="data-grid"
       rows={rows}
       onRowClick={onOpen}
-      empty="ไม่มีเคสที่ตรงกับตัวกรอง"
+      empty="ไม่พบเคสที่ตรงกับตัวกรองที่เลือก"
+      cardAction="เปิดเคส"
       columns={[
         {
           label: 'Case ID',
           cls: 'nowrap',
+          mobile: 'title',
           render: (c) => (
             <div className="cell-2">
               <b className="mono">
@@ -127,6 +143,7 @@ function CaseList({ rows, showDone, onOpen }) {
         },
         {
           label: 'ลูกค้า',
+          mobile: 'subtitle',
           render: (c) => (
             <div className="cell-2">
               <span>{custName(c)}</span>
@@ -134,8 +151,11 @@ function CaseList({ rows, showDone, onOpen }) {
             </div>
           ),
         },
+        /* กรอบกับเลนส์เป็นข้อมูลลำดับสอง — บนมือถือพับไว้ใต้ "ดูเพิ่มเติม"
+           คนที่เปิดกระดานงานบนมือถือกำลังหาว่า "ใบไหนถึงคิวแล้ว" ไม่ใช่ว่าใบนี้ใช้เลนส์รุ่นไหน */
         {
           label: 'สินค้า',
+          mobile: 'meta',
           render: (c) => (
             <div className="cell-2">
               <span>{c.frame_name || '—'}</span>
@@ -146,6 +166,7 @@ function CaseList({ rows, showDone, onOpen }) {
         {
           label: 'ขั้นตอน',
           cls: 'nowrap',
+          mobile: 'body',
           render: (c) => {
             const info = stageInfo(c.process_stage || c.stage_group);
             return (
@@ -163,6 +184,7 @@ function CaseList({ rows, showDone, onOpen }) {
         {
           label: 'ยอดคงเหลือ',
           cls: 'nowrap',
+          mobile: 'body',
           render: (c) => {
             if (!c.order_id) return <span className="muted">—</span>;
             return Number(c.balance) > 0
@@ -174,14 +196,40 @@ function CaseList({ rows, showDone, onOpen }) {
         showDone ? {
           label: 'ปิดเมื่อ',
           cls: 'nowrap',
+          mobile: 'body',
           render: (c) => (c.closed_at ? fmtDate(c.closed_at) : '—'),
         } : {
           label: 'นัดรับ',
           cls: 'nowrap',
+          mobile: 'body',
           render: (c) => (c.appointment_date ? fmtDate(c.appointment_date) : '—'),
         },
       ]}
     />
+  );
+}
+
+/**
+ * ไม่มีเคสไหนเข้าเงื่อนไข — บอกว่าเพราะตัวกรอง แล้วยื่นทางออกให้ ไม่ปล่อยหน้าว่าง
+ *
+ * กระดานที่ว่างเพราะยังไม่มีเคสในร้านเป็นคนละเรื่องกับกระดานที่ว่างเพราะตัวกรอง
+ * — อันแรกไม่มีอะไรให้ล้าง ยื่นปุ่มล้างตัวกรองไปก็กดแล้วไม่มีอะไรเกิดขึ้น
+ */
+function NoMatch({ hasFilter, onClear }) {
+  return (
+    <Card>
+      <div className="board-none">
+        <Icon name={hasFilter ? 'search' : 'board'} />
+        <b>{hasFilter ? 'ไม่พบเคสที่ตรงกับตัวกรองที่เลือก' : 'ยังไม่มีเคสในกระดาน'}</b>
+        {hasFilter ? (
+          <button type="button" className="btn btn-light" onClick={onClear}>
+            <Icon name="x" /> ล้างตัวกรอง
+          </button>
+        ) : (
+          <Link className="btn btn-light" href="/cases/new">+ เปิดเคสใหม่</Link>
+        )}
+      </div>
+    </Card>
   );
 }
 
@@ -192,60 +240,121 @@ function CaseBoardInner() {
   const [term, setTerm] = useState(params.get('q') || '');
   const [client, setClient] = useState(params.get('client') || '');
   /* กรองด้วย "ขั้นตอน" ไม่ใช่ "ประเภทงาน" — คนเปิดกระดานถามว่าตอนนี้งานค้างอยู่ขั้นไหน
-     ไม่ได้ถามว่าเป็นงานตัดใหม่หรือเปลี่ยนเลนส์ (อันนั้นดูที่ป้ายในแถวได้อยู่แล้ว) */
-  const [stage, setStage] = useState('');
-  const [view, setView] = useState('card');
-  const [toggles, setToggles] = useState({
-    rush: false, unpaid: false, hideEmpty: true, showDone: false,
-  });
-  const setToggle = (k, v) => {
-    setToggles((t) => ({ ...t, [k]: v }));
-    /* สลับไป/กลับจาก "เคสที่จบแล้ว" แล้วขั้นตอนที่เลือกไว้ใช้ไม่ได้อีก — ล้างทิ้ง
-       ไม่งั้นกระดานจะว่างเปล่าโดยที่คนกดไม่รู้ว่าเพราะตัวกรองที่ค้างอยู่ */
-    if (k === 'showDone') setStage('');
-  };
-  const { rush: rushOnly, unpaid: unpaidOnly, hideEmpty, showDone } = toggles;
-  const q = useDebounced(term, 250);
+     ไม่ได้ถามว่าเป็นงานตัดใหม่หรือเปลี่ยนเลนส์ (อันนั้นดูที่ป้ายในแถวได้อยู่แล้ว)
 
-  /* "เคสที่จบแล้ว" = ดูเฉพาะเคสที่ปิดแล้ว ไม่ใช่เอามาต่อท้ายคิวที่ยังทำอยู่ —
-     สองกองนี้ตอบคนละคำถาม ("วันนี้ต้องทำอะไร" กับ "ที่ทำไปแล้วมีอะไรบ้าง") */
-  const { data: rows, loading, error, reload } = useAsync(
-    () => api.get('/api/cases', {
-      q: q.trim(),
-      rush: rushOnly ? 1 : '',
-      closed: showDone ? 1 : '',
-      /* ขอมาให้ครบทุกเคสที่ยังทำไม่จบ ไม่ใช่ 500 ใบแรก
-         ชิปนับจำนวนจากแถวที่โหลดมา (ตั้งใจ ดูหัวไฟล์) — ถ้าโหลดมาไม่ครบ ตัวเลข
-         บนชิปจะผิด ไม่ใช่แค่รายการขาด · ตอนข้อมูลจริงเข้ามาใหม่ ๆ ชิป SightFirst
-         ขึ้น 9 ทั้งที่ของจริงมี 200 เพราะ 500 ใบแรกไม่มีของ SightFirst อยู่ในนั้น */
-      limit: BOARD_LIMIT,
-    }),
-    [q, rushOnly, showDone]
+     อ่านจาก URL เหมือน q กับ client ข้างบน — ชิปในการ์ด "งานค้างแต่ละขั้นตอน"
+     ของหน้าเมนูหลักลิงก์มาที่ /cases?stage=... มาตลอด แต่บรรทัดนี้เคยเป็น
+     useState('') เฉย ๆ ทุกชิปจึงพามาที่กระดานที่ไม่ถูกกรอง — เหมือนกันหมดทุกใบ */
+  const [stage, setStage] = useState(params.get('stage') || '');
+  const [caseFilter, setCaseFilter] = useState('');
+  const [view, setView] = useState('card');
+  const [hideEmpty, setHideEmpty] = useState(true);
+  const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(BOARD_PAGE_SIZES[0]);
+  /**
+   * 350 ms — ยาวกว่าเดิมหนึ่งขั้น
+   *
+   * คำขอของกระดานหนักกว่าตารางอื่นในแอป (ต้องคำนวณขั้นของทุกใบที่ตรงตัวกรอง
+   * เพื่อจะนับ) การยิงระหว่างพิมพ์จึงมีราคาจริง · useAsync ยกเลิกคำขอเก่าให้
+   * อยู่แล้ว คำที่พิมพ์ค้างไว้ครึ่งคำจึงไม่มีทางแซงคำเต็มขึ้นมาแสดง
+   */
+  const q = useDebounced(term, 350);
+
+  const showDone = caseFilter === 'done';
+
+  /* ตัวกรองชุดเดียว ใช้ทั้งกับจำนวนเคสและกับรายการที่แสดง — เลขบนหัวคอลัมน์
+     กับการ์ดในคอลัมน์นั้นจึงมาจากคำถามเดียวกันเสมอ (lib/caseBoard.js, มีเทสต์) */
+  const filters = useMemo(
+    () => boardQuery({ q, client, stage, caseFilter }),
+    [q, client, stage, caseFilter],
   );
 
-  const all = rows || [];
-  /* โหลดมาเต็มเพดานพอดี = อาจมีมากกว่านี้ที่ไม่ได้มา · เตือนไว้ เพราะตัวเลข
-     ที่ผิดแบบดูน่าเชื่อ แย่กว่าตัวเลขที่บอกว่าตัวเองไม่ครบ */
-  const truncated = all.length >= BOARD_LIMIT;
-  const shown = useMemo(() => {
-    const pick = (CLIENTS.find(([v]) => v === client) || [])[2];
-    return all.filter((c) => (!pick || pick(c))
-      && (!stage || (c.process_stage || c.stage_group) === stage)
-      && (!unpaidOnly || Number(c.balance) > 0));
-  }, [all, client, stage, unpaidOnly]);
+  const { data, loading, error, reload } = useAsync(
+    (signal) => api.get(
+      '/api/cases',
+      view === 'card'
+        ? { ...filters, group_by: 'stage', per_group: CARD_PAGE }
+        : { ...filters, limit: perPage, offset: (page - 1) * perPage },
+      signal,
+    ),
+    [filters, view, page, perPage],
+  );
 
-  /* Columns come from what the case has actually finished (process_stage,
-     computed by the API), not from cases.status — that one is set by hand and
-     drifts: a case could sit in "ส่งมอบ" with no order and no centering. */
-  const byGroup = {};
-  for (const r of shown) (byGroup[r.process_stage || r.stage_group] ||= []).push(r);
-  const groups = showDone
-    ? ['done']
-    : STAGE_GROUPS.filter((g) => !hideEmpty || (byGroup[g] || []).length);
+  /* การ์ดที่ "โหลดเพิ่ม" มาต่อท้ายชุดแรกของคอลัมน์นั้น ๆ */
+  const [extra, setExtra] = useState({});
+  const [busy, setBusy] = useState('');
+  const [moreError, setMoreError] = useState('');
 
-  /* ตัวเลือกต้องตรงกับคอลัมน์ที่กระดานใช้จริง — เคสที่จบแล้วอยู่ขั้น "จบงาน" ที่เดียว */
-  const stageOptions = showDone ? [DONE_STAGE.id] : STAGE_GROUPS;
+  /* เปลี่ยนตัวกรองเมื่อไหร่ = เริ่มนับหนึ่งใหม่ ทั้งเลขหน้าของลิสต์และของที่
+     โหลดเพิ่มมาในทุกคอลัมน์ · ไม่ล้างแล้วจะเหลือการ์ดของตัวกรองก่อนหน้าคาไว้ */
+  useEffect(() => {
+    setExtra({});
+    setBusy('');
+    setMoreError('');
+    setPage(1);
+  }, [filters, view]);
+
+  const loadMore = useCallback(async (g) => {
+    const first = data?.groups?.[g]?.rows?.length || 0;
+    setBusy(g);
+    setMoreError('');
+    try {
+      const res = await api.get('/api/cases', {
+        ...filters, stage: g, limit: CARD_PAGE, offset: first + (extra[g]?.length || 0),
+      });
+      setExtra((e) => ({ ...e, [g]: [...(e[g] || []), ...(res?.rows || [])] }));
+    } catch (e) {
+      setMoreError(e.message);
+    } finally {
+      setBusy('');
+    }
+  }, [data, extra, filters]);
+
+  const counts = data?.counts || { all: 0, sightfirst: 0, shop: 0 };
+  const byStage = data?.by_stage || {};
+
+  /**
+   * ข้อมูลที่ถืออยู่เป็นของมุมมองที่เปิดอยู่จริงหรือยัง
+   *
+   * useAsync เก็บผลรอบก่อนไว้ระหว่างโหลดรอบใหม่ (ตั้งใจ — ไม่งั้นหน้าจะกระพริบ
+   * ทุกครั้งที่กดรีเฟรช) แต่การ์ดกับลิสต์คืนคนละรูปแบบ · เฟรมแรกหลังกดสลับ
+   * มุมมอง `view` เปลี่ยนไปแล้วแต่ effect ยังไม่ทันวิ่ง `loading` จึงยังเป็น false
+   * และข้อมูลยังเป็นของมุมมองเก่า — ถ้าไม่กันไว้ จะเห็น "ไม่พบเคสที่ตรงกับตัวกรอง"
+   * แวบหนึ่งทุกครั้งที่สลับ ทั้งที่มีเคสอยู่เต็มกระดาน
+   */
+  const ready = view === 'list' ? Array.isArray(data?.rows) : Boolean(data?.groups);
+
+  /* คอลัมน์ที่วาด กับยอดรวมของกระดาน — lib/caseBoard.js (มีเทสต์)
+     ลิสต์ไม่ได้แบ่งเป็นคอลัมน์ ยอดจึงมาจาก total ของหน้าที่ API ตัดมาให้ */
+  const { columns, total: boardTotal } = boardColumns({ byStage, stage, caseFilter, hideEmpty });
+  const total = view === 'list' ? (data?.total ?? 0) : boardTotal;
+  const stageChoices = stageOptions({ stage, caseFilter });
+  /* แผ่นตัวกรองของจอโทรศัพท์ · บนเดสก์ท็อป .fb-panel เป็น display:contents
+     ทุกกลุ่มจึงยังยืนอยู่ที่เดิม และ state นี้ไม่มีผลกับอะไรเลย */
+  const [filterOpen, setFilterOpen] = useState(false);
+
   const openCase = (c) => router.push('/cases/detail?id=' + c.id);
+
+  /* "ซ่อนขั้นที่ว่าง" ไม่นับเป็นตัวกรอง — มันเป็นการตั้งค่าการแสดงผล ปุ่มล้าง
+     ตัวกรองจึงไม่แตะมัน คนที่ตั้งไว้ว่าไม่อยากเห็นคอลัมน์ว่างก็ยังไม่อยากเห็น */
+  const hasFilter = Boolean(term || client || stage || caseFilter);
+  /* ตัวเลขบนปุ่ม "ตัวกรอง (N)" ของจอโทรศัพท์ — คำค้นไม่นับ มันอยู่นอกแผ่นและ
+     เห็นได้ด้วยตาว่าพิมพ์อะไรค้างไว้ · "ซ่อนขั้นที่ว่าง" ก็ไม่นับ ด้วยเหตุผลเดียว
+     กับที่ปุ่มล้างตัวกรองไม่แตะมัน (มันเป็นการตั้งค่าการแสดงผล) */
+  const activeFilters = [client, stage, caseFilter].filter(Boolean).length;
+  const clearAll = () => {
+    setTerm('');
+    setClient('');
+    setStage('');
+    setCaseFilter('');
+  };
+
+  const pickCaseFilter = (key) => {
+    setCaseFilter(key);
+    /* สลับไป/กลับจาก "เคสที่จบแล้ว" แล้วขั้นตอนที่เลือกไว้ใช้ไม่ได้อีก — ล้างทิ้ง
+       ไม่งั้นกระดานจะว่างเปล่าโดยที่คนกดไม่รู้ว่าเพราะตัวกรองที่ค้างอยู่ */
+    if (key === 'done' || showDone) setStage('');
+  };
 
   return (
     <div>
@@ -261,31 +370,7 @@ function CaseBoardInner() {
         )}
       />
 
-      <div className="seg">
-        {CLIENTS.map(([value, label, pick]) => (
-          <button
-            type="button"
-            key={value || 'all'}
-            className={client === value ? 'active' : ''}
-            onClick={() => setClient(value)}
-          >
-            {label}
-            <Badge kind="gray">{pick ? all.filter(pick).length : all.length}</Badge>
-          </button>
-        ))}
-      </div>
-
-      {/* ตัวเลขบนชิปนับจากแถวที่โหลดมา — ถ้าโหลดมาไม่ครบ ตัวเลขก็ผิด
-          บอกออกไปตรง ๆ ดีกว่าปล่อยให้อ่านตัวเลขที่ผิดแบบดูน่าเชื่อ */}
-      {truncated ? (
-        <div className="report-note warn no-print">
-          <b>แสดงได้ {all.length.toLocaleString('th-TH')} เคสเท่านั้น</b> — ยังมีเคสที่ยังทำไม่จบมากกว่านี้
-          และตัวเลขบนปุ่มด้านบนจึงยังไม่ครบ · ใช้ช่องค้นหาหรือตัวกรองขั้นตอน
-          เพื่อดูเคสที่ต้องการ
-        </div>
-      ) : null}
-
-      <div className="board-filters">
+      <div className={`board-filters ${filterOpen ? 'fb-open' : ''}`.trim()}>
         <div className="bf-row">
           <Field label="ค้นหา" className="grow">
             <input
@@ -295,77 +380,179 @@ function CaseBoardInner() {
               onChange={(e) => setTerm(e.target.value)}
             />
           </Field>
-          <Field label="ขั้นตอน">
-            <select value={stage} onChange={(e) => setStage(e.target.value)}>
-              <option value="">ทั้งหมด</option>
-              {stageOptions.map((g) => (
-                <option key={g} value={g}>{stageInfo(g).label}</option>
-              ))}
-            </select>
-          </Field>
+          {/* โผล่เฉพาะจอโทรศัพท์ (globals.css: .fb-toggle) — สี่กลุ่มตัวกรองข้างล่าง
+              รวมกันสูงราวครึ่งจอ 360px ก่อนที่การ์ดเคสใบแรกจะได้โผล่ */}
+          <button
+            type="button"
+            className={`btn btn-light fb-toggle ${activeFilters ? 'on' : ''}`.trim()}
+            aria-expanded={filterOpen}
+            onClick={() => setFilterOpen(true)}
+          >
+            <Icon name="filter" />
+            {activeFilters ? `ตัวกรอง (${activeFilters})` : 'ตัวกรอง'}
+          </button>
           <button type="button" className="btn btn-light bf-refresh" onClick={reload}>
             <Icon name="refresh" /> รีเฟรช
           </button>
-        </div>
-        <div className="bf-chips">
-          {TOGGLES.filter(([key]) => !(showDone && key === 'hideEmpty')).map(([key, label, icon]) => (
-            <button
-              type="button"
-              key={key}
-              className={`chip ${toggles[key] ? 'active' : ''}`}
-              aria-pressed={toggles[key]}
-              onClick={() => setToggle(key, !toggles[key])}
-            >
-              {icon ? <Icon name={icon} /> : null}{label}
+          {hasFilter ? (
+            <button type="button" className="btn btn-light bf-refresh" onClick={clearAll}>
+              <Icon name="x" /> ล้างตัวกรอง
             </button>
-          ))}
-          <div className="seg seg-sm bf-view">
-            {VIEWS.map(([value, label, icon]) => (
-              <button
-                type="button"
-                key={value}
-                className={view === value ? 'active' : ''}
-                aria-pressed={view === value}
-                onClick={() => setView(value)}
-              >
-                <Icon name={icon} /> {label}
-              </button>
-            ))}
+          ) : null}
+        </div>
+
+        <FilterSheet
+          open={filterOpen}
+          onClose={() => setFilterOpen(false)}
+          count={activeFilters}
+          resultCount={total}
+          onReset={clearAll}
+          resetLabel="ล้างตัวกรอง"
+        >
+        <div className="bf-groups">
+          <div className="bf-group">
+            <span className="bf-legend">ประเภทลูกค้า</span>
+            <div className="seg seg-sm">
+              {CLIENTS.map(([value, label, countKey]) => (
+                <button
+                  type="button"
+                  key={value || 'all'}
+                  className={client === value ? 'active' : ''}
+                  aria-pressed={client === value}
+                  onClick={() => setClient(value)}
+                >
+                  {label}
+                  <Badge kind="gray">{counts[countKey] ?? 0}</Badge>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="bf-group">
+            <span className="bf-legend">ตัวกรองเคส</span>
+            <div className="bf-chips">
+              {CASE_FILTERS.map(([key, label, icon]) => (
+                <button
+                  type="button"
+                  key={key || 'all'}
+                  className={`chip ${caseFilter === key ? 'active' : ''}`}
+                  aria-pressed={caseFilter === key}
+                  onClick={() => pickCaseFilter(key)}
+                >
+                  {icon ? <Icon name={icon} /> : null}{label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="bf-group">
+            <span className="bf-legend">ขั้นตอน</span>
+            <Select
+              className="bf-stage"
+              value={stage}
+              disabled={showDone}
+              onChange={(e) => setStage(e.target.value)}
+              options={[['', 'ทั้งหมด'], ...stageChoices.map((g) => [g, stageInfo(g).label])]}
+            />
+          </div>
+
+          <div className="bf-group bf-group-display">
+            <span className="bf-legend">การแสดงผล</span>
+            <div className="bf-controls">
+              {/* ซ่อนคอลัมน์ ไม่ใช่กรองเคส — จึงเป็นสวิตช์ ไม่ใช่ชิปเหมือนตัวกรอง */}
+              {view === 'card' && !showDone ? (
+                <label className="bf-switch">
+                  <input
+                    type="checkbox"
+                    checked={hideEmpty}
+                    onChange={(e) => setHideEmpty(e.target.checked)}
+                  />
+                  <span className="track" aria-hidden="true" />
+                  ซ่อนขั้นที่ว่าง
+                </label>
+              ) : null}
+              <div className="seg seg-sm">
+                {VIEWS.map(([value, label, icon]) => (
+                  <button
+                    type="button"
+                    key={value}
+                    className={view === value ? 'active' : ''}
+                    aria-pressed={view === value}
+                    onClick={() => setView(value)}
+                  >
+                    <Icon name={icon} /> {label}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
+        </FilterSheet>
       </div>
 
-      {loading && <Loading />}
+      {(loading || !ready) && !error && <Loading />}
       {error && <Card><p className="muted">{error.message}</p></Card>}
-      {!loading && !error && view === 'list' && (
+
+      {!loading && ready && !error && total === 0
+        && <NoMatch hasFilter={hasFilter} onClear={clearAll} />}
+
+      {!loading && ready && !error && total > 0 && view === 'list' && (
         <Card tight>
-          <CaseList rows={shown} showDone={showDone} onOpen={openCase} />
+          <CaseList rows={data?.rows || []} showDone={showDone} onOpen={openCase} />
+          <Pager
+            total={total}
+            page={page}
+            perPage={perPage}
+            sizes={BOARD_PAGE_SIZES}
+            onPage={setPage}
+            onPerPage={(n) => { setPerPage(n); setPage(1); }}
+          />
         </Card>
       )}
-      {!loading && !error && view === 'card' && (
-        groups.length ? (
-          /* กองเดียวไม่ต้องเป็นคอลัมน์ผอม ๆ — ปล่อยการ์ดไหลเต็มความกว้าง */
-          <div className={`board ${showDone ? 'board-one' : ''}`.trim()}>
-            {groups.map((g) => {
-              const info = stageInfo(g);
-              const list = byGroup[g] || [];
-              return (
-                <div className="board-col" key={g}>
-                  <div className="board-head" style={{ borderTopColor: info.color }}>
-                    <span><Icon name={info.icon} /> {info.label}</span>
-                    <Badge kind="gray">{list.length}</Badge>
-                  </div>
-                  <div className="board-body">
-                    {list.length
-                      ? list.map((c) => <CaseCard key={c.id} c={c} onOpen={openCase} />)
-                      : <div className="board-empty">—</div>}
-                  </div>
+
+      {!loading && ready && !error && total > 0 && view === 'card' && (
+        /* กองเดียวไม่ต้องเป็นคอลัมน์ผอม ๆ — ปล่อยการ์ดไหลเต็มความกว้าง */
+        <div className={`board ${showDone ? 'board-one' : ''}`.trim()}>
+          {columns.map((g) => {
+            const info = stageInfo(g);
+            const list = [...(data?.groups?.[g]?.rows || []), ...(extra[g] || [])];
+            const n = byStage[g] || 0;
+            return (
+              <div className="board-col" key={g} style={{ '--stage': info.color }}>
+                <div className="board-head">
+                  <span className="bh-ic"><Icon name={info.icon} /></span>
+                  <span className="bh-name">{info.label}</span>
+                  <span className="bh-count">{n.toLocaleString('th-TH')}</span>
+                  <span className="bh-sub">
+                    {`แสดง ${list.length.toLocaleString('th-TH')} จาก ${n.toLocaleString('th-TH')} เคส`}
+                  </span>
                 </div>
-              );
-            })}
-          </div>
-        ) : <Card><p className="muted">ไม่มีเคสที่ตรงกับตัวกรอง</p></Card>
+                <div className="board-body">
+                  {list.length
+                    ? list.map((c) => <CaseCard key={c.id} c={c} onOpen={openCase} />)
+                    : <div className="board-empty">—</div>}
+                </div>
+                {list.length < n ? (
+                  <div className="board-more">
+                    <button
+                      type="button"
+                      className="btn btn-light btn-sm"
+                      disabled={busy === g}
+                      onClick={() => loadMore(g)}
+                    >
+                      {busy === g
+                        ? 'กำลังโหลด…'
+                        : `โหลดเพิ่ม (เหลืออีก ${(n - list.length).toLocaleString('th-TH')})`}
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
       )}
+
+      {moreError ? <Card><p className="muted">{moreError}</p></Card> : null}
     </div>
   );
 }

@@ -77,7 +77,8 @@ const NAV = [
 
        บัญชีเปิดได้ทั้งหน้าร้านและคลัง หน้าจัดการบัญชีจึงย้ายออกจาก /stock มา
        อยู่ที่ /users ของทั้งเว็บ และมีทางเข้าที่เดียวคือตรงนี้ — แถบข้างฝั่ง
-       คลังไม่มีปุ่มนี้แล้ว · ยังเป็น <a> เพราะสไตล์คนละชุดตามกฎข้างล่าง */
+       คลังไม่มีปุ่มนี้แล้ว · ตอนนี้หน้านั้นเขียนด้วยของหน้าร้านแล้ว จึงเป็น
+       <Link> เหมือนเมนูอื่น ไม่ใช่การโหลดหน้าใหม่ */
     ['🔒', 'ผู้ใช้และสิทธิ์', '/users'],
     ['🏭', 'ซัพพลายเออร์', '/suppliers'],
     ['📊', 'รายงาน', '/reports'],
@@ -142,7 +143,10 @@ export function Shell({ children }) {
   }, [open]);
 
   useEffect(() => {
-    const onResize = () => { if (window.innerWidth > 820) setOpen(false); };
+    /* 1024 = จุดที่ globals.css เลิกทำ .sidebar เป็น drawer แล้วให้มันยืนถาวร
+       ถ้าสองเลขนี้ไม่ตรงกัน จะมีช่วงความกว้างที่แถบข้างโผล่ถาวรแต่ state `open`
+       ยังค้างเป็น true อยู่ แล้วฉากมืดคลุมจอทั้งที่ไม่มี drawer ให้ปิด */
+    const onResize = () => { if (window.innerWidth >= 1024) setOpen(false); };
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
@@ -188,7 +192,7 @@ export function Shell({ children }) {
                    import CSS คนละชุด เดินข้ามแบบ client-side จะได้สไตล์ทับกัน
                    ก่อนหน้านี้ "สต็อกสินค้า" ยังเป็น <Link> เพราะสมัยที่เขียน
                    /stock ยังเป็นหน้าของฝั่งนี้เอง */
-                to.startsWith('/stock') || to === '/users' ? (
+                to.startsWith('/stock') ? (
                   <a key={to} href={`${to}/`}>
                     <span className="ic"><Icon name={icon} /></span><span className="lbl">{label}</span>
                   </a>

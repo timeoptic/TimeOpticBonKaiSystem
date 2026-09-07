@@ -22,12 +22,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { api } from '../../../../../lib/apiClient.js';
-import { useAsync } from '../../../../../lib/hooks.js';
+import { useAsync, useNowLocal } from '../../../../../lib/hooks.js';
 import { useToast } from '../../../../../components/Toast.jsx';
 import {
-  Badge, Check, Field, FormGrid, Row,
+  Badge, Field, FormGrid, Row,
 } from '../../../../../components/ui.jsx';
 import { EmployeeSelect, ListSelect } from '../../../../../components/Selects.jsx';
+import { MultiSelect } from '../../../../../components/MultiSelect.jsx';
 import { useProcessActions } from '../../../../../components/ProcessShell.jsx';
 import {
   cylPower, dtLocal, fmtDate, fmtDateTime, normAdd, normAxis, normCyl, normSphere,
@@ -35,6 +36,7 @@ import {
 } from '../../../../../lib/format.js';
 import { Icon } from '../../../../../components/Icon.jsx';
 import { DateField } from '../../../../../components/DateField.jsx';
+import { DateTimeField } from '../../../../../components/DateTimeField.jsx';
 
 const HEALTH = [
   ['health_diabetes', 'เบาหวาน'], ['health_bp', 'ความดัน'], ['health_heart', 'โรคหัวใจ'],
@@ -157,12 +159,15 @@ function RxGrid({ cols, get, set, readOnly = false, lockedCols = [], missing = n
   const eye = (k) => (
     <tr key={k}>
       <th scope="row">{EYE_LABEL[k]}</th>
-      {cols.map(([f]) => {
+      {cols.map(([f, colLabel]) => {
         const bad = !!missing?.[`${k}_${f}`] || !!wrong[`${k}_${f}`];
         /* ล็อกไว้แต่ยังเป็น <input> ตัวเดียวกัน คอลัมน์จะได้กว้างและวางตัวเลขตรงกับช่องอื่น */
         const locked = lockedCols.includes(f);
         return (
-          <td key={f}>
+          /* data-col ซ้ำกับหัวคอลัมน์ที่อยู่ใน <thead> โดยตั้งใจ — บนจอโทรศัพท์
+             ตารางถูกคลี่เป็นบล็อก R/L ซึ่งไม่มี <thead> ให้อ่านแล้ว ป้ายของแต่ละ
+             ช่องจึงต้องเดินทางมากับช่องนั้นเอง (globals.css: .rx-grid ที่ ≤640px) */
+          <td key={f} data-col={colLabel}>
             {readOnly
               ? <span>{get(k, f) || '—'}</span>
               : (
@@ -309,6 +314,10 @@ export function ExamPanel({ c, reload }) {
   const [pickHistory, setPickHistory] = useState(false);
   const started = useRef(false);
 
+  /* นาฬิกาของช่อง "วันที่วัด" — เดินเฉพาะตอนที่ยังไม่มีแถวบันทึกไว้ พอบันทึกแล้ว
+     ค่าที่แสดงมาจากฐาน ไม่ใช่จากนาฬิกา */
+  const clockNow = useNowLocal(!form.test_date);
+
   /* re-seed when the case reloads (a save lands, or another step wrote) */
   useEffect(() => {
     setForm(tidyRx(draftRow));
@@ -340,6 +349,18 @@ export function ExamPanel({ c, reload }) {
   };
 
   const set = (name, value) => { touch(); setForm((f) => ({ ...f, [name]: value })); };
+
+  /**
+   * ประวัติสุขภาพเป็นคอลัมน์ boolean แปดตัวใน exams มาแต่เดิม แต่บนจอเป็นช่องเดียว
+   * ที่เลือกได้หลายอย่าง — ตรงนี้คือที่แปลงระหว่างสองรูปแบบนั้น เขียนครบทั้งแปดตัวใน
+   * การอัปเดตครั้งเดียว เพราะที่ไม่ได้เลือกต้องกลายเป็น 0 ไม่ใช่ค้างค่าเดิมไว้
+   */
+  const healthPicked = HEALTH.filter(([k]) => Number(form[k])).map(([k]) => k);
+  const setHealth = (picked) => {
+    touch();
+    const on = new Set(picked);
+    setForm((f) => ({ ...f, ...Object.fromEntries(HEALTH.map(([k]) => [k, on.has(k) ? 1 : 0])) }));
+  };
 
   /**
    * ระยะที่ใช้สายตาเป็นค่าเดียวต่อคน แต่ schema เก็บเป็นสองคอลัมน์ (_r / _l) มาแต่เดิม
@@ -599,19 +620,15 @@ export function ExamPanel({ c, reload }) {
         </div>
       </Section>
 
-      <Section n="2" title="ประวัติสุขภาพ" hint="ติ๊กเฉพาะที่ลูกค้าแจ้งในเคสนี้ — ค่าที่ติ๊กถูกเก็บไว้กับรอบนี้ ไม่ได้อ่านจากโปรไฟล์ลูกค้าแบบสด">
-        <Row style={{ gap: 16 }}>
-          {HEALTH.map(([k, label]) => (
-            <Check
-              key={k}
-              name={k}
-              checked={!!Number(form[k])}
-              onChange={(e) => set(k, e.target.checked ? 1 : 0)}
-            >
-              {label}
-            </Check>
-          ))}
-        </Row>
+      <Section n="2" title="ประวัติสุขภาพ" hint="เลือกเฉพาะที่ลูกค้าแจ้งในเคสนี้ — ค่าที่เลือกถูกเก็บไว้กับรอบนี้ ไม่ได้อ่านจากโปรไฟล์ลูกค้าแบบสด">
+        <Field label="ที่ลูกค้าแจ้ง" className="full">
+          <MultiSelect
+            options={HEALTH}
+            value={healthPicked}
+            onChange={setHealth}
+            placeholder="— ไม่มีที่ต้องบันทึก —"
+          />
+        </Field>
         <Field label="รายละเอียด" className="full">
           <input value={form.health_note ?? ''} onChange={(e) => set('health_note', e.target.value)} />
         </Field>
@@ -717,12 +734,12 @@ export function ExamPanel({ c, reload }) {
               onChange={(e) => set('performed_by', e.target.value)}
             />
           </Field>
-          <Field label="วันที่วัด">
-            <input
-              type="datetime-local"
-              value={dtLocal(form.test_date) || nowLocal()}
-              onChange={(e) => set('test_date', e.target.value)}
-            />
+          {/* เวลาที่วัดเป็นของที่ระบบรู้เอง ไม่ใช่คำถามที่ต้องถามคนหน้าร้าน — ยังไม่บันทึก
+              ก็เดินตามนาฬิกาจริง บันทึกแล้วก็ค้างที่เวลาที่บันทึกไป แก้ไม่ได้ทั้งสองกรณี
+              (ใบที่ย้อนเวลาได้ ทำให้ตอบไม่ได้ว่าวัดจริงตอนไหน ซึ่งเป็นคำถามแรกเวลา
+              ค่าสายตาสองใบของลูกค้าคนเดียวกันไม่ตรงกัน) */}
+          <Field label="วันที่วัด" hint={form.test_date ? 'เวลาที่บันทึกไว้' : 'ระบบประทับเวลาให้ตอนกดบันทึก'}>
+            <DateTimeField readOnly value={dtLocal(form.test_date) || clockNow} />
           </Field>
           {/* ถามตรงนี้เพราะเป็นสิ่งที่รู้ตอนวัด ไม่ใช่ตอนตัดสินใจ — แต่ตอบที่ Final ก็ได้
               เป็นช่องเดียวกัน กินเต็มแถวเพราะสามปุ่มไม่พอในคอลัมน์เดียวของกริดนี้ (240px) */}

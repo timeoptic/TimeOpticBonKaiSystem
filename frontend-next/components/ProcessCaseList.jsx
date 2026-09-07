@@ -15,10 +15,13 @@ import { api } from '../lib/apiClient.js';
 import { useAsync, useDebounced } from '../lib/hooks.js';
 import { Badge, Card, Loading, PageHead } from './ui.jsx';
 import { DataTable } from './DataTable.jsx';
+import { FilterBar } from './FilterBar.jsx';
+import { Pager } from './Pager.jsx';
 import { StatusChip } from './StatusChip.jsx';
 import { Icon } from './Icon.jsx';
 import { CaseTags } from './CaseTags.jsx';
 import { custName, fmtDate, money } from '../lib/format.js';
+import { Select } from './Selects.jsx';
 
 const BOOKS = [
   ['', 'ประเภทงาน — ทั้งหมด'],
@@ -26,27 +29,12 @@ const BOOKS = [
   ['shop', 'ลูกค้าร้าน'],
 ];
 
-const PER_PAGE = [10, 25, 50];
-
 /* การ์ดตัวเลข = ตัวกรองในตัว ทุกใบคิดจากรายการที่โหลดมาแล้ว ไม่ต้องยิง API ซ้ำ */
 const VIEWS = {
   rush: { label: 'งานด่วน', icon: 'flame', kind: 'warn', desc: 'ต้องหยิบก่อนใบอื่น', test: (r) => Number(r.is_rush) },
   waiting: { label: 'รออยู่', icon: 'hourglass', kind: 'blue', desc: 'สถานะบอกว่ากำลังรอ', test: (r) => Number(r.is_waiting) },
   stale: { label: 'ค้างเกิน 7 วัน', icon: 'clock', kind: 'danger', desc: 'เปิดเคสมานานแล้วยังไม่ขยับ', test: (r) => Number(r.age_days) > 7 },
 };
-
-/** 1 … 4 5 [6] 7 8 … 12 — never more than seven buttons wide */
-function pageWindow(page, pages) {
-  if (pages <= 7) return Array.from({ length: pages }, (_, i) => i + 1);
-  const out = [1];
-  const from = Math.max(2, page - 1);
-  const to = Math.min(pages - 1, page + 1);
-  if (from > 2) out.push('…');
-  for (let n = from; n <= to; n++) out.push(n);
-  if (to < pages - 1) out.push('…');
-  out.push(pages);
-  return out;
-}
 
 export function ProcessCaseList({ stageGroup, icon, title, subtitle }) {
   const router = useRouter();
@@ -72,22 +60,16 @@ export function ProcessCaseList({ stageGroup, icon, title, subtitle }) {
 
   useEffect(() => { setPage(1); }, [q, view, client, perPage, stageGroup]);
 
-  const total = rows.length;
-  const pages = Math.max(1, Math.ceil(total / perPage));
-  const current = Math.min(page, pages);
-  const from = total ? (current - 1) * perPage + 1 : 0;
-  const to = Math.min(current * perPage, total);
-  const shown = rows.slice((current - 1) * perPage, current * perPage);
-
   const hasItems = all.some((r) => r.frame_name || r.lens_name);
   const hasMoney = all.some((r) => r.order_id);
   const openCase = (r) => router.push(`/cases/detail?id=${r.id}`);
-  const hasFilter = Boolean(term || view || client);
+  const activeFilters = [term, view, client].filter(Boolean).length;
 
   const columns = [
     {
       label: 'Case ID',
       cls: 'nowrap',
+      mobile: 'title',
       render: (r) => (
         <div className="cell-2">
           <b className="mono">
@@ -103,6 +85,7 @@ export function ProcessCaseList({ stageGroup, icon, title, subtitle }) {
     },
     {
       label: 'ลูกค้า',
+      mobile: 'subtitle',
       render: (r) => (
         <div className="cell-2">
           <span>{custName(r)}</span>
@@ -112,6 +95,7 @@ export function ProcessCaseList({ stageGroup, icon, title, subtitle }) {
     },
     hasItems && {
       label: 'สินค้า',
+      mobile: 'meta',
       render: (r) => (
         <div className="cell-2">
           <span>{r.frame_name || '—'}</span>
@@ -122,6 +106,7 @@ export function ProcessCaseList({ stageGroup, icon, title, subtitle }) {
     {
       label: 'สถานะ',
       cls: 'nowrap',
+      mobile: 'status',
       render: (r) => (
         <div className="cell-2">
           <span><StatusChip row={r} /></span>
@@ -132,6 +117,7 @@ export function ProcessCaseList({ stageGroup, icon, title, subtitle }) {
     hasMoney && {
       label: 'ยอดคงเหลือ',
       cls: 'nowrap',
+      mobile: 'body',
       render: (r) => {
         if (!r.order_id || r.balance === null) return <span className="muted">—</span>;
         return Number(r.balance) > 0
@@ -142,6 +128,7 @@ export function ProcessCaseList({ stageGroup, icon, title, subtitle }) {
     {
       label: 'เปิดมา',
       cls: 'nowrap num',
+      mobile: 'body',
       render: (r) => {
         const d = Number(r.age_days) || 0;
         const cls = d > 14 ? 'age-bad' : d > 7 ? 'age-warn' : '';
@@ -151,11 +138,14 @@ export function ProcessCaseList({ stageGroup, icon, title, subtitle }) {
     {
       label: 'นัดรับ',
       cls: 'nowrap',
+      mobile: 'body',
       render: (r) => (r.appointment_date ? fmtDate(r.appointment_date) : '—'),
     },
+    /* ปุ่ม ⋮ ทำงานเดียวกับปุ่มท้ายการ์ด — บนมือถือเหลือปุ่มเดียวพอ */
     {
       label: 'จัดการ',
       cls: 'nowrap right',
+      mobile: false,
       render: (r) => (
         <button
           type="button"
@@ -204,28 +194,25 @@ export function ProcessCaseList({ stageGroup, icon, title, subtitle }) {
         ))}
       </div>
 
-      <div className="filter-bar">
-        <div className="search-field">
-          <Icon name="search" />
-          <input
-            type="search"
-            placeholder="ค้นหา Case / ชื่อลูกค้า / เบอร์ / Invoice"
-            value={term}
-            onChange={(e) => setTerm(e.target.value)}
-          />
-        </div>
-        <select value={client} onChange={(e) => setClient(e.target.value)}>
-          {BOOKS.map(([k, label]) => <option key={k || 'all'} value={k}>{label}</option>)}
-        </select>
-        <button
-          type="button"
-          className="btn btn-light"
-          disabled={!hasFilter}
-          onClick={() => { setTerm(''); setView(''); setClient(''); }}
-        >
-          <Icon name="refresh" /> รีเซ็ต
-        </button>
-      </div>
+      <FilterBar
+        count={activeFilters}
+        resultCount={rows.length}
+        onReset={() => { setTerm(''); setView(''); setClient(''); }}
+        resetLabel="รีเซ็ต"
+        search={(
+          <div className="search-field">
+            <Icon name="search" />
+            <input
+              type="search"
+              placeholder="ค้นหา Case / ชื่อลูกค้า / เบอร์ / Invoice"
+              value={term}
+              onChange={(e) => setTerm(e.target.value)}
+            />
+          </div>
+        )}
+      >
+        <Select value={client} onChange={(e) => setClient(e.target.value)} options={BOOKS} />
+      </FilterBar>
 
       {loading && <Loading />}
       {error && <Card><p className="muted">{error.message}</p></Card>}
@@ -235,55 +222,21 @@ export function ProcessCaseList({ stageGroup, icon, title, subtitle }) {
             className="data-grid"
             rowClass={(r) => (Number(r.is_rush) ? 'row-danger' : Number(r.is_waiting) ? 'row-blue' : 'row-gray')}
             columns={columns}
-            rows={shown}
+            rows={rows}
+            page={page}
+            perPage={perPage}
             onRowClick={openCase}
+            cardAction="เปิดเคส"
             empty="ไม่มีเคสในขั้นนี้"
           />
 
-          {total > 0 && (
-            <div className="pager">
-              <span>{`แสดง ${from} - ${to} จาก ${total} รายการ`}</span>
-              <div className="pages">
-                <button
-                  type="button"
-                  className="pg"
-                  disabled={current === 1}
-                  aria-label="หน้าก่อนหน้า"
-                  onClick={() => setPage(current - 1)}
-                >
-                  ‹
-                </button>
-                {pageWindow(current, pages).map((n, i) => (n === '…' ? (
-                  <span className="pg-gap" key={`gap${i}`}>…</span>
-                ) : (
-                  <button
-                    type="button"
-                    key={n}
-                    className={`pg ${n === current ? 'active' : ''}`}
-                    onClick={() => setPage(n)}
-                  >
-                    {n}
-                  </button>
-                )))}
-                <button
-                  type="button"
-                  className="pg"
-                  disabled={current === pages}
-                  aria-label="หน้าถัดไป"
-                  onClick={() => setPage(current + 1)}
-                >
-                  ›
-                </button>
-              </div>
-              <label className="pg-per">
-                แสดง
-                <select value={perPage} onChange={(e) => setPerPage(Number(e.target.value))}>
-                  {PER_PAGE.map((n) => <option key={n} value={n}>{n}</option>)}
-                </select>
-                รายการ / หน้า
-              </label>
-            </div>
-          )}
+          <Pager
+            total={rows.length}
+            page={page}
+            perPage={perPage}
+            onPage={setPage}
+            onPerPage={setPerPage}
+          />
         </Card>
       )}
     </div>

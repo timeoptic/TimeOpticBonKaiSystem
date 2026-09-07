@@ -8,11 +8,11 @@
  *
  * ใช้ของ POS เท่านั้น ไม่ใช่ `Field` กลางของแอป เพราะหน้าตาคนละชุดกันโดยตั้งใจ
  */
-export function PosField({ label, icon, children, className = '', select = false }) {
+export function PosField({ label, icon, children, className = '' }) {
   return (
     <div className={className}>
       {label && <span className="pos-lab">{label}</span>}
-      <div className={`pos-f${select ? ' sel' : ''}`}>
+      <div className="pos-f">
         {icon && <span className="pos-ico" aria-hidden="true">{icon}</span>}
         {children}
       </div>

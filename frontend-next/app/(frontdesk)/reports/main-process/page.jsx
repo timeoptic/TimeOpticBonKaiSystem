@@ -5,10 +5,12 @@
  * สถานะในตารางมาจาก `v_case_board` ซึ่งเป็น view เดียวกับที่กระดานงานใช้ —
  * รายงานกับกระดานจึงพูดสถานะชุดเดียวกัน ไม่มีสถานะชุดที่สองให้ต้องแปลกลับไปมา
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Badge, Card, Kpis } from '../../../../components/ui.jsx';
 import { DataTable } from '../../../../components/DataTable.jsx';
+import { Pager } from '../../../../components/Pager.jsx';
+import { PAGE_SIZES } from '../../../../lib/pager.js';
 import { ExportButtons, ReportFilter, useReport } from '../../../../components/ReportFilter.jsx';
 import {
   DrillKpi, NoData, ReportState, TableSearch, bucketNote, filterRows, toSeries,
@@ -26,29 +28,34 @@ function StatusBadge({ row }) {
 }
 
 const COLUMNS = [
-  { label: 'เลขเคส', key: 'code' },
-  { label: 'วันที่', sortKey: 'date', render: (r) => fmtDate(r.date) },
-  { label: 'ลูกค้า', key: 'customer' },
-  { label: 'พนักงาน', key: 'employee' },
-  { label: 'ประเภทสินค้า', sortKey: 'lens_type', render: (r) => (
+  { label: 'เลขเคส', key: 'code', mobile: 'title' },
+  { label: 'วันที่', sortKey: 'date', render: (r) => fmtDate(r.date), mobile: 'body' },
+  { label: 'ลูกค้า', key: 'customer', mobile: 'subtitle' },
+  { label: 'พนักงาน', key: 'employee', mobile: 'meta' },
+  { label: 'ประเภทสินค้า', sortKey: 'lens_type', mobile: 'meta', render: (r) => (
     <>
       {r.lens_type || <span className="muted">—</span>}
       {r.product ? <div className="muted sm">{r.product}</div> : null}
     </>
   ) },
-  { label: 'ยอดขาย', cls: 'right', sortKey: 'revenue', render: (r) => money(r.revenue) },
-  { label: 'ค้างชำระ', cls: 'right', sortKey: 'balance', render: (r) => (
+  { label: 'ยอดขาย', cls: 'right', sortKey: 'revenue', render: (r) => money(r.revenue), mobile: 'body' },
+  { label: 'ค้างชำระ', cls: 'right', sortKey: 'balance', mobile: 'body', render: (r) => (
     r.balance > 0 ? <b className="warn-text">{money(r.balance)}</b> : <span className="muted">—</span>
   ) },
-  { label: 'สถานะ', sortKey: 'status', render: (r) => <StatusBadge row={r} /> },
+  { label: 'สถานะ', sortKey: 'status', render: (r) => <StatusBadge row={r} />, mobile: 'status' },
 ];
 
 export default function MainProcessReport() {
   const { filter, data, error, loading } = useReport('main-process');
   const [term, setTerm] = useState('');
+  const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(PAGE_SIZES[0]);
   const router = useRouter();
 
   const rows = filterRows(data?.bills || [], term);
+
+  /* เปลี่ยนช่วงวันที่ (ได้ data ชุดใหม่) หรือพิมพ์คำค้น = ผลคนละชุด กลับไปหน้า 1 */
+  useEffect(() => { setPage(1); }, [data, term, perPage]);
 
   const csv = () => downloadCsv(
     `รายงานงานตัดแว่น ${filter.from} ถึง ${filter.to}`,
@@ -131,11 +138,23 @@ export default function MainProcessReport() {
                 columns={COLUMNS}
                 rows={rows}
                 sortable
+                /* หั่นหน้าใน DataTable ไม่ใช่หั่นก่อนส่งเข้าไป — ตารางนี้เรียงคอลัมน์ได้
+                   ถ้าหั่นก่อน ปุ่ม "ยอดมากไปน้อย" จะเรียงแค่แถวของหน้าที่เปิดอยู่ */
                 defaultSort={{ key: 'date', dir: 'desc' }}
+                page={page}
+                perPage={perPage}
                 empty={term ? 'ไม่พบรายการที่ค้นหา' : 'ช่วงนี้ยังไม่มีเคส'}
                 onRowClick={(r) => router.push(
                   r.case_id ? `/cases/detail?id=${r.case_id}` : `/orders/detail?id=${r.id}`,
                 )}
+              />
+
+              <Pager
+                total={rows.length}
+                page={page}
+                perPage={perPage}
+                onPage={setPage}
+                onPerPage={setPerPage}
               />
             </Card>
           </>

@@ -144,13 +144,13 @@ function OrderDetailInner() {
       <Card title="ประวัติการรับเงิน" tight>
         <DataTable
           columns={[
-            { label: 'เมื่อ', render: (pay) => fmtDateTime(pay.paid_at), cls: 'nowrap' },
-            { label: 'ประเภท', key: 'kind' },
-            { label: 'วิธี', key: 'method' },
-            { label: 'จำนวน', render: (pay) => money(pay.amount), cls: 'num' },
-            { label: 'อ้างอิง', key: 'reference' },
-            { label: 'ผู้รับ', key: 'received_by_name' },
-            { label: 'หมายเหตุ', key: 'notes' },
+            { label: 'เมื่อ', render: (pay) => fmtDateTime(pay.paid_at), cls: 'nowrap', mobile: 'title' },
+            { label: 'ประเภท', key: 'kind', mobile: 'subtitle' },
+            { label: 'วิธี', key: 'method', mobile: 'body' },
+            { label: 'จำนวน', render: (pay) => money(pay.amount), cls: 'num', mobile: 'body' },
+            { label: 'อ้างอิง', key: 'reference', mobile: 'meta' },
+            { label: 'ผู้รับ', key: 'received_by_name', mobile: 'meta' },
+            { label: 'หมายเหตุ', key: 'notes', mobile: 'meta' },
           ]}
           rows={payments}
           empty="ยังไม่มีการรับเงิน"

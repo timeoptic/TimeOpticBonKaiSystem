@@ -35,11 +35,11 @@ export function NotifyPanel({ c, reload }) {
       <div className="card-body tight">
         <DataTable
           columns={[
-            { label: 'เมื่อ', render: (n) => fmtDateTime(n.contacted_at), cls: 'nowrap' },
-            { label: 'ช่องทาง', key: 'channel' },
-            { label: 'ผล', key: 'result' },
-            { label: 'โดย', key: 'contacted_by_name' },
-            { label: 'บันทึก', key: 'note' },
+            { label: 'เมื่อ', render: (n) => fmtDateTime(n.contacted_at), cls: 'nowrap', mobile: 'title' },
+            { label: 'ช่องทาง', key: 'channel', mobile: 'subtitle' },
+            { label: 'ผล', key: 'result', mobile: 'status' },
+            { label: 'โดย', key: 'contacted_by_name', mobile: 'meta' },
+            { label: 'บันทึก', key: 'note', mobile: 'body' },
           ]}
           rows={c.notifications || []}
           empty="ยังไม่เคยติดต่อ"

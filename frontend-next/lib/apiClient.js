@@ -37,8 +37,21 @@ async function request(method, path, body, signal) {
   } catch {
     /* empty body */
   }
-  if (!res.ok) throw new Error((data && data.error) || `HTTP ${res.status}`);
+  if (!res.ok) throw new Error(errorText(data) || `HTTP ${res.status}`);
   return data;
+}
+
+/**
+ * ข้อความปฏิเสธจาก API ทั้งสองฝั่ง
+ *
+ * ฝั่งหน้าร้านตอบ `{error}` ส่วนฝั่งคลัง (`/stock-api/*`) ตอบ `{reason, message}`
+ * — หน้าผู้ใช้และสิทธิ์เรียกข้ามไปฝั่งนั้น เพราะตาราง `admins` กับกฎสิทธิ์อยู่ที่
+ * โน่น · อ่านแค่ `error` อย่างเดียวจะได้ "HTTP 409" แทนคำอธิบายภาษาไทยที่ API
+ * อุตส่าห์เขียนมาให้ ซึ่งเป็นข้อความที่คนกดปุ่มเอาไปทำอะไรต่อไม่ได้เลย
+ */
+function errorText(data) {
+  if (!data) return '';
+  return data.error || data.message || '';
 }
 
 async function upload(path, formData) {
