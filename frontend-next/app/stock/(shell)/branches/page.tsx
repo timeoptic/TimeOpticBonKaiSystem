@@ -6,6 +6,8 @@ import { can, useActor, WorkHead } from "@/stockmod/components/AppShell";
 import { useToast } from "@/stockmod/components/Toaster";
 import SortHead, { SortBar, sortRows, useSort } from "@/stockmod/components/SortHead";
 import { IconTrash } from "@/stockmod/components/Icon";
+import RecordCard, { CardList } from "@/stockmod/components/RecordCard";
+import TaskDialog from "@/stockmod/components/TaskDialog";
 import Select from "@/stockmod/components/Select";
 import { api, ApiError, type BranchRow } from "@/stockmod/lib/api";
 import { useApi } from "@/stockmod/lib/useApi";
@@ -61,8 +63,8 @@ export default function BranchesPage() {
   return (
     <main className="work-main">
       <WorkHead
-        title="สาขา"
-        lede="รายชื่อสาขาที่มาเบิกของจากคลังนี้ได้ · ต้นทุนของที่เบิกไปอ่านได้ที่หน้าของที่สาขาเบิกไป"
+        title="จัดการสาขา"
+        lede="รายชื่อสาขาที่มาเบิกของจากคลังนี้ได้ · ต้นทุนของที่เบิกไปอ่านได้ที่หน้าการเบิกจากสาขา"
       >
         {mayEdit ? (
           <button type="button" className="btn btn--primary" onClick={() => setAdding((v) => !v)}>
@@ -70,7 +72,7 @@ export default function BranchesPage() {
           </button>
         ) : null}
         <Link href="/stock/settlements" className="btn">
-          ของที่สาขาเบิกไป
+          การเบิกจากสาขา
         </Link>
       </WorkHead>
 
@@ -119,7 +121,17 @@ export default function BranchesPage() {
       ) : null}
 
       {rows.length > 0 ? (
-        <div className="tablewrap">
+        <>
+        {/* บนมือถือ สาขาหนึ่งแห่ง = การ์ดหนึ่งใบ · ฟอร์มแก้ไขไม่กางใต้การ์ดแบบ
+            ตาราง มันเปิดเป็นกล่องเต็มจอ เพราะฟอร์มที่กางอยู่กลางรายการบนจอแคบ
+            ดันสาขาที่เหลือหายไปหมดโดยไม่มีอะไรบอกว่ากำลังแก้ใบไหนอยู่ */}
+        <CardList label="รายชื่อสาขา">
+          {rows.map((b) => (
+            <BranchCard key={b.id} branch={b} mayEdit={mayEdit} onDone={list.reload} />
+          ))}
+        </CardList>
+
+        <div className="tablewrap wide-only">
           <table className="grid">
             <caption className="sr-only">รายชื่อสาขา</caption>
             <thead>
@@ -142,8 +154,73 @@ export default function BranchesPage() {
             </tbody>
           </table>
         </div>
+        </>
       ) : null}
     </main>
+  );
+}
+
+/** สาขาหนึ่งแห่ง บนมือถือ — แก้ไขในกล่อง ไม่ใช่กางใต้แถว */
+function BranchCard({
+  branch,
+  mayEdit,
+  onDone,
+}: {
+  branch: BranchRow;
+  mayEdit: boolean;
+  onDone: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+
+  return (
+    <>
+      <RecordCard
+        tone={branch.pendingCount > 0 ? "pending" : branch.isActive ? undefined : "muted"}
+        head={
+          branch.isActive ? (
+            <span className="status status--stock">เปิดใช้งาน</span>
+          ) : (
+            <span className="status status--out">ปิดแล้ว</span>
+          )
+        }
+        title={branch.name}
+        sub={branch.contact ?? "ไม่มีข้อมูลติดต่อ"}
+        fields={[
+          {
+            label: "ใบเบิกค้าง",
+            value:
+              branch.pendingCount === 0 ? (
+                <span className="grid__muted">—</span>
+              ) : (
+                <Link href={`/stock/settlements?branch=${branch.id}`} className="grid__link">
+                  {count(branch.pendingCount)} รายการ
+                </Link>
+              ),
+          },
+          branch.note ? { label: "หมายเหตุ", value: branch.note } : null,
+        ]}
+        actions={
+          mayEdit ? (
+            <button type="button" className="btn btn--small" onClick={() => setEditing(true)}>
+              แก้ไขสาขา
+            </button>
+          ) : undefined
+        }
+      />
+
+      {editing ? (
+        <TaskDialog eyebrow="สาขา" title={branch.name} onClose={() => setEditing(false)}>
+          <BranchForm
+            branch={branch}
+            onSaved={() => {
+              setEditing(false);
+              onDone();
+            }}
+            onCancel={() => setEditing(false)}
+          />
+        </TaskDialog>
+      ) : null}
+    </>
   );
 }
 
@@ -353,7 +430,7 @@ function BranchForm({
             ]}
           />
           <span className="field__help">
-            ปิดสาขาที่ยังมีรายการค้างอยู่ไม่ได้ — ดูรายการได้ที่หน้าของที่สาขาเบิกไป
+            ปิดสาขาที่ยังมีรายการค้างอยู่ไม่ได้ — ดูรายการได้ที่หน้าการเบิกจากสาขา
           </span>
         </div>
       ) : null}

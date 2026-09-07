@@ -47,6 +47,22 @@ final class Stock
     private const BASKET_MAX = 20;
 
     /**
+     * ที่ทางเดียวที่ยอดคงเหลือติดลบได้ — การตัดที่ตามหลังการขายหน้าร้าน
+     *
+     * ตอนคำขอแบบนั้นมาถึงที่นี่ ของออกจากร้านไปแล้วจริง การปฏิเสธไม่ได้ทำให้ของ
+     * กลับมา ได้แค่สมุดที่ไม่ตรงกับชั้น · ยอดติดลบที่บอกตรง ๆ ว่าค้างอยู่เท่าไร
+     * ดีกว่า และเป็นที่มาของหน้า "สินค้ารอสั่ง"
+     *
+     * ที่อื่นไม่ใช่แบบนั้น การเบิกที่คนกดเองจากหน้าคลังเกิดขึ้นก่อนของจะขยับ คน
+     * กดกำลังจะเดินไปหยิบของจากชั้น และถ้าบนชั้นไม่มี การบันทึกว่าหยิบไปแล้วคือ
+     * การโกหกสมุดตั้งแต่แถวแรก ไม่ใช่การจดความจริงที่เกิดไปแล้ว
+     *
+     * `source` ของคำขอที่เข้ามาทาง HTTP ถูกทับเป็น 'web' ที่ปากทาง (ดู
+     * `public/index.php`) เบราว์เซอร์จึงอ้างตัวเป็นหน้าร้านเพื่อผ่านข้อนี้ไม่ได้
+     */
+    private const MAY_GO_SHORT = ['frontdesk'];
+
+    /**
      * @param array{source?:string,idem_key?:string,sku?:string,quantity?:mixed,
      *              actor_id?:mixed,reference_doc?:?string,note?:?string} $req
      * @return array<string,mixed>
@@ -215,7 +231,7 @@ final class Stock
             // pair, and no branch receivable opened for goods that never left.
             $plans = [];
             foreach ($items as $item) {
-                $plans[] = self::plan($pdo, $item['sku'], $item['quantity']);
+                $plans[] = self::plan($pdo, $source, $item['sku'], $item['quantity']);
             }
 
             $lines = [];
@@ -309,7 +325,7 @@ final class Stock
             // never half-happens against a branch that turns out to be closed.
             $issuedTo = $to['admin_id'] === null ? null : self::staff($pdo, $to['admin_id']);
 
-            $line = self::cutOne($pdo, $action, $sku, $qty, $actor, $doc, $note, $to, $issuedTo);
+            $line = self::cutOne($pdo, $action, $source, $sku, $qty, $actor, $doc, $note, $to, $issuedTo);
 
             $response = [
                 'replayed'        => false,
@@ -343,6 +359,7 @@ final class Stock
     private static function cutOne(
         PDO $pdo,
         string $action,
+        string $source,
         string $sku,
         int $qty,
         ?int $actor,
@@ -351,7 +368,16 @@ final class Stock
         array $to,
         ?int $issuedTo,
     ): array {
-        return self::applyPlan($pdo, $action, self::plan($pdo, $sku, $qty), $actor, $doc, $note, $to, $issuedTo);
+        return self::applyPlan(
+            $pdo,
+            $action,
+            self::plan($pdo, $source, $sku, $qty),
+            $actor,
+            $doc,
+            $note,
+            $to,
+            $issuedTo,
+        );
     }
 
     /**
@@ -365,7 +391,7 @@ final class Stock
      *
      * @return array{product:array<string,mixed>,lots:list<array<string,mixed>>,available:int,quantity:int}
      */
-    private static function plan(PDO $pdo, string $sku, int $qty): array
+    private static function plan(PDO $pdo, string $source, string $sku, int $qty): array
     {
         $p = self::product($sku);
         if ((bool) $p['is_custom_made']) {
@@ -387,20 +413,29 @@ final class Stock
 
         $available = array_sum(array_map(static fn($l) => (int) $l['remaining_qty'], $lots));
 
+        $shortfall = max(0, $qty - $available);
+
         /*
-         * ของไม่พอไม่ใช่การปฏิเสธอีกต่อไป — ส่วนที่เกินกลายเป็นยอดค้างส่ง
+         * ของไม่พอ — ปฏิเสธ ยกเว้นคำขอที่มาจากการขายหน้าร้าน
          *
          * ร้านขายกรอบที่ยังไม่เข้าอยู่แล้ว ลูกค้าสั่ง จ่ายเงิน ของมาสัปดาห์หน้า
-         * เมื่อก่อนระบบปฏิเสธ พนักงานจึงต้องเลือกระหว่างไม่บันทึกการขาย กับรับ
-         * ของเข้าลอย ๆ ก่อนเพื่อให้ตัดผ่าน · ทั้งสองทางทำให้ตัวเลขในระบบไม่ตรง
-         * กับความจริง ซึ่งแย่กว่ายอดติดลบที่บอกตรง ๆ ว่าค้างอยู่เท่าไร
+         * เมื่อก่อนระบบปฏิเสธทุกทาง พนักงานจึงต้องเลือกระหว่างไม่บันทึกการขาย
+         * กับรับของเข้าลอย ๆ ก่อนเพื่อให้ตัดผ่าน · ทั้งสองทางทำให้ตัวเลขในระบบ
+         * ไม่ตรงกับความจริง ซึ่งแย่กว่ายอดติดลบที่บอกตรง ๆ ว่าค้างอยู่เท่าไร
+         *
+         * แต่ข้อยกเว้นนั้นเป็นของการขาย ไม่ใช่ของทุกคนที่กดตัด — การเบิกที่คนกด
+         * เองจากหน้าคลังยังปฏิเสธเหมือนเดิม ดู `MAY_GO_SHORT` ว่าทำไม
          */
+        if ($shortfall > 0 && !in_array($source, self::MAY_GO_SHORT, true)) {
+            throw ApiError::insufficient($sku, $qty, $available);
+        }
+
         return [
             'product'   => $p,
             'lots'      => $lots,
             'available' => $available,
             'quantity'  => $qty,
-            'shortfall' => max(0, $qty - $available),
+            'shortfall' => $shortfall,
         ];
     }
 

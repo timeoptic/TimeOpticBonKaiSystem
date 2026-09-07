@@ -7,6 +7,7 @@ import Select from "./Select";
 import DateField from "./DateField";
 import QtyField from "./QtyField";
 import { IconTrash } from "./Icon";
+import ConfirmDelete from "./ConfirmDelete";
 import { useToast } from "./Toaster";
 import { api, ApiError, type ProductDetail, type ProductRow } from "@/stockmod/lib/api";
 import { useApi } from "@/stockmod/lib/useApi";
@@ -67,6 +68,12 @@ export default function StockLines({
   const [spent, setSpent] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
 
+  /* ล็อตที่กดถังขยะไว้ แต่ยังไม่ได้ยืนยัน — null = ยังไม่มีกล่องเปิดอยู่
+     ปุ่มถังขยะอยู่ท้ายบรรทัดติดกับช่องกรอกที่แก้ได้ทุกช่อง การกดพลาดหนึ่งครั้ง
+     ลบล็อตหายไปทั้งใบ แล้วไม่มีปุ่มเรียกกลับ */
+  const [asking, setAsking] = useState<ProductDetail["lots"][number] | null>(null);
+  const [removing, setRemoving] = useState(false);
+
   const all = detail.status === "ready" ? detail.data.product.lots : [];
 
   /**
@@ -102,13 +109,21 @@ export default function StockLines({
   }
 
   async function removeLot(id: number) {
+    setRemoving(true);
     setProblem(null);
     try {
       await api.post(`/lots/${id}/delete`);
       toast.success({ text: "ลบล็อตแล้ว", detail: product.sku });
+      setAsking(null);
       done();
     } catch (e) {
-      setProblem(ApiError.is(e) ? e.message : "ลบไม่สำเร็จ");
+      /* ค้างไว้ใน state ด้วย เพราะกล่องยืนยันยังเปิดอยู่และต้องบอกในกล่องนั้น ·
+         toast คู่กันสำหรับตอนที่กล่องปิดไปแล้ว */
+      const why = ApiError.is(e) ? e.message : "ลบไม่สำเร็จ";
+      setProblem(why);
+      toast.error({ text: "ลบล็อตไม่สำเร็จ", detail: why });
+    } finally {
+      setRemoving(false);
     }
   }
 
@@ -203,7 +218,7 @@ export default function StockLines({
                 <button
                   type="button"
                   className="btn btn--danger btn--small btn--icon"
-                  onClick={() => removeLot(l.id)}
+                  onClick={() => setAsking(l)}
                   aria-label={`ลบล็อตที่รับเข้า ${date(l.receivedDate)}`}
                 >
                   <IconTrash />
@@ -216,10 +231,25 @@ export default function StockLines({
         </ul>
       ) : null}
 
-      {problem ? (
+      {problem && asking === null ? (
         <div className="notice notice--error" role="alert">
           {problem}
         </div>
+      ) : null}
+
+      {asking !== null ? (
+        <ConfirmDelete
+          title={`ล็อต ${asking.lotNumber}`}
+          what={`ลบล็อตนี้ของ ${product.sku} ออกจากคลัง`}
+          detail={`รับเข้า ${date(asking.receivedDate)} · ${count(asking.initialQty)} ชิ้น ยังไม่ได้ตัดออกเลย`}
+          busy={removing}
+          problem={problem}
+          onConfirm={() => void removeLot(asking.id)}
+          onClose={() => {
+            setProblem(null);
+            setAsking(null);
+          }}
+        />
       ) : null}
 
       {receiving ? (

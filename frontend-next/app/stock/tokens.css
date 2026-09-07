@@ -177,6 +177,12 @@
   --z-toast: 500;
   --z-tooltip: 600;
 
+  /* ความสูงจริงของแถบเมนูล่างบนมือถือ — ปุ่ม 52px + ขอบบนล่าง 4+4 + เส้นคั่น 1
+     บวกที่ว่างขอบจอของเครื่องที่มีแถบโฮม (iPhone ~34px) · ปุ่มลอยตะกร้ากับที่ว่าง
+     ท้ายหน้าอ้างค่านี้แทนการเดาเลขเอง เลข 64px ที่เดาไว้เดิมไม่ได้นับ safe area
+     จึงทับแถบล่างบน iPhone */
+  --railtabs-h: calc(61px + env(safe-area-inset-bottom, 0px));
+
   /* Controls share one height, always. */
   --control-h: 46px;
   --nav-h: 68px;

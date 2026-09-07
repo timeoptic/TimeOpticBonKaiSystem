@@ -33,16 +33,22 @@ final class Reports
     /**
      * @return array<string,mixed>
      */
-    public static function overview(string $from, string $to, bool $money = false): array
-    {
+    public static function overview(
+        string $from,
+        string $to,
+        bool $money = false,
+        array $filter = [],
+    ): array {
         [$from, $to] = self::range($from, $to);
+        [$lens, $lensArgs] = self::lens($filter);
+        $joins = self::LENS_JOINS;
 
         // DATETIME columns carry no zone and the connection is pinned to +07:00,
         // so a plain BETWEEN on the dates covers exactly the local days asked
         // for. `< to + 1 day` rather than `<= to 23:59:59`: the latter silently
         // drops anything stamped in the last second of the day.
-        $window = 'g.created_at >= ? AND g.created_at < DATE_ADD(?, INTERVAL 1 DAY)';
-        $args = [$from, $to];
+        $window = 'g.created_at >= ? AND g.created_at < DATE_ADD(?, INTERVAL 1 DAY)' . $lens;
+        $args = [$from, $to, ...$lensArgs];
 
         $totals = Db::all(
             "SELECT g.action_type,
@@ -50,7 +56,7 @@ final class Reports
                     COALESCE(SUM(ABS(g.quantity)), 0)          AS qty,
                     COALESCE(SUM(ABS(g.quantity) * g.unit_cost), 0) AS value,
                     SUM(CASE WHEN g.unit_cost IS NULL THEN ABS(g.quantity) ELSE 0 END) AS qty_no_cost
-             FROM inventory_logs g
+             FROM inventory_logs g{$joins}
              WHERE {$window}
              GROUP BY g.action_type",
             $args,
@@ -80,7 +86,7 @@ final class Reports
                     COALESCE(SUM(CASE WHEN g.action_type = 'SCRAP' THEN ABS(g.quantity) ELSE 0 END), 0)     AS scrap_qty,
                     COALESCE(SUM(CASE WHEN g.action_type = 'OUT'
                                       THEN ABS(g.quantity) * g.unit_cost ELSE 0 END), 0)                    AS cogs
-             FROM inventory_logs g
+             FROM inventory_logs g{$joins}
              WHERE {$window}
              GROUP BY DATE(g.created_at)
              ORDER BY day ASC",
@@ -91,9 +97,8 @@ final class Reports
             "SELECT p.id, p.sku, p.name,
                     COALESCE(SUM(ABS(g.quantity)), 0) AS qty,
                     COALESCE(SUM(ABS(g.quantity) * g.unit_cost), 0) AS cost
-             FROM inventory_logs g
-             JOIN products p ON p.id = g.product_id
-             WHERE {$window} AND g.action_type = 'OUT'
+             FROM inventory_logs g{$joins}
+             WHERE {$window} AND g.action_type = 'OUT' AND p.id IS NOT NULL
              GROUP BY p.id, p.sku, p.name
              ORDER BY qty DESC, cost DESC
              LIMIT 10",
@@ -104,12 +109,15 @@ final class Reports
             "SELECT COALESCE(who.display_name, a.display_name) AS name,
                     COALESCE(SUM(ABS(g.quantity)), 0) AS qty,
                     COUNT(*) AS rows_n
-             FROM inventory_logs g
+             FROM inventory_logs g{$joins}
              LEFT JOIN admins who ON who.id = g.issued_to_admin_id
              LEFT JOIN admins a ON a.id = g.created_by
              WHERE {$window} AND g.action_type IN ('OUT','SCRAP')
                AND COALESCE(who.display_name, a.display_name) IS NOT NULL
-             GROUP BY name
+             /* จัดกลุ่มด้วยนิพจน์เต็ม ไม่ใช่ชื่อ alias — ตาราง products ที่ join
+                เข้ามาให้ตัวกรองก็มีคอลัมน์ชื่อ name เหมือนกัน และ GROUP BY name
+                จะไปเกาะคอลัมน์นั้นแทน แล้วคนคนเดียวจะแตกเป็นหลายแถวตามชื่อสินค้า */
+             GROUP BY COALESCE(who.display_name, a.display_name)
              ORDER BY qty DESC
              LIMIT 10",
             $args,
@@ -132,7 +140,7 @@ final class Reports
                     COALESCE(SUM(ABS(g.quantity)), 0) AS qty,
                     COALESCE(SUM(ABS(g.quantity) * g.unit_cost), 0) AS cost,
                     COUNT(*) AS rows_n
-             FROM inventory_logs g
+             FROM inventory_logs g{$joins}
              JOIN admins who ON who.id = g.issued_to_admin_id
              WHERE {$window} AND g.action_type = 'SCRAP'
              GROUP BY who.id, who.display_name
@@ -177,11 +185,65 @@ final class Reports
                 // and go to everyone, buying prices do not.
                 'cost' => $money ? (float) $r['cost'] : null,
             ], $scrapPeople),
-            'branch' => self::branch($from, $to, $money),
-            'branchDraws' => self::branchDraws($from, $to, $money),
-            'rxBranches' => self::rxBranches($from, $to, $money),
+            'branch' => self::branch($from, $to, $money, $filter),
+            'branchDraws' => self::branchDraws($from, $to, $money, $filter),
+            'rxBranches' => self::rxBranches($from, $to, $money, $filter),
             'sales'  => self::sales($window, $args, $money),
         ];
+    }
+
+    /**
+     * join ที่ตัวกรองของหน้าแดชบอร์ดต้องใช้ ติดไปกับทุกคำถามที่อ่านจากสมุด
+     *
+     * ติดไปเสมอ ไม่ได้ต่อเมื่อมีตัวกรอง — SQL ที่ประกอบต่างกันตามว่ามีตัวกรองไหม
+     * คือ SQL สองชุดที่ต้องถูกทั้งคู่ และชุดที่ไม่มีใครกรองคือชุดที่ไม่มีใครทดสอบ
+     *
+     * LEFT ทั้งสามใบ: แถวในสมุดที่ไม่ผูกสินค้า ไม่ผูกใบเบิกสาขา หรือไม่ใช่ใบสั่ง
+     * RX ต้องยังถูกนับเมื่อไม่ได้กรองอะไร · การกรองเป็นคนตัดแถวพวกนั้นออกเอง
+     */
+    private const LENS_JOINS = "
+             LEFT JOIN products p       ON p.id  = g.product_id
+             LEFT JOIN branch_issues bi ON bi.id = g.branch_issue_id
+             LEFT JOIN rx_orders rxo    ON rxo.log_id = g.id";
+
+    /**
+     * ตัวกรองของทั้งหน้าแดชบอร์ด — ชนิดสินค้า และสาขา
+     *
+     * ตัวเดียวกับที่หน้าจอใช้และที่ไฟล์ Excel ใช้ · แยกกันอยู่คนละชุดคือหน้าจอกับ
+     * ไฟล์ที่ตอบคนละคำถามทั้งที่คนกดคิดว่าถามอันเดียวกัน ซึ่งรู้ตัวตอนเอาไฟล์ไป
+     * เทียบกับจอแล้วเลขไม่ตรง
+     *
+     * **สาขาไม่ได้มีอยู่ในทุกแถวของสมุด** — ของเข้าคลังกลาง ปรับยอด คืนของ และ
+     * ตัดของเสีย ไม่ผูกกับสาขาใด เพราะมันไม่ได้เกิดที่สาขา · เลือกสาขาแล้วแถว
+     * พวกนั้นจึงหลุดออกจากผลลัพธ์และตัวเลขกลายเป็นศูนย์ ซึ่งเป็นความจริง ไม่ใช่
+     * ข้อมูลหาย · หน้าจอเป็นคนบอกเรื่องนี้ ด้วยการหรี่การ์ดพวกนั้นลง
+     *
+     * `self` คือใบที่ร้านนี้ทำเอง ไม่ใช่สาขา — มันไม่มี id ให้เทียบ จึงถามด้วย
+     * IS NULL ไม่ใช่ด้วยเลขศูนย์
+     *
+     * @param array{branch?:?string,type?:?string} $filter
+     * @return array{0:string,1:list<mixed>}
+     */
+    private static function lens(array $filter): array
+    {
+        $sql = '';
+        $args = [];
+
+        $type = trim((string) ($filter['type'] ?? ''));
+        if ($type !== '') {
+            $sql .= ' AND p.product_type = ?';
+            $args[] = $type;
+        }
+
+        $branch = trim((string) ($filter['branch'] ?? ''));
+        if ($branch === 'self') {
+            $sql .= ' AND COALESCE(bi.branch_id, rxo.branch_id) IS NULL';
+        } elseif ($branch !== '') {
+            $sql .= ' AND COALESCE(bi.branch_id, rxo.branch_id) = ?';
+            $args[] = (int) $branch;
+        }
+
+        return [$sql, $args];
     }
 
     /**
@@ -200,8 +262,38 @@ final class Reports
      *
      * @return list<array<string,mixed>>
      */
-    private static function branchDraws(string $from, string $to, bool $money): array
-    {
+    private static function branchDraws(
+        string $from,
+        string $to,
+        bool $money,
+        array $filter = [],
+    ): array {
+        /* ตารางนี้ต่อสองท่อนด้วย UNION — ท่อนสาขา กับ ท่อนที่ร้านเบิกเอง · เลือก
+           สาขาแล้วอีกท่อนต้องเงียบ และเลือก "ร้านนี้เอง" ก็กลับกัน · ปิดด้วย
+           1 = 0 แทนที่จะประกอบ SQL คนละแบบ เพราะรูปของคำถามยังเป็นอันเดียวกัน
+           เปลี่ยนแค่ว่าท่อนไหนมีสิทธิ์ตอบ */
+        $type = trim((string) ($filter['type'] ?? ''));
+        $branch = trim((string) ($filter['branch'] ?? ''));
+
+        $issueWhere = '';
+        $issueArgs = [];
+        $selfWhere = '';
+        $selfArgs = [];
+
+        if ($type !== '') {
+            $issueWhere .= ' AND p.product_type = ?';
+            $issueArgs[] = $type;
+            $selfWhere .= ' AND p.product_type = ?';
+            $selfArgs[] = $type;
+        }
+        if ($branch === 'self') {
+            $issueWhere .= ' AND 1 = 0';
+        } elseif ($branch !== '') {
+            $issueWhere .= ' AND i.branch_id = ?';
+            $issueArgs[] = (int) $branch;
+            $selfWhere .= ' AND 1 = 0';
+        }
+
         $rows = Db::all(
             "SELECT b.id   AS branch_id,
                     b.name AS branch_name,
@@ -219,7 +311,7 @@ final class Reports
              JOIN branches b ON b.id = i.branch_id
              LEFT JOIN products p ON p.id = i.product_id
              WHERE i.issued_at >= ? AND i.issued_at < DATE_ADD(?, INTERVAL 1 DAY)
-               AND i.status <> 'cancelled'
+               AND i.status <> 'cancelled' {$issueWhere}
              GROUP BY b.id, b.name, i.sku, p.name, p.product_type,
                       lens_design, lens_index, coating
 
@@ -247,12 +339,12 @@ final class Reports
              FROM inventory_logs g
              JOIN products p ON p.id = g.product_id
              WHERE g.created_at >= ? AND g.created_at < DATE_ADD(?, INTERVAL 1 DAY)
-               AND g.action_type = 'OUT' AND g.branch_issue_id IS NULL
+               AND g.action_type = 'OUT' AND g.branch_issue_id IS NULL {$selfWhere}
              GROUP BY p.id, p.sku, p.name, p.product_type,
                       lens_design, lens_index, coating
 
              ORDER BY branch_name IS NULL DESC, branch_name ASC, qty DESC, sku ASC",
-            [$from, $to, $from, $to],
+            [$from, $to, ...$issueArgs, $from, $to, ...$selfArgs],
         );
 
         /* ทำให้เป็นสาขาละก้อน ไม่ใช่แถวเรียงยาว — หน้าจอวาดทีละสาขาอยู่แล้ว
@@ -321,8 +413,31 @@ final class Reports
      *
      * @return list<array<string,mixed>>
      */
-    private static function rxBranches(string $from, string $to, bool $money): array
-    {
+    private static function rxBranches(
+        string $from,
+        string $to,
+        bool $money,
+        array $filter = [],
+    ): array {
+        /* ใบสั่ง RX พกสาขาของตัวเองมาในตาราง (rx_orders.branch_id) จึงกรองตรง
+           คอลัมน์นั้นได้เลย ไม่ต้องผ่าน lens ที่ทำไว้ให้คำถามฝั่งสมุด */
+        $where = '';
+        $extra = [];
+
+        $type = trim((string) ($filter['type'] ?? ''));
+        if ($type !== '') {
+            $where .= ' AND p.product_type = ?';
+            $extra[] = $type;
+        }
+
+        $branch = trim((string) ($filter['branch'] ?? ''));
+        if ($branch === 'self') {
+            $where .= ' AND r.branch_id IS NULL';
+        } elseif ($branch !== '') {
+            $where .= ' AND r.branch_id = ?';
+            $extra[] = (int) $branch;
+        }
+
         $rows = Db::all(
             "SELECT r.branch_id,
                     b.name AS branch_name,
@@ -342,11 +457,11 @@ final class Reports
              JOIN products p ON p.id = g.product_id
              LEFT JOIN branches b ON b.id = r.branch_id
              WHERE g.created_at >= ? AND g.created_at < DATE_ADD(?, INTERVAL 1 DAY)
-               AND g.action_type = 'RX_ORDER' AND r.cancelled_at IS NULL
+               AND g.action_type = 'RX_ORDER' AND r.cancelled_at IS NULL {$where}
              GROUP BY r.branch_id, b.name, p.id, p.sku, p.name, p.product_type,
                       lens_design, lens_index, coating
              ORDER BY b.name IS NULL DESC, b.name ASC, qty DESC, p.sku ASC",
-            [$from, $to],
+            [$from, $to, ...$extra],
         );
 
         $out = [];
@@ -451,12 +566,11 @@ final class Reports
                                       THEN ABS(g.quantity) * (g.sale_price - g.unit_cost) ELSE 0 END), 0) AS profit,
                     COALESCE(SUM(g.unit_cost IS NOT NULL), 0) AS costed,
                     COALESCE(SUM(g.unit_cost IS NULL), 0)     AS uncosted
-             FROM inventory_logs g
-             LEFT JOIN rx_orders r ON r.log_id = g.id
+             FROM inventory_logs g" . self::LENS_JOINS . "
              WHERE {$window}
                AND g.action_type IN ('RX_ORDER','OUT')
                AND g.sale_price IS NOT NULL
-               AND r.cancelled_at IS NULL",
+               AND rxo.cancelled_at IS NULL",
             $args,
         ) ?? ['bills' => 0, 'revenue' => 0, 'costed_revenue' => 0, 'profit' => 0, 'costed' => 0, 'uncosted' => 0];
 
@@ -481,31 +595,58 @@ final class Reports
      *
      * @return array<string,mixed>
      */
-    private static function branch(string $from, string $to, bool $money): array
-    {
+    private static function branch(
+        string $from,
+        string $to,
+        bool $money,
+        array $filter = [],
+    ): array {
+        /* ใบเบิกสาขาผูกกับสาขาอยู่แล้วโดยนิยาม — เลือก "ร้านนี้เอง" จึงไม่ใช่การ
+           กรองให้แคบลง แต่คือการถามหาสิ่งที่ตารางนี้ไม่มี · ตอบศูนย์ ซึ่งเป็น
+           ความจริง: ร้านไม่ได้ติดหนี้ตัวเอง */
+        $where = '';
+        $extra = [];
+
+        $type = trim((string) ($filter['type'] ?? ''));
+        if ($type !== '') {
+            $where .= ' AND p.product_type = ?';
+            $extra[] = $type;
+        }
+
+        $branch = trim((string) ($filter['branch'] ?? ''));
+        if ($branch === 'self') {
+            $where .= ' AND 1 = 0';
+        } elseif ($branch !== '') {
+            $where .= ' AND i.branch_id = ?';
+            $extra[] = (int) $branch;
+        }
+
+        $from_ = 'FROM branch_issues i LEFT JOIN products p ON p.id = i.product_id';
+
         $issued = Db::one(
-            'SELECT COUNT(*) AS n, COALESCE(SUM(cost_total), 0) AS cost
-             FROM branch_issues
-             WHERE issued_at >= ? AND issued_at < DATE_ADD(?, INTERVAL 1 DAY)',
-            [$from, $to],
+            "SELECT COUNT(*) AS n, COALESCE(SUM(i.cost_total), 0) AS cost
+             {$from_}
+             WHERE i.issued_at >= ? AND i.issued_at < DATE_ADD(?, INTERVAL 1 DAY) {$where}",
+            [$from, $to, ...$extra],
         ) ?? ['n' => 0, 'cost' => 0];
 
         $settled = Db::one(
             "SELECT COUNT(*) AS n,
-                    COALESCE(SUM(settled_amount), 0) AS amount,
-                    COALESCE(SUM(settled_amount - cost_total), 0) AS profit
-             FROM branch_issues
-             WHERE status = 'settled'
-               AND settled_at >= ? AND settled_at < DATE_ADD(?, INTERVAL 1 DAY)",
-            [$from, $to],
+                    COALESCE(SUM(i.settled_amount), 0) AS amount,
+                    COALESCE(SUM(i.settled_amount - i.cost_total), 0) AS profit
+             {$from_}
+             WHERE i.status = 'settled'
+               AND i.settled_at >= ? AND i.settled_at < DATE_ADD(?, INTERVAL 1 DAY) {$where}",
+            [$from, $to, ...$extra],
         ) ?? ['n' => 0, 'amount' => 0, 'profit' => 0];
 
         // Not windowed: what is owed right now is owed regardless of which dates
         // are being looked at, and hiding it behind a date filter would let a
         // debt go unnoticed simply because someone was reading last month.
         $owing = Db::one(
-            "SELECT COUNT(*) AS n, COALESCE(SUM(cost_total), 0) AS cost
-             FROM branch_issues WHERE status = 'pending'"
+            "SELECT COUNT(*) AS n, COALESCE(SUM(i.cost_total), 0) AS cost
+             {$from_} WHERE i.status = 'pending' {$where}",
+            $extra,
         ) ?? ['n' => 0, 'cost' => 0];
 
         return [
@@ -539,9 +680,27 @@ final class Reports
      *
      * @return array<string,mixed>
      */
-    public static function movers(string $from, string $to, int $idleDays, bool $money): array
-    {
+    public static function movers(
+        string $from,
+        string $to,
+        int $idleDays,
+        bool $money,
+        array $filter = [],
+    ): array {
         [$from, $to] = self::range($from, $to);
+        [$lens, $lensArgs] = self::lens($filter);
+        $joins = self::LENS_JOINS;
+
+        /* ของที่ค้างไม่ขยับเป็นคำถามเกี่ยวกับชั้นวาง ไม่ใช่เกี่ยวกับการเคลื่อนไหว
+           — มันอ่านจาก stock_lots ซึ่งไม่มีสาขา ของกองอยู่ที่คลังกลางกองเดียว ·
+           ชนิดสินค้ากรองได้ตามปกติเพราะเป็นคุณสมบัติของตัวสินค้าเอง */
+        $slowWhere = '';
+        $slowArgs = [];
+        $type = trim((string) ($filter['type'] ?? ''));
+        if ($type !== '') {
+            $slowWhere = ' AND p.product_type = ?';
+            $slowArgs[] = $type;
+        }
         // Below a week the list is noise — nothing a shop stocks moves daily —
         // and above ten years it is the whole catalogue with a longer query.
         $idle = max(7, min(3650, $idleDays));
@@ -553,16 +712,15 @@ final class Reports
                     COALESCE(SUM(ABS(g.quantity) * g.unit_cost), 0) AS cost,
                     COALESCE(s.on_hand, 0)                          AS on_hand,
                     p.min_stock
-             FROM inventory_logs g
-             JOIN products p ON p.id = g.product_id
+             FROM inventory_logs g{$joins}
              LEFT JOIN (SELECT product_id, SUM(remaining_qty) AS on_hand
                         FROM stock_lots GROUP BY product_id) s ON s.product_id = p.id
-             WHERE g.created_at >= ? AND g.created_at < DATE_ADD(?, INTERVAL 1 DAY)
-               AND g.action_type = 'OUT'
+             WHERE g.created_at >= ? AND g.created_at < DATE_ADD(?, INTERVAL 1 DAY){$lens}
+               AND g.action_type = 'OUT' AND p.id IS NOT NULL
              GROUP BY p.id, p.sku, p.name, p.brand, p.product_type, s.on_hand, p.min_stock
              ORDER BY qty DESC, cost DESC, p.id ASC
              LIMIT 25",
-            [$from, $to],
+            [$from, $to, ...$lensArgs],
         );
 
         /**
@@ -598,11 +756,11 @@ final class Reports
                         FROM inventory_logs
                         WHERE action_type = 'OUT'
                         GROUP BY product_id) m ON m.product_id = p.id
-             WHERE p.is_custom_made = 0
+             WHERE p.is_custom_made = 0{$slowWhere}
                AND COALESCE(DATE(m.last_out), s.oldest) <= DATE_SUB(CURDATE(), INTERVAL ? DAY)
              ORDER BY idle_days DESC, s.on_hand DESC, p.id ASC
              LIMIT 50",
-            [$idle],
+            [...$slowArgs, $idle],
         );
 
         return [

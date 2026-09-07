@@ -619,6 +619,18 @@ export default function ProductForm({
   const at = Math.min(step, steps.length - 1);
   const last = at === steps.length - 1;
 
+  /**
+   * ตัวเลือกชนิดสินค้ายังอยู่ข้างหลัง — ปุ่มซ้ายล่างจึงเป็น "ย้อนกลับ" ไม่ใช่ "ยกเลิก"
+   *
+   * คนที่เพิ่งกดเลือกชนิดสินค้ามา มาจากหน้าจอก่อนหน้าจริง ๆ · "ยกเลิก" ตรงนั้นอ่าน
+   * เหมือนทิ้งงานทั้งหมด ทั้งที่สิ่งที่คนกดอยากได้คือกลับไปเลือกใหม่เพราะกดผิดชนิด
+   * แล้วต้องเสียทั้งใบเพื่อกลับไปหนึ่งก้าว
+   *
+   * หน้าที่ส่ง `presetType` มาไม่มีขั้นนั้นให้กลับไป และการแก้สินค้าเดิมก็ไม่มี ·
+   * หลังบันทึกแล้วก็ไม่ใช่ ตอนนั้นปุ่มคือ "ปิด" เพราะงานจบไปแล้ว
+   */
+  const chooserBehind = product === undefined && presetType === undefined;
+
   const set = (key: string, value: string) => setValues((v) => ({ ...v, [key]: value }));
 
   /**
@@ -1256,6 +1268,19 @@ export default function ProductForm({
             onClick={() => {
               setProblem(null);
               setStep(at - 1);
+            }}
+            disabled={busy}
+          >
+            ← ย้อนกลับ
+          </button>
+        ) : chooserBehind && savedId === null ? (
+          <button
+            key="totype"
+            type="button"
+            className="btn btn--quiet"
+            onClick={() => {
+              setProblem(null);
+              setType("");
             }}
             disabled={busy}
           >

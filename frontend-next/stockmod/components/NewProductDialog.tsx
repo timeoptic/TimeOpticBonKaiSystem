@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import ProductForm from "./ProductForm";
 import { IconClose } from "./Icon";
 import backdropClose from "./backdrop";
+import useScrollLock from "@/stockmod/lib/scrollLock";
 import type { CreatedLot } from "@/stockmod/lib/api";
 
 /**
@@ -44,6 +45,7 @@ export default function NewProductDialog({
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => ref.current?.showModal(), []);
+  useScrollLock(true);
 
   return (
     <dialog

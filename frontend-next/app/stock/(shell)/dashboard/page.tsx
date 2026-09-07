@@ -7,11 +7,12 @@ import Select from "@/stockmod/components/Select";
 import { CHART_INK, DayBars, FlowChart, RankBars } from "@/stockmod/components/Charts";
 import { qs, useApi } from "@/stockmod/lib/useApi";
 import { count, date, money } from "@/stockmod/lib/format";
-import { PRODUCT_TYPE_LABEL, PRODUCT_TYPES, type Movers } from "@/stockmod/lib/api";
+import { PRODUCT_TYPE_LABEL, PRODUCT_TYPES, type BranchRow, type Movers } from "@/stockmod/lib/api";
 import DateRangeField from "@/stockmod/components/DateRangeField";
-import PickList from "@/stockmod/components/PickList";
-import { IconCalendar, IconChart } from "@/stockmod/components/Icon";
-import { Filter, FilterBar } from "@/stockmod/components/FilterBar";
+import TaskDialog from "@/stockmod/components/TaskDialog";
+import { useToast } from "@/stockmod/components/Toaster";
+import RecordCard, { CardList } from "@/stockmod/components/RecordCard";
+import { IconChart } from "@/stockmod/components/Icon";
 import { download, type Mode, type Sheet } from "@/stockmod/lib/workbook";
 import { daysPng, INK, rankPng } from "@/stockmod/lib/chartimage";
 
@@ -143,27 +144,27 @@ function monthRange(m: string): { from: string; to: string } {
 /**
  * ชีตทั้งหมดที่ไฟล์ Excel ออกได้ และคำอธิบายว่าแต่ละใบตอบคำถามอะไร
  *
- * มีรายการนี้เพราะการกดปุ่มเดียวแล้วได้แปดชีตคือการส่งของที่ไม่มีใครขอไปเจ็ดใบ
- * คนที่ขอไฟล์ขอเป็นเรื่อง — "เดือนนี้สาขาไหนเบิกอะไรไป" ไม่ใช่ "ทุกอย่าง"
- *
- * `whole` คือชีตที่เป็นคำถามของทั้งร้าน ไม่มีคอลัมน์สาขาหรือชนิดสินค้าให้กรอง
- * พอเลือกตัวกรองแล้วมันจะหลุดออกจากไฟล์เอง ดูเหตุผลตอนประกอบไฟล์
+ * ถามตอนกด ไม่ใช่ตั้งค้างไว้ในแถบ — คนที่เปิดหน้านี้มาดูตัวเลขไม่ได้กำลังจะสร้าง
+ * ไฟล์ ช่องเลือกชีตที่นั่งอยู่ในแถบตลอดเวลาจึงกินความกว้างของแถบเพื่อคำถามที่วัน
+ * หนึ่งถูกถามครั้งเดียว · พอย้ายมาอยู่ในกล่องที่เปิดตอนกด มันได้ที่พอจะเขียน
+ * คำอธิบายของแต่ละชีตด้วย ซึ่งในดรอปดาวน์แคบ ๆ เขียนไม่ลง
  */
-const SHEETS: readonly { value: string; label: string; hint: string; whole?: true }[] = [
-  { value: "สรุปรายการ", label: "สรุปรายการ", hint: "รับเข้า จ่ายออก ของเสีย คืน ปรับยอด RX", whole: true },
-  { value: "รายวัน", label: "รายวัน", hint: "เข้า–ออก–เสีย และต้นทุนขาย ทีละวัน", whole: true },
+const SHEETS: readonly { value: string; label: string; hint: string }[] = [
+  { value: "สรุปรายการ", label: "สรุปรายการ", hint: "รับเข้า จ่ายออก ของเสีย คืน ปรับยอด RX" },
+  { value: "รายวัน", label: "รายวัน", hint: "เข้า–ออก–เสีย และต้นทุนขาย ทีละวัน" },
   { value: "ต้นทุนรวมแยกตามสาขา", label: "ต้นทุนรวมแยกตามสาขา", hint: "สาขาละแถว เอาไปดูว่าใครเบิกหนักสุด" },
   { value: "สาขาเบิกอะไรไป", label: "สาขาเบิกอะไรไป", hint: "แถวละสินค้า มีแถวรวมย่อยของแต่ละสาขา" },
   { value: "ใครสั่งตัด RX", label: "ใครสั่งตัด RX", hint: "ใบสั่งตัดแยกตามคนสั่ง รวม TimeOptic" },
-  { value: "สินค้าจ่ายออกมากสุด", label: "สินค้าจ่ายออกมากสุด", hint: "สิบอันดับแรกของช่วงนี้", whole: true },
-  { value: "ใครเบิกมากสุด", label: "ใครเบิกมากสุด", hint: "นับทั้งการเบิกและการตัดของเสีย", whole: true },
-  { value: "ของเสียแยกตามคน", label: "ของเสียแยกตามคน", hint: "เฉพาะใบที่ระบุชื่อคนทำไว้", whole: true },
+  { value: "สินค้าจ่ายออกมากสุด", label: "สินค้าจ่ายออกมากสุด", hint: "สิบอันดับแรกของช่วงนี้" },
+  { value: "ใครเบิกมากสุด", label: "ใครเบิกมากสุด", hint: "นับทั้งการเบิกและการตัดของเสีย" },
+  { value: "ของเสียแยกตามคน", label: "ของเสียแยกตามคน", hint: "เฉพาะใบที่ระบุชื่อคนทำไว้" },
 ];
+
 const PRESETS = [
   { key: "today", label: "วันนี้", range: () => ({ from: shift(0), to: shift(0) }) },
   { key: "yesterday", label: "เมื่อวาน", range: () => ({ from: shift(-1), to: shift(-1) }) },
-  { key: "7d", label: "7 วันล่าสุด", range: () => ({ from: shift(-6), to: shift(0) }) },
-  { key: "30d", label: "30 วันล่าสุด", range: () => ({ from: shift(-29), to: shift(0) }) },
+  { key: "7d", label: "7 วัน", range: () => ({ from: shift(-6), to: shift(0) }) },
+  { key: "30d", label: "30 วัน", range: () => ({ from: shift(-29), to: shift(0) }) },
   {
     key: "month",
     label: "เดือนนี้",
@@ -222,6 +223,7 @@ function span(days: number): string {
 export default function DashboardPage() {
   const actor = useActor();
   const money$ = can.seeCost(actor);
+  const toast = useToast();
 
   /**
    * เปิดมาเห็น 30 วันล่าสุด ไม่ใช่ "เดือนนี้"
@@ -253,25 +255,74 @@ export default function DashboardPage() {
   const [saving, setSaving] = useState(false);
   const [exportProblem, setExportProblem] = useState<string | null>(null);
 
+  /** กล่องเลือกชีตเปิดอยู่ไหม — เปิดตอนกดปุ่ม Excel ไม่ได้ค้างอยู่ในแถบ */
+  const [picking, setPicking] = useState(false);
+
   /**
-   * ตัวกรองของไฟล์ Excel — ไม่ใช่ของหน้าจอ
+   * แถบเครื่องมือกางอยู่ไหม — เรื่องของมือถือเท่านั้น
    *
-   * ช่วงวันที่อยู่ข้างบนแล้วและมีผลกับทั้งหน้า · สองตัวนี้ต่างออกไป: มันแคบลง
-   * เฉพาะตอนสร้างไฟล์ เพราะคนที่ขอไฟล์มักขอเป็นเรื่อง ๆ ("เดือนนี้สาขาบ่อนไก่
-   * เอาเลนส์ไปเท่าไร") ส่วนคนที่เปิดหน้านี้อยากเห็นทั้งร้านพร้อมกัน
-   *
-   * เลือกแล้วชีตที่ตอบคำถามนั้นไม่ได้จะไม่อยู่ในไฟล์ ไม่ใช่อยู่แบบไม่กรอง —
-   * สมุดที่ครึ่งหนึ่งเชื่อฟังตัวกรองและอีกครึ่งไม่เชื่อ คือสมุดที่บวกข้ามชีตแล้ว
-   * ได้เลขที่ไม่ตรงกับอะไรเลย
+   * บนจอกว้างแถบนี้ยาวบรรทัดเดียวและอ่านได้ทั้งแถบ · บนจอ 390px มันคือชิปเจ็ดใบ
+   * ช่องวันสองช่อง ดรอปดาวน์สองช่อง — ห้าบรรทัดก่อนถึงตัวเลขตัวแรก ทั้งที่คนเปิด
+   * แดชบอร์ดมาดูตัวเลข ไม่ได้มาตั้งช่วงวัน (ช่วงตั้งต้น 30 วันล่าสุดใช้ได้ทุกวัน)
    */
-  const [exBranch, setExBranch] = useState("");
-  const [exType, setExType] = useState("");
-  /* เลือกไว้ครบตอนเริ่ม เพราะคนที่ยังไม่รู้ว่ามีอะไรบ้างจะได้เห็นทั้งหมดก่อน
-     แล้วค่อยตัดออก — ตรงข้ามกับเริ่มจากว่าง ซึ่งกดปุ่มแล้วได้ไฟล์เปล่า */
+  const [tools, setTools] = useState(false);
+
+  /* ติ๊กไว้ครบตอนเริ่ม เพราะคนที่ยังไม่รู้ว่ามีอะไรบ้างจะได้เห็นทั้งหมดก่อนแล้วค่อย
+     ตัดออก — ตรงข้ามกับเริ่มจากว่าง ซึ่งกดปุ่มแล้วได้ไฟล์เปล่า · จำไว้ทั้งรอบที่
+     เปิดหน้าอยู่ คนที่เอาแค่สองชีตมักเอาสองชีตเดิมทุกครั้ง */
   const [exSheets, setExSheets] = useState<string[]>(() => SHEETS.map((s) => s.value));
 
-  const report = useApi<Report>(`/report${qs({ from, to })}`);
-  const movers = useApi<Movers>(`/movers${qs({ from, to, idle })}`);
+  /**
+   * ตัวกรองของทั้งหน้า — จอกับไฟล์ใช้ตัวเดียวกัน
+   *
+   * เคยเป็นตัวกรองของไฟล์ Excel อย่างเดียว จอข้างบนแสดงทั้งร้านเสมอ · แยกกัน
+   * แบบนั้นแปลว่าไฟล์กับจอตอบคนละคำถามทั้งที่คนกดคิดว่าถามอันเดียวกัน แล้วรู้ตัว
+   * ตอนเอาไฟล์ไปเทียบกับจอแล้วเลขไม่ตรง
+   *
+   * ตอนนี้ทั้งคู่ยิงไปที่ API พร้อมตัวกรอง ตัวเลขบนจอกับในไฟล์จึงมาจากคำถาม
+   * เดียวกันเสมอ
+   *
+   * **เลือกสาขาแล้วบางการ์ดจะเป็นศูนย์** — การรับของเข้า ปรับยอด คืนของ และ
+   * ตัดของเสีย ไม่ผูกกับสาขาใด ของเข้าคลังกลาง ไม่ได้เข้าของสาขาไหน · การ์ดพวก
+   * นั้นถูกหรี่ลงพร้อมป้ายบอก แทนที่จะปล่อยให้อ่านเหมือนข้อมูลหาย
+   */
+  const [branch, setBranch] = useState("");
+  const [ptype, setPtype] = useState("");
+
+  /** จริงไหมว่ากำลังมองสาขาเดียว — ใช้ตัดสินว่าการ์ดไหนต้องหรี่ */
+  const scopedToBranch = branch !== "";
+
+
+  const report = useApi<Report>(`/report${qs({ from, to, branch, type: ptype })}`);
+  const movers = useApi<Movers>(`/movers${qs({ from, to, idle, branch, type: ptype })}`);
+
+  /**
+   * รายชื่อสาขาสำหรับดรอปดาวน์ — ถามแยก ไม่ได้ดึงจากผลลัพธ์ที่กรองแล้ว
+   *
+   * เดิมตัวเลือกประกอบจากสาขาที่โผล่ในรายงาน ซึ่งใช้ได้ตอนรายงานเป็นทั้งร้าน ·
+   * พอรายงานถูกกรองเหลือสาขาเดียว ตัวเลือกจะเหลือสาขาเดียวตามไปด้วย แล้วจะกลับ
+   * ไปเลือกสาขาอื่นไม่ได้อีกเลย
+   */
+  const branches = useApi<{ branches: BranchRow[] }>("/branches");
+
+  /**
+   * ขอบเขตที่กรองอยู่ เขียนเป็นคำ — "สาขาบ่อนไก่ · เลนส์"
+   *
+   * คิดที่เดียวเพราะมันไปโผล่สองที่: ในกล่องเลือกชีต และใต้ชื่อชีตทุกใบในไฟล์ ·
+   * สองที่ที่เขียนคำเดียวกันคนละที่ คือสองคำที่วันหนึ่งจะไม่ตรงกัน
+   */
+  const scopeWords = [
+    branch === ""
+      ? null
+      : branch === "self"
+        ? "TimeOptic"
+        : ((branches.status === "ready"
+            ? branches.data.branches.find((b) => String(b.id) === branch)?.name
+            : undefined) ?? "สาขา"),
+    ptype === "" ? null : (PRODUCT_TYPE_LABEL[ptype] ?? ptype),
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
 
   function useRange(next: { from: string; to: string }, key: string) {
@@ -307,73 +358,17 @@ export default function DashboardPage() {
       const wantCharts = mode !== "data";
       const day = (s: string) => s.slice(5).replace("-", "/");
 
-      /**
-       * ตัวกรองของไฟล์ ตัดข้อมูลก่อนสร้างชีต
-       *
-       * `exBranch` เป็น id ของสาขา หรือ "self" สำหรับใบที่ TimeOptic สั่งเอง
-       * ซึ่งไม่มี id เพราะร้านตัวเองไม่ใช่สาขา
-       */
-      const keepBranch = (id: number | null) =>
-        exBranch === "" || (exBranch === "self" ? id === null : String(id) === exBranch);
-      const keepType = (t: string | null) => exType === "" || t === exType;
+      /* ไม่มีการกรองซ้ำตรงนี้อีกแล้ว — API กรองมาให้ตั้งแต่ต้นทางด้วยตัวกรอง
+         ชุดเดียวกับที่หน้าจอใช้ · กรองสองรอบคนละที่คือสองกฎที่ต้องตรงกันตลอดไป
+         และวันที่มันเพี้ยน ไฟล์กับจอจะบอกคนละเลขโดยไม่มีอะไรเตือน */
+      const draws = d.branchDraws;
+      const rx = d.rxBranches;
 
-      /* สาขาละก้อน โดยข้างในเหลือเฉพาะสินค้าชนิดที่เลือก · ยอดรวมของก้อนถูกบวก
-         ใหม่จากรายการที่เหลือ ไม่ใช่ยอดเดิมที่ API ส่งมา — ยอดเดิมคือทั้งสาขา
-         และวางไว้บนตารางที่กรองแล้วคือตัวเลขที่บวกจากแถวข้างล่างไม่ได้ */
-      const draws = d.branchDraws
-        .filter((b) => keepBranch(b.branchId))
-        .map((b) => {
-          const items = b.items.filter((it) => keepType(it.type));
-          return {
-            ...b,
-            items,
-            draws: items.reduce((n, it) => n + it.draws, 0),
-            qty: items.reduce((n, it) => n + it.qty, 0),
-            qtyNoCost: items.reduce((n, it) => n + it.qtyNoCost, 0),
-            cost: items.reduce<number | null>(
-              (n, it) => (n === null || it.cost === null ? null : n + it.cost),
-              0,
-            ),
-          };
-        })
-        .filter((b) => b.items.length > 0);
+      /* ทุกชีตในไฟล์ถูกกรองมาแล้วเท่ากัน จึงไม่มีชีตไหนต้องถูกตัดออกเพราะ
+         "กรองไม่ได้" อีก · ที่เหลือคือบอกบนหัวชีตว่าไฟล์ใบนี้แคบแค่ไหน */
+      const scoped = branch !== "" || ptype !== "";
 
-      const rx = d.rxBranches
-        .filter((b) => keepBranch(b.branchId))
-        .map((b) => {
-          const items = b.items.filter((it) => keepType(it.type));
-          return {
-            ...b,
-            items,
-            orders: items.reduce((n, it) => n + it.orders, 0),
-            qty: items.reduce((n, it) => n + it.qty, 0),
-            awaitingCost: items.reduce((n, it) => n + it.awaitingCost, 0),
-            cost: items.reduce<number | null>(
-              (n, it) => (n === null || it.cost === null ? null : n + it.cost),
-              0,
-            ),
-            revenue: items.reduce<number | null>(
-              (n, it) => (n === null || it.revenue === null ? null : n + it.revenue),
-              0,
-            ),
-          };
-        })
-        .filter((b) => b.items.length > 0);
-
-      /* ชีตที่ไม่มีมิติสาขาหรือชนิดสินค้าอยู่ในตัว — สรุปรายการ รายวัน สินค้า
-         ขายดี ใครเบิก ของเสียแยกตามคน · พวกนี้ตอบคำถามของทั้งร้าน กรองไม่ได้
-         และการปล่อยให้อยู่ในไฟล์ที่กรองแล้วคือการบอกว่ามันถูกกรองด้วย */
-      const scoped = exBranch !== "" || exType !== "";
-
-      const branchLabel =
-        exBranch === "" ? null
-          : exBranch === "self" ? "TimeOptic"
-          : (d.branchDraws.find((b) => String(b.branchId) === exBranch)?.branch
-             ?? d.rxBranches.find((b) => String(b.branchId) === exBranch)?.branch
-             ?? "สาขา");
-      const typeLabel = exType === "" ? null : (PRODUCT_TYPE_LABEL[exType] ?? exType);
-      const scope = [branchLabel, typeLabel].filter(Boolean).join(" · ");
-      const scopeNote = scope === "" ? "" : ` · เฉพาะ ${scope}`;
+      const scopeNote = scopeWords === "" ? "" : ` · เฉพาะ ${scopeWords}`;
 
       const sheets: Sheet[] = [
         {
@@ -609,15 +604,13 @@ export default function DashboardPage() {
         },
       ];
 
-      /* ห้าชีตนี้เป็นคำถามของทั้งร้าน — ไม่มีคอลัมน์สาขาและไม่มีคอลัมน์ชนิดสินค้า
-         ให้กรอง · ตอนไม่ได้เลือกอะไรมันคือครึ่งหนึ่งของประโยชน์ของไฟล์ ตอนเลือก
-         แล้วมันคือตัวเลขทั้งร้านที่นั่งอยู่ข้างตัวเลขที่กรองแล้ว ซึ่งอ่านผิดง่าย
-         กว่าไม่มี · ชีตที่กรองแล้วไม่เหลือแถวก็ตัดออกด้วยเหตุผลเดียวกัน */
-      const wholeShop = SHEETS.filter((s) => s.whole).map((s) => s.value);
+      /* ไม่มีชีตไหนถูกตัดออกเพราะ "กรองไม่ได้" อีกแล้ว — ทุกชีตประกอบจากข้อมูล
+         ที่ API กรองมาให้ชุดเดียวกัน · ชีตที่กรองแล้วไม่เหลือแถวยังตัดออกเหมือน
+         เดิม เพราะแผ่นเปล่าที่มีแต่หัวตารางอ่านเหมือนไฟล์เสีย ไม่ใช่คำตอบว่า
+         "ช่วงนี้ไม่มีรายการ" */
       const book = sheets
-        // ที่ผู้ใช้เลือกไว้ก่อน — ทุกอย่างหลังจากนี้คือการตัดออกด้วยเหตุผลอื่น
+        // ที่ติ๊กไว้ในกล่องก่อน — ทุกอย่างหลังจากนี้คือการตัดออกด้วยเหตุผลอื่น
         .filter((s) => exSheets.includes(s.name))
-        .filter((s) => (scoped ? !wholeShop.includes(s.name) : true))
         .filter((s) => s.rows.length > 0)
         // ตัวกรองเขียนไว้ใต้ชื่อชีตทุกใบ — ไฟล์ที่ถูกส่งต่อไปอีกสองมือต้องบอก
         // ตัวเองได้ว่ามันคือข้อมูลของอะไร โดยไม่ต้องถามคนที่กดปุ่ม
@@ -625,9 +618,7 @@ export default function DashboardPage() {
 
       if (book.length === 0) {
         setExportProblem(
-          exSheets.length === 0
-            ? "ยังไม่ได้เลือกว่าจะเอาชีตไหน — เลือกอย่างน้อยหนึ่งอย่างที่ช่อง \"เอาอะไรลงไฟล์\""
-            : `ไม่มีข้อมูลใน ${d.from} ถึง ${d.to}${scopeNote} — ลองขยายช่วงวัน เอาตัวกรองออก หรือเลือกชีตเพิ่ม`,
+          `ชีตที่เลือกไว้ไม่มีข้อมูลใน ${d.from} ถึง ${d.to}${scopeNote} — ลองเลือกชีตเพิ่ม ขยายช่วงวัน หรือเอาตัวกรองออก`,
         );
         return;
       }
@@ -636,7 +627,7 @@ export default function DashboardPage() {
          ท้ายเป็น (1) (2) แล้วเปิดมาแยกไม่ออกว่าอันไหนมีกราฟ ทั้งที่ข้างในต่างกัน
          ตัวกรองก็อยู่ในชื่อด้วย ด้วยเหตุผลเดียวกัน */
       const suffix = { data: "ข้อมูล", both: "ข้อมูล+กราฟ", charts: "กราฟ" }[mode];
-      const tag = scope === "" ? "" : `-${scope.replace(/ · /g, "-")}`;
+      const tag = scopeWords === "" ? "" : `-${scopeWords.replace(/ · /g, "-")}`;
 
       await download(
         `timeoptic-dashboard-${d.from}-ถึง-${d.to}${tag}-${suffix}.xlsx`,
@@ -645,7 +636,9 @@ export default function DashboardPage() {
         mode,
       );
     } catch (e) {
-      setExportProblem(e instanceof Error ? e.message : "สร้างไฟล์ไม่สำเร็จ");
+      const why = e instanceof Error ? e.message : "สร้างไฟล์ไม่สำเร็จ";
+      setExportProblem(why);
+      toast.error({ text: "สร้างไฟล์ Excel ไม่สำเร็จ", detail: why });
     } finally {
       setSaving(false);
     }
@@ -658,18 +651,14 @@ export default function DashboardPage() {
 
   return (
     <main className="work-main">
+      {/* The per-row ledger lives on its own screen, reached from the menu.
+          It used to be repeated at the foot of this page under the very charts
+          drawn from it, which made the dashboard scroll past its own summary to
+          show the rows the summary was for. */}
       <WorkHead
         title="แดชบอร์ด"
         lede="สรุปความเคลื่อนไหวตามช่วงวันที่ จบด้วยของที่ควรสั่งเพิ่มและของที่กองอยู่เฉย ๆ"
-      >
-        {/* The per-row ledger lives on its own screen. It used to be repeated
-            at the foot of this page under the very charts drawn from it, which
-            made the dashboard scroll past its own summary to show the rows the
-            summary was for. */}
-        <Link href="/stock/movements" className="btn">
-          ดูความเคลื่อนไหวรายการ
-        </Link>
-      </WorkHead>
+      />
 
       {exportProblem ? (
         <div className="notice notice--error" role="alert">
@@ -689,8 +678,22 @@ export default function DashboardPage() {
           เพราะไม่มีใครอ่านคำอธิบายก่อนกด */}
       <section className="task task--wide toolbar">
         <div className="toolbar__row">
-          <span className="toolbar__title">ดูข้อมูลช่วง</span>
+          {/* ปุ่มพับ/กางของมือถือ · จอกว้างไม่มีปุ่มนี้ และกล่องข้างล่างเป็น
+              display:contents ซึ่งแปลว่าไม่มีตัวมันอยู่ในผังเลย แถบจึงเรียงตัว
+              เหมือนเดิมทุกประการ */}
+          <button
+            type="button"
+            className="btn btn--small filterfold phone-only"
+            onClick={() => setTools((v) => !v)}
+            aria-expanded={tools}
+          >
+            {tools ? "ซ่อนตัวกรอง" : `ตัวกรอง · ${count(Math.max(1, Math.round(spanDays)))} วัน`}
+          </button>
 
+          <div className={tools ? "toolbar__tools" : "toolbar__tools toolbar__tools--folded"}>
+          {/* ไม่มีป้ายหัวแถบแล้ว — ป้ายท้ายแถวบอกช่วงที่ได้จริง ซึ่งเป็นสิ่งเดียว
+              ที่ต้องอ่าน · คำว่า "ดูข้อมูลช่วง" กินความกว้างเท่าชิปสองใบเพื่อบอก
+              สิ่งที่ปุ่มข้าง ๆ มันบอกอยู่แล้ว */}
           <div className="chips chips--tight toolbar__presets" role="group" aria-label="ช่วงเวลาที่ใช้บ่อย">
             {PRESETS.map((p) => (
               <button
@@ -703,17 +706,10 @@ export default function DashboardPage() {
                 {p.label}
               </button>
             ))}
-            {/* ชิปที่ไม่ได้ตั้งช่วงเอง แค่บอกว่าตอนนี้ช่วงมาจากปฏิทิน ไม่ได้มาจาก
-                ปุ่มสำเร็จรูป · กดแล้วเปิดปฏิทินให้เลย เพราะคนที่กดคำว่า "กำหนดเอง"
-                กำลังจะเลือกวันอยู่แล้ว */}
-            <button
-              type="button"
-              className="chip chip--flat"
-              aria-current={preset === "custom" ? "true" : undefined}
-              onClick={() => document.getElementById("db-range")?.click()}
-            >
-              กำหนดเอง
-            </button>
+            {/* ไม่มีชิป "กำหนดเอง" แล้ว — มันไม่ได้ตั้งช่วงเอง หน้าที่เดียวของมันคือ
+                เปิดปฏิทิน ซึ่งสองช่องวันที่ที่อยู่ถัดไปอีกนิดเดียวก็เปิดให้อยู่แล้ว ·
+                ปุ่มที่ทำสิ่งเดียวกับของที่อยู่ข้าง ๆ คือความกว้างที่จ่ายไปฟรี ๆ และ
+                แถบนี้ต้องพอดีบรรทัดเดียว */}
           </div>
 
           <DateRangeField
@@ -724,97 +720,169 @@ export default function DashboardPage() {
             onApply={(r) => useRange(r, "custom")}
           />
 
-          {/* ป้ายท้ายแถวบอกช่วงที่ได้จริง — ชิปกับปฏิทินตั้งค่าได้จากสามทาง และ
-              ป้ายนี้คือที่เดียวที่บอกว่าผลลัพธ์คืออะไร */}
-          <span className="toolbar__now">
-            <IconCalendar />
-            {date(from)} – {date(to)} · {count(Math.max(1, Math.round(spanDays)))} วัน
+          {/* สาขากับชนิดสินค้าอยู่แถวเดียวกับช่วงวันที่ เพราะทั้งสามตัวตัดขอบเขต
+              ของทั้งหน้าเหมือนกัน · ป้ายอยู่ข้างช่อง ไม่ใช่เหนือช่อง — แถวเดียว
+              ที่มีป้ายลอยเหนือทุกช่องจะสูงเป็นสองเท่าโดยไม่ได้บอกอะไรเพิ่ม */}
+          <div className="toolbar__pair">
+            <span className="toolbar__lead">สาขา</span>
+            <Select
+              id="db-branch"
+              className="input--inline"
+              value={branch}
+              onChange={setBranch}
+              disabled={branches.status !== "ready"}
+              options={[
+                { value: "", label: "ทุกสาขา" },
+                { value: "self", label: "TimeOptic (ร้านนี้เอง)" },
+                ...(branches.status === "ready"
+                  ? branches.data.branches.map((b) => ({ value: String(b.id), label: b.name }))
+                  : []),
+              ]}
+            />
+          </div>
+
+          <div className="toolbar__pair">
+            <span className="toolbar__lead">ชนิด</span>
+            <Select
+              id="db-type"
+              className="input--inline"
+              value={ptype}
+              onChange={setPtype}
+              options={[
+                { value: "", label: "ทุกชนิด" },
+                ...PRODUCT_TYPES.map((t) => ({ value: t, label: PRODUCT_TYPE_LABEL[t] })),
+              ]}
+            />
+          </div>
+
+          {/* เหลือแค่จำนวนวัน ไม่ใช่ป้ายที่พิมพ์ช่วงซ้ำอีกรอบ — สองช่องข้าง ๆ บอก
+              วันที่ต้นและวันที่ท้ายอยู่แล้ว สิ่งเดียวที่ป้ายเคยบอกเพิ่มคือช่วงนั้น
+              ยาวกี่วัน ซึ่งเป็นตัวเลขที่คิดเองในหัวไม่ทันตอนกวาดตา */}
+          <span className="toolbar__span">
+            {count(Math.max(1, Math.round(spanDays)))} วัน
           </span>
+
+          </div>
+
+          {/* ปุ่มเดียว ได้ทั้งข้อมูลและกราฟ — เคยมีสามปุ่ม (ข้อมูล / ข้อมูล+กราฟ /
+              กราฟ) ซึ่งเป็นคำถามที่คนกดไม่ได้อยากตอบ · ไฟล์ที่มีกราฟอยู่ด้วยไม่ได้
+              เสียหายอะไรกับคนที่อยากได้แค่ตัวเลข เขาก็ไม่เปิดชีตกราฟ
+              คำถามที่เหลืออยู่จริงคือ "เอาชีตไหนบ้าง" ซึ่งถามในกล่องตอนกด */}
+          {report.status === "ready" ? (
+            <button
+              type="button"
+              className="btn btn--primary btn--small btn--icon toolbar__export"
+              onClick={() => {
+                setExportProblem(null);
+                setPicking(true);
+              }}
+              disabled={saving}
+            >
+              <IconChart />
+              Export Excel
+            </button>
+          ) : null}
         </div>
 
-        {report.status === "ready" ? (
-          <div className="toolbar__row toolbar__row--file">
-            <span className="toolbar__title">ส่งออกไฟล์ Excel</span>
-
-            <div className="toolbar__pair">
-              <span className="toolbar__lead">เอาอะไร</span>
-              <PickList
-                id="ex-sheets"
-                items={SHEETS.map((s) => ({ value: s.value, label: s.label, hint: s.hint }))}
-                chosen={exSheets}
-                onChange={setExSheets}
-                allLabel={`ทุกชีต · ${SHEETS.length}`}
-              />
-            </div>
-
-            <div className="toolbar__pair">
-              <span className="toolbar__lead">สาขา</span>
-              <Select
-                id="ex-branch"
-                className="input--inline"
-                value={exBranch}
-                onChange={setExBranch}
-                options={[
-                  { value: "", label: "ทุกสาขา" },
-                  ...(report.data.rxBranches.some((b) => b.branchId === null)
-                    ? [{ value: "self", label: "TimeOptic" }]
-                    : []),
-                  ...Array.from(
-                    new Map(
-                      [...report.data.branchDraws, ...report.data.rxBranches]
-                        .filter((b) => b.branchId !== null)
-                        .map((b) => [String(b.branchId), b.branch]),
-                    ),
-                  ).map(([value, label]) => ({ value, label })),
-                ]}
-              />
-            </div>
-
-            <div className="toolbar__pair">
-              <span className="toolbar__lead">ชนิด</span>
-              <Select
-                id="ex-type"
-                className="input--inline"
-                value={exType}
-                onChange={setExType}
-                options={[
-                  { value: "", label: "ทุกชนิด" },
-                  ...PRODUCT_TYPES.map((t) => ({ value: t, label: PRODUCT_TYPE_LABEL[t] })),
-                ]}
-              />
-            </div>
-
-            <div className="toolbar__go">
-              {(
-                [
-                  ["data", "Excel: ข้อมูล"],
-                  ["both", "Excel: ข้อมูล + กราฟ"],
-                  ["charts", "Excel: กราฟ"],
-                ] as const
-              ).map(([mode, label]) => (
-                <button
-                  key={mode}
-                  type="button"
-                  className="btn btn--primary btn--small"
-                  onClick={() => void exportBook(mode)}
-                  disabled={saving || exSheets.length === 0}
-                >
-                  <IconChart />
-                  {saving ? "กำลังสร้างไฟล์…" : `${label} · ${exSheets.length} ชีต`}
-                </button>
-              ))}
-            </div>
-
-            {exBranch !== "" || exType !== "" ? (
-              <p className="field__help toolbar__note">
-                สาขากับชนิดสินค้าแคบเฉพาะไฟล์ หน้าจอข้างบนยังแสดงทั้งร้าน · ชีตที่ไม่มี
-                คอลัมน์พวกนี้ให้กรอง (สรุปรายการ · รายวัน · สินค้าจ่ายออกมากสุด ·
-                ใครเบิกมากสุด · ของเสียแยกตามคน) จะไม่อยู่ในไฟล์ที่กรองแล้ว
-              </p>
-            ) : null}
-          </div>
+        {scopedToBranch ? (
+          <p className="field__help toolbar__note">
+            เลือกสาขาแล้ว — <strong>รับเข้า · ตัดของเสีย · ปรับยอด · คืนของ</strong> ไม่มีมิติสาขา
+            ให้กรอง (ของเข้าคลังกลาง ไม่ได้เข้าของสาขาไหน) การ์ดพวกนั้นจึงถูกหรี่ไว้
+          </p>
         ) : null}
+
       </section>
+
+      {/* กล่องเลือกชีต — เปิดตอนกด Excel ไม่ได้นั่งอยู่ในแถบตลอดเวลา
+          ติ๊กไว้ครบเป็นค่าเริ่มต้น กดสร้างไฟล์ทันทีก็ได้ทั้งเล่ม · คนที่อยากได้แค่
+          บางชีตค่อยแกะออก ซึ่งเป็นคนส่วนน้อยแต่เป็นคนที่การเลือกมีค่ากับเขาจริง */}
+      {picking ? (
+        <TaskDialog
+          eyebrow="ส่งออกไฟล์ Excel"
+          title="เอาชีตไหนบ้าง"
+          head={
+            <p className="field__help">
+              ได้ทั้งข้อมูลและกราฟในไฟล์เดียว · ช่วง {date(from)} – {date(to)}
+              {scopeWords === "" ? "" : ` · เฉพาะ ${scopeWords}`}
+            </p>
+          }
+          onClose={() => setPicking(false)}
+        >
+          <div className="sheetpick">
+            <ul className="sheetpick__list">
+              {SHEETS.map((sheet) => {
+                const on = exSheets.includes(sheet.value);
+                return (
+                  <li key={sheet.value}>
+                    <label className="sheetpick__row">
+                      <input
+                        type="checkbox"
+                        checked={on}
+                        disabled={saving}
+                        onChange={() =>
+                          setExSheets((chosen) =>
+                            on
+                              ? chosen.filter((v) => v !== sheet.value)
+                              : [...chosen, sheet.value],
+                          )
+                        }
+                      />
+                      <span>
+                        <span className="sheetpick__name">{sheet.label}</span>
+                        <span className="sheetpick__hint">{sheet.hint}</span>
+                      </span>
+                    </label>
+                  </li>
+                );
+              })}
+            </ul>
+
+            <div className="chips">
+              {/* ปุ่มเดียวสลับสองทาง ไม่ใช่สองปุ่มข้างกัน — "เลือกทั้งหมด" ที่กดแล้ว
+                  ไม่มีอะไรเปลี่ยนเพราะเลือกครบอยู่แล้ว คือปุ่มที่สอนว่ากดไปก็เท่านั้น */}
+              <button
+                type="button"
+                className="btn btn--small sheetpick__all"
+                onClick={() =>
+                  setExSheets(exSheets.length === SHEETS.length ? [] : SHEETS.map((x) => x.value))
+                }
+                disabled={saving}
+              >
+                {exSheets.length === SHEETS.length ? "ไม่เอาสักชีต" : "เอาทุกชีต"}
+              </button>
+              <span className="sheetpick__count">
+                เลือกไว้ {count(exSheets.length)} จาก {count(SHEETS.length)}
+              </span>
+            </div>
+
+            {exportProblem ? (
+              <div className="notice notice--error" role="alert">
+                {exportProblem}
+              </div>
+            ) : null}
+
+            <div className="chips sheetpick__go">
+              <button
+                type="button"
+                className="btn btn--quiet"
+                onClick={() => setPicking(false)}
+                disabled={saving}
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                className="btn btn--primary btn--icon"
+                onClick={() => void exportBook("both")}
+                disabled={saving || exSheets.length === 0}
+              >
+                <IconChart />
+                {saving ? "กำลังสร้างไฟล์…" : `สร้างไฟล์ · ${count(exSheets.length)} ชีต`}
+              </button>
+            </div>
+          </div>
+        </TaskDialog>
+      ) : null}
 
       {report.status === "loading" ? <div className="skeleton" /> : null}
 
@@ -838,27 +906,48 @@ export default function DashboardPage() {
               <p className="readout__figure">{count(report.data.out.qty)}</p>
               <p className="readout__note">ชิ้น · {count(report.data.out.rows)} รายการ</p>
             </div>
-            <div className="readout__cell readout__cell--mint">
+            {/* สองการ์ดนี้ไม่มีมิติสาขา — ของเข้าคลังกลาง และของเสียเกิดที่นี่
+                เลือกสาขาแล้วจึงหรี่ลงพร้อมบอกเหตุผล ดีกว่าปล่อยให้เลขศูนย์อ่าน
+                เหมือนสาขานั้นไม่เคยรับของเข้าเลย ซึ่งไม่ใช่สิ่งที่มันแปล */}
+            <div
+              className={
+                scopedToBranch
+                  ? "readout__cell readout__cell--mint readout__cell--na"
+                  : "readout__cell readout__cell--mint"
+              }
+            >
               <p className="readout__label">รับเข้า</p>
               <p className="readout__figure">
                 {count(report.data.in.qty + report.data.return.qty)}
               </p>
               <p className="readout__note">
-                ชิ้น · รับเข้า {count(report.data.in.rows)} · รับคืน {count(report.data.return.rows)}
+                {scopedToBranch
+                  ? "การรับของเข้าไม่ผูกกับสาขา — ตัวเลขนี้กรองตามสาขาไม่ได้"
+                  : `ชิ้น · รับเข้า ${count(report.data.in.rows)} · รับคืน ${count(report.data.return.rows)}`}
               </p>
             </div>
-            <div className="readout__cell readout__cell--coral">
+            <div
+              className={
+                scopedToBranch
+                  ? "readout__cell readout__cell--coral readout__cell--na"
+                  : "readout__cell readout__cell--coral"
+              }
+            >
               <p className="readout__label">ของเสีย</p>
               <p
                 className={
-                  report.data.scrap.qty > 0
+                  report.data.scrap.qty > 0 && !scopedToBranch
                     ? "readout__figure readout__figure--signal"
                     : "readout__figure"
                 }
               >
                 {count(report.data.scrap.qty)}
               </p>
-              <p className="readout__note">ชิ้น · ไม่นับเป็นต้นทุนขาย</p>
+              <p className="readout__note">
+                {scopedToBranch
+                  ? "การตัดของเสียไม่ผูกกับสาขา — ตัวเลขนี้กรองตามสาขาไม่ได้"
+                  : "ชิ้น · ไม่นับเป็นต้นทุนขาย"}
+              </p>
             </div>
             {money$ ? (
               <div className="readout__cell readout__cell--pear">
@@ -1101,7 +1190,26 @@ export default function DashboardPage() {
                       {b.qtyNoCost > 0 ? ` · ${count(b.qtyNoCost)} ชิ้นยังไม่รู้ต้นทุน` : ""}
                     </span>
                   </summary>
-                  <div className="tablewrap">
+                  <CardList label={`สินค้าที่ ${b.branch} เบิกไป`}>
+                    {b.items.map((it) => (
+                      <RecordCard
+                        key={`m-${b.branchId}-${it.sku}`}
+                        head={<span className="reccard__money">{count(it.qty)}</span>}
+                        title={it.name}
+                        sub={it.sku}
+                        fields={[
+                          { label: "ชนิด", value: PRODUCT_TYPE_LABEL[it.type ?? ""] ?? it.type ?? "—" },
+                          { label: "เบิกไปกี่ครั้ง", value: count(it.draws) },
+                          money$ && it.cost !== null ? { label: "ต้นทุนรวม", value: money(it.cost) } : null,
+                          it.qtyNoCost > 0
+                            ? { label: "ยังไม่รู้ต้นทุน", value: `${count(it.qtyNoCost)} ชิ้น` }
+                            : null,
+                        ]}
+                      />
+                    ))}
+                  </CardList>
+
+                  <div className="tablewrap wide-only">
                   <table className="grid">
                     <caption className="sr-only">{`สินค้าที่ ${b.branch} เบิกไป`}</caption>
                     <thead>
@@ -1180,7 +1288,27 @@ export default function DashboardPage() {
                       {b.awaitingCost > 0 ? ` · ${count(b.awaitingCost)} ใบยังไม่ลงต้นทุน` : ""}
                     </span>
                   </summary>
-                  <div className="tablewrap">
+                  <CardList label={`เลนส์ที่ ${b.branch} สั่งตัด`}>
+                    {b.items.map((it) => (
+                      <RecordCard
+                        key={`mr-${b.branchId}-${it.sku}`}
+                        head={<span className="reccard__money">{count(it.qty)}</span>}
+                        title={it.name}
+                        sub={it.sku}
+                        fields={[
+                          { label: "ชนิด", value: PRODUCT_TYPE_LABEL[it.type ?? ""] ?? it.type ?? "—" },
+                          { label: "ใบสั่ง", value: count(it.orders) },
+                          money$ && it.cost !== null ? { label: "ต้นทุนรวม", value: money(it.cost) } : null,
+                          money$ && it.revenue !== null ? { label: "ราคาขายรวม", value: money(it.revenue) } : null,
+                          it.awaitingCost > 0
+                            ? { label: "ยังไม่ลงต้นทุน", value: `${count(it.awaitingCost)} ใบ` }
+                            : null,
+                        ]}
+                      />
+                    ))}
+                  </CardList>
+
+                  <div className="tablewrap wide-only">
                   <table className="grid">
                     <caption className="sr-only">{`เลนส์ที่ ${b.branch} สั่งตัด`}</caption>
                     <thead>
@@ -1284,7 +1412,35 @@ export default function DashboardPage() {
                   ไม่มีสินค้าไหนค้างเกิน {span(movers.data.idleDays)} — ของในคลังหมุนอยู่
                 </p>
               ) : (
-                <div className="tablewrap">
+                <>
+                <CardList label="สินค้าที่มีของแต่ไม่ได้จ่ายออกมานาน">
+                  {movers.data.slow.map((r) => (
+                    <RecordCard
+                      key={`slow-${r.id}`}
+                      head={
+                        <>
+                          <span className="reccard__money">{span(r.idleDays)}</span>
+                          <span className="reccard__when">ไม่ขยับ</span>
+                        </>
+                      }
+                      title={r.name}
+                      sub={[r.sku, r.brand].filter(Boolean).join(" · ")}
+                      fields={[
+                        { label: "ชนิด", value: PRODUCT_TYPE_LABEL[r.productType] ?? r.productType },
+                        { label: "คงเหลือ", value: count(r.onHand) },
+                        money$ && r.stockValue !== null
+                          ? { label: "จมทุนอยู่", value: money(r.stockValue) }
+                          : null,
+                        {
+                          label: "จ่ายออกครั้งสุดท้าย",
+                          value: r.lastOut ? date(r.lastOut) : <span className="grid__muted">ยังไม่เคยขาย</span>,
+                        },
+                      ]}
+                    />
+                  ))}
+                </CardList>
+
+                <div className="tablewrap wide-only">
                   <table className="grid">
                     <caption className="sr-only">
                       สินค้าที่มีของแต่ไม่ได้จ่ายออกมานาน
@@ -1341,6 +1497,7 @@ export default function DashboardPage() {
                     </tbody>
                   </table>
                 </div>
+                </>
               )
             ) : null}
           </section>

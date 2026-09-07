@@ -7,6 +7,8 @@ import Paginator from "@/stockmod/components/Paginator";
 import SortHead, { SortBar, useSort } from "@/stockmod/components/SortHead";
 import LensFilters from "@/stockmod/components/LensFilters";
 import { Filter, FilterBar, withCount } from "@/stockmod/components/FilterBar";
+import RecordCard, { CardList } from "@/stockmod/components/RecordCard";
+import TaskDialog from "@/stockmod/components/TaskDialog";
 import LensCells from "@/stockmod/components/LensCells";
 import ProductCell from "@/stockmod/components/ProductCell";
 import NewProductDialog from "@/stockmod/components/NewProductDialog";
@@ -124,6 +126,7 @@ export default function ProductsScreen({
   title = "สินค้าและสต็อก",
   lede = "กดที่แถวสินค้าเพื่อดูล็อตของมัน — แก้จำนวน ลงต้นทุน หรือรับของเข้าล็อตใหม่ได้ตรงนั้น",
   empty,
+  canAdd = true,
 }: {
   /**
    * สถานะที่หน้านี้ล็อกไว้ตายตัว — หน้า "สินค้ารอสั่ง" ส่ง `backorder` มา
@@ -138,6 +141,14 @@ export default function ProductsScreen({
   title?: string;
   lede?: string;
   empty?: string;
+  /**
+   * ปุ่ม "เพิ่มสินค้า" บนหัวหน้า
+   *
+   * หน้าที่มองผ่านตัวกรองเดียวไม่ควรมี — สินค้าที่เพิ่งสร้างใหม่ไม่มีทางเข้า
+   * เงื่อนไขของหน้านั้นอยู่แล้ว กดแล้วบันทึกเสร็จก็ไม่โผล่ในรายการที่กำลังมองอยู่
+   * ซึ่งอ่านเหมือนบันทึกไม่สำเร็จ · หน้าสินค้าและสต็อกเต็มยังมีปุ่มนี้เหมือนเดิม
+   */
+  canAdd?: boolean;
 } = {}) {
   const [q, setQ] = useState("");
   const [applied, setApplied] = useState("");
@@ -213,7 +224,134 @@ export default function ProductsScreen({
   const lensCols = ptype === "Lens";
   const lensFilters = ptype === "Lens";
 
-  /** Leaving the lens aisle takes the lens filters with it, rather than leaving
+  /**
+ * แถวสินค้าหนึ่งใบ บนมือถือ
+ *
+ * ไม่มีช่องแก้ราคาหรือขั้นต่ำในการ์ด ต่างจากตาราง — ช่องกรอกจิ๋วที่นั่งอยู่ใน
+ * รายการยาว ๆ บนจอสัมผัส เป็นช่องที่โดนกดพลาดตอนเลื่อนหน้ามากกว่าตอนตั้งใจแก้ ·
+ * กดการ์ดเปิดลิ้นชักสินค้า ซึ่งมีทั้งสองช่องนั้นในที่ที่กว้างพอจะกรอกจริง
+ *
+ * สถานะอยู่มุมขวาบน เพราะเป็นสิ่งที่คนกวาดตาหาเวลาไถผ่านรายการ ไม่ใช่ชื่อสินค้า
+ * ซึ่งรู้อยู่แล้วว่ากำลังหาอะไร
+ */
+function ProductRowCard({
+  row,
+  money: showCost,
+  mayEdit,
+  onOpen,
+  onChanged,
+}: {
+  row: ProductRow;
+  money: boolean;
+  mayEdit: boolean;
+  onOpen: () => void;
+  onChanged: () => void;
+}) {
+  /**
+   * แผงล็อตของสินค้าตัวนี้ เปิดเป็นกล่อง
+   *
+   * บนจอกว้าง แผงนี้กางออกมาใต้แถว และปุ่ม "+ รับเข้าล็อตใหม่" อยู่ในนั้น · บน
+   * มือถือไม่มีแถวให้กาง การกดการ์ดจึงเปิดลิ้นชักสินค้าแทน — ซึ่งไม่มีปุ่มนั้น
+   * ทางรับของเข้าเลยขาดไปทั้งเส้นบนมือถือ · ปุ่มนี้คือทางกลับมาของมัน
+   */
+  const [lots, setLots] = useState(false);
+  const rx = row.isCustomMade;
+  const low = !rx && row.minStock > 0 && row.onHand < row.minStock;
+  const pending = row.lotsMissingCost > 0;
+
+  const spec = [row.lensIndex, row.lensDesign, row.coating].filter(Boolean).join(" · ");
+  const power = [
+    row.sph === null ? null : `SPH ${row.sph}`,
+    row.cyl === null ? null : `CYL ${row.cyl}`,
+    row.axis === null ? null : `AXIS ${row.axis}`,
+    row.add ? `ADD ${row.add}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  return (
+    <>
+    <RecordCard
+      onOpen={onOpen}
+      tone={pending ? "pending" : undefined}
+      head={
+        rx ? (
+          <span className="status status--rx">สั่งตัด</span>
+        ) : row.onHand <= 0 ? (
+          <span className="status status--out">หมดสต็อก</span>
+        ) : low ? (
+          <span className="status status--low">ต่ำกว่าขั้นต่ำ</span>
+        ) : (
+          <span className="status status--stock">มีของ</span>
+        )
+      }
+      title={row.name}
+      sub={[row.sku, row.brand].filter(Boolean).join(" · ")}
+      fields={[
+        { label: "ชนิด", value: PRODUCT_TYPE_LABEL[row.productType] ?? row.productType },
+        spec ? { label: "สเปกเลนส์", value: spec } : null,
+        power ? { label: "ค่าสายตา", value: <span className="grid__rx">{power}</span> } : null,
+        {
+          label: "คงเหลือ",
+          value: rx ? (
+            <span className="grid__muted">—</span>
+          ) : (
+            <span className={low ? "grid__num--signal" : undefined}>{count(row.onHand)}</span>
+          ),
+        },
+        rx || row.minStock <= 0
+          ? null
+          : { label: "ขั้นต่ำ", value: count(row.minStock) },
+        showCost
+          ? {
+              label: "ต้นทุนถัดไป",
+              value:
+                row.nextCost === null ? (
+                  pending ? (
+                    <span className="status status--pending">รอต้นทุน</span>
+                  ) : (
+                    <span className="grid__muted">—</span>
+                  )
+                ) : (
+                  money(row.nextCost)
+                ),
+            }
+          : null,
+        {
+          label: "ราคาขาย",
+          value: row.basePrice > 0 ? money(row.basePrice) : <span className="grid__muted">ยังไม่ตั้ง</span>,
+        },
+      ]}
+      actions={
+        rx ? undefined : (
+          <button type="button" className="btn btn--small" onClick={() => setLots(true)}>
+            ล็อตและรับของเข้า
+          </button>
+        )
+      }
+    />
+
+      {lots ? (
+        <TaskDialog
+          eyebrow={row.sku}
+          title={row.name}
+          onClose={() => setLots(false)}
+        >
+          <StockLines
+            product={row}
+            onChanged={onChanged}
+            onDetails={() => {
+              setLots(false);
+              onOpen();
+            }}
+          />
+        </TaskDialog>
+      ) : null}
+    </>
+  );
+}
+
+/** Leaving the lens aisle takes the lens filters with it, rather than leaving
    *  an invisible narrowing on a list that no longer offers a way to see it. */
   function chooseType(next: string) {
     refine(() => {
@@ -252,7 +390,7 @@ export default function ProductsScreen({
           </button>
         </form>
         {/* เพิ่มได้ทุกบทบาท — แก้กับลบยังเป็นของแอดมินขึ้นไป (ดู can.addProduct) */}
-        {can.addProduct(actor) ? (
+        {canAdd && can.addProduct(actor) ? (
           <button type="button" className="btn" onClick={() => setCreating(true)}>
             เพิ่มสินค้า
           </button>
@@ -294,58 +432,64 @@ export default function ProductsScreen({
         </section>
       ) : null}
 
-      <div className="listtools">
-        {/* Left and right stopped being a filter here when the made-to-order
-            lenses moved to the RX screen: a side belongs to a customer’s job,
-            and nothing this screen lists has one. */}
-        <SortBar id="prod" columns={SORTS} sort={sort} dir={dir} onSort={pick} />
-      </div>
+      {/* เรียงตามกับตัวกรองอยู่แถวเดียวกัน — ทั้งคู่ตัดขอบเขตของรายการข้างล่าง
+          เหมือนกัน สองแถวซ้อนกันกินความสูงเป็นสองเท่าก่อนถึงสินค้าแถวแรก โดยไม่ได้บอกอะไรเพิ่ม
+          · ปุ่มพับตัวกรองของมือถือเป็นลูกอีกตัวในแถวนี้ การพับจึงทำงานเหมือนเดิม และแถบ
+          เรียงตามไม่โดนพับไปด้วย — การเรียงไม่ใช่ตัวกรอง */}
+      <div className="toolsband">
+        <div className="listtools">
+          {/* Left and right stopped being a filter here when the made-to-order
+              lenses moved to the RX screen: a side belongs to a customer’s job,
+              and nothing this screen lists has one. */}
+          <SortBar id="prod" columns={SORTS} sort={sort} dir={dir} onSort={pick} />
+        </div>
 
-      {/* ตัวกรองทั้งหมดอยู่แถวเดียว เป็นดรอปดาวน์
-          เคยเป็นชิปสองกลุ่มบนแถวที่ห่อบรรทัด — สถานะหกปุ่ม ชนิดสินค้าหกปุ่ม
-          แล้วถ้าเลือกเลนส์จะมีอีกสามแถวต่อท้าย รวมเป็นสามสิบปุ่มก่อนถึงสินค้า
-          แถวแรก · ดรอปดาวน์คืนความสูงนั้นมา และจำนวนที่เคยอยู่บนชิปย้ายไปอยู่
-          ในบรรทัดของแต่ละตัวเลือก จึงไม่ได้หายไป
+        {/* ตัวกรองทั้งหมดอยู่แถวเดียว เป็นดรอปดาวน์
+            เคยเป็นชิปสองกลุ่มบนแถวที่ห่อบรรทัด — สถานะหกปุ่ม ชนิดสินค้าหกปุ่ม
+            แล้วถ้าเลือกเลนส์จะมีอีกสามแถวต่อท้าย รวมเป็นสามสิบปุ่มก่อนถึงสินค้า
+            แถวแรก · ดรอปดาวน์คืนความสูงนั้นมา และจำนวนที่เคยอยู่บนชิปย้ายไปอยู่
+            ในบรรทัดของแต่ละตัวเลือก จึงไม่ได้หายไป
 
-          ช่องเฉพาะเลนส์โผล่ต่อท้ายแถวเดียวกันตอนเลือก "เลนส์" — อ่านเป็น
-          "เลือกเลนส์แล้วมีให้กรองเพิ่ม" ไม่ใช่แถบใหม่ที่งอกมาอีกชั้น */}
-      <FilterBar>
-        {/* หน้าที่ล็อกสถานะไว้แล้วไม่มีช่องนี้ — เลือกแล้วจะพาออกจากหน้าเอง */}
-        {lockState === "" ? (
+            ช่องเฉพาะเลนส์โผล่ต่อท้ายแถวเดียวกันตอนเลือก "เลนส์" — อ่านเป็น
+            "เลือกเลนส์แล้วมีให้กรองเพิ่ม" ไม่ใช่แถบใหม่ที่งอกมาอีกชั้น */}
+        <FilterBar>
+          {/* หน้าที่ล็อกสถานะไว้แล้วไม่มีช่องนี้ — เลือกแล้วจะพาออกจากหน้าเอง */}
+          {lockState === "" ? (
+            <Filter
+              id="pf-state"
+              label="สถานะสต็อก"
+              value={state}
+              onChange={(v) => refine(() => setState(v))}
+              options={STATES.map((s) => ({
+                value: s.key,
+                label: withCount(s.label, counts?.[s.key || "all"]),
+              }))}
+            />
+          ) : null}
+
           <Filter
-            id="pf-state"
-            label="สถานะสต็อก"
-            value={state}
-            onChange={(v) => refine(() => setState(v))}
-            options={STATES.map((s) => ({
-              value: s.key,
-              label: withCount(s.label, counts?.[s.key || "all"]),
-            }))}
+            id="pf-type"
+            label="ชนิดสินค้า"
+            value={ptype}
+            onChange={chooseType}
+            options={TYPES.map((t) => ({ value: t.key, label: t.label }))}
           />
-        ) : null}
 
-        <Filter
-          id="pf-type"
-          label="ชนิดสินค้า"
-          value={ptype}
-          onChange={chooseType}
-          options={TYPES.map((t) => ({ value: t.key, label: t.label }))}
-        />
-
-        {lensFilters ? (
-          <LensFilters
-            index={lindex}
-            design={design}
-            coating={coating}
-            onIndex={(v) => refine(() => setLindex(v))}
-            onDesign={(v) => refine(() => setDesign(v))}
-            onCoating={(v) => refine(() => setCoating(v))}
-            // Whatever else the table is narrowed by, so a count is a count of
-            // rows this screen would actually show.
-            scope={{ q: applied, make: ONLY_STOCK }}
-          />
-        ) : null}
-      </FilterBar>
+          {lensFilters ? (
+            <LensFilters
+              index={lindex}
+              design={design}
+              coating={coating}
+              onIndex={(v) => refine(() => setLindex(v))}
+              onDesign={(v) => refine(() => setDesign(v))}
+              onCoating={(v) => refine(() => setCoating(v))}
+              // Whatever else the table is narrowed by, so a count is a count of
+              // rows this screen would actually show.
+              scope={{ q: applied, make: ONLY_STOCK }}
+            />
+          ) : null}
+        </FilterBar>
+      </div>
 
       {list.status === "loading" ? <div className="skeleton" /> : null}
 
@@ -387,7 +531,23 @@ export default function ProductsScreen({
 
       {list.status === "ready" && list.data.rows.length > 0 ? (
         <>
-          <div className="tablewrap">
+          {/* บนมือถือ แถวเป็นการ์ด และการกดเปิด "ลิ้นชักสินค้า" แทนที่จะกางล็อต
+              ใต้แถว — ลิ้นชักมีทุกอย่างที่แถวกางแล้วมี บวกประวัติกับปุ่มแก้ไข และ
+              บนจอแคบมันเต็มจอพอดี ต่างจากแถวกางที่ดันของข้างล่างหายไปครึ่งจอ */}
+          <CardList label="รายการสินค้า">
+            {list.data.rows.map((r) => (
+              <ProductRowCard
+                key={r.id}
+                row={r}
+                money={money$}
+                mayEdit={can.editCatalog(actor)}
+                onOpen={() => setOpenId(r.id)}
+                onChanged={reload}
+              />
+            ))}
+          </CardList>
+
+          <div className="tablewrap wide-only">
             <table className="grid">
               <caption className="sr-only">รายการสินค้า — คลิกหัวคอลัมน์เพื่อเรียงลำดับ</caption>
               <thead>

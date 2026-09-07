@@ -1,5 +1,6 @@
 "use client";
 
+import RecordCard, { CardList } from "./RecordCard";
 import { useApi } from "@/stockmod/lib/useApi";
 import type { Policy } from "@/stockmod/lib/api";
 
@@ -39,7 +40,33 @@ export default function PolicyTable() {
       </p>
 
       {policy.data.groups.map((group) => (
-        <div className="tablewrap" key={group.title}>
+        <div key={group.title}>
+        {/* บนมือถือ ตารางกากบาทหกบทบาทกลายเป็นการ์ดละหนึ่งความสามารถ · ตารางแบบ
+            เมทริกซ์คือของที่บีบไม่ได้เลย — คอลัมน์หายไปหนึ่งคอลัมน์คือบทบาทหนึ่ง
+            บทบาทที่ไม่มีใครรู้ว่าทำได้หรือไม่ได้ */}
+        <CardList label={group.title}>
+          {group.rows.map((row) => (
+            <RecordCard
+              key={row.label}
+              title={row.label}
+              sub={row.note ?? undefined}
+              fields={roles.map((r) => ({
+                label: r.label,
+                value: row.allow[r.key] ? (
+                  <span className="status status--stock">
+                    ✓<span className="sr-only"> ทำได้</span>
+                  </span>
+                ) : (
+                  <span className="status status--out">
+                    ✗<span className="sr-only"> ทำไม่ได้</span>
+                  </span>
+                ),
+              }))}
+            />
+          ))}
+        </CardList>
+
+        <div className="tablewrap wide-only">
           <table className="grid">
             <caption className="sr-only">{group.title}</caption>
             <thead>
@@ -78,6 +105,7 @@ export default function PolicyTable() {
               ))}
             </tbody>
           </table>
+        </div>
         </div>
       ))}
     </>

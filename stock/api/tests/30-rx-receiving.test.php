@@ -313,15 +313,57 @@ test('พนักงานหน้าร้านลงต้นทุนไ�
     });
 });
 
-test('ลงต้นทุนซ้ำรายการที่มีต้นทุนแล้วไม่ได้', function () {
+test('แก้ต้นทุนที่ลงไปแล้วได้ และบรรทัดในสมุดบอกว่าจากเท่าไรเป็นเท่าไร', function () {
     withRollback(function () {
         $ref = doc('RX-TWICE');
         Rx::order(['sku' => customSku(), 'reference_doc' => $ref, 'unit_cost' => '500'], Roles::OWNER, 1);
         $id = (int) Db::value('SELECT id FROM inventory_logs WHERE reference_doc = ?', [$ref]);
 
-        // การแก้ตัวเลขที่ลงไปแล้วคือการ "แก้ไข" ไม่ใช่การ "กรอกให้ครบ"
-        // ต้องไม่เงียบ ๆ ทับของเดิม
-        throwsReason('already_costed', fn() => Rx::setCost($id, '999', Roles::OWNER), 'ลงซ้ำ');
+        /* การแก้ตัวเลขที่ลงไปแล้วคือการ "แก้ไข" ไม่ใช่การ "กรอกให้ครบ" · สิ่งที่กัน
+           การแก้มั่วไม่ใช่การห้ามแก้ แต่คือบรรทัดที่บอกว่าใครแก้ จากเท่าไรเป็นเท่าไร
+           กติกาเดียวกับราคาขาย ห้ามแก้แล้วใบที่พิมพ์ผิดจะผิดตลอดไป */
+        $out = Rx::setCost($id, '999', Roles::OWNER, 1);
+        eq($out['changed'], true, 'ต้องนับว่าเปลี่ยน');
+        eq(
+            (string) Db::value('SELECT unit_cost FROM inventory_logs WHERE id = ?', [$id]),
+            '999.00',
+            'ต้นทุนบนใบสั่งต้องเป็นตัวใหม่',
+        );
+
+        $note = (string) Db::value(
+            "SELECT notes FROM inventory_logs
+              WHERE reference_doc = ? AND action_type = 'COST'
+              ORDER BY id DESC LIMIT 1",
+            [$ref],
+        );
+        ok(str_contains($note, 'แก้จาก 500.00 บาท'), 'บรรทัดในสมุดต้องบอกตัวเลขเดิม — ได้ ' . $note);
+        ok(str_contains($note, 'เป็น 999.00 บาท'), 'และตัวเลขใหม่ — ได้ ' . $note);
+    });
+});
+
+test('ลงต้นทุนเท่าเดิม ไม่นับว่าเปลี่ยน และไม่ลงบรรทัดใหม่', function () {
+    withRollback(function () {
+        $ref = doc('RX-SAME');
+        Rx::order(['sku' => customSku(), 'reference_doc' => $ref, 'unit_cost' => '500'], Roles::OWNER, 1);
+        $id = (int) Db::value('SELECT id FROM inventory_logs WHERE reference_doc = ?', [$ref]);
+
+        $before = (int) Db::value(
+            "SELECT COUNT(*) FROM inventory_logs WHERE reference_doc = ? AND action_type = 'COST'",
+            [$ref],
+        );
+
+        /* กดบันทึกทับด้วยตัวเลขเดิมคือการกดที่ไม่ได้ทำอะไร · สมุดที่มีบรรทัด
+           "แก้จาก 500 เป็น 500" คือสมุดที่อ่านยากขึ้นโดยไม่ได้ข้อมูลเพิ่ม */
+        $out = Rx::setCost($id, '500', Roles::OWNER, 1);
+        eq($out['changed'], false, 'ต้องไม่นับว่าเปลี่ยน');
+        eq(
+            (int) Db::value(
+                "SELECT COUNT(*) FROM inventory_logs WHERE reference_doc = ? AND action_type = 'COST'",
+                [$ref],
+            ),
+            $before,
+            'จำนวนบรรทัด COST ต้องเท่าเดิม',
+        );
     });
 });
 

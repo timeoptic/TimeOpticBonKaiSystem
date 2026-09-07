@@ -5,6 +5,7 @@ import { can, useActor, WorkHead } from "@/stockmod/components/AppShell";
 import { useToast } from "@/stockmod/components/Toaster";
 import SortHead, { SortBar, sortRows, useSort } from "@/stockmod/components/SortHead";
 import PolicyTable from "@/stockmod/components/PolicyTable";
+import RecordCard, { CardList } from "@/stockmod/components/RecordCard";
 import { IconTrash } from "@/stockmod/components/Icon";
 import Select from "@/stockmod/components/Select";
 import { api, ApiError } from "@/stockmod/lib/api";
@@ -128,7 +129,43 @@ export default function UsersPage() {
       ) : null}
 
       {users.length > 0 ? (
-        <div className="tablewrap">
+        <>
+        {/* บนมือถือ ผู้ใช้หนึ่งคน = การ์ดหนึ่งใบ */}
+        <CardList label="รายชื่อผู้ใช้ทั้งหมด">
+          {users.map((u) => (
+            <RecordCard
+              key={u.id}
+              tone={u.isActive ? undefined : "muted"}
+              head={
+                !u.isActive ? (
+                  <span className="status status--out">ปิดใช้งาน</span>
+                ) : u.canSignIn ? (
+                  <span className="status status--stock">ล็อกอินได้</span>
+                ) : (
+                  <span className="status status--pending">ยังไม่มีบัญชี</span>
+                )
+              }
+              title={u.displayName}
+              sub={u.username ?? `#${u.id} · ไม่มีบัญชีล็อกอิน`}
+              fields={[
+                { label: "สิทธิ์", value: <span className="tag">{u.roleLabel}</span> },
+                u.jobTitle ? { label: "ตำแหน่งงาน", value: u.jobTitle } : null,
+                { label: "รายการที่ทำ", value: count(u.movements) },
+                {
+                  label: "เข้าล่าสุด",
+                  value: u.lastLoginAt ? date(u.lastLoginAt) : <span className="grid__muted">ยังไม่เคยเข้า</span>,
+                },
+              ]}
+              actions={
+                <button type="button" className="btn btn--small" onClick={() => setEditing(u)}>
+                  แก้ไขผู้ใช้
+                </button>
+              }
+            />
+          ))}
+        </CardList>
+
+        <div className="tablewrap wide-only">
           <table className="grid">
             <caption className="sr-only">รายชื่อผู้ใช้ทั้งหมด</caption>
             <thead>
@@ -183,6 +220,7 @@ export default function UsersPage() {
             </tbody>
           </table>
         </div>
+        </>
       ) : null}
 
       {creating ? (

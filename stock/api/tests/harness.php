@@ -133,6 +133,22 @@ function issueReq(string $sku, int $qty, string $k, array $extra = []): array
     ] + $extra;
 }
 
+/**
+ * เหมือน `issueReq` แต่เป็นคำขอที่ตามหลังการขายหน้าร้าน
+ *
+ * ต่างกันแค่ `source` และต่างกันตรงนั้นที่เดียวเพราะมันคือจุดที่ตัดสินว่ายอด
+ * คงเหลือติดลบได้ไหม (ดู `Stock::MAY_GO_SHORT`) · เคสที่ตั้งใจตัดเกินของที่มี
+ * ต้องใช้ตัวนี้ ไม่ใช่เพื่อเลี่ยงการตรวจ แต่เพราะสิ่งที่มันจำลองคือการขายที่
+ * เกิดขึ้นไปแล้วจริงที่หน้าร้าน ซึ่งเป็นทางเดียวที่ยอดค้างส่งเกิดขึ้นได้
+ *
+ * @param array<string,mixed> $extra
+ * @return array<string,mixed>
+ */
+function saleReq(string $sku, int $qty, string $k, array $extra = []): array
+{
+    return ['source' => 'frontdesk'] + issueReq($sku, $qty, $k, $extra);
+}
+
 /** Reads a lot's current remaining quantity. */
 function lotRemaining(string $lotNumber): int
 {

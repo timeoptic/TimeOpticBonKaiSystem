@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Select, { type Choice } from "./Select";
 
 /**
@@ -17,7 +18,33 @@ import Select, { type Choice } from "./Select";
  * แย่กว่าช่องที่ไม่มี เพราะมันชวนให้กด
  */
 export function FilterBar({ children }: { children: React.ReactNode }) {
-  return <div className="filterbar">{children}</div>;
+  /**
+   * บนมือถือ ตัวกรองพับไว้หลังปุ่มเดียว
+   *
+   * ห้าช่องต่อให้เรียงสองต่อบรรทัดก็ยังสามบรรทัด ซึ่งบนจอ 390px คือของที่อยู่
+   * ก่อนแถวแรกของรายการ ทั้งที่คนเปิดหน้ามาส่วนใหญ่ไม่ได้มากรอง เขามาดูรายการ
+   *
+   * ปุ่มบอกว่ากรองอยู่กี่ช่อง — ตัวกรองที่พับไว้แล้วไม่มีอะไรบอกว่ามันเปิดค้าง
+   * คือสาเหตุที่คนอ่านตัวเลขผิดทั้งวัน · เลขบนปุ่มคือสิ่งที่ป้ายในช่องเคยบอก
+   *
+   * บนจอกว้างสถานะนี้ไม่มีผลอะไร — CSS ที่ซ่อนของอยู่ใน media query ของมือถือ
+   * เท่านั้น แถวตัวกรองจึงกางอยู่เสมอเหมือนเดิม
+   */
+  const [open, setOpen] = useState(false);
+
+  return (
+    <>
+      <button
+        type="button"
+        className="btn btn--small filterfold phone-only"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+      >
+        {open ? "ซ่อนตัวกรอง" : "ตัวกรอง"}
+      </button>
+      <div className={open ? "filterbar" : "filterbar filterbar--folded"}>{children}</div>
+    </>
+  );
 }
 
 /**

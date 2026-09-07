@@ -9,6 +9,11 @@ import ProductForm from "./ProductForm";
 import LensDetail from "./LensDetail";
 import { IconClose, IconTrash } from "./Icon";
 import backdropClose from "./backdrop";
+import useScrollLock from "@/stockmod/lib/scrollLock";
+import ConfirmDelete from "./ConfirmDelete";
+import RecordCard, { CardList } from "./RecordCard";
+import StockLines from "./StockLines";
+import LotEditDialog from "./LotEditDialog";
 import { count, date, money } from "@/stockmod/lib/format";
 import { stockHref } from "@/stockmod/lib/paths";
 
@@ -43,6 +48,8 @@ export default function StockDrawer({
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  /** แผงรับของเข้าเปิดอยู่ไหม — อยู่ในลิ้นชักนี้เอง ไม่ต้องปิดแล้วไปหาที่อื่น */
+  const [receiving, setReceiving] = useState(false);
   const toast = useToast();
 
   async function removeProduct() {
@@ -52,7 +59,12 @@ export default function StockDrawer({
       onChanged();
       ref.current?.close();
     } catch (e) {
-      setError(ApiError.is(e) ? e.message : "ลบไม่สำเร็จ");
+      /* toast ไม่ใช่แถบบนหัวลิ้นชัก — ปุ่มลบอยู่ล่างสุดของแผงแก้ไข ส่วนแถบเดิม
+         ขึ้นบนหัว ซึ่งบนมือถือคือนอกจอ · คนกดจึงเห็นแค่ว่ากดแล้วไม่มีอะไรเกิด */
+      toast.error({
+        text: `ลบสินค้า ${detail?.sku ?? ""} ไม่สำเร็จ`,
+        detail: ApiError.is(e) ? e.message : "ลองใหม่อีกครั้ง",
+      });
       setConfirmDelete(false);
     }
   }
@@ -62,6 +74,8 @@ export default function StockDrawer({
       .get<{ product: ProductDetail }>(`/products/${productId}`)
       .then(({ product }) => setDetail(product))
       .catch((e: unknown) => setError(e instanceof Error ? e.message : "โหลดข้อมูลไม่ได้"));
+
+  useScrollLock(true);
 
   useEffect(() => {
     ref.current?.showModal();
@@ -109,20 +123,10 @@ export default function StockDrawer({
         {detail && editing ? (
           <section className="drawer__section">
             <h3 className="drawer__legend">แก้ไขสินค้า</h3>
-            <ProductForm
-              product={detail}
-              onCancel={() => setEditing(false)}
-              onSaved={() => {
-                setEditing(false);
-                toast.success({ text: `แก้สินค้า ${detail.sku} แล้ว`, detail: detail.name });
-                load();
-                onChanged();
-              }}
-            />
-
-            {/* Deleting is only ever right for something entered by mistake, so
-                it sits below the edit form rather than beside "ปิด" where a
-                stray tap could reach it. */}
+            {/* ลบอยู่เหนือฟอร์ม ไม่ใช่ใต้ฟอร์ม
+                ใต้ฟอร์มแปลว่าต้องไถผ่านทั้งฟอร์มถึงจะเจอ ซึ่งบนมือถือคือครึ่งหน้าจอ ·
+                เหตุผลเดิมที่วางไว้ล่างคือกันนิ้วที่เล็ง "ปิด" แล้วพลาดมาโดน — ที่นี่ยัง
+                ห่างจากปุ่มปิดหนึ่งบล็อก และยังต้องกดยืนยันอีกครั้งอยู่ดี */}
             <div className="drawer__danger">
               {confirmDelete ? (
                 <>
@@ -156,6 +160,18 @@ export default function StockDrawer({
                 </button>
               )}
             </div>
+
+            <ProductForm
+              product={detail}
+              onCancel={() => setEditing(false)}
+              onSaved={() => {
+                setEditing(false);
+                toast.success({ text: `แก้สินค้า ${detail.sku} แล้ว`, detail: detail.name });
+                load();
+                onChanged();
+              }}
+            />
+
           </section>
         ) : null}
 
@@ -202,11 +218,20 @@ export default function StockDrawer({
                     เบิก / ตัดสต็อก
                   </Link>
                 ) : null}
-                {/* Receiving is not offered here. This drawer only opens
-                    from a product row that is already unfolded, and the
-                    "+ รับเข้าล็อตใหม่" button is on that fold — one click behind
-                    this panel. A link that navigated to the page you are
-                    already on did nothing, which is what it looked like. */}
+                {/* รับของเข้ามีปุ่มที่นี่แล้ว
+                    เดิมไม่มี ด้วยเหตุผลว่าลิ้นชักนี้เปิดจากแถวที่กางอยู่แล้ว และ
+                    ปุ่ม "+ รับเข้าล็อตใหม่" อยู่บนแถวที่กางนั้น — ห่างไปแค่คลิกเดียว
+                    ข้างหลัง · บนมือถือไม่มีแถวให้กาง การ์ดเปิดลิ้นชักนี้ตรง ๆ
+                    เหตุผลเดิมจึงหมดอายุ และทางรับของเข้าก็ขาดไปทั้งเส้น */}
+                {!detail.isCustomMade && can.editCatalog(actor) ? (
+                  <button
+                    type="button"
+                    className="btn btn--small"
+                    onClick={() => setReceiving(true)}
+                  >
+                    + รับเข้าล็อตใหม่
+                  </button>
+                ) : null}
                 {/* Same screen, two different sentences. A made-to-order lens
                     has no other way of being got; a stocked one that has run
                     out is being *specially ordered*, which is a decision about
@@ -225,12 +250,29 @@ export default function StockDrawer({
                 </p>
               ) : detail.onHand === 0 ? (
                 <p className="field__help">
-                  สินค้านี้หมดสต็อก — ปิดหน้านี้แล้วกด “+ รับเข้าล็อตใหม่” ที่แถวสินค้า
+                  สินค้านี้หมดสต็อก — กด “+ รับเข้าล็อตใหม่” ข้างบน
                   หรือถ้าลูกค้ารออยู่ ให้สั่งพิเศษกับผู้ขายเป็นรายใบ ระบบเก็บใบสั่งพิเศษไว้ที่หน้า RX
                   ที่เดียวกับใบสั่งตัด แต่สินค้าไม่ได้เปลี่ยนเป็นสินค้าสั่งตัด — พอรับล็อตใหม่เข้ามาก็ตัดจากสต็อกตามเดิม
                 </p>
               ) : null}
             </section>
+
+            {receiving ? (
+              <section className="drawer__section">
+                <h3 className="drawer__legend">รับล็อตใหม่เข้าคลัง</h3>
+                {/* แผงเดียวกับที่กางใต้แถวสินค้าบนจอกว้าง — กติกาการรับของ
+                    (ต้นทุน วันหมดอายุ ผู้ขาย) จึงมีที่เดียว */}
+                <StockLines
+                  product={detail as never}
+                  startReceiving
+                  onChanged={() => {
+                    load();
+                    onChanged();
+                  }}
+                  onDetails={() => setReceiving(false)}
+                />
+              </section>
+            ) : null}
 
             <section className="drawer__section">
               <h3 className="drawer__legend">ล็อตในคลัง</h3>
@@ -246,7 +288,25 @@ export default function StockDrawer({
                   ล็อตของสินค้านี้ถูกตัดออกไปหมดแล้ว — ดูว่าไปไหนได้ที่ความเคลื่อนไหวด้านล่าง
                 </p>
               ) : (
-                <div className="tablewrap">
+                <>
+                {/* บนมือถือ ล็อตหนึ่งใบ = การ์ดหนึ่งใบ · แผงแก้ไขไม่กางใต้แถวเหมือน
+                    ตาราง เพราะลิ้นชักนี้เองก็เป็นแผ่นเต็มจออยู่แล้ว กางซ้อนเข้าไป
+                    อีกชั้นจะไม่เหลือที่ให้เห็นว่ากำลังแก้ล็อตใบไหน */}
+                <CardList label="ล็อตของสินค้านี้">
+                  {live.map((l) => (
+                    <DrawerLotCard
+                      key={l.id}
+                      lot={l}
+                      money={money$}
+                      onDone={() => {
+                        load();
+                        onChanged();
+                      }}
+                    />
+                  ))}
+                </CardList>
+
+                <div className="tablewrap wide-only">
                   <table className="grid">
                     <caption className="sr-only">ล็อตของสินค้านี้ เรียงจากล็อตล่าสุดไปเก่าสุด</caption>
                     <thead>
@@ -275,6 +335,7 @@ lot={l}
                     </tbody>
                   </table>
                 </div>
+                </>
               )}
             </section>
 
@@ -324,6 +385,65 @@ lot={l}
 type Lot = ProductDetail["lots"][number];
 
 /**
+ * ล็อตหนึ่งใบในลิ้นชักสินค้า บนมือถือ
+ *
+ * แก้ไขผ่านกล่อง LotEditDialog ตัวเดียวกับที่หน้าล็อตใช้ ไม่ได้เขียนแผงแก้ไข
+ * ขึ้นใหม่ — กติกาการปรับยอด (เกินที่รับเข้าต้องมีเหตุผล) จะได้มีที่เดียว
+ */
+function DrawerLotCard({
+  lot,
+  money: showCost,
+  onDone,
+}: {
+  lot: Lot;
+  money: boolean;
+  onDone: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+
+  return (
+    <>
+      <RecordCard
+        tone={showCost && lot.costPerUnit === null ? "pending" : undefined}
+        head={<span className="reccard__money">{count(lot.remainingQty)}</span>}
+        title={lot.supplierName ?? "ไม่ระบุผู้ขาย"}
+        sub={`รับเข้า ${date(lot.receivedDate)} · ${count(lot.initialQty)} ชิ้น`}
+        fields={[
+          showCost
+            ? {
+                label: "ต้นทุน/ชิ้น",
+                value:
+                  lot.costPerUnit === null ? (
+                    <span className="status status--pending">รอต้นทุน</span>
+                  ) : (
+                    money(lot.costPerUnit)
+                  ),
+              }
+            : null,
+          lot.expiryDate ? { label: "หมดอายุ", value: date(lot.expiryDate) } : null,
+        ]}
+        actions={
+          <button type="button" className="btn btn--small" onClick={() => setEditing(true)}>
+            แก้ล็อตนี้
+          </button>
+        }
+      />
+
+      {editing ? (
+        <LotEditDialog
+          lot={lot as never}
+          onClose={() => setEditing(false)}
+          onSaved={() => {
+            setEditing(false);
+            onDone();
+          }}
+        />
+      ) : null}
+    </>
+  );
+}
+
+/**
  * A lot row that can be corrected in place.
  *
  * Changing the remaining quantity is a stock count, not an edit: the server
@@ -340,6 +460,10 @@ function LotRow({ lot, money: showCost, onDone }: { lot: Lot; money: boolean; on
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+
+  /* กดถังขยะแล้วยังไม่ลบ — ถามก่อน · ปุ่มนี้อยู่ติดกับปุ่ม "บันทึก" ในแผงเดียวกัน
+     และคนกดมักถือของอยู่อีกมือ การกดพลาดหนึ่งครั้งลบล็อตหายไปทั้งใบ */
+  const [asking, setAsking] = useState(false);
 
   const untouched = lot.remainingQty === lot.initialQty;
 
@@ -509,7 +633,7 @@ function LotRow({ lot, money: showCost, onDone }: { lot: Lot; money: boolean; on
                   <button
                     type="button"
                     className="btn btn--danger btn--small btn--icon"
-                    onClick={remove}
+                    onClick={() => setAsking(true)}
                     disabled={busy}
                   >
                     <IconTrash />
@@ -524,6 +648,18 @@ function LotRow({ lot, money: showCost, onDone }: { lot: Lot; money: boolean; on
             </div>
           </td>
         </tr>
+      ) : null}
+
+      {asking ? (
+        <ConfirmDelete
+          title={`ล็อต ${lot.lotNumber}`}
+          what="ลบล็อตนี้ออกจากคลัง"
+          detail={`รับเข้า ${date(lot.receivedDate)} · ${count(lot.initialQty)} ชิ้น ยังไม่ได้ตัดออกเลย`}
+          busy={busy}
+          problem={problem}
+          onConfirm={() => void remove()}
+          onClose={() => setAsking(false)}
+        />
       ) : null}
     </>
   );

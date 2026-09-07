@@ -239,24 +239,77 @@ export default function IssuePage() {
    * The same product picked twice adds up rather than appearing twice: two
    * lines of one product is one withdrawal of it as far as the shelf is
    * concerned, and the API would merge them anyway.
+   *
+   * เพดานคือของที่มีอยู่จริง เหมือนช่องกรอกจำนวนและปุ่มบวกในตะกร้า — สามทางที่
+   * เพิ่มจำนวนได้ต้องหยุดที่เดียวกัน ไม่งั้นทางที่ไม่ได้คุมก็กลายเป็นทางลัดไปสู่
+   * ตัวเลขที่ตัดไม่ได้
    */
   function stash(lines: Line[], p: ProductRow, n: number): Line[] {
     const at = lines.findIndex((l) => l.sku === p.sku);
     if (at === -1) {
-      return [...lines, { sku: p.sku, name: p.name, qty: n, onHand: p.onHand }];
+      return [
+        ...lines,
+        { sku: p.sku, name: p.name, qty: Math.min(n, p.onHand), onHand: p.onHand },
+      ];
     }
     const merged = [...lines];
-    merged[at] = { ...merged[at], qty: merged[at].qty + n };
+    merged[at] = {
+      ...merged[at],
+      qty: Math.min(merged[at].qty + n, merged[at].onHand),
+    };
     return merged;
   }
 
   const lines = basket;
   const short = lines.find((l) => l.qty > l.onHand) ?? null;
 
-  /** One tap on a row puts one of it in the basket. */
+  /**
+   * ของที่ตะกร้าจองไว้แล้ว ให้รายการข้างล่างหักออกจากคอลัมน์คงเหลือ
+   *
+   * คนที่กำลังเลือกชิ้นถัดไปอ่านเลขนั้นเพื่อตอบว่า "หยิบได้อีกกี่ชิ้น" ไม่ใช่
+   * "ตอนเปิดหน้ามีกี่ชิ้น" · ของที่อยู่ในตะกร้าถูกนับไปแล้วครั้งหนึ่ง
+   */
+  const reserved = Object.fromEntries(basket.map((l) => [l.sku, l.qty]));
+
+  /**
+   * One tap on a row puts one of it in the basket — up to what is on the shelf.
+   *
+   * ยอดคงเหลือติดลบได้อยู่ แต่เกิดจากการขายหน้าร้าน ซึ่งของออกจากร้านไปแล้วจริง
+   * และระบบมีหน้าที่จดตามนั้น · การเบิกที่นี่เป็นเรื่องตรงกันข้าม คนกดกำลังจะ
+   * เดินไปหยิบของจากชั้น ถ้าบนชั้นไม่มี การกดปุ่มไม่ได้ทำให้มี
+   *
+   * ปฏิเสธตั้งแต่ตอนกด ไม่ใช่ตอนกดตัด เพราะสองจังหวะนั้นอยู่คนละหน้าจอ — เดิม
+   * กดใส่ได้เรื่อย ๆ แล้วไปเจอว่าตัดไม่ได้ตอนเปิดตะกร้า ซึ่งเป็นตอนที่เลือกของ
+   * เสร็จไปหมดแล้ว · ด่านจริงยังอยู่ฝั่ง server (`Stock::plan`) เหมือนเดิม
+   */
   function add(p: ProductRow | null) {
     if (p === null) return;
     setProblem(null);
+
+    if (p.isCustomMade) {
+      toast.error({
+        text: `${p.name} เป็นสินค้าสั่งตัด ไม่มีสต็อกให้ตัด`,
+        link: { href: "/stock/rx", label: "เปิดใบสั่งพิเศษ RX" },
+      });
+      return;
+    }
+
+    if (p.onHand <= 0) {
+      toast.error({
+        text: `${p.name} หมด ตัดไม่ได้`,
+        detail: "รับล็อตใหม่เข้าคลังก่อน หรือเปิดใบสั่งพิเศษ RX",
+        link: { href: "/stock/products", label: "ไปหน้าสินค้า" },
+      });
+      return;
+    }
+
+    if ((basket.find((l) => l.sku === p.sku)?.qty ?? 0) >= p.onHand) {
+      toast.warning({
+        text: `${p.name} อยู่ในตะกร้าครบ ${count(p.onHand)} ชิ้นเท่าที่มีแล้ว`,
+      });
+      return;
+    }
+
     setBasket((b) => stash(b, p, 1));
     setTaps((n) => n + 1);
   }
@@ -432,9 +485,10 @@ export default function IssuePage() {
             </span>
           ) : null}
         </button>
-        <Link href="/stock/products" className="btn">
-          สินค้าและสต็อก
-        </Link>
+        {/* แถบ "เรียงตาม" ของรายการข้างล่างมาโผล่ตรงนี้ — ProductPicker เป็นคน
+            เรนเดอร์เข้ามาทาง portal เพราะสถานะการเรียงเป็นของมัน · กล่องนี้ว่าง
+            เปล่าตอนยังไม่มีรายการ ซึ่งไม่เห็นอะไรอยู่แล้ว */}
+        <span id="cut-sort" />
       </WorkHead>
 
       {/* Until a product is chosen this page is a stock list, laid out exactly
@@ -473,22 +527,6 @@ export default function IssuePage() {
         </section>
       ) : null}
 
-      {basket.length > 0 && !reviewing ? (
-        <div className="basketbar" role="status">
-          <span className="basketbar__what">
-            ตะกร้า {count(basket.length)} รายการ ·{" "}
-            {count(basket.reduce((n, l) => n + l.qty, 0))} ชิ้น
-            <span className="basketbar__names">{basket.map((l) => l.name).join(" · ")}</span>
-          </span>
-          <button type="button" className="btn btn--primary btn--small" onClick={() => setReviewing(true)}>
-            ดูตะกร้าแล้วตัด
-          </button>
-          <button type="button" className="btn btn--quiet btn--small" onClick={() => setBasket([])}>
-            ล้างตะกร้า
-          </button>
-        </div>
-      ) : null}
-
       {/* The list stays a list, and a row goes straight into the basket. No
           form opens over it, so the shelf you were reading is still the shelf
           you are reading — which is the whole point when the other lens of the
@@ -497,13 +535,49 @@ export default function IssuePage() {
         value={null}
         onPick={add}
         pickLabel="+ ใส่ตะกร้า"
+        reserved={reserved}
+        requireStock
         refresh={refresh}
         only="ready"
         label="สินค้าที่จะเบิก"
         // Standing at the shelf, what is left is the thing being scanned for.
         defaultSort="onhand"
         autoFocus
+        sortSlotId="cut-sort"
       />
+
+      {/* ปุ่มลอยของตะกร้า — ค้างอยู่ขอบล่างจอตลอดที่ยังมีของอยู่ในตะกร้า
+          แถบตะกร้าอันบนอยู่เหนือรายการสินค้า พอไถลงไปหยิบชิ้นที่สามมันเลื่อนพ้นจอ
+          ไปแล้ว การจะเปิดตะกร้าจึงต้องไถกลับขึ้นไปสุด ซึ่งเป็นระยะทางที่ยาวขึ้น
+          เรื่อย ๆ ตามจำนวนของที่หยิบ · ปุ่มลอยอยู่ที่เดิมเสมอ และอยู่ล่างจอซึ่งเป็น
+          ที่ที่นิ้วโป้งอยู่
+
+          โผล่เฉพาะตอนมีของในตะกร้า — ปุ่มลอยที่ค้างอยู่ตลอดเวลาคือปุ่มที่บังของ
+          จริงหนึ่งแถวทั้งวันเพื่อรอเหตุการณ์ที่ยังไม่เกิด */}
+      {lines.length > 0 && !reviewing ? (
+        <div className="cartfab" role="group" aria-label="ตะกร้าที่ค้างอยู่">
+          <span className="cartfab__what">
+            <IconCart />
+            <span>
+              <b>{count(lines.length)} รายการ</b>
+              <span className="cartfab__sub">
+                {count(lines.reduce((n, l) => n + l.qty, 0))} ชิ้น
+              </span>
+            </span>
+          </span>
+          {/* ปุ่มขนาดเต็ม ไม่ใช่ btn--small — นี่คือปุ่มปลายทางของงานทั้งหน้า
+              และมันลอยอยู่เดี่ยว ๆ ไม่ได้อยู่ในแถบเครื่องมือที่มีปุ่มอื่นให้เทียบ
+              ขนาด · ปุ่มสุดท้ายที่เล็กกว่าปุ่ม "+ ใส่ตะกร้า" ในแถวสินค้าอ่านเหมือน
+              เป็นของรอง ทั้งที่เป็นปลายทาง */}
+          <button
+            type="button"
+            className="btn btn--primary"
+            onClick={() => setReviewing(true)}
+          >
+            ดูตะกร้าแล้วตัด
+          </button>
+        </div>
+      ) : null}
 
       {reviewing ? (
         <TaskDialog
@@ -761,7 +835,7 @@ export default function IssuePage() {
                     สาขาเบิกจะ<strong>ตัดสต็อกและลงต้นทุนวันนี้</strong> — เรื่องเงินกับกำไร
                     บัญชีคิดเองจาก Excel · ดูของที่ออกไปแล้วได้ที่หน้า{" "}
                     <Link href="/stock/settlements" className="grid__link">
-                      ของที่สาขาเบิกไป
+                      การเบิกจากสาขา
                     </Link>
                   </div>
                 )}

@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { can, useActor, WorkHead } from "@/stockmod/components/AppShell";
 import { useToast } from "@/stockmod/components/Toaster";
 import TaskDialog from "@/stockmod/components/TaskDialog";
@@ -11,6 +10,8 @@ import InlineEdit from "@/stockmod/components/InlineEdit";
 import NewProductDialog from "@/stockmod/components/NewProductDialog";
 import { IconTrash } from "@/stockmod/components/Icon";
 import RxEditDialog from "@/stockmod/components/RxEditDialog";
+import RecordCard, { CardList } from "@/stockmod/components/RecordCard";
+import { Filter, FilterBar, withCount } from "@/stockmod/components/FilterBar";
 import {
   api,
   ApiError,
@@ -20,7 +21,7 @@ import {
   type RxOrderRow,
 } from "@/stockmod/lib/api";
 import { qs, useApi } from "@/stockmod/lib/useApi";
-import { count, date, diopter, money } from "@/stockmod/lib/format";
+import { date, diopter, money } from "@/stockmod/lib/format";
 import {
   ADD_LADDER,
   AXIS_LADDER,
@@ -80,16 +81,6 @@ export default function RxPage() {
   const [only, setOnly] = useState<"all" | "pending">("all");
   const [creating, setCreating] = useState(false);
 
-  /**
-   * Which half of the job is on screen: the orders, or the lenses they name.
-   *
-   * The models used to sit in the catalogue beside stocked goods, where every
-   * column about stock had to be drawn as a dash — a made-to-order lens is
-   * never received, never counted and never on a shelf. They belong with the
-   * orders, which are the only thing that ever names them.
-   */
-  const [view, setView] = useState<"orders" | "models">("orders");
-
   const book = useApi<Page<Order>>(
     `/rx/orders${qs({ q: applied, pending: only === "pending" ? "1" : "", page })}`,
   );
@@ -116,63 +107,8 @@ export default function RxPage() {
         title="ใบสั่งตัด RX"
         lede="ใบสั่งเลนส์เฉพาะรายกับผู้ขาย — ค่าสายตาอยู่บนใบสั่ง เพราะแต่ละใบคือของลูกค้าคนละคน"
       >
-        <button type="button" className="btn btn--primary" onClick={() => setCreating(true)}>
-          + เปิดใบสั่งใหม่
-        </button>
-        <Link href="/stock" className="btn">
-          กลับไปหน้าเบิก
-        </Link>
-      </WorkHead>
-
-      <div className="chips chips--bar" role="group" aria-label="ส่วนที่กำลังดู">
-        <button
-          type="button"
-          className="chip"
-          aria-current={view === "orders" ? "true" : undefined}
-          onClick={() => setView("orders")}
-        >
-          ใบสั่ง
-        </button>
-        {/* ชิป "รุ่นเลนส์ที่สั่งได้" ถูกเอาออกจากหน้าจอตามที่หน้าร้านขอ — คนใช้
-            อ่านแล้วสับสนว่ามันคือใบสั่งอีกชุดหนึ่ง ทั้งที่เป็นแคตตาล็อกรุ่นเลนส์
-            ข้อมูลกับหน้าจอ <LensModels /> ยังอยู่ครบ ไม่ได้ลบ แค่ไม่มีทางเข้า
-            จากตรงนี้ · รุ่นเลนส์ยังเพิ่มได้จากกล่อง "เพิ่มรุ่นเลนส์" ตอนเปิดใบสั่ง */}
-      </div>
-
-      {view === "models" ? <LensModels /> : null}
-
-      {view === "orders" ? (
-      <>
-      <div className="chips chips--bar">
-        <button
-          type="button"
-          className="chip"
-          aria-current={only === "all" ? "true" : undefined}
-          onClick={() => {
-            setOnly("all");
-            setPage(1);
-          }}
-        >
-          ทั้งหมด
-          {book.status === "ready" && only === "all" ? (
-            <span className="chip__count">{count(book.data.total)}</span>
-          ) : null}
-        </button>
-        <button
-          type="button"
-          className="chip"
-          aria-current={only === "pending" ? "true" : undefined}
-          onClick={() => {
-            setOnly("pending");
-            setPage(1);
-          }}
-        >
-          รอลงต้นทุน
-          {pending.status === "ready" ? (
-            <span className="chip__count">{count(pending.data.rows.length)}</span>
-          ) : null}
-        </button>
-
+        {/* ช่องค้นหาอยู่ในหัวหน้าเหมือนหน้าสินค้า — บนมือถือมันเคยเป็นบรรทัดที่สาม
+            ต่อจากชิปสองแถว รวมเป็นสามแถวก่อนถึงใบสั่งใบแรก */}
         <form className="toolsearch" onSubmit={search} role="search">
           <label className="sr-only" htmlFor="rx-q">
             ค้นหาใบสั่ง
@@ -189,7 +125,46 @@ export default function RxPage() {
             ค้นหา
           </button>
         </form>
-      </div>
+        <button type="button" className="btn btn--primary" onClick={() => setCreating(true)}>
+          + เปิดใบสั่งใหม่
+        </button>
+        {/* ตัวกรองสถานะอยู่ในหัวหน้า ไม่ใช่แถวของตัวเอง — ดรอปดาวน์ช่องเดียว
+            ไม่คุ้มกับความสูงหนึ่งแถวเต็มเหนือใบสั่งใบแรก · จำนวนที่เคยอยู่บนชิป
+            ย้ายไปอยู่ในบรรทัดของแต่ละตัวเลือก จึงไม่ได้หายไป */}
+        <FilterBar>
+          <Filter
+            id="rx-only"
+            label="สถานะใบสั่ง"
+            value={only}
+            onChange={(v) => {
+              setOnly(v as "all" | "pending");
+              setPage(1);
+            }}
+            options={[
+              {
+                value: "all",
+                label: withCount(
+                  "ทั้งหมด",
+                  book.status === "ready" && only === "all" ? book.data.total : undefined,
+                ),
+              },
+              {
+                value: "pending",
+                label: withCount(
+                  "รอลงต้นทุน",
+                  pending.status === "ready" ? pending.data.rows.length : undefined,
+                ),
+              },
+            ]}
+          />
+        </FilterBar>
+      </WorkHead>
+
+      {/* แถบ "ส่วนที่กำลังดู" ถูกถอดออก — มันเหลือชิปเดียวตั้งแต่วันที่หน้าร้านขอ
+          ให้เอา "รุ่นเลนส์ที่สั่งได้" ออก และชิปเดียวที่กดแล้วได้สิ่งที่เห็นอยู่แล้ว
+          คือแถวเปล่า ๆ หนึ่งแถวเหนือทุกอย่าง · ข้อมูลกับหน้าจอ <LensModels /> ยัง
+          อยู่ครบ ไม่ได้ลบ แค่ไม่มีทางเข้าจากตรงนี้ — รุ่นเลนส์ยังเพิ่มได้จากกล่อง
+          "เพิ่มรุ่นเลนส์" ตอนเปิดใบสั่ง */}
 
       {book.status === "loading" ? <div className="skeleton" /> : null}
 
@@ -211,7 +186,15 @@ export default function RxPage() {
 
       {rows.length > 0 ? (
         <>
-          <div className="tablewrap">
+          {/* บนมือถือ ใบสั่งหนึ่งใบ = การ์ดหนึ่งใบ · ช่องกรอกต้นทุนกับราคาขายยัง
+              อยู่ในการ์ด ไม่ได้ย้ายไปหลังปุ่ม — สองอย่างนี้คืองานทั้งหมดของหน้านี้ */}
+          <CardList label="ใบสั่งตัด RX">
+            {rows.map((r) => (
+              <OrderCard key={r.id} row={r} mayCost={mayCost} onDone={reload} />
+            ))}
+          </CardList>
+
+          <div className="tablewrap wide-only">
             <table className="grid">
               <caption className="sr-only">ใบสั่งตัด RX เรียงจากใบล่าสุดไปเก่าสุด</caption>
               <thead>
@@ -242,9 +225,6 @@ export default function RxPage() {
             />
           ) : null}
         </>
-      ) : null}
-
-      </>
       ) : null}
 
       {creating ? (
@@ -333,23 +313,28 @@ function ConfirmMoney({
 }
 
 /** One order in the book, with the cost field inline while it is still missing. */
-function OrderRow({
-  row,
-  mayCost,
-  onDone,
-}: {
-  row: Order;
-  mayCost: boolean;
-  onDone: () => void;
-}) {
+/**
+ * ทุกอย่างที่แถวใบสั่งหนึ่งใบทำได้ — แยกออกมาจาก JSX
+ *
+ * มีสองร่างที่ต้องทำเรื่องเดียวกัน: แถวในตารางบนจอกว้าง กับการ์ดบนมือถือ ·
+ * กติกาเรื่องเงิน (ค่าเท่าเดิมไม่ต้องถาม ยืนยันก่อนบันทึก ลงสมุดทุกครั้งที่แก้)
+ * เขียนไว้ที่เดียว ไม่งั้นวันที่กติกาเปลี่ยน จะเปลี่ยนแค่ร่างเดียวแล้วมือถือกับ
+ * คอมพิวเตอร์จะทำคนละอย่างกับตัวเลขเดียวกัน
+ */
+function useOrderRow(row: Order, onDone: () => void) {
   const toast = useToast();
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
 
+  /* ต้นทุนที่ลงไปแล้ว เปิดกลับมาแก้ได้ — คนละอย่างกับ `waiting` ซึ่งคือใบที่ยัง
+     ไม่เคยลงเลย · ตอนยังไม่เคยลง ช่องกรอกโผล่เองเพราะนั่นคืองานที่ค้างอยู่ ตอนลง
+     ไปแล้วต้องกดที่ตัวเลขก่อน ไม่งั้นตารางจะเต็มไปด้วยช่องกรอกที่ไม่มีใครจะแก้ */
+  const [editCost, setEditCost] = useState(false);
+
   /* ราคาขายแก้ได้ตลอด ไม่ใช่แค่ตอนยังว่าง — ราคาของงานสั่งตัดตกลงกันเป็นบิล ๆ ไป
-     และพิมพ์ผิดต้องแก้ได้ทันที · ต่างจากต้นทุนที่ลงได้ครั้งเดียวและเป็นของแอดมิน */
+     และพิมพ์ผิดต้องแก้ได้ทันที · ต้นทุนก็แก้ได้เหมือนกัน ต่างกันแค่สิทธิ์ */
   const [editPrice, setEditPrice] = useState(false);
   const [priceValue, setPriceValue] = useState("");
   const [priceBusy, setPriceBusy] = useState(false);
@@ -363,12 +348,23 @@ function OrderRow({
   const waiting = row.awaitingCost;
   const rx = rxLine(row);
 
-  /* กดปุ่มแล้วยังไม่บันทึก — เปิดกล่องยืนยันก่อน · ต้นทุนลงได้ครั้งเดียว
-     (API ตอบ conflict ถ้าลงซ้ำ) การพิมพ์ผิดจึงแก้ทีหลังไม่ได้ */
+  /** เปิดช่องกรอกทับตัวเลขที่ลงไปแล้ว พร้อมค่าเดิมอยู่ในช่อง */
+  function startEditCost() {
+    setValue(row.unitCost === null ? "" : String(row.unitCost));
+    setProblem(null);
+    setEditCost(true);
+  }
+
+  /* กดปุ่มแล้วยังไม่บันทึก — เปิดกล่องยืนยันก่อน เพราะเป็นตัวเลขเงินที่ทุกรายงาน
+     คิดกำไรจากมัน · ค่าที่ไม่เปลี่ยนไม่ต้องถาม เหตุผลเดียวกับราคาขายข้างล่าง */
   function askSaveCost() {
     const n = Number(value.trim());
     if (!Number.isFinite(n) || n < 0) {
       setProblem("ต้นทุนต้องเป็นตัวเลขไม่ติดลบ");
+      return;
+    }
+    if (n === row.unitCost) {
+      setEditCost(false);
       return;
     }
     setProblem(null);
@@ -381,9 +377,16 @@ function OrderRow({
     try {
       await api.post(`/rx/${row.id}/cost`, { unit_cost: value.trim() });
       setAskCost(null);
+      setEditCost(false);
       toast.success({
-        text: `ลงต้นทุนใบสั่ง ${row.referenceDoc ?? row.sku} แล้ว`,
-        detail: `${row.name} · ${money(Number(value.trim()))}`,
+        text: `${row.unitCost === null ? "ลงต้นทุน" : "แก้ต้นทุน"}ใบสั่ง ${
+          row.referenceDoc ?? row.sku
+        } แล้ว`,
+        detail: `${row.name} · ${
+          row.unitCost === null
+            ? money(Number(value.trim()))
+            : `จาก ${money(row.unitCost)} เป็น ${money(Number(value.trim()))}`
+        }`,
       });
       onDone();
     } catch (e) {
@@ -424,7 +427,7 @@ function OrderRow({
     setPriceBusy(true);
     setPriceProblem(null);
     try {
-      const out = await api.post<{ changed: boolean }>(`/rx/${row.id}/price`, {
+      const out = await api.post<{ order: { changed: boolean } }>(`/rx/${row.id}/price`, {
         sale_price: priceValue.trim(),
       });
       setAskPrice(null);
@@ -432,7 +435,7 @@ function OrderRow({
       setPriceBusy(false);
       /* `changed: false` = ค่าที่ส่งไปเท่าเดิม เซิร์ฟเวอร์จึงไม่ได้ลงบรรทัดอะไร
          เลย · บอกไปตรง ๆ ดีกว่าขึ้น "บันทึกแล้ว" ให้กับการกดที่ไม่ได้ทำอะไร */
-      if (out.changed) {
+      if (out.order.changed) {
         toast.success({
           text: `แก้ราคาขายใบสั่ง ${row.referenceDoc ?? row.sku} แล้ว`,
           detail: priceValue.trim() === "" ? "ล้างราคาขายออก" : money(Number(priceValue.trim())),
@@ -446,6 +449,232 @@ function OrderRow({
       setPriceBusy(false);
     }
   }
+
+
+  return {
+    editing, setEditing,
+    value, setValue,
+    busy, problem,
+    editCost, setEditCost,
+    editPrice, setEditPrice,
+    priceValue, setPriceValue,
+    priceBusy, priceProblem,
+    askCost, setAskCost,
+    askPrice, setAskPrice,
+    waiting, rx,
+    startEditCost, askSaveCost, save,
+    startEditPrice, askSavePrice, savePrice,
+  };
+}
+
+/** ใบสั่งหนึ่งใบ บนมือถือ — ตรรกะชุดเดียวกับแถวในตาราง ผ่าน useOrderRow */
+function OrderCard({
+  row,
+  mayCost,
+  onDone,
+}: {
+  row: Order;
+  mayCost: boolean;
+  onDone: () => void;
+}) {
+  const c = useOrderRow(row, onDone);
+  const rx = rxLine(row);
+
+  const costEditor = c.editCost || c.waiting;
+
+  return (
+    <>
+      <RecordCard
+        tone={c.waiting ? "pending" : undefined}
+        head={
+          !mayCost ? (
+            c.waiting ? <span className="status status--pending">รอฝ่ายบัญชี</span> : null
+          ) : c.waiting ? (
+            <span className="status status--pending">รอต้นทุน</span>
+          ) : (
+            <span className="reccard__money">{money(row.unitCost as number)}</span>
+          )
+        }
+        title={row.name}
+        sub={[row.referenceDoc ?? "—", row.branch ?? "TimeOptic"].join(" · ")}
+        fields={[
+          rx ? { label: "ค่าสายตา", value: <span className="grid__rx">{rx}</span> } : null,
+          { label: "เปิดเมื่อ", value: `${date(row.createdAt)}${row.actorName ? ` · ${row.actorName}` : ""}` },
+          mayCost && !c.waiting
+            ? { label: "ต้นทุน", value: money(row.unitCost as number) }
+            : null,
+          {
+            label: "ราคาขาย",
+            value:
+              row.salePrice === null ? (
+                <span className="grid__muted">ยังไม่ตั้ง</span>
+              ) : (
+                money(row.salePrice)
+              ),
+          },
+          row.salePrice !== null && row.unitCost !== null
+            ? { label: "กำไร", value: money(row.salePrice - row.unitCost) }
+            : null,
+        ]}
+        actions={
+          <>
+            {mayCost && costEditor ? (
+              <div className="reccard__field">
+                <label className="reccard__fieldlabel" htmlFor={`rxc-m-${row.id}`}>
+                  ต้นทุน/ชิ้น
+                </label>
+                <input
+                  id={`rxc-m-${row.id}`}
+                  className="input"
+                  inputMode="decimal"
+                  value={c.value}
+                  onChange={(e) => c.setValue(e.target.value)}
+                  placeholder="฿"
+                  disabled={c.busy}
+                />
+                <button
+                  type="button"
+                  className="btn btn--primary btn--small"
+                  onClick={c.askSaveCost}
+                  disabled={c.busy || c.value.trim() === ""}
+                >
+                  {c.busy ? "กำลังบันทึก…" : "บันทึก"}
+                </button>
+                {/* ยกเลิกมีเฉพาะตอนกดเข้ามาแก้ของที่ลงไว้แล้ว — ใบที่ยังไม่เคยลง
+                    ต้นทุน ช่องนี้คือสถานะปกติของมัน ไม่มีอะไรให้ยกเลิกกลับไป */}
+                {c.editCost ? (
+                  <button
+                    type="button"
+                    className="btn btn--quiet btn--small"
+                    onClick={() => c.setEditCost(false)}
+                    disabled={c.busy}
+                  >
+                    ยกเลิก
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+
+            {mayCost && !costEditor ? (
+              <button type="button" className="btn btn--small" onClick={c.startEditCost}>
+                แก้ต้นทุน
+              </button>
+            ) : null}
+
+            {c.editPrice ? (
+              <div className="reccard__field">
+                <label className="reccard__fieldlabel" htmlFor={`rxp-m-${row.id}`}>
+                  ราคาขาย
+                </label>
+                <input
+                  id={`rxp-m-${row.id}`}
+                  className="input"
+                  inputMode="decimal"
+                  value={c.priceValue}
+                  onChange={(e) => c.setPriceValue(e.target.value)}
+                  placeholder="฿ (เว้นว่าง = ยังไม่ตั้ง)"
+                  disabled={c.priceBusy}
+                />
+                <button
+                  type="button"
+                  className="btn btn--primary btn--small"
+                  onClick={c.askSavePrice}
+                  disabled={c.priceBusy}
+                >
+                  {c.priceBusy ? "กำลังบันทึก…" : "บันทึก"}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn--quiet btn--small"
+                  onClick={() => c.setEditPrice(false)}
+                  disabled={c.priceBusy}
+                >
+                  ยกเลิก
+                </button>
+              </div>
+            ) : (
+              <button type="button" className="btn btn--small" onClick={c.startEditPrice}>
+                {row.salePrice === null ? "ตั้งราคาขาย" : "แก้ราคาขาย"}
+              </button>
+            )}
+
+            <button type="button" className="btn btn--quiet btn--small" onClick={() => c.setEditing(true)}>
+              แก้ไขใบสั่ง
+            </button>
+
+            {c.problem ? (
+              <div className="notice notice--error" role="alert">
+                {c.problem}
+              </div>
+            ) : null}
+            {c.priceProblem ? (
+              <div className="notice notice--error" role="alert">
+                {c.priceProblem}
+              </div>
+            ) : null}
+          </>
+        }
+      />
+
+      {c.askCost !== null ? (
+        <ConfirmMoney
+          eyebrow={row.unitCost === null ? "ยืนยันการลงต้นทุน" : "ยืนยันการแก้ต้นทุน"}
+          title={row.referenceDoc ?? row.sku}
+          from={row.unitCost}
+          to={c.askCost}
+          note={`${row.name} · ทุกครั้งที่แก้จะมีบรรทัดในสมุดบอกว่าใครแก้`}
+          busy={c.busy}
+          problem={c.problem}
+          onConfirm={() => void c.save()}
+          onClose={() => c.setAskCost(null)}
+        />
+      ) : null}
+
+      {c.askPrice !== null ? (
+        <ConfirmMoney
+          eyebrow="ยืนยันการเปลี่ยนราคาขาย"
+          title={row.referenceDoc ?? row.sku}
+          from={row.salePrice}
+          to={c.askPrice}
+          note={row.name}
+          busy={c.priceBusy}
+          problem={c.priceProblem}
+          onConfirm={() => void c.savePrice()}
+          onClose={() => c.setAskPrice(null)}
+        />
+      ) : null}
+
+      {c.editing ? (
+        <RxEditDialog row={row} onClose={() => c.setEditing(false)} onSaved={onDone} />
+      ) : null}
+    </>
+  );
+}
+
+function OrderRow({
+  row,
+  mayCost,
+  onDone,
+}: {
+  row: Order;
+  mayCost: boolean;
+  onDone: () => void;
+}) {
+  const r = useOrderRow(row, onDone);
+  const {
+    editing, setEditing,
+    value, setValue,
+    busy, problem,
+    editCost, setEditCost,
+    editPrice, setEditPrice,
+    priceValue, setPriceValue,
+    priceBusy, priceProblem,
+    askCost, setAskCost,
+    askPrice, setAskPrice,
+    waiting, rx,
+    startEditCost, askSaveCost, save,
+    startEditPrice, askSavePrice, savePrice,
+  } = r;
 
   return (
     <tr className={waiting ? "grid__row grid__row--pending" : "grid__row"}>
@@ -464,15 +693,16 @@ function OrderRow({
         {row.actorName ? ` · ${row.actorName}` : ""}
       </td>
       <td>
-        {!waiting ? (
-          /* ลงต้นทุนแล้ว — คนที่มีสิทธิ์เห็นตัวเลข คนที่ไม่มีเห็นขีด
-             ไม่ใช่ป้าย "รอฝ่ายบัญชี" ซึ่งเป็นคนละสถานะและอ่านว่างานยังไม่เดิน */
-          mayCost ? (
-            <span className="grid__name">{money(row.unitCost as number)}</span>
+        {!mayCost ? (
+          /* คนที่ไม่มีสิทธิ์เห็นต้นทุน — ใบที่ยังไม่ลงได้ป้ายบอกว่างานค้างอยู่ที่ใคร
+             ส่วนใบที่ลงแล้วได้ขีด ไม่ใช่ป้าย "รอฝ่ายบัญชี" ซึ่งเป็นคนละสถานะและ
+             อ่านว่างานยังไม่เดิน */
+          waiting ? (
+            <span className="status status--pending">รอฝ่ายบัญชี</span>
           ) : (
             <span className="grid__muted" title="ลงต้นทุนแล้ว">—</span>
           )
-        ) : mayCost ? (
+        ) : waiting || editCost ? (
           <div className="chips">
             <label className="sr-only" htmlFor={`rxc-${row.id}`}>
               ต้นทุนของ {row.referenceDoc ?? row.sku}
@@ -485,6 +715,11 @@ function OrderRow({
               onChange={(e) => setValue(e.target.value)}
               placeholder="฿"
               disabled={busy}
+              autoFocus={editCost}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") { e.preventDefault(); askSaveCost(); }
+                if (e.key === "Escape" && editCost) { e.preventDefault(); setEditCost(false); }
+              }}
             />
             <button
               type="button"
@@ -492,11 +727,27 @@ function OrderRow({
               onClick={askSaveCost}
               disabled={busy || value.trim() === ""}
             >
-              {busy ? "กำลังบันทึก…" : "ลงต้นทุน"}
+              {busy ? "กำลังบันทึก…" : editCost ? "บันทึก" : "ลงต้นทุน"}
             </button>
+            {/* ไม่มีปุ่มยกเลิกตอนที่ยังไม่เคยลง — ไม่มีอะไรให้กลับไปหา ช่องนั้น
+                คือสถานะปกติของใบที่ยังค้างอยู่ */}
+            {editCost ? (
+              <button
+                type="button"
+                className="btn btn--quiet btn--small"
+                onClick={() => setEditCost(false)}
+                disabled={busy}
+              >
+                ยกเลิก
+              </button>
+            ) : null}
           </div>
         ) : (
-          <span className="status status--pending">รอฝ่ายบัญชี</span>
+          /* ทั้งเซลล์เป็นปุ่ม เหมือนช่องราคาขาย — ต้นทุนที่พิมพ์ผิดต้องแก้ได้ และ
+             ทางที่ใช้แก้ควรเป็นทางเดียวกับที่ใช้อ่านมัน */
+          <button type="button" className="btn btn--quiet btn--small" onClick={startEditCost}>
+            <span className="grid__name">{money(row.unitCost as number)}</span>
+          </button>
         )}
         {problem && askCost === null ? (
           <div className="notice notice--error" role="alert">
@@ -506,13 +757,13 @@ function OrderRow({
 
         {askCost !== null ? (
           <ConfirmMoney
-            eyebrow="ยืนยันการลงต้นทุน"
+            eyebrow={row.unitCost === null ? "ยืนยันการลงต้นทุน" : "ยืนยันการแก้ต้นทุน"}
             title={row.referenceDoc ?? row.sku}
-            from={null}
+            from={row.unitCost}
             to={askCost}
-            /* ย้ำว่าลงแล้วแก้ไม่ได้ — API ตอบ conflict ถ้าลงซ้ำ (Rx::setCost)
-               คนกดจึงต้องรู้ก่อนกด ไม่ใช่รู้ตอนที่แก้ไม่ได้แล้ว */
-            note={`${row.name} · ลงต้นทุนแล้วแก้ไขเองไม่ได้`}
+            /* ยังถามก่อนทุกครั้ง ถึงจะแก้ทีหลังได้แล้วก็ตาม — กำไรของงานนี้ถูกคิด
+               จากตัวเลขนี้ทุกที่ และการแก้ลงสมุดเป็นบรรทัดที่มีชื่อคนแก้ติดอยู่ */
+            note={`${row.name} · ทุกครั้งที่แก้จะมีบรรทัดในสมุดบอกว่าใครแก้`}
             busy={busy}
             problem={problem}
             onConfirm={() => void save()}
@@ -1260,7 +1511,7 @@ export function NewOrderDialog({
  * count, no cost of goods on a shelf. What each *job* costs and sells for is on
  * its order; this is only the model's own list price, for quoting from.
  */
-function LensModels() {
+export function LensModels() {
   const actor = useActor();
   const mayEdit = can.editCatalog(actor);
   const toast = useToast();

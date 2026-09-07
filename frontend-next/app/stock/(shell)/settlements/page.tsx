@@ -6,6 +6,7 @@ import { can as may, useActor, WorkHead } from "@/stockmod/components/AppShell";
 import Paginator from "@/stockmod/components/Paginator";
 import SortHead, { SortBar, useSort } from "@/stockmod/components/SortHead";
 import Select from "@/stockmod/components/Select";
+import RecordCard, { CardList } from "@/stockmod/components/RecordCard";
 import { type BranchRow, type Page, type SettlementRow, type SettlementSummary } from "@/stockmod/lib/api";
 import { qs, useApi } from "@/stockmod/lib/useApi";
 import { count, date, money } from "@/stockmod/lib/format";
@@ -67,7 +68,7 @@ export default function SettlementsPage() {
   if (!allowed) {
     return (
       <main className="work-main">
-        <WorkHead title="ของที่สาขาเบิกไป" />
+        <WorkHead title="การเบิกจากสาขา" />
         <div className="empty">
           <p className="empty__title">หน้านี้เป็นของเจ้าของร้านและฝ่ายบัญชี</p>
           <p className="empty__body">
@@ -85,7 +86,7 @@ export default function SettlementsPage() {
   return (
     <main className="work-main">
       <WorkHead
-        title="ของที่สาขาเบิกไป"
+        title="การเบิกจากสาขา"
         lede="สาขาไหนเบิกอะไรไปเท่าไร และเป็นต้นทุนของเราเท่าไร — เรื่องเงินกับกำไร บัญชีคิดเองจาก Excel"
       >
         <form
@@ -116,7 +117,7 @@ export default function SettlementsPage() {
       </WorkHead>
 
       {list.status === "ready" ? (
-        <section className="readout" aria-label="สรุปของที่สาขาเบิกไป">
+        <section className="readout" aria-label="สรุปการเบิกจากสาขา">
           <div className="readout__cell readout__cell--mint">
             <p className="readout__label">ใบเบิก</p>
             <p className="readout__figure">{count(list.data.summary.pendingCount)}</p>
@@ -135,27 +136,34 @@ export default function SettlementsPage() {
         </section>
       ) : null}
 
-      <div className="chips chips--bar" role="group" aria-label="กรองตามสาขา">
-        <label className="sr-only" htmlFor="s-branch">
-          กรองตามสาขา
-        </label>
-        <Select
-          id="s-branch"
-          className="input--inline"
-          value={branch}
-          onChange={(v) => refine(() => setBranch(v))}
-          disabled={branches.status !== "ready"}
-          placeholder="ทุกสาขา"
-          options={[
-            { value: "", label: "ทุกสาขา" },
-            ...(branches.status === "ready"
-              ? branches.data.branches.map((b) => ({ value: String(b.id), label: b.name }))
-              : []),
-          ]}
-        />
-      </div>
+      {/* ตัวกรองสาขากับแถบเรียงลำดับอยู่แถวเดียวกัน หัวท้ายชนขอบซ้ายขวา —
+          เดิมเป็นสองแถวที่ต่างคนต่างเกาะซ้าย เหลือที่ว่างทางขวาคนละครึ่งบรรทัด
+          `.listtools` เป็นแถวเดียวกับที่หน้ารายการอื่นใช้อยู่แล้ว */}
+      <div className="listtools">
+        <div className="chips chips--bar" role="group" aria-label="กรองตามสาขา">
+          <label className="sr-only" htmlFor="s-branch">
+            กรองตามสาขา
+          </label>
+          <Select
+            id="s-branch"
+            className="input--inline"
+            value={branch}
+            onChange={(v) => refine(() => setBranch(v))}
+            disabled={branches.status !== "ready"}
+            placeholder="ทุกสาขา"
+            options={[
+              { value: "", label: "ทุกสาขา" },
+              ...(branches.status === "ready"
+                ? branches.data.branches.map((b) => ({ value: String(b.id), label: b.name }))
+                : []),
+            ]}
+          />
+        </div>
 
-      <SortBar id="settle" columns={SORTS} sort={sort} dir={dir} onSort={pick} />
+        <div className="listtools__end">
+          <SortBar id="settle" columns={SORTS} sort={sort} dir={dir} onSort={pick} />
+        </div>
+      </div>
 
       {list.status === "loading" ? <div className="skeleton" /> : null}
 
@@ -183,7 +191,35 @@ export default function SettlementsPage() {
 
       {list.status === "ready" && list.data.rows.length > 0 ? (
         <>
-          <div className="tablewrap">
+          {/* บนมือถือ ใบเบิกหนึ่งใบ = การ์ดหนึ่งใบ · หน้านี้อ่านอย่างเดียว ไม่มี
+              ปุ่มในแถว การ์ดจึงไม่ต้องกดได้ */}
+          <CardList label="รายการที่สาขาอื่นเบิกไป">
+            {list.data.rows.map((r) => (
+              <RecordCard
+                key={r.id}
+                head={
+                  <>
+                    <span className="reccard__money">{money(r.costTotal)}</span>
+                    {r.costUnknownQty > 0 ? (
+                      <span className="reccard__when grid__sub--warn">
+                        +{count(r.costUnknownQty)} ชิ้นไม่รู้ต้นทุน
+                      </span>
+                    ) : null}
+                  </>
+                }
+                title={r.productName ?? r.sku}
+                sub={`${r.sku} · ${count(r.quantity)} ชิ้น`}
+                fields={[
+                  { label: "สาขา", value: r.branchName ?? "—" },
+                  r.takenBy ? { label: "ผู้รับของ", value: r.takenBy } : null,
+                  { label: "เบิกเมื่อ", value: date(r.issuedAt) },
+                  r.issuedByName ? { label: "บันทึกโดย", value: r.issuedByName } : null,
+                ]}
+              />
+            ))}
+          </CardList>
+
+          <div className="tablewrap wide-only">
             <table className="grid">
               <caption className="sr-only">รายการที่สาขาอื่นเบิกไป</caption>
               <thead>

@@ -6,6 +6,7 @@ import { useToast } from "@/stockmod/components/Toaster";
 import Paginator from "@/stockmod/components/Paginator";
 import SortHead, { SortBar, useSort } from "@/stockmod/components/SortHead";
 import LotEditDialog from "@/stockmod/components/LotEditDialog";
+import RecordCard, { CardList } from "@/stockmod/components/RecordCard";
 import { qs, useApi } from "@/stockmod/lib/useApi";
 import { count, date, money } from "@/stockmod/lib/format";
 import type { LotRow, Page, Summary } from "@/stockmod/lib/api";
@@ -224,7 +225,60 @@ export default function LotsPage() {
 
       {rows.length > 0 ? (
         <>
-        <div className="tablewrap">
+        {/* บนมือถือ ล็อตหนึ่งใบ = การ์ดหนึ่งใบ · ผู้ขายขึ้นเป็นบรรทัดรองไม่ใช่
+            หัวการ์ด เพราะคนที่ไถหาล็อตหาด้วยชื่อสินค้า ไม่ใช่ชื่อผู้ขาย */}
+        <CardList label="ล็อตสต็อก">
+          {rows.map((r) => (
+            <RecordCard
+              key={r.id}
+              tone={money$ && r.costPerUnit === null ? "pending" : undefined}
+              head={
+                r.remainingQty === 0 ? (
+                  <span className="status status--out">หมด</span>
+                ) : (
+                  <>
+                    <span className="reccard__money">{count(r.remainingQty)}</span>
+                    <span className="reccard__when">รับเข้า {count(r.initialQty)}</span>
+                  </>
+                )
+              }
+              title={r.productName}
+              sub={`${r.sku} · ${r.supplierName ?? "ไม่ระบุผู้ขาย"}`}
+              fields={[
+                money$
+                  ? {
+                      label: "ต้นทุน/ชิ้น",
+                      value:
+                        r.costPerUnit === null ? (
+                          <span className="status status--pending">รอต้นทุน</span>
+                        ) : (
+                          money(r.costPerUnit)
+                        ),
+                    }
+                  : null,
+                money$ && r.value !== null ? { label: "มูลค่าคงเหลือ", value: money(r.value) } : null,
+                { label: "วันที่รับเข้า", value: date(r.receivedDate) },
+                r.expiryDate
+                  ? {
+                      label: "หมดอายุ",
+                      value: (
+                        <span className={r.expiringSoon ? "grid__sub--warn" : undefined}>
+                          {date(r.expiryDate)}
+                        </span>
+                      ),
+                    }
+                  : null,
+              ]}
+              actions={
+                <button type="button" className="btn btn--small" onClick={() => setEditing(r)}>
+                  {r.costPerUnit === null && money$ ? "ลงต้นทุน" : "แก้ไขล็อต"}
+                </button>
+              }
+            />
+          ))}
+        </CardList>
+
+        <div className="tablewrap wide-only">
           <table className="grid">
             <caption className="sr-only">ล็อตสต็อกเรียงจากล็อตล่าสุดไปเก่าสุด</caption>
             <thead>

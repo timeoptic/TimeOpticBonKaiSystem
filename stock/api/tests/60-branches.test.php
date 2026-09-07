@@ -724,6 +724,29 @@ test('พนักงานเปิดหน้าค้างรับจา�
     });
 });
 
+test('ตัวเลขสรุปเดินตามตัวกรองสาขา ไม่ใช่นับทุกสาขาเสมอ', function () {
+    withRollback(function () {
+        $p = stockedForCancel(9);
+        $branch = aBranch();
+        aPendingIssue($p['sku'], 2);
+
+        /* การ์ดข้างบนกับตารางข้างล่างอ่านคู่กันเสมอ — คนที่กรองเหลือสาขาเดียวแล้ว
+           เห็นการ์ดบอกยอดของทุกสาขา จะอ่านว่าสาขานั้นเบิกไปเท่านั้นจริง ๆ ซึ่งเป็น
+           ตัวเลขที่ผิดโดยไม่มีอะไรบอกว่าผิด */
+        $one = Settlement::summary(Roles::OWNER, ['branch_id' => $branch]);
+        eq(
+            $one['pendingCount'],
+            Settlement::list(['status' => 'pending', 'branch_id' => $branch], Roles::OWNER)['total'],
+            'ตัวเลขบนการ์ดต้องเท่ากับจำนวนแถวที่ตารางคืนมา',
+        );
+
+        ok(
+            Settlement::summary(Roles::OWNER)['pendingCount'] >= $one['pendingCount'],
+            'กรองสาขาเดียวแล้วต้องไม่มากกว่าทั้งร้าน',
+        );
+    });
+});
+
 test('รายชื่อสาขาให้พนักงานเห็นชื่อและจำนวนค้าง แต่ไม่เห็นยอดเงิน', function () {
     withRollback(function () {
         $sku = skuWithLots(1);
@@ -1738,17 +1761,26 @@ test('ยกเลิกซ้ำไม่ได้ — ของคืนไป
     });
 });
 
-test('ยกเลิกใบที่เบิกเกินของที่มี ล็อตค้างส่งก็ถูกหักกลบกลับ', function () {
+test('สาขาเบิกเกินของที่มี ปฏิเสธ ไม่เปิดใบและไม่ทำให้ยอดติดลบ', function () {
     withRollback(function () {
         $p = stockedForCancel(2);
-        $id = aPendingIssue($p['sku'], 5);
 
-        eq(lotRemaining('SHORT-' . $p['sku']), -3, 'เบิกเกินสามชิ้นต้องไปกองบนล็อตค้างส่ง');
+        /* ยอดติดลบเป็นเรื่องของการขายหน้าร้าน — ที่นั่นของออกจากร้านไปแล้วจริง
+           ระบบได้แค่จดตาม · ใบเบิกของสาขาเกิดก่อนของจะขยับ การปฏิเสธตอนนี้คือ
+           การบอกว่าบนชั้นไม่มีให้หยิบ ซึ่งคนกดยังแก้ทันโดยไม่ต้องไปแก้สมุด */
+        $e = throwsReason(
+            'insufficient',
+            fn() => aPendingIssue($p['sku'], 5),
+            'สาขาเบิกห้าชิ้นจากของที่มีสองชิ้น',
+        );
+        eq($e->extra['available'], 2, 'ต้องบอกด้วยว่ามีอยู่เท่าไร คนกดจะได้แก้จำนวนได้เลย');
 
-        Settlement::cancel($id, ['note' => 'สาขาคืนของทั้งหมด'], Roles::OWNER, 1);
-
-        eq(lotRemaining($p['lot']), 2, 'ล็อตจริงต้องกลับมาเต็ม');
-        eq(lotRemaining('SHORT-' . $p['sku']), 0, 'ล็อตค้างส่งต้องกลับเป็นศูนย์');
+        eq(lotRemaining($p['lot']), 2, 'ของบนชั้นต้องไม่ขยับ');
+        eq(
+            (int) Db::value('SELECT COUNT(*) FROM stock_lots WHERE lot_number = ?', ['SHORT-' . $p['sku']]),
+            0,
+            'ต้องไม่มีล็อตค้างส่งเกิดขึ้นเลย',
+        );
     });
 });
 

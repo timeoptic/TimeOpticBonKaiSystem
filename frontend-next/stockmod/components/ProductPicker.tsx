@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import Paginator from "./Paginator";
 import SortHead, { SortBar, useSort } from "./SortHead";
 import LensFilters from "./LensFilters";
 import { Filter, FilterBar } from "./FilterBar";
 import LensCells from "./LensCells";
 import ProductCell from "./ProductCell";
+import RecordCard, { CardList } from "./RecordCard";
 import LensDetail from "./LensDetail";
 import { can, useActor } from "./AppShell";
 import { qs, useApi } from "@/stockmod/lib/useApi";
@@ -119,6 +121,9 @@ export default function ProductPicker({
   perPage = 12,
   refresh = 0,
   pickLabel = "เลือก",
+  reserved = {},
+  requireStock = false,
+  sortSlotId,
 }: {
   /**
    * What the button on each row says.
@@ -145,6 +150,39 @@ export default function ProductPicker({
    * from before the cut.
    */
   refresh?: number;
+  /**
+   * จำนวนที่ถูกจองไว้ในตะกร้าแล้ว แยกตาม SKU
+   *
+   * คอลัมน์คงเหลือหักส่วนนี้ออกก่อนแสดง เพราะเลขที่คนอ่านตอนกำลังเลือกของชิ้น
+   * ถัดไปคือ "เหลือให้หยิบอีกเท่าไร" ไม่ใช่ "บนชั้นมีเท่าไรตอนเปิดหน้า" · ของ
+   * ที่อยู่ในตะกร้าถูกนับไปแล้วครั้งหนึ่ง นับซ้ำในคอลัมน์นี้คือชวนให้หยิบเกิน
+   *
+   * ยอดจริงบนชั้นไม่ได้หายไปไหน มันอยู่บรรทัดล่างว่าตะกร้ากินไปเท่าไร เพราะเลข
+   * ที่ลดลงโดยไม่บอกว่าลดเพราะอะไร อ่านเหมือนของหายจากคลัง
+   */
+  reserved?: Record<string, number>;
+  /**
+   * แถวที่ไม่เหลือของให้หยิบ ไม่ต้องมีปุ่มและกดไม่ได้
+   *
+   * ใช้กับหน้าจอที่การกดแถวแปลว่า "เอาของชิ้นนี้ออกจากคลัง" เท่านั้น · หน้าที่
+   * เลือกสินค้าเพื่อทำอย่างอื่น — รับล็อตใหม่เข้า แก้ข้อมูล เปิดใบสั่งพิเศษ —
+   * ต้องเลือกของที่หมดได้ ของที่หมดคือเหตุผลที่เปิดหน้านั้นตั้งแต่แรก จึงไม่
+   * เปิดค่านี้ให้ทั้งหมดโดยปริยาย
+   *
+   * ตัดที่ยอดหลังหัก `reserved` ไม่ใช่ยอดบนชั้น — ของที่ตะกร้าจองไปหมดแล้วก็คือ
+   * ไม่เหลือให้หยิบเหมือนกัน · คอลัมน์คงเหลือบอกไว้แล้วว่าทำไมกดไม่ได้ ปุ่มที่
+   * หายไปเงียบ ๆ ข้าง ๆ ป้าย "หมด" จึงไม่ต้องอธิบายตัวเองซ้ำ
+   */
+  requireStock?: boolean;
+  /**
+   * ย้ายแถบ "เรียงตาม" ไปไว้ในกล่องที่หน้านั้นเตรียมไว้ให้ แทนที่จะอยู่ท้ายแถบ
+   * เครื่องมือของรายการ
+   *
+   * หน้าเบิก/ตัดสต็อกมีปุ่มตะกร้าอยู่บนหัวเพจ และการเรียงลำดับเป็นของคู่กัน
+   * ในสายตาคนใช้ · ส่งเป็น id ของ element ไม่ใช่ ref เพราะกล่องปลายทางอยู่
+   * คนละต้นไม้ (หัวเพจเรนเดอร์โดย WorkHead) และรายการนี้ไม่ได้เป็นลูกของมัน
+   */
+  sortSlotId?: string;
 }) {
   const [q, setQ] = useState("");
   const [applied, setApplied] = useState("");
@@ -155,6 +193,13 @@ export default function ProductPicker({
   const [coating, setCoating] = useState("");
   const [page, setPage] = useState(1);
   const { sort, dir, sortBy } = useSort<SortKey>(defaultSort, NATURAL_ASC);
+
+  /* กล่องปลายทางของแถบเรียงลำดับ — หาเจอได้หลัง mount เท่านั้น จึงเก็บเป็น state
+     ให้เรนเดอร์รอบถัดไปพาแถบไปวาง · ไม่มี id ส่งมา หรือหาไม่เจอ ก็อยู่ที่เดิม */
+  const [sortSlot, setSortSlot] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    setSortSlot(sortSlotId ? document.getElementById(sortSlotId) : null);
+  }, [sortSlotId]);
 
   const money$ = can.seeCost(useActor());
 
@@ -286,15 +331,26 @@ export default function ProductPicker({
         </form>
 
         {/* Sort travels at the end of the bar; the narrowing moved to its own
-            row below, where every filter now sits together as dropdowns. */}
-        <div className="listtools__end">
-          <SortBar id="pick" columns={SORTS} sort={sort} dir={dir} onSort={pick} />
-        </div>
-      </div>
+            row below, where every filter now sits together as dropdowns.
+            A page may ask for it up in its own header instead — see sortSlotId. */}
+        {sortSlotId ? null : (
+          <div className="listtools__end">
+            <SortBar id="pick" columns={SORTS} sort={sort} dir={dir} onSort={pick} />
+          </div>
+        )}
 
-      {/* แถวเดียว เป็นดรอปดาวน์ทั้งหมด — ข้างตา ชนิดสินค้า แล้วต่อด้วยช่องเฉพาะ
-          เลนส์ตอนเลือก "เลนส์" · เดิมเป็นชิปสามแถวซ้อนกันเหนือรายการสินค้า
-          ซึ่งบนแท็บเล็ตกินความสูงจนเห็นสินค้าแค่สองแถวแรก */}
+      {sortSlot
+        ? createPortal(
+            <SortBar id="pick" columns={SORTS} sort={sort} dir={dir} onSort={pick} />,
+            sortSlot,
+          )
+        : null}
+
+      {/* ตัวกรองอยู่ในแถบเครื่องมือแถวเดียวกับช่องค้นหา ไม่ใช่แถวของตัวเองใต้มัน —
+          ทั้งสองอย่างตัดขอบเขตของรายการข้างล่างเหมือนกัน และแถวที่สองที่มีแค่
+          ดรอปดาวน์สองช่องคือความสูงที่จ่ายไปเพื่อบรรทัดว่างครึ่งบรรทัด
+          ดรอปดาวน์ทั้งหมด — ข้างตา ชนิดสินค้า แล้วต่อด้วยช่องเฉพาะเลนส์ตอนเลือก
+          "เลนส์" · เดิมเป็นชิปสามแถวซ้อนกันเหนือรายการสินค้า */}
       <FilterBar>
         <Filter
           id="pk-eye"
@@ -327,6 +383,7 @@ export default function ProductPicker({
           />
         ) : null}
       </FilterBar>
+      </div>
 
       {list.status === "loading" ? <div className="skeleton" /> : null}
 
@@ -366,7 +423,69 @@ export default function ProductPicker({
 
       {list.status === "ready" && list.data.rows.length > 0 ? (
         <>
-          <div className="tablewrap">
+          {/* บนมือถือ สินค้าหนึ่งตัว = การ์ดหนึ่งใบ · ปุ่มเลือกอยู่ล่างการ์ด และทั้ง
+              ใบกดได้ด้วย เพราะบนจอสัมผัสเป้าที่ใหญ่ที่สุดคือเป้าที่กดไม่พลาด */}
+          <CardList label={label}>
+            {list.data.rows.map((r) => {
+              const left = Math.max(0, r.onHand - (reserved[r.sku] ?? 0));
+              const takeable = !requireStock || (!r.isCustomMade && left > 0);
+              const spec = [r.lensIndex, r.lensDesign, r.coating].filter(Boolean).join(" · ");
+              const power = [
+                r.sph === null ? null : `SPH ${r.sph}`,
+                r.cyl === null ? null : `CYL ${r.cyl}`,
+                r.axis === null ? null : `AXIS ${r.axis}`,
+                r.add ? `ADD ${r.add}` : null,
+              ]
+                .filter(Boolean)
+                .join(" · ");
+
+              return (
+                <RecordCard
+                  key={r.id}
+                  onOpen={takeable ? () => onPick(r) : undefined}
+                  tone={takeable ? undefined : "muted"}
+                  head={
+                    r.isCustomMade ? (
+                      <span className="status status--rx">สั่งตัด</span>
+                    ) : r.onHand <= 0 ? (
+                      <span className="status status--out">หมด</span>
+                    ) : (
+                      <>
+                        <span className="reccard__money">{count(left)}</span>
+                        {reserved[r.sku] ? (
+                          <span className="reccard__when">ในตะกร้า {count(reserved[r.sku])}</span>
+                        ) : null}
+                      </>
+                    )
+                  }
+                  title={r.name}
+                  sub={[r.sku, r.brand].filter(Boolean).join(" · ")}
+                  fields={[
+                    { label: "ชนิด", value: PRODUCT_TYPE_LABEL[r.productType] ?? r.productType },
+                    spec ? { label: "สเปกเลนส์", value: spec } : null,
+                    power ? { label: "ค่าสายตา", value: <span className="grid__rx">{power}</span> } : null,
+                    { label: "ราคาขาย", value: money(r.basePrice) },
+                    money$ && r.nextCost !== null
+                      ? { label: "ต้นทุนถัดไป", value: money(r.nextCost) }
+                      : null,
+                  ]}
+                  actions={
+                    takeable ? (
+                      <button
+                        type="button"
+                        className="btn btn--primary btn--small"
+                        onClick={() => onPick(r)}
+                      >
+                        {pickLabel}
+                      </button>
+                    ) : undefined
+                  }
+                />
+              );
+            })}
+          </CardList>
+
+          <div className="tablewrap wide-only">
             <table className="grid">
               <caption className="sr-only">รายการสินค้าในคลัง — คลิกแถวเพื่อเลือก</caption>
               <thead>
@@ -392,20 +511,28 @@ export default function ProductPicker({
                 </tr>
               </thead>
               <tbody>
-                {list.data.rows.map((r) => (
+                {list.data.rows.map((r) => {
+                  const left = Math.max(0, r.onHand - (reserved[r.sku] ?? 0));
+                  const takeable = !requireStock || (!r.isCustomMade && left > 0);
+
+                  return (
                   <tr
                     key={r.id}
-                    className="grid__row grid__row--clickable"
-                    onClick={() => onPick(r)}
-                    tabIndex={0}
-                    role="button"
-                    aria-label={`${pickLabel} ${r.name}`}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        onPick(r);
-                      }
-                    }}
+                    className={takeable ? "grid__row grid__row--clickable" : "grid__row"}
+                    onClick={takeable ? () => onPick(r) : undefined}
+                    tabIndex={takeable ? 0 : undefined}
+                    role={takeable ? "button" : undefined}
+                    aria-label={takeable ? `${pickLabel} ${r.name}` : undefined}
+                    onKeyDown={
+                      takeable
+                        ? (e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              onPick(r);
+                            }
+                          }
+                        : undefined
+                    }
                   >
                     <ProductCell row={r} />
                     <td>{PRODUCT_TYPE_LABEL[r.productType] ?? r.productType}</td>
@@ -413,10 +540,17 @@ export default function ProductPicker({
                     <td className="grid__num">
                       {r.isCustomMade ? (
                         <span className="status status--rx">สั่งตัด</span>
-                      ) : r.onHand > 0 ? (
-                        count(r.onHand)
-                      ) : (
+                      ) : r.onHand <= 0 ? (
                         <span className="status status--out">หมด</span>
+                      ) : (
+                        <>
+                          {count(left)}
+                          {reserved[r.sku] ? (
+                            <span className="grid__reserved">
+                              ในตะกร้า {count(reserved[r.sku])}
+                            </span>
+                          ) : null}
+                        </>
                       )}
                     </td>
                     <td className="grid__num">{money(r.basePrice)}</td>
@@ -430,12 +564,15 @@ export default function ProductPicker({
                       </td>
                     ) : null}
                     <td>
-                      <span className="btn btn--small grid__pick" aria-hidden="true">
-                        {pickLabel}
-                      </span>
+                      {takeable ? (
+                        <span className="btn btn--small grid__pick" aria-hidden="true">
+                          {pickLabel}
+                        </span>
+                      ) : null}
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

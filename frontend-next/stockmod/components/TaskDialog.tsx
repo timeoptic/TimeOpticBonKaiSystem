@@ -3,6 +3,7 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { IconClose } from "./Icon";
 import backdropClose from "./backdrop";
+import useScrollLock from "@/stockmod/lib/scrollLock";
 
 /**
  * The form for the product just picked, over the list it was picked from.
@@ -40,6 +41,8 @@ export default function TaskDialog({
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => ref.current?.showModal(), []);
+  /* กล่องนี้ถูกวาดก็ต่อเมื่อมันเปิด — ล็อกได้ตลอดอายุของคอมโพเนนต์ */
+  useScrollLock(true);
 
   return (
     <dialog
@@ -57,7 +60,7 @@ export default function TaskDialog({
           </div>
           <button
             type="button"
-            className="btn btn--quiet btn--small btn--icon"
+            className="btn btn--quiet btn--icon drawer__close"
             onClick={() => ref.current?.close()}
           >
             <IconClose />

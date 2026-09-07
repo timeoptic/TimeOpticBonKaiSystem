@@ -181,13 +181,19 @@ Http::get('/api/movements', static function () use ($maySeeCost): array {
     ], $maySeeCost($actor)) + ['counts' => Inventory::movementCounts()];
 });
 
-/** The dashboard: the ledger added up over a chosen stretch of days. */
+/**
+ * The dashboard: the ledger added up over a chosen stretch of days.
+ *
+ * สาขากับชนิดสินค้าเป็นตัวกรองของทั้งหน้า ไม่ใช่ของไฟล์ Excel อย่างเดียวเหมือนเดิม
+ * — หน้าจอกับไฟล์ต้องตอบคำถามเดียวกัน ไม่งั้นคนเอาไฟล์ไปเทียบกับจอแล้วเลขไม่ตรง
+ */
 Http::get('/api/report', static function () use ($maySeeCost): array {
     $actor = Auth::require();
     return Reports::overview(
         Http::query('from') ?? date('Y-m-01'),
         Http::query('to') ?? date('Y-m-d'),
         $maySeeCost($actor),
+        ['branch' => Http::query('branch'), 'type' => Http::query('type')],
     );
 });
 
@@ -199,6 +205,7 @@ Http::get('/api/movers', static function () use ($maySeeCost): array {
         Http::query('to') ?? date('Y-m-d'),
         (int) (Http::query('idle') ?? Reports::IDLE_DAYS),
         $maySeeCost($actor),
+        ['branch' => Http::query('branch'), 'type' => Http::query('type')],
     );
 });
 
@@ -262,6 +269,12 @@ $move = static function (string $action): callable {
         $actor = Auth::require();
         $body = Http::body();
 
+        /* `source` ตัดสินว่าคำขอนี้ยอมให้ยอดคงเหลือติดลบไหม (ดู
+           `Stock::MAY_GO_SHORT`) จึงเชื่อค่าที่ผู้เรียกส่งมาไม่ได้ — ทับด้วย
+           ความจริงข้อเดียวที่รู้ได้จากตรงนี้ คือคำขอนี้มาจากเบราว์เซอร์ · โค้ด
+           หน้าร้านไม่ได้ผ่านทางนี้ มันเรียก StockGate ตรงในโปรเซสเดียวกัน */
+        $body['source'] = 'web';
+
         $result = match ($action) {
             'issue'  => StockGate::issue($body),
             'scrap'  => StockGate::scrap($body),
@@ -301,6 +314,8 @@ $moveMany = static function (string $action): callable {
     return static function () use ($action): array {
         $actor = Auth::require();
         $body = Http::body();
+        /* เหตุผลเดียวกับ `$move` ข้างบน — เบราว์เซอร์ตั้ง source เองไม่ได้ */
+        $body['source'] = 'web';
 
         $result = $action === 'issue'
             ? StockGate::issueMany($body)
@@ -373,8 +388,8 @@ Http::post('/api/rx/{id}/cost', static function (array $p): array {
 /**
  * แก้ราคาขายของใบสั่งตัดที่เปิดไปแล้ว
  *
- * แยกเส้นจาก /cost เพราะเป็นคนละสิทธิ์และคนละกติกา: ต้นทุนลงได้ครั้งเดียวและเป็น
- * ของแอดมิน ส่วนราคาขายตกลงกันเป็นบิล ๆ คนขายแก้เองได้ และแก้ซ้ำได้ไม่จำกัด
+ * แยกเส้นจาก /cost เพราะเป็นคนละสิทธิ์: ต้นทุนเป็นของแอดมิน ส่วนราคาขายตกลงกัน
+ * เป็นบิล ๆ คนขายแก้เองได้ · ทั้งคู่แก้ซ้ำได้ และทั้งคู่ลงสมุดทุกครั้งที่แก้
  */
 Http::post('/api/rx/{id}/price', static function (array $p): array {
     $actor = Auth::require();
@@ -388,8 +403,8 @@ Http::post('/api/rx/{id}/price', static function (array $p): array {
 /**
  * แก้รายละเอียดของใบสั่งตัดที่เปิดไปแล้ว — ค่าสายตา เลขใบ หมายเหตุ ราคาขาย
  *
- * ต้นทุนไม่อยู่ในนี้ มันมีเส้นของตัวเองที่ /cost ด้วยเหตุผลเดิม: ลงได้ครั้งเดียว
- * และเป็นสิทธิ์ของฝ่ายบัญชี
+ * ต้นทุนไม่อยู่ในนี้ มันมีเส้นของตัวเองที่ /cost ด้วยเหตุผลเดิม: เป็นสิทธิ์ของ
+ * ฝ่ายบัญชี และลงสมุดเป็นบรรทัด COST ของตัวเอง
  */
 Http::post('/api/rx/{id}/update', static function (array $p): array {
     $actor = Auth::require();
@@ -491,14 +506,20 @@ Http::post('/api/branches/{id}/delete', static function (array $p): array {
 
 Http::get('/api/settlements', static function (): array {
     $actor = Auth::require();
-    return Settlement::list([
+
+    /* ตัวกรองชุดเดียว ใช้ทั้งกับตารางและกับตัวเลขสรุปบนการ์ด — การ์ดที่นับของ
+       ก้อนอื่นกับตารางที่อยู่ใต้มัน คือการ์ดที่อ่านผิดโดยไม่มีอะไรเตือน */
+    $filter = [
         'status'    => Http::query('status'),
         'branch_id' => Http::query('branch') === null ? null : (int) Http::query('branch'),
         'q'         => Http::query('q'),
         'sort'      => Http::query('sort'),
         'dir'       => Http::query('dir'),
         'page'      => Http::query('page'),
-    ], $actor['role']) + ['summary' => Settlement::summary($actor['role'])];
+    ];
+
+    return Settlement::list($filter, $actor['role'])
+        + ['summary' => Settlement::summary($actor['role'], $filter)];
 });
 
 Http::post('/api/settlements/{id}/settle', static function (array $p): array {

@@ -118,9 +118,10 @@ test('ตั้งบทบาทได้ไม่เกินบทบาท�
 
 test('หน้าแรกหลังล็อกอินตรงกับฝั่งที่ทำงาน', function () {
     eq(Roles::home(Roles::SALES), '/', 'พนักงานขายเข้าหน้าร้าน');
-    eq(Roles::home(Roles::STOCK), '/stock/', 'พนักงานคลังเข้าฝั่งคลัง');
-    foreach ([Roles::SUPERUSER, Roles::OWNER, Roles::ADMIN] as $r) {
-        eq(Roles::home($r), '/hub/', "{$r} เลือกฝั่งเอง");
+    /* ที่เหลือลงแดชบอร์ดฝั่งคลังหมด — หน้าเลือกระบบเป็นหน้าที่ทุกคนกดผ่านไปเฉย ๆ
+       และหน้าเบิกตอบว่า "จะทำอะไรต่อ" ทั้งที่คำถามแรกของวันคือ "เมื่อคืนเกิดอะไร" */
+    foreach ([Roles::STOCK, Roles::SUPERUSER, Roles::OWNER, Roles::ADMIN] as $r) {
+        eq(Roles::home($r), '/stock/dashboard/', "{$r} เข้าแดชบอร์ด");
     }
 });
 

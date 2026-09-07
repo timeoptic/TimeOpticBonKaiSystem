@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Optic\Db;
 use Optic\Repo\Inventory;
 use Optic\Roles;
+use Optic\Service\Catalog;
 use Optic\Service\Receiving;
 use Optic\Service\Stock;
 
@@ -19,17 +20,50 @@ use Optic\Service\Stock;
  * และของบางตัวมีล็อตจริงเหลืออยู่พร้อมกับยอดค้าง แล้วรวมกันแล้วไม่ติดลบ
  */
 
+/**
+ * สินค้าของเทสต์กลุ่มนี้เอง พร้อมล็อตหนึ่งใบ
+ *
+ * ไม่หยิบสินค้าที่มีอยู่จริงในฐานเหมือนเทสต์กลุ่มอื่น เพราะเงื่อนไขของหน้านี้
+ * อ่าน `min_stock` ด้วย และค่านั้นของสินค้าจริงเป็นเท่าไรก็ได้ · เทสต์ที่ผล
+ * เปลี่ยนตามตัวเลขที่ร้านกรอกไว้เมื่อวาน ไม่ได้ทดสอบอะไร
+ *
+ * `min_stock` ปริยายเป็น 0 = ไม่ตั้งขั้นต่ำ ครึ่งที่ว่าด้วยยอดติดลบจึงวัดได้
+ * โดยไม่มีอีกครึ่งมาปน
+ *
+ * @return array{sku:string,id:int}
+ */
+function aStockedProduct(int $qty, int $minStock = 0): array
+{
+    $sku = 'BO-' . strtoupper(bin2hex(random_bytes(3)));
+    Catalog::createProduct([
+        'sku'                => $sku,
+        'name'               => 'สินค้าทดสอบสินค้ารอสั่ง',
+        'product_type'       => 'Frame',
+        'category_id'        => (int) Db::value("SELECT id FROM categories WHERE code = 'Frame'"),
+        'base_selling_price' => '1200.00',
+        'min_stock'          => $minStock,
+        'is_custom_made'     => false,
+    ], Roles::OWNER);
+
+    if ($qty > 0) {
+        Receiving::receive([
+            'sku'           => $sku,
+            'quantity'      => $qty,
+            'cost_per_unit' => '400.00',
+            'received_date' => date('Y-m-d'),
+        ], Roles::OWNER, 1);
+    }
+
+    return ['sku' => $sku, 'id' => (int) Db::value('SELECT id FROM products WHERE sku = ?', [$sku])];
+}
+
 /** ตัดของเกินที่มี แล้วคืน sku กับ product_id ของตัวที่ค้าง */
 function backorderedSku(int $over): array
 {
-    $sku = skuWithLots(1);
-    $onHand = Stock::availability($sku)['on_hand'];
-    Stock::issue(issueReq($sku, $onHand + $over, idem('backorder')));
+    $p = aStockedProduct(5);
+    Stock::issue(saleReq($p['sku'], 5 + $over, idem('backorder')));
 
-    return [
-        'sku' => $sku,
-        'id'  => (int) Db::value('SELECT id FROM products WHERE sku = ?', [$sku]),
-    ];
+    return $p;
 }
 
 group('สินค้ารอสั่ง');
@@ -45,15 +79,36 @@ test('ขายเกินของที่มี แล้วสินค้�
 
 test('ของที่ยังมีบนชั้น ไม่ใช่ของที่ต้องสั่ง', function () {
     withRollback(function () {
-        $sku = skuWithLots(1);
-        $id = (int) Db::value('SELECT id FROM products WHERE sku = ?', [$sku]);
+        $p = aStockedProduct(4);
 
-        ok(Stock::availability($sku)['on_hand'] > 0, 'ตั้งต้นต้องมีของ');
-        eq(inState($id, 'backorder'), false, 'มีของอยู่ ต้องไม่เข้ารายการ');
+        eq(Stock::availability($p['sku'])['on_hand'], 4, 'ตั้งต้นต้องมีของ');
+        eq(inState($p['id'], 'backorder'), false, 'มีของอยู่ ต้องไม่เข้ารายการ');
 
-        /* ตัดจนหมดพอดี — ศูนย์ไม่ใช่ติดลบ ไม่มีลูกค้ารอของชิ้นที่ยังไม่ได้ขาย */
-        Stock::issue(issueReq($sku, Stock::availability($sku)['on_hand'], idem('exact')));
-        eq(inState($id, 'backorder'), false, 'หมดพอดีก็ยังไม่ใช่ของที่ต้องสั่ง');
+        /* ตัดจนหมดพอดี — ศูนย์ไม่ใช่ติดลบ ไม่มีลูกค้ารอของชิ้นที่ยังไม่ได้ขาย
+           และตัวนี้ไม่ได้ตั้งขั้นต่ำไว้ ศูนย์จึงไม่ใช่ "ต่ำกว่าขั้นต่ำ" ด้วย */
+        Stock::issue(issueReq($p['sku'], 4, idem('exact')));
+        eq(inState($p['id'], 'backorder'), false, 'หมดพอดีก็ยังไม่ใช่ของที่ต้องสั่ง');
+    });
+});
+
+test('เหลือน้อยกว่าขั้นต่ำ ก็เป็นของที่ต้องสั่ง ทั้งที่ยังไม่ติดลบ', function () {
+    withRollback(function () {
+        /* ของยังมีอยู่สามชิ้น ไม่มีใครรอ แต่ร้านตั้งไว้ว่าห้ามเหลือต่ำกว่าห้า —
+           คำถามที่หน้านี้ตอบคือ "ต้องสั่งอะไรบ้าง" ซึ่งตัวนี้ตอบว่าใช่ */
+        $p = aStockedProduct(3, 5);
+
+        ok(Stock::availability($p['sku'])['on_hand'] > 0, 'ยังมีของอยู่ ไม่ได้ติดลบ');
+        eq(inState($p['id'], 'backorder'), true, 'ต่ำกว่าขั้นต่ำต้องอยู่ในรายการด้วย');
+    });
+});
+
+test('ของเต็มตามขั้นต่ำ ไม่ใช่ของที่ต้องสั่ง', function () {
+    withRollback(function () {
+        /* เท่ากับขั้นต่ำพอดียังไม่ต่ำกว่า — เส้นแบ่งอยู่ตรงนี้ ไม่ใช่ตรงที่เริ่ม
+           ใกล้เคียง ไม่งั้นรายการจะเต็มไปด้วยของที่ยังไม่ต้องทำอะไรกับมัน */
+        $p = aStockedProduct(5, 5);
+
+        eq(inState($p['id'], 'backorder'), false, 'เท่ากับขั้นต่ำพอดี ยังไม่ต้องสั่ง');
     });
 });
 

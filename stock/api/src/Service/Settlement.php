@@ -46,18 +46,23 @@ final class Settlement
      * @param array{status?:?string,branch_id?:?int,q?:?string,page?:mixed} $filter
      * @return array{rows:list<array<string,mixed>>,total:int,page:int,perPage:int}
      */
-    public static function list(array $filter, string $role): array
+    /**
+     * ตัวกรองที่ตัดขอบเขตของทั้งหน้าจอ — สาขา และคำค้น
+     *
+     * แยกออกมาเพราะทั้งตารางและตัวเลขสรุปข้างบนต้องมองข้อมูลก้อนเดียวกัน · ก่อน
+     * หน้านี้ตัวเลขสรุปนับทุกใบเสมอ กรองสาขาแล้วตารางเหลือสาขาเดียวแต่การ์ดยัง
+     * บอกยอดรวมของทุกสาขา ซึ่งอ่านแล้วเข้าใจว่าสาขานั้นเบิกไปเท่านั้นจริง ๆ
+     *
+     * `status` ไม่อยู่ในนี้ตั้งใจ — ตัวเลขสรุปแบ่งของมันเองด้วยสถานะ (ค้างรับ กับ
+     * รับเงินแล้วเดือนนี้) ถ้าเอาสถานะจากตารางมาทับ ครึ่งหลังจะเป็นศูนย์ตลอด
+     *
+     * @param array{branch_id?:?int,q?:?string} $filter
+     * @return array{0:list<string>,1:list<mixed>}
+     */
+    private static function scope(array $filter): array
     {
-        Roles::require(Roles::seeBranchMoney($role), 'ดูรายการค้างรับจากสาขา');
-
         $where = ['1=1'];
         $args = [];
-
-        $status = $filter['status'] ?? null;
-        if (is_string($status) && isset(self::STATUS_LABEL[$status])) {
-            $where[] = 'i.status = ?';
-            $args[] = $status;
-        }
 
         if (!empty($filter['branch_id'])) {
             $where[] = 'i.branch_id = ?';
@@ -68,6 +73,21 @@ final class Settlement
             $where[] = '(i.sku LIKE ? OR i.taken_by LIKE ? OR b.name LIKE ? OR p.name LIKE ?)';
             $like = '%' . $filter['q'] . '%';
             array_push($args, $like, $like, $like, $like);
+        }
+
+        return [$where, $args];
+    }
+
+    public static function list(array $filter, string $role): array
+    {
+        Roles::require(Roles::seeBranchMoney($role), 'ดูรายการค้างรับจากสาขา');
+
+        [$where, $args] = self::scope($filter);
+
+        $status = $filter['status'] ?? null;
+        if (is_string($status) && isset(self::STATUS_LABEL[$status])) {
+            $where[] = 'i.status = ?';
+            $args[] = $status;
         }
 
         $clause = implode(' AND ', $where);
@@ -115,25 +135,44 @@ final class Settlement
      * `monthProfit` counts settled rows only and dates each by the day its money
      * arrived, the same rule the individual rows follow.
      *
+     * รับตัวกรองชุดเดียวกับตารางข้างล่าง (ยกเว้นสถานะ ดู `scope`) เพื่อให้ตัวเลข
+     * บนการ์ดพูดถึงของก้อนเดียวกับที่ตาเห็นอยู่ · ไม่ส่งอะไรมา = ทั้งร้าน ซึ่งเป็น
+     * พฤติกรรมเดิมและเป็นสิ่งที่ผู้เรียกอื่นต้องการ
+     *
+     * @param array{branch_id?:?int,q?:?string} $filter
      * @return array<string,mixed>
      */
-    public static function summary(string $role): array
+    public static function summary(string $role, array $filter = []): array
     {
         Roles::require(Roles::seeBranchMoney($role), 'ดูยอดค้างรับจากสาขา');
 
+        [$where, $args] = self::scope($filter);
+        $clause = implode(' AND ', $where);
+
+        /* join ทั้งสองใบติดมาด้วยเสมอ ไม่ได้ต่อเมื่อมีคำค้น — คำค้นมองชื่อสาขากับ
+           ชื่อสินค้า และ SQL ที่ประกอบต่างกันตามว่ามีคำค้นไหม คือ SQL สองชุดที่
+           ต้องถูกทั้งคู่ · ต้นทุนของ join ที่ไม่ได้ใช้ตรงนี้คือศูนย์ */
+        $from = "FROM branch_issues i
+                 JOIN branches b ON b.id = i.branch_id
+                 LEFT JOIN products p ON p.id = i.product_id";
+
         $pending = Db::one(
-            'SELECT COUNT(*) AS n, COALESCE(SUM(cost_total), 0) AS cost,
-                    COALESCE(SUM(cost_unknown_qty), 0) AS unknown
-             FROM branch_issues WHERE status = \'pending\''
+            "SELECT COUNT(*) AS n, COALESCE(SUM(i.cost_total), 0) AS cost,
+                    COALESCE(SUM(i.cost_unknown_qty), 0) AS unknown
+             {$from}
+             WHERE i.status = 'pending' AND {$clause}",
+            $args,
         ) ?? ['n' => 0, 'cost' => 0, 'unknown' => 0];
 
         $settled = Db::one(
-            'SELECT COUNT(*) AS n,
-                    COALESCE(SUM(settled_amount), 0) AS amount,
-                    COALESCE(SUM(settled_amount - cost_total), 0) AS profit
-             FROM branch_issues
-             WHERE status = \'settled\'
-               AND settled_at >= DATE_FORMAT(NOW(), \'%Y-%m-01\')'
+            "SELECT COUNT(*) AS n,
+                    COALESCE(SUM(i.settled_amount), 0) AS amount,
+                    COALESCE(SUM(i.settled_amount - i.cost_total), 0) AS profit
+             {$from}
+             WHERE i.status = 'settled'
+               AND i.settled_at >= DATE_FORMAT(NOW(), '%Y-%m-01')
+               AND {$clause}",
+            $args,
         ) ?? ['n' => 0, 'amount' => 0, 'profit' => 0];
 
         return [

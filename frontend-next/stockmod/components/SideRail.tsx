@@ -7,6 +7,7 @@ import type { Actor } from "@/stockmod/lib/api";
 import { stockHref, trimSlash } from "@/stockmod/lib/paths";
 import { worksBothSides } from "@/lib/roles.js";
 import { can } from "./AppShell";
+import useScrollLock from "@/stockmod/lib/scrollLock";
 
 /**
  * N3 side-rail — the app's one navigation surface.
@@ -122,7 +123,7 @@ const DAILY: Item[] = [
   { href: "/rx", label: "ใบสั่งตัด RX", hint: "สั่งเลนส์เฉพาะราย และลงต้นทุน", icon: ICON.lens },
   /* ของที่ขายไปแล้วแต่ยังไม่มีในคลัง — งานประจำวัน ไม่ใช่รายงาน: รายการนี้คือของ
      ที่ต้องสั่งวันนี้ และหายไปเองเมื่อรับของเข้า */
-  { href: "/backorders", label: "สินค้ารอสั่ง", hint: "ขายไปแล้วของยังไม่เข้า ยอดติดลบ", icon: ICON.cart },
+  { href: "/backorders", label: "สินค้ารอสั่ง", hint: "ยอดติดลบ กับของที่เหลือต่ำกว่าขั้นต่ำ", icon: ICON.cart },
 ];
 
 const STOCK: Item[] = [
@@ -131,8 +132,8 @@ const STOCK: Item[] = [
 ];
 
 const MONEY: Item[] = [
-  { href: "/settlements", label: "ของที่สาขาเบิกไป", hint: "เบิกอะไรไป เป็นทุนเท่าไร", icon: ICON.money },
-  { href: "/branches", label: "สาขา", hint: "รายชื่อสาขาที่มาเบิกของได้", icon: ICON.shops },
+  { href: "/settlements", label: "การเบิกจากสาขา", hint: "เบิกอะไรไป เป็นทุนเท่าไร", icon: ICON.money },
+  { href: "/branches", label: "จัดการสาขา", hint: "รายชื่อสาขาที่มาเบิกของได้", icon: ICON.shops },
 ];
 
 /**
@@ -231,11 +232,135 @@ function Clock() {
   );
 }
 
+/**
+ * สี่ปุ่มที่อยู่บนแถบล่างจอมือถือ
+ *
+ * เลือกจากงานที่เปิดวันละหลายครั้ง ไม่ใช่จากลำดับในเมนู · ที่เหลือทั้งหมดอยู่หลัง
+ * ปุ่ม "เมนู" ซึ่งเปิดรายการเต็มขึ้นมา — แถบล่างที่ยัดครบทุกหน้าคือแถบที่ทุกปุ่ม
+ * เล็กเท่ากันหมดและไม่มีปุ่มไหนหาเจอ
+ */
+/* ป้ายสั้นเฉพาะบนแถบล่าง — ช่องกว้างราว 78px บนจอ 390px คำว่า "เบิก / ตัดสต็อก"
+   ที่ 11px ไม่มีทางลงหนึ่งบรรทัด · ป้ายเต็มยังใช้ในเมนูและในแถบข้างเหมือนเดิม
+   ตรงนั้นมีที่พอ และเป็นที่ที่คนอ่านเพื่อ "เลือกว่าจะไปไหน" ไม่ใช่เพื่อ "รู้ว่า
+   ตอนนี้อยู่ไหน" ซึ่งเป็นงานของแถบล่าง */
+const TABS: { item: Item; short: string }[] = [
+  /* แดชบอร์ดแทนสินค้ารอสั่ง — เป็นหน้าแรกหลังล็อกอินแล้ว ปุ่มกลับมาที่นี่จึงต้อง
+     หาเจอเร็วที่สุด จึงอยู่ซ้ายสุดของแถบ · สินค้ารอสั่งยังอยู่ในเมนู และมันเป็น
+     รายการที่เปิดดูเป็นรอบ ๆ ตอนจะสั่งของ ไม่ใช่ของที่กดสลับไปมาทั้งวัน */
+  { item: STOCK[0], short: "แดชบอร์ด" },
+  { item: DAILY[0], short: "เบิกของ" },
+  { item: DAILY[1], short: "สินค้า" },
+  { item: DAILY[2], short: "ใบสั่ง RX" },
+];
+
+/**
+ * เมนูล่างจอสำหรับมือถือ
+ *
+ * แถบเลื่อนแนวนอนที่เคยใช้แทนแถบข้างมีปัญหาเดียวกับตารางที่เลื่อนข้าง: ปุ่มที่
+ * ต้องการอยู่นอกจอเสมอ และไม่มีอะไรบอกว่ามันอยู่ทางไหน · แถบล่างจอตายตัวสี่ปุ่ม
+ * อยู่ที่เดิมทุกครั้ง อยู่ในระยะนิ้วโป้ง และบอกได้ด้วยว่าตอนนี้ยืนอยู่หน้าไหน
+ */
+function PhoneTabs({ actor, pathname }: { actor: Actor; pathname: string }) {
+  const [open, setOpen] = useState(false);
+
+  /**
+   * เมนูเปิดอยู่ หน้าข้างหลังห้ามเลื่อน
+   *
+   * แผ่นเมนูลอยอยู่เหนือหน้า แต่การไถบนแผ่นยังส่งต่อไปถึงหน้าข้างหลัง — ไถเมนู
+   * แล้วหน้าข้างหลังเลื่อน พอปิดเมนูจึงไปโผล่คนละที่กับตอนกด และของที่กำลังอ่าน
+   * อยู่ก่อนกดเมนูก็หายไป
+   *
+   * ล็อกที่ body ไม่ใช่ที่แผ่น เพราะตัวที่เลื่อนคือหน้าข้างหลัง ไม่ใช่แผ่น ·
+   * คืนค่าเดิมตอนปิด ไม่ได้เซ็ตเป็นค่าว่างทับ เผื่อมีใครตั้ง overflow ไว้ก่อนแล้ว
+   */
+  useScrollLock(open);
+
+  return (
+    <>
+      <nav className="railtabs phone-only" aria-label="เมนูหลัก">
+        {TABS.slice(0, 2).map(({ item, short }) => (
+          <Link
+            key={item.href}
+            href={stockHref(item.href)}
+            className="railtab"
+            aria-current={isCurrent(pathname, item.href) ? "page" : undefined}
+            title={item.label}
+          >
+            {item.icon}
+            <span>{short}</span>
+          </Link>
+        ))}
+        {/* เมนูอยู่ตรงกลาง ไม่ใช่ท้ายแถบ — เป็นปุ่มที่พาไปได้ทุกที่ จึงเป็นปุ่มที่
+            ถูกกดบ่อยที่สุดเมื่อจะไปหน้าที่ไม่ได้อยู่ในสี่ปุ่มนี้ และกลางแถบคือที่ที่
+            นิ้วโป้งไปถึงง่ายที่สุดบนจอที่ถือมือเดียว */}
+        <button type="button" className="railtab" onClick={() => setOpen(true)}>
+          {ICON.layers}
+          <span>เมนู</span>
+        </button>
+
+        {TABS.slice(2).map(({ item, short }) => (
+          <Link
+            key={item.href}
+            href={stockHref(item.href)}
+            className="railtab"
+            aria-current={isCurrent(pathname, item.href) ? "page" : undefined}
+            title={item.label}
+          >
+            {item.icon}
+            <span>{short}</span>
+          </Link>
+        ))}
+      </nav>
+
+      {open ? (
+        /* รายการเต็มเปิดเป็นแผ่นเลื่อนขึ้นจากล่าง ไม่ใช่ลิ้นชักจากข้าง — นิ้วที่
+           เพิ่งกดปุ่ม "เมนู" อยู่ล่างจอ ของที่โผล่ขึ้นมาจึงควรโผล่ตรงนั้น */
+        <div className="railsheet" role="dialog" aria-label="เมนูทั้งหมด">
+          <button
+            type="button"
+            className="railsheet__scrim"
+            aria-label="ปิดเมนู"
+            onClick={() => setOpen(false)}
+          />
+          <div className="railsheet__panel" onClick={() => setOpen(false)}>
+            <Group title="งานประจำวัน" items={DAILY} pathname={pathname} />
+            <Group title="คลัง" items={STOCK} pathname={pathname} />
+            {can.seeBranchMoney(actor) ? (
+              <Group title="เงินและสาขา" items={MONEY} pathname={pathname} />
+            ) : null}
+            {worksBothSides(actor) ? (
+              <div className="rail-group">
+                <p className="rail-group__title">ระบบอื่น</p>
+                <ul className="rail-list">
+                  <li>
+                    <a href={FRONTDESK} className="rail-item">
+                      {ICON.shops}
+                      <span>หน้าร้าน</span>
+                    </a>
+                  </li>
+                  <li>
+                    <a href="/hub/" className="rail-item">
+                      {ICON.boxes}
+                      <span>เลือกระบบ</span>
+                    </a>
+                  </li>
+                </ul>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
 export default function SideRail({ actor }: { actor: Actor }) {
   const pathname = usePathname();
 
   return (
-    <nav className="rail-nav" aria-label="ส่วนหลักของระบบ">
+    <>
+    <PhoneTabs actor={actor} pathname={pathname} />
+    <nav className="rail-nav wide-only" aria-label="ส่วนหลักของระบบ">
       <Link href="/stock" className="rail-brand">
         <span className="rail-brand__mark" aria-hidden="true">{ICON.boxes}</span>
         {/* ชื่อแบรนด์อยู่บรรทัดบน ชื่อฝั่งอยู่บรรทัดล่าง — เรียงเหมือนหน้าร้าน
@@ -289,5 +414,6 @@ export default function SideRail({ actor }: { actor: Actor }) {
         <Clock />
       </div>
     </nav>
+    </>
   );
 }

@@ -118,7 +118,7 @@ test('คำขอที่ถูกปฏิเสธไม่จองกุ�
         $k = idem('retry');
 
         /* จำนวนติดลบถูกปฏิเสธก่อนแตะฐานข้อมูล — ใช้เป็นตัวอย่างของ "คำขอที่ถูก
-           ปฏิเสธ" แทน "ของไม่พอ" ซึ่งไม่ใช่การปฏิเสธอีกต่อไปแล้ว */
+           ปฏิเสธ" แทน "ของไม่พอ" ซึ่งปฏิเสธที่หลังจากล็อกล็อตไปแล้ว */
         throwsReason('bad_quantity', fn() => Stock::issue(issueReq($sku, -1, $k)), 'จำนวนติดลบ');
 
         // กุญแจเดิมต้องยังใช้ได้ คำขอที่ตายก่อนถึงฐานข้อมูลไม่ควรกินกุญแจไปด้วย
@@ -145,10 +145,14 @@ function twoSkus(): array
     return [(string) $rows[0]['sku'], (string) $rows[1]['sku']];
 }
 
-/** @param list<array{sku:string,quantity:int}> $items */
+/**
+ * @param list<array{sku:string,quantity:int}> $items
+ * @param array<string,mixed> $extra ทับค่าเริ่มต้นได้ รวมถึง `source` ซึ่งเป็นตัว
+ *        ตัดสินว่าตะกร้าใบนี้ยอมให้ยอดติดลบไหม
+ */
 function basketReq(array $items, string $k, array $extra = []): array
 {
-    return ['source' => 'test', 'idem_key' => $k, 'items' => $items, 'actor_id' => 1] + $extra;
+    return $extra + ['source' => 'test', 'idem_key' => $k, 'items' => $items, 'actor_id' => 1];
 }
 
 test('ตัดสองสินค้าพร้อมกันในคำขอเดียว — คู่เลนส์ซ้ายขวาไม่ต้องยิงสองรอบ', function () {
@@ -176,11 +180,13 @@ test('ตะกร้าที่มีบรรทัดของไม่พ�
         $beforeB = Stock::availability($b)['on_hand'];
 
         /* คู่เลนส์ต้องออกไปพร้อมกันหรือไม่ออกเลย — เดิมบรรทัดที่ของไม่พอทำให้ทั้ง
-           ใบถูกปฏิเสธ ตอนนี้ไม่มีบรรทัดไหนที่ "ทำไม่ได้" อีกแล้ว ทั้งใบจึงผ่าน
-           และข้างที่ของไม่พอกลายเป็นยอดค้างส่งแทนที่จะทำให้อีกข้างตกไปด้วย */
+           ใบถูกปฏิเสธ · ตะกร้าที่มาจากการขายหน้าร้านไม่มีบรรทัดไหนที่ "ทำไม่ได้"
+           ทั้งใบจึงผ่าน และข้างที่ของไม่พอกลายเป็นยอดค้างส่งแทนที่จะพาอีกข้างตกไป
+           ด้วย · ตะกร้าจากหน้าคลังไม่ใช่แบบนั้น ดูเทสต์ "เบิกเกินของที่มี" */
         Stock::issueMany(basketReq(
             [['sku' => $a, 'quantity' => 1], ['sku' => $b, 'quantity' => $beforeB + 2]],
             idem('short'),
+            ['source' => 'frontdesk'],
         ));
 
         eq(Stock::availability($a)['on_hand'], $beforeA - 1, 'ตัวแรกถูกตัดหนึ่งชิ้น');
@@ -273,7 +279,7 @@ test('ของไม่พอก็ตัดได้ ส่วนที่เ�
         $sku = skuWithLots(1);
         $onHand = Stock::availability($sku)['on_hand'];
 
-        $res = Stock::issue(issueReq($sku, $onHand + 2, idem('short')));
+        $res = Stock::issue(saleReq($sku, $onHand + 2, idem('short')));
 
         eq(array_sum(array_column($res['cuts'], 'quantity')), $onHand + 2, 'ตัดครบตามที่ขอ');
         eq(Stock::availability($sku)['on_hand'], -2, 'ยอดคงเหลือติดลบเท่าที่ค้าง');
@@ -289,7 +295,7 @@ test('ของที่ค้างส่งไปกองบนล็อต�
     withRollback(function () {
         $sku = skuWithLots(1);
         $onHand = Stock::availability($sku)['on_hand'];
-        Stock::issue(issueReq($sku, $onHand + 3, idem('shortlot')));
+        Stock::issue(saleReq($sku, $onHand + 3, idem('shortlot')));
 
         $rows = Db::all(
             'SELECT l.lot_number, l.remaining_qty FROM stock_lots l
@@ -307,7 +313,7 @@ test('ยอดคงเหลือยังเท่ากับผลรว�
     withRollback(function () {
         $sku = skuWithLots(1);
         $onHand = Stock::availability($sku)['on_hand'];
-        Stock::issue(issueReq($sku, $onHand + 2, idem('ledger')));
+        Stock::issue(saleReq($sku, $onHand + 2, idem('ledger')));
 
         $drift = Db::all(
             'SELECT l.lot_number FROM stock_lots l
@@ -326,7 +332,7 @@ test('รับของเข้าทีหลัง หักกลบยอ�
     withRollback(function () {
         $sku = skuWithLots(1);
         $onHand = Stock::availability($sku)['on_hand'];
-        Stock::issue(issueReq($sku, $onHand + 4, idem('settle')));
+        Stock::issue(saleReq($sku, $onHand + 4, idem('settle')));
         eq(Stock::availability($sku)['on_hand'], -4, 'ค้างอยู่สี่ชิ้น');
 
         /* ของมาถึงหกชิ้น — สี่ชิ้นถูกกันไว้จ่ายของที่ขายค้างไว้ เหลือขายได้สอง */
@@ -346,10 +352,43 @@ test('ของมาถึงน้อยกว่าที่ค้าง ก�
     withRollback(function () {
         $sku = skuWithLots(1);
         $onHand = Stock::availability($sku)['on_hand'];
-        Stock::issue(issueReq($sku, $onHand + 5, idem('partial')));
+        Stock::issue(saleReq($sku, $onHand + 5, idem('partial')));
 
         Receiving::receive(['sku' => $sku, 'quantity' => 2, 'cost_per_unit' => 100, 'received_date' => date('Y-m-d')], Roles::OWNER, 1);
         eq(Stock::availability($sku)['on_hand'], -3, 'ยังค้างอยู่สามชิ้น');
+    });
+});
+
+/**
+ * ใครยอมให้ตัดเกินของที่มี — คำถามนี้ตอบด้วย `source` ที่เดียว
+ *
+ * สองเทสต์คู่นี้อยู่ด้วยกันเพราะจุดที่ต้องไม่พังคือ "ต่างกันเฉพาะตรงนี้" · คำขอ
+ * เหมือนกันทุกช่อง ต่างกันช่องเดียว แล้วผลต้องต่างกันคนละทาง
+ */
+test('เบิกเกินของที่มีจากหน้าคลัง ถูกปฏิเสธ', function () {
+    withRollback(function () {
+        $sku = skuWithLots(1);
+        $onHand = Stock::availability($sku)['on_hand'];
+
+        $e = throwsReason(
+            'insufficient',
+            fn() => Stock::issue(issueReq($sku, $onHand + 1, idem('over-web'))),
+            'เบิกเกินของที่มีหนึ่งชิ้น',
+        );
+        eq($e->extra['available'], $onHand, 'ต้องบอกว่ามีอยู่เท่าไร');
+        eq($e->status, 409, 'รหัสสถานะ');
+
+        eq(Stock::availability($sku)['on_hand'], $onHand, 'ของต้องไม่ขยับเลย');
+    });
+});
+
+test('การขายหน้าร้านตัดเกินได้ ส่วนที่เกินไปค้างส่ง', function () {
+    withRollback(function () {
+        $sku = skuWithLots(1);
+        $onHand = Stock::availability($sku)['on_hand'];
+
+        Stock::issue(saleReq($sku, $onHand + 1, idem('over-sale')));
+        eq(Stock::availability($sku)['on_hand'], -1, 'ยอดติดลบหนึ่งตามที่ค้าง');
     });
 });
 
@@ -538,7 +577,7 @@ test('ล็อตที่รับของเข้ามาจริง ไ�
         Stock::issue(issueReq($sku, $onHand, idem('drain')));
         eq(Stock::availability($sku)['on_hand'], 0, 'ต้องเหลือศูนย์พอดี');
 
-        Stock::issue(issueReq($sku, 1, idem('over')));
+        Stock::issue(saleReq($sku, 1, idem('over')));
         eq(Stock::availability($sku)['on_hand'], -1, 'ขายต่อได้ ยอดติดลบหนึ่ง');
 
         /* ล็อตคือของที่มาถึงจริงเป็นกล่อง ๆ ติดลบไม่ได้ตามนิยาม · ที่ติดลบได้มี

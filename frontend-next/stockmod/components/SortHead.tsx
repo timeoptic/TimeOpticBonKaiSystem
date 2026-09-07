@@ -68,6 +68,7 @@ export function SortBar<K extends string>({
   sort,
   dir,
   onSort,
+  dirToggle = true,
 }: {
   /** Prefix for the field ids, so two lists on one page keep distinct labels. */
   id: string;
@@ -75,6 +76,14 @@ export function SortBar<K extends string>({
   sort: K;
   dir: Dir;
   onSort: (c: K) => void;
+  /**
+   * ปุ่มกลับด้านการเรียง — ปิดได้สำหรับหน้าที่หัวตารางกดเรียงได้อยู่แล้ว
+   *
+   * หัวคอลัมน์ที่กดซ้ำก็กลับด้านเหมือนกัน ปุ่มนี้จึงเป็นทางที่สองไปหาสิ่งเดียวกัน
+   * และมันนั่งอยู่บนแถบที่ควรตอบคำถามเดียวว่า "เรียงตามอะไร" · หน้าที่ไม่มีหัว
+   * ตารางให้กดยังต้องมีมัน ค่าปริยายจึงยังเป็นเปิด
+   */
+  dirToggle?: boolean;
 }) {
   return (
     <div className="sortbar">
@@ -90,14 +99,19 @@ export function SortBar<K extends string>({
       />
       {/* Re-picking the column that is already chosen is what flips direction,
           which is the rule the headers follow too. */}
-      <button
-        type="button"
-        className="chip sortbar__dir"
-        onClick={() => onSort(sort)}
-        aria-label={dir === "asc" ? "เรียงจากน้อยไปมาก — กดเพื่อกลับด้าน" : "เรียงจากมากไปน้อย — กดเพื่อกลับด้าน"}
-      >
-        {dir === "asc" ? "▲ น้อย → มาก" : "▼ มาก → น้อย"}
-      </button>
+      {dirToggle ? (
+        <button
+          type="button"
+          className="chip sortbar__dir"
+          onClick={() => onSort(sort)}
+          aria-label={dir === "asc" ? "เรียงจากน้อยไปมาก — กดเพื่อกลับด้าน" : "เรียงจากมากไปน้อย — กดเพื่อกลับด้าน"}
+        >
+          {/* ลูกศรกับคำอยู่คนละ span เพราะบางที่มีที่ให้แค่ลูกศร — ป้ายเต็มยัง
+              อยู่ใน aria-label เสมอ คนที่ฟังจึงได้ยินเท่าเดิมทุกที่ */}
+          {dir === "asc" ? "▲" : "▼"}
+          <span className="sortbar__dirtext">{dir === "asc" ? "น้อย → มาก" : "มาก → น้อย"}</span>
+        </button>
+      ) : null}
     </div>
   );
 }

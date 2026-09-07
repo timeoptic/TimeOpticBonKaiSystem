@@ -5,6 +5,8 @@ import Link from "next/link";
 import { can, useActor, WorkHead } from "@/stockmod/components/AppShell";
 import Paginator from "@/stockmod/components/Paginator";
 import SortHead, { SortBar, useSort } from "@/stockmod/components/SortHead";
+import { Filter, FilterBar, withCount } from "@/stockmod/components/FilterBar";
+import RecordCard, { CardList } from "@/stockmod/components/RecordCard";
 import { qs, useApi } from "@/stockmod/lib/useApi";
 import { count, date, money } from "@/stockmod/lib/format";
 import type { MovementRow, Page } from "@/stockmod/lib/api";
@@ -45,6 +47,13 @@ const TYPES = [
   { key: "COST", label: "ลงต้นทุน RX", countKey: "COST" },
   { key: "PRICE", label: "แก้ราคาขาย", countKey: "PRICE" },
   { key: "SETTLE", label: "รับเงินจากสาขา", countKey: "SETTLE" },
+] as const;
+
+/** ใครเป็นคนเอาของไป — คนละคำถามกับ "ของขยับแบบไหน" ข้างบน */
+const WHO = [
+  { value: "", label: "ทุกคน" },
+  { value: "branch", label: "สาขาอื่นเบิก" },
+  { value: "owed", label: "ยังค้างเงิน" },
 ] as const;
 
 /**
@@ -142,59 +151,50 @@ export default function MovementsPage() {
         </div>
       </section>
 
-      <div className="chips chips--bar" role="group" aria-label="กรองตามประเภท">
-        {TYPES.map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            className="chip"
-            aria-current={type === t.key ? "true" : undefined}
-            onClick={() => refine(() => setType(t.key))}
-          >
-            {t.key ? (
-              <span
-                className={`chip__dot tag--${t.key.toLowerCase().replace("_", "-")}`}
-                aria-hidden="true"
-              />
-            ) : null}
-            {t.label}
-            {list.status === "ready" ? (
-              <span className="chip__count">{count(counts[t.countKey] ?? 0)}</span>
-            ) : null}
-          </button>
-        ))}
-      </div>
+      {/* สิบชนิดกับอีกสามตัวเลือกผู้เบิก เคยเป็นชิปสิบสามปุ่มพาดสองบรรทัดก่อนถึง
+          แถวแรกของสมุด · เหตุผลเดิมของชิป — กดครั้งเดียว เห็นคำตอบโดยไม่ต้องเปิด
+          อะไร — ใช้ไม่ได้แล้วเมื่อสิ่งที่เห็นมีมากเกินกว่าจะกวาดตาอ่าน
+          จำนวนที่เคยอยู่บนชิปย้ายเข้าไปอยู่ในตัวเลือกแต่ละบรรทัด จึงไม่หายไปไหน */}
+      {/* ตัวกรองกับเรียงตามอยู่แถวเดียวกัน — สองแถวซ้อนกันคือความสูงสองเท่า
+          ก่อนถึงแถวแรกของสมุด โดยไม่ได้บอกอะไรเพิ่ม */}
+      <div className="toolsband">
+        <FilterBar>
+          <Filter
+            id="mv-type"
+            label="ประเภท"
+            value={type}
+            onChange={(v) => refine(() => setType(v))}
+            options={TYPES.map((t) => ({
+              value: t.key,
+              label: withCount(
+                t.label,
+                list.status === "ready" ? (counts[t.countKey] ?? 0) : undefined,
+              ),
+            }))}
+          />
 
-      {/* A branch withdrawal cuts across the action types above rather than
-          being one of them, so it filters separately. */}
-      <div className="chips chips--bar" role="group" aria-label="กรองตามผู้เบิก">
-        <button
-          type="button"
-          className="chip"
-          aria-current={who === "" ? "true" : undefined}
-          onClick={() => refine(() => setWho(""))}
-        >
-          ทุกคน
-        </button>
-        <button
-          type="button"
-          className="chip"
-          aria-current={who === "branch" ? "true" : undefined}
-          onClick={() => refine(() => setWho("branch"))}
-        >
-          สาขาอื่นเบิก
-        </button>
-        <button
-          type="button"
-          className="chip"
-          aria-current={who === "owed" ? "true" : undefined}
-          onClick={() => refine(() => setWho("owed"))}
-        >
-          ยังค้างเงิน
-        </button>
-      </div>
+          {/* การเบิกของสาขาตัดขวางประเภทข้างบน ไม่ใช่ประเภทหนึ่งในนั้น — แถวเดียว
+              เป็นได้ทั้ง "จ่ายออก" และ "สาขาอื่นเบิก" พร้อมกัน จึงเป็นคนละช่อง */}
+          <Filter
+            id="mv-who"
+            label="ผู้เบิก"
+            value={who}
+            onChange={(v) => refine(() => setWho(v))}
+            options={WHO}
+          />
+        </FilterBar>
 
-      <SortBar id="mov" columns={sorts(money$)} sort={sort} dir={dir} onSort={pick} />
+        {/* ไม่มีปุ่มกลับด้าน — ทุกคอลัมน์ในตารางข้างล่างกดเรียงได้ และกดซ้ำก็กลับด้าน
+            อยู่แล้ว ปุ่มบนแถบนี้จึงเป็นทางที่สองไปหาสิ่งเดียวกัน */}
+        <SortBar
+          id="mov"
+          columns={sorts(money$)}
+          sort={sort}
+          dir={dir}
+          onSort={pick}
+          dirToggle={false}
+        />
+      </div>
 
       {list.status === "loading" ? <div className="skeleton" /> : null}
 
@@ -230,7 +230,14 @@ export default function MovementsPage() {
 
       {rows.length > 0 ? (
         <>
-          <div className="tablewrap">
+          {/* บนมือถือ แถวกลายเป็นการ์ด — ดู RecordCard ว่าทำไมไม่ใช่ตารางที่เลื่อนข้าง */}
+          <CardList label="ความเคลื่อนไหวสต็อก">
+            {rows.map((r) => (
+              <MovementCard key={r.id} row={r} money={money$} />
+            ))}
+          </CardList>
+
+          <div className="tablewrap wide-only">
             <table className="grid">
               <caption className="sr-only">ความเคลื่อนไหวสต็อกเรียงจากใหม่ไปเก่า</caption>
               <thead>
@@ -271,6 +278,83 @@ export default function MovementsPage() {
         </>
       ) : null}
     </main>
+  );
+}
+
+/**
+ * แถวเดียวกัน คนละร่าง — สำหรับมือถือ
+ *
+ * เรียงตามลำดับที่คนอ่านจริงบนจอแคบ: นี่คือสินค้าอะไร เกิดอะไรขึ้นกับมัน เมื่อไร
+ * เท่าไร ใครเอาไป · ต่างจากตารางที่เรียงตามลำดับที่เทียบข้ามแถวได้ง่าย ซึ่งเป็น
+ * คนละงานกับการอ่านทีละใบ
+ *
+ * ตัวเลขเงินยังเดินตามสิทธิ์ชุดเดิม — คนที่ไม่เห็นต้นทุนได้บรรทัดราคาขายบรรทัด
+ * เดียว ไม่ใช่บรรทัดต้นทุนที่ว่างเปล่า
+ */
+function MovementCard({ row: r, money: showMoney }: { row: MovementRow; money: boolean }) {
+  const awaitingRxCost = showMoney && r.actionType === "RX_ORDER" && r.unitCost === null;
+  const owed = r.branchStatus === "pending";
+
+  const who = r.branchName
+    ? `${r.branchName}${r.takenBy ? ` · ${r.takenBy}` : ""}`
+    : (r.issuedToName ?? r.actorName ?? "—");
+
+  return (
+    <RecordCard
+      tone={awaitingRxCost || owed ? "pending" : undefined}
+      head={
+        <>
+          <span className={`tag tag--${r.actionType.toLowerCase().replace("_", "-")}`}>
+            {r.actionLabel}
+          </span>
+          <span className="reccard__when">{date(r.createdAt)}</span>
+        </>
+      }
+      title={r.productName}
+      sub={r.sku}
+      fields={[
+        {
+          label: "จำนวน",
+          value:
+            r.quantity === 0 ? (
+              <span className="grid__muted">—</span>
+            ) : r.quantity > 0 ? (
+              <span className="grid__num--in">+{count(r.quantity)}</span>
+            ) : (
+              count(r.quantity)
+            ),
+        },
+        showMoney && {
+          label:
+            r.actionType === "SETTLE"
+              ? "เงินที่รับทั้งใบ"
+              : r.actionType === "COST"
+                ? "ต้นทุนที่เพิ่งกรอก"
+                : r.actionType === "PRICE"
+                  ? "ราคาขายที่เพิ่งแก้"
+                  : "ต้นทุน/ชิ้น",
+          value:
+            r.unitCost === null ? (
+              awaitingRxCost ? (
+                <span className="status status--pending">รอต้นทุน</span>
+              ) : (
+                <span className="grid__muted">—</span>
+              )
+            ) : (
+              money(r.unitCost)
+            ),
+        },
+        r.salePrice !== null
+          ? { label: "ราคาขาย", value: money(r.salePrice) }
+          : r.basePrice === null
+            ? null
+            : { label: "ราคาตอนนี้", value: <span className="grid__muted">{money(r.basePrice)}</span> },
+        { label: "ใครเบิก", value: who },
+        r.actorName ? { label: "บันทึกโดย", value: r.actorName } : null,
+        r.referenceDoc ? { label: "เอกสาร", value: <span className="grid__doc">{r.referenceDoc}</span> } : null,
+        r.notes ? { label: "หมายเหตุ", value: r.notes } : null,
+      ]}
+    />
   );
 }
 
