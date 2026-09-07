@@ -38,19 +38,19 @@ function Conversion({ value }) {
 }
 
 const COLUMNS = [
-  { label: 'พนักงาน', key: 'employee' },
-  { label: 'ลูกค้า', cls: 'right', sortKey: 'customers', render: (r) => (
+  { label: 'พนักงาน', key: 'employee', mobile: 'title' },
+  { label: 'ลูกค้า', cls: 'right', sortKey: 'customers', mobile: 'meta', render: (r) => (
     <>
       {count(r.customers)}
       {r.walk_in ? <div className="muted sm">+{r.walk_in} ขาจร</div> : null}
     </>
   ) },
-  { label: 'เคส', cls: 'right', sortKey: 'cases', render: (r) => count(r.cases) },
-  { label: 'ยอดงานตัดแว่น', cls: 'right', sortKey: 'main_revenue', render: (r) => money(r.main_revenue) },
-  { label: 'บิล POS', cls: 'right', sortKey: 'pos_bills', render: (r) => count(r.pos_bills) },
-  { label: 'ยอด POS', cls: 'right', sortKey: 'pos_revenue', render: (r) => money(r.pos_revenue) },
-  { label: 'ยอดรวม', cls: 'right', sortKey: 'total', render: (r) => <b>{money(r.total)}</b> },
-  { label: 'ปิดการขาย', cls: 'right', sortKey: 'conversion', render: (r) => <Conversion value={r.conversion} /> },
+  { label: 'เคส', cls: 'right', sortKey: 'cases', render: (r) => count(r.cases), mobile: 'body' },
+  { label: 'ยอดงานตัดแว่น', cls: 'right', sortKey: 'main_revenue', render: (r) => money(r.main_revenue), mobile: 'meta' },
+  { label: 'บิล POS', cls: 'right', sortKey: 'pos_bills', render: (r) => count(r.pos_bills), mobile: 'meta' },
+  { label: 'ยอด POS', cls: 'right', sortKey: 'pos_revenue', render: (r) => money(r.pos_revenue), mobile: 'meta' },
+  { label: 'ยอดรวม', cls: 'right', sortKey: 'total', render: (r) => <b>{money(r.total)}</b>, mobile: 'body' },
+  { label: 'ปิดการขาย', cls: 'right', sortKey: 'conversion', render: (r) => <Conversion value={r.conversion} />, mobile: 'body' },
 ];
 
 export default function EmployeeReport() {

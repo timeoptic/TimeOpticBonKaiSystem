@@ -29,7 +29,7 @@
  * ไม่ใช่สีที่ 1 ของจาน — ชุดเดียวไม่มีคู่ให้แยก จึงไม่มีข้อจำกัดเรื่องนี้ และ
  * สีแบรนด์ทำให้กราฟอยู่ในภาษาเดียวกับหน้าจอที่เหลือ
  */
-import { useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { axisTicks, barLayout, donutArcs, niceMax, stackLayout } from '../lib/chartGeom.js';
 import { moneyShort } from '../lib/format.js';
 
@@ -39,31 +39,83 @@ export const SERIES = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#
 export const seriesColor = (i) => SERIES[i % SERIES.length];
 
 /**
- * ระยะขอบซ้ายที่กันไว้ให้ตัวเลขบนแกน Y และความกว้างของ viewBox
- *
- * ประกาศเป็นค่าคงที่เพราะกล่องลอยต้องคำนวณตำแหน่งจากตัวเลขชุดเดียวกับที่ SVG
- * ใช้วาด — สองที่ที่คิดเลขเองแยกกันคือกล่องลอยที่ชี้ไม่ตรงแท่ง
+ * ความกว้าง viewBox ที่ใช้ก่อนวัดกล่องได้จริง (เรนเดอร์รอบแรก / ฝั่งเซิร์ฟเวอร์)
+ * — เท่ากับความกว้างการ์ดบนจอคอมทั่วไป ภาพจึงไม่กระโดดตอนวัดเสร็จ
  */
 const VIEW_W = 1200;
-const PAD_L = 76;
 const PAD_R = 14;
-const PLOT_W = VIEW_W - PAD_L - PAD_R;
-
-/** ตำแหน่งของช่องที่ i คิดเป็น % ของความกว้าง SVG ทั้งอัน (ไม่ใช่ของพื้นที่วาด) */
-const tipAt = (i, n) => ((PAD_L + ((i + 0.5) / n) * PLOT_W) / VIEW_W) * 100;
 
 /**
- * ความหนาของแท่ง — 55% ของช่อง จำกัดไว้ที่ 44 หน่วย viewBox
+ * ขนาดของ viewBox คิดจากความกว้างจริงของกล่อง — หนึ่งหน่วย viewBox = หนึ่ง px
  *
- * สเปกของมาร์กบอกว่าแท่งไม่ควรเกิน 24px *ที่วาดออกมาจริง* · viewBox กว้าง 1200
- * ถูกย่อขยายไปวางบนการ์ดกว้างราว 1500px จึงมีอัตราส่วนราว 1.25 เท่า —
- * 44 หน่วยที่นี่คือประมาณ 55px บนจอ ซึ่งเกินสเปก และตั้งใจให้เกิน
+ * ของเดิม viewBox กว้าง 1200 ตายตัวแล้วปล่อยให้ `.chart-svg{width:100%}` ย่อขยาย
+ * เอาเอง ซึ่งได้ผลเฉพาะตอนการ์ดกว้างราว 1500px (อัตราส่วน 4.8:1 ทำให้สูงราว 310px
+ * พอดีกับ `min-height:300px` ของ `.chart-box`) · พอการ์ดแคบลง ทุกอย่างถูกย่อตาม
+ * ความกว้างทั้งก้อน — บนการ์ดกว้าง 265px ของจอโทรศัพท์ กราฟเหลือสูง 55px
+ * ตัวหนังสือบนแกนเหลือ 2.5px และมีที่ว่างค้างใต้กราฟอีก 245px
  *
- * เหตุผล: กราฟรายเดือนมี 9 แท่งบนความกว้าง 1100 หน่วย แท่งละ 24px จะกลายเป็น
- * จุดเล็ก ๆ เก้าจุดลอยบนพื้นว่าง ซึ่งอ่านยากกว่าแท่งที่หนาเกินสเปก · เพดาน
- * 55% ของช่องยังคงเจตนาเดิมของสเปกไว้ คือไม่ให้แท่งเต็มช่องจนชนกัน
+ * ผูก viewBox กับความกว้างจริงแทน ตัวหนังสือจึงได้ขนาดที่ CSS สั่งไว้เสมอ
+ * (11.5px) ไม่ว่าการ์ดจะกว้างเท่าไหร่ ส่วนความสูงเลือกเองตามความกว้าง
+ * ไม่ได้ผูกกับอัตราส่วนอีกต่อไป
+ *
+ * กล่องลอยบอกค่าคิดตำแหน่งจากชุดตัวเลขเดียวกันนี้ — สองที่ที่คิดเลขเองแยกกัน
+ * คือกล่องลอยที่ชี้ไม่ตรงแท่ง
  */
-const barThickness = (band) => Math.max(3, Math.min(band * 0.55, 44));
+function chartMetrics(boxW) {
+  const viewW = Math.max(240, Math.round(boxW || VIEW_W));
+  /* ที่กันไว้ให้ตัวเลขแกน Y — 76px บนการ์ดกว้าง แต่บนการ์ด 265px นั่นคือ 29%
+     ของทั้งกราฟ · "฿1.2M" ที่ 11.5px กว้างราว 40px จึงพอที่ 46px เป็นอย่างต่ำ */
+  const padL = Math.round(Math.min(76, Math.max(46, viewW * 0.14)));
+  /* สูงราว 18% ของความกว้างเหมือนเดิมบนจอคอม (การ์ด 1460px → 263px เท่าของเดิม)
+     แต่มีพื้นล่างที่ 180px ไม่งั้นการ์ดแคบได้กราฟแบนจนอ่านไม่ออก */
+  const plotH = Math.round(Math.min(300, Math.max(180, viewW * 0.18)));
+  return { viewW, padL, plotW: viewW - padL - PAD_R, plotH };
+}
+
+/** ตำแหน่งของช่องที่ i คิดเป็น % ของความกว้าง SVG ทั้งอัน (ไม่ใช่ของพื้นที่วาด) */
+const tipAt = (i, n, m) => ((m.padL + ((i + 0.5) / n) * m.plotW) / m.viewW) * 100;
+
+/* useLayoutEffect เตือนตอนเรนเดอร์ฝั่งเซิร์ฟเวอร์ — วัดก่อนวาดได้เฉพาะบนเบราว์เซอร์
+   อยู่แล้ว ฝั่งเซิร์ฟเวอร์จึงใช้ useEffect ที่ไม่มีวันถูกเรียก */
+const useIsoEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect;
+
+/**
+ * ความกว้างจริงของกล่องกราฟ
+ *
+ * วัดด้วย ResizeObserver ไม่ใช่ window.innerWidth — การ์ดใบเดียวกันกว้างไม่เท่ากัน
+ * ในแต่ละหน้า (เต็มแถว vs ครึ่งแถวใน .report-split) และแถบข้างพับเก็บได้ด้วย
+ *
+ * วัดใน useLayoutEffect = ได้ค่าก่อนเฟรมแรกถูกวาด กราฟจึงไม่กระพริบจากขนาด
+ * ตั้งต้นไปขนาดจริง
+ */
+function useBoxWidth() {
+  const ref = useRef(null);
+  const [w, setW] = useState(0);
+
+  useIsoEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    setW(Math.round(el.getBoundingClientRect().width));
+    const ro = new ResizeObserver(([e]) => setW(Math.round(e.contentRect.width)));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  return [ref, w];
+}
+
+/**
+ * ความหนาของแท่ง — 55% ของช่อง จำกัดไว้ที่ 55px
+ *
+ * สเปกของมาร์กบอกว่าแท่งไม่ควรเกิน 24px ที่วาดออกมาจริง · เพดานนี้เกินสเปก
+ * และตั้งใจให้เกิน — กราฟรายเดือนมี 9 แท่งบนกราฟกว้างพันกว่า px แท่งละ 24px
+ * จะกลายเป็นจุดเล็ก ๆ เก้าจุดลอยบนพื้นว่าง ซึ่งอ่านยากกว่าแท่งที่หนาเกินสเปก
+ * · เพดาน 55% ของช่องยังคงเจตนาเดิมของสเปกไว้ คือไม่ให้แท่งเต็มช่องจนชนกัน
+ *
+ * เดิมเขียนไว้ 44 "หน่วย viewBox" ซึ่งตอนนั้นถูกขยาย 1.25 เท่าเป็นราว 55px
+ * บนจอ · ตอนนี้หนึ่งหน่วย = หนึ่ง px แล้ว เลขจึงเป็น 55 ตรง ๆ ภาพเท่าเดิม
+ */
+const barThickness = (band) => Math.max(3, Math.min(band * 0.55, 55));
 
 /**
  * แท่งที่ปลายบนมน ฐานเหลี่ยม
@@ -186,8 +238,9 @@ export function Donut({ items, total, totalLabel = 'รวม', format = moneySh
  * ป้ายที่มีห่าง ๆ · ค่าไม่ถูกเขียนกำกับทุกแท่ง มีแค่แท่งที่สูงสุดกับแท่งที่ชี้อยู่
  * เพราะตัวเลขบนทุกแท่งคือตัวเลขที่ไม่มีใครอ่าน
  */
-export function Bars({ data, format = moneyShort, height = 210, color = 'var(--accent)' }) {
+export function Bars({ data, format = moneyShort, color = 'var(--accent)' }) {
   const [hover, setHover] = useState(null);
+  const [boxRef, boxW] = useBoxWidth();
   const rows = data || [];
   if (!rows.length) return <EmptyChart />;
 
@@ -196,7 +249,8 @@ export function Bars({ data, format = moneyShort, height = 210, color = 'var(--a
 
   const padB = 26;
   const padT = 12;
-  const plotW = PLOT_W;
+  const m = chartMetrics(boxW);
+  const { plotW, plotH: height } = m;
   const { bars, top } = barLayout(values, {
     width: plotW, height, thickness: barThickness(plotW / values.length),
   });
@@ -206,17 +260,17 @@ export function Bars({ data, format = moneyShort, height = 210, color = 'var(--a
 
   return (
     <div className="chart-box">
-      <div className="chart-plot">
+      <div className="chart-plot" ref={boxRef}>
         {/* ไม่ใส่ preserveAspectRatio="none" — การยืดแกน X อย่างเดียวจะยืด
-            ตัวอักษรบนแกนไปด้วยจนตัวหนังสือแบนผิดรูป · ปล่อยให้ย่อขยายเท่ากัน
-            ทั้งสองแกน แล้ว .chart-svg (width:100%;height:auto) จัดความสูงให้เอง */}
+            ตัวอักษรบนแกนไปด้วยจนตัวหนังสือแบนผิดรูป · viewBox เท่ากับความกว้าง
+            จริงของกล่องอยู่แล้ว จึงไม่มีการย่อขยายให้ต้องกังวล */}
         <svg
           className="chart-svg"
-          viewBox={`0 0 ${VIEW_W} ${height + padT + padB}`}
+          viewBox={`0 0 ${m.viewW} ${height + padT + padB}`}
           role="img"
           aria-label="ยอดขายรายวัน"
         >
-          <g transform={`translate(${PAD_L} ${padT})`}>
+          <g transform={`translate(${m.padL} ${padT})`}>
             {ticks.map((t) => {
               const y = height - (top > 0 ? (t / top) * height : 0);
               return (
@@ -272,7 +326,7 @@ export function Bars({ data, format = moneyShort, height = 210, color = 'var(--a
           </g>
         </svg>
 
-        <Tip at={hover === null ? null : tipAt(hover, rows.length)}>
+        <Tip at={hover === null ? null : tipAt(hover, rows.length, m)}>
           {hover !== null ? (
             <>
               <b>{rows[hover].full || rows[hover].label}</b>
@@ -334,8 +388,9 @@ export function HBars({ data, format = moneyShort, color = 'var(--accent)', max 
  * ซ้อนกันได้เพราะสองชั้นรวมกันแล้วมีความหมาย (ต้นทุน + กำไร = ยอดขาย) —
  * ถ้าชั้นบวกกันแล้วไม่ได้อะไร ต้องเป็นแท่งคู่ ไม่ใช่แท่งซ้อน
  */
-export function StackedBars({ data, series, format = moneyShort, height = 210 }) {
+export function StackedBars({ data, series, format = moneyShort }) {
   const [hover, setHover] = useState(null);
+  const [boxRef, boxW] = useBoxWidth();
   const rows = data || [];
   if (!rows.length) return <EmptyChart />;
 
@@ -344,7 +399,8 @@ export function StackedBars({ data, series, format = moneyShort, height = 210 })
 
   const padB = 26;
   const padT = 12;
-  const plotW = PLOT_W;
+  const m = chartMetrics(boxW);
+  const { plotW, plotH: height } = m;
   const top = niceMax(Math.max(...totals));
   const band = plotW / rows.length;
   const thickness = barThickness(band);
@@ -361,14 +417,14 @@ export function StackedBars({ data, series, format = moneyShort, height = 210 })
         ))}
       </div>
 
-      <div className="chart-plot">
+      <div className="chart-plot" ref={boxRef}>
         <svg
           className="chart-svg"
-          viewBox={`0 0 ${VIEW_W} ${height + padT + padB}`}
+          viewBox={`0 0 ${m.viewW} ${height + padT + padB}`}
           role="img"
           aria-label="ต้นทุนและกำไรรายวัน"
         >
-          <g transform={`translate(${PAD_L} ${padT})`}>
+          <g transform={`translate(${m.padL} ${padT})`}>
             {ticks.map((t) => {
               const y = height - (top > 0 ? (t / top) * height : 0);
               return (
@@ -427,7 +483,7 @@ export function StackedBars({ data, series, format = moneyShort, height = 210 })
           </g>
         </svg>
 
-        <Tip at={hover === null ? null : tipAt(hover, rows.length)}>
+        <Tip at={hover === null ? null : tipAt(hover, rows.length, m)}>
           {hover !== null ? (
             <>
               <b>{rows[hover].full || rows[hover].label}</b>

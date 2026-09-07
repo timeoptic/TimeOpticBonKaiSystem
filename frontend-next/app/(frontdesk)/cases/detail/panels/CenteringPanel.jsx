@@ -23,6 +23,7 @@ import { PhotoUpload } from '../../../../../components/PhotoUpload.jsx';
 import { Icon } from '../../../../../components/Icon.jsx';
 import { useProcessActions } from '../../../../../components/ProcessShell.jsx';
 import { dtLocal, nowLocal, toStamp } from '../../../../../lib/format.js';
+import { DateTimeField } from '../../../../../components/DateTimeField.jsx';
 
 const NOTE_MAX = 500;
 
@@ -235,10 +236,9 @@ export function CenteringPanel({ c, reload }) {
               />
             </Field>
             <Field label="วันที่และเวลาที่วัด">
-              <input
-                type="datetime-local"
+              <DateTimeField
                 value={form.measured_at || ''}
-                onChange={(e) => set('measured_at')(e.target.value)}
+                onChange={set('measured_at')}
               />
             </Field>
           </div>

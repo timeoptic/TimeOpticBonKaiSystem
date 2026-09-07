@@ -4,14 +4,17 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api } from '../../../lib/apiClient.js';
 import { useAsync } from '../../../lib/hooks.js';
+import { useAuth } from '../../../contexts/AuthContext.jsx';
 import { useBookingLabels } from '../../../contexts/MetaContext.jsx';
 import { Badge, Card, Loading, PageHead } from '../../../components/ui.jsx';
-import { DataTable } from '../../../components/DataTable.jsx';
+import { PagedTable } from '../../../components/Pager.jsx';
 import { QueryParamPage } from '../../../components/QueryParamPage.jsx';
 import { BookingStatusBadge } from '../../../components/BookingStatusBadge.jsx';
+import { MonthPicker } from '../../../components/MonthPicker.jsx';
 import { daysInMonth, leadOffset, shiftMonth } from '../../../lib/calendar.js';
-import { TH_DOW, TH_MONTHS } from '../../../lib/constants.js';
+import { TH_DOW } from '../../../lib/constants.js';
 import { bookingName, dateOnly, fmtDate, hhmm, todayISO } from '../../../lib/format.js';
+import { isAdminUp } from '../../../lib/roles.js';
 import { Icon } from '../../../components/Icon.jsx';
 
 // Port of public/js/views/bookings.js's STATUS_CLASS — colors a booking pill
@@ -24,6 +27,7 @@ const STATUS_CLASS = {
 function BookingCalendarInner() {
   const router = useRouter();
   const params = useSearchParams();
+  const { actor } = useAuth();
   const { serviceLabel, channelLabel } = useBookingLabels();
 
   const monthParam = params.get('month');
@@ -105,16 +109,22 @@ function BookingCalendarInner() {
         actions={(
           <>
             <Link className="btn btn-ghost" href="/bookings/new">+ จองคิวใหม่</Link>
-            <Link className="btn btn-ghost" href="/settings"><Icon name="gear" /> ตั้งค่าแจ้งเตือน</Link>
+            {/* /settings เป็นหน้าของแอดมิน (ดู ADMIN_PATHS) — พนักงานขายกดแล้วเจอแต่หน้า
+                "เมนูนี้สำหรับผู้ดูแลระบบ" จึงไม่วาดปุ่มให้ตั้งแต่แรก · ด่านจริงอยู่ที่ API */}
+            {isAdminUp(actor)
+              ? <Link className="btn btn-ghost" href="/settings"><Icon name="gear" /> ตั้งค่าแจ้งเตือน</Link>
+              : null}
           </>
         )}
       />
 
       <div className="card">
         <div className="card-head">
-          <button type="button" className="btn btn-sm btn-light" onClick={() => setMonth(shiftMonth(month, -1))}>‹</button>
-          <h2>{`${TH_MONTHS[m - 1]} ${y + 543}`}</h2>
-          <button type="button" className="btn btn-sm btn-light" onClick={() => setMonth(shiftMonth(month, 1))}>›</button>
+          <button type="button" className="btn btn-sm btn-light" onClick={() => setMonth(shiftMonth(month, -1))} aria-label="เดือนก่อนหน้า">‹</button>
+          {/* หัวเรื่องเป็นปุ่ม — กดแล้วเลือกเดือน/ปีได้ทันที ไม่ต้องกดลูกศรทีละเดือน
+              เพราะคิวที่ต้องย้อนกลับไปดูอยู่ห่างจากวันนี้หลายสิบเดือน */}
+          <MonthPicker value={month} onChange={setMonth} />
+          <button type="button" className="btn btn-sm btn-light" onClick={() => setMonth(shiftMonth(month, 1))} aria-label="เดือนถัดไป">›</button>
           <div className="right">
             <button type="button" className="btn btn-sm btn-light" onClick={goToday}>วันนี้</button>
           </div>
@@ -146,26 +156,31 @@ function BookingCalendarInner() {
         tight
       >
         {day.loading ? <Loading text="กำลังโหลดคิว…" /> : (
-          <DataTable
+          <PagedTable
+            /* คิววันใหม่คือคนละชุด — remount ทิ้งเลขหน้าเดิม ไม่งั้นวันที่มีคิวน้อยกว่า
+               จะเปิดมาค้างอยู่หน้า 2 ที่ว่างเปล่า */
+            key={selected}
             columns={[
-              { label: 'เวลา', render: (b) => <b>{hhmm(b.booking_time)}</b>, cls: 'nowrap' },
-              { label: 'ระยะ', render: (b) => b.duration_min + ' น.', cls: 'num' },
-              { label: 'รหัส', key: 'booking_code', cls: 'mono' },
-              { label: 'ลูกค้า', render: bookingName },
-              { label: 'เบอร์โทร', key: 'phone', cls: 'nowrap' },
-              { label: 'บริการ', render: (b) => serviceLabel(b.service_type) },
-              { label: 'ช่องทาง', render: (b) => channelLabel(b.channel) },
-              { label: 'ผู้ดูแล', key: 'assigned_name' },
-              { label: 'สถานะ', render: (b) => <BookingStatusBadge b={b} /> },
+              { label: 'เวลา', render: (b) => <b>{hhmm(b.booking_time)}</b>, cls: 'nowrap', mobile: 'title' },
+              { label: 'ระยะ', render: (b) => b.duration_min + ' น.', cls: 'num', mobile: 'body' },
+              { label: 'รหัส', key: 'booking_code', cls: 'mono', mobile: 'meta' },
+              { label: 'ลูกค้า', render: bookingName, mobile: 'title' },
+              { label: 'เบอร์โทร', key: 'phone', cls: 'nowrap', mobile: 'subtitle' },
+              { label: 'บริการ', render: (b) => serviceLabel(b.service_type), mobile: 'body' },
+              { label: 'ช่องทาง', render: (b) => channelLabel(b.channel), mobile: 'meta' },
+              { label: 'ผู้ดูแล', key: 'assigned_name', mobile: 'meta' },
+              { label: 'สถานะ', render: (b) => <BookingStatusBadge b={b} />, mobile: 'status' },
               {
                 label: 'แจ้งเตือน',
+                mobile: 'meta',
                 render: (b) => (b.reminder_sent_at
                   ? <Badge kind="ok"><Icon name="check" /> ส่งแล้ว</Badge>
                   : <span className="muted">{`ก่อน ${b.reminder_minutes} น.`}</span>),
               },
-              { label: 'บันทึกเบื้องต้น', render: (b) => (b.intake_note || '').slice(0, 60) },
+              { label: 'บันทึกเบื้องต้น', render: (b) => (b.intake_note || '').slice(0, 60), mobile: 'meta' },
               {
                 label: '',
+                mobile: 'extra',
                 cls: 'nowrap',
                 render: (b) => (b.case_id
                   ? <Link className="btn btn-sm btn-light" href={'/cases/detail?id=' + b.case_id}><Icon name="board" /> {b.case_code}</Link>

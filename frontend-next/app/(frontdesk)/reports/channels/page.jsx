@@ -137,7 +137,7 @@ export default function ChannelsReport() {
             <Card title="ตารางช่องทาง" tight>
               <DataTable
                 columns={[
-                  { label: 'ช่องทาง', sortKey: 'label', render: (r) => (
+                  { label: 'ช่องทาง', sortKey: 'label', mobile: 'title', render: (r) => (
                     <span className="row" style={{ gap: 8 }}>
                       <i
                         className="sw"
@@ -146,12 +146,12 @@ export default function ChannelsReport() {
                       {r.label}
                     </span>
                   ) },
-                  { label: 'เคส', cls: 'right', sortKey: 'cases', render: (r) => count(r.cases) },
-                  { label: 'ลูกค้า', cls: 'right', sortKey: 'customers', render: (r) => count(r.customers) },
-                  { label: 'ลูกค้าใหม่', cls: 'right', sortKey: 'new_customers', render: (r) => count(r.new_customers) },
-                  { label: 'ยอดขาย', cls: 'right', sortKey: 'revenue', render: (r) => <b>{money(r.revenue)}</b> },
-                  { label: 'เฉลี่ย/เคส', cls: 'right', sortKey: 'avg', render: (r) => money(r.avg) },
-                  { label: 'ปิดการขาย', cls: 'right', sortKey: 'conversion', render: (r) => <Conv value={r.conversion} /> },
+                  { label: 'เคส', cls: 'right', sortKey: 'cases', render: (r) => count(r.cases), mobile: 'body' },
+                  { label: 'ลูกค้า', cls: 'right', sortKey: 'customers', render: (r) => count(r.customers), mobile: 'body' },
+                  { label: 'ลูกค้าใหม่', cls: 'right', sortKey: 'new_customers', render: (r) => count(r.new_customers), mobile: 'meta' },
+                  { label: 'ยอดขาย', cls: 'right', sortKey: 'revenue', render: (r) => <b>{money(r.revenue)}</b>, mobile: 'body' },
+                  { label: 'เฉลี่ย/เคส', cls: 'right', sortKey: 'avg', render: (r) => money(r.avg), mobile: 'meta' },
+                  { label: 'ปิดการขาย', cls: 'right', sortKey: 'conversion', render: (r) => <Conv value={r.conversion} />, mobile: 'body' },
                 ]}
                 rows={data.by_referral}
                 rowKey={(r) => r.label}

@@ -21,6 +21,8 @@ import {
   CHANNELS, PERIODS, STATUSES, filterQuery, periodOf, rangeFor, rangeLabel, readFilter,
 } from '../lib/reportRange.js';
 import { DateField } from './DateField.jsx';
+import { FilterBar } from './FilterBar.jsx';
+import { Select } from './Selects.jsx';
 
 export function useReportFilter() {
   const params = useSearchParams();
@@ -61,24 +63,44 @@ export function ReportFilter({ actions = null, statusNote = '' }) {
     router.replace(`${pathname}?${filterQuery({ ...f, ...next })}`, { scroll: false });
   };
 
-  return (
-    <div className="report-filter no-print">
-      <div className="rf-periods" role="group" aria-label="ช่วงเวลา">
-        {PERIODS.map(([key, label]) => (
-          <button
-            key={key}
-            type="button"
-            className={active === key ? 'on' : ''}
-            /* "กำหนดเอง" ไม่ได้เปลี่ยนช่วง แค่บอกว่ากำลังจะกรอกเอง — กดแล้ว
-               ช่วงเดิมค้างไว้ให้แก้ต่อ ไม่ใช่ถูกล้างจนต้องเริ่มใหม่ */
-            onClick={() => (key === 'custom' ? null : go(rangeFor(key)))}
-            aria-pressed={active === key}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+  /* ตัวเลขบนปุ่ม "ตัวกรอง (N)" ของจอโทรศัพท์ — นับเฉพาะสิ่งที่ถูกเปลี่ยนจาก
+     ค่าตั้งต้น (เดือนนี้ · ทุกช่องทาง · ทุกสถานะ) ไม่ใช่จำนวนช่องที่มีอยู่ */
+  const activeFilters = (active === 'custom' ? 1 : 0)
+    + (f.channel && f.channel !== 'all' ? 1 : 0)
+    + (f.status && f.status !== 'all' ? 1 : 0);
 
+  return (
+    <FilterBar
+      className="report-filter no-print"
+      count={activeFilters}
+      actions={actions}
+      search={(
+        <>
+          {/* ปุ่มช่วงเวลาอยู่นอกแผ่นเสมอ — มันคือตัวกรองที่ถูกแตะบ่อยที่สุดของหน้านี้
+              ถ้าต้องเปิดแผ่นก่อนถึงจะกด "เดือนที่แล้ว" ได้ ก็แปลว่าย้ายผิดที่
+              แถบนี้เลื่อนแนวนอนในตัวมันเองบนจอแคบ (ข้อ 18 อนุญาตไว้เฉพาะแถบชิป) */}
+          <div className="rf-periods" role="group" aria-label="ช่วงเวลา">
+            {PERIODS.map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                className={active === key ? 'on' : ''}
+                /* "กำหนดเอง" ไม่ได้เปลี่ยนช่วง แค่บอกว่ากำลังจะกรอกเอง — กดแล้ว
+                   ช่วงเดิมค้างไว้ให้แก้ต่อ ไม่ใช่ถูกล้างจนต้องเริ่มใหม่ */
+                onClick={() => (key === 'custom' ? null : go(rangeFor(key)))}
+                aria-pressed={active === key}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <span className="rf-range" title="ช่วงที่กำลังดูอยู่">
+            <Icon name="📅" /> {rangeLabel(f.from, f.to)}
+          </span>
+        </>
+      )}
+    >
       {/* <div> ไม่ใช่ <label> — ป้ายส่งคลิกทุกครั้งไปที่ช่องกรอกที่มันคุมอยู่ ซึ่งแปลว่า
           คลิกวันในปฏิทินที่ลอยอยู่ข้างในจะถูกส่งต่อไปหาช่องกรอกด้วย ปฏิทินจะกะพริบปิด-เปิด */}
       <div className="rf-date">
@@ -100,32 +122,20 @@ export function ReportFilter({ actions = null, statusNote = '' }) {
 
       <label className="rf-date">
         <span>ช่องทาง</span>
-        <select value={f.channel} onChange={(e) => go({ channel: e.target.value })}>
-          {CHANNELS.map(([key, label]) => (
-            <option key={key} value={key}>{label}</option>
-          ))}
-        </select>
+        <Select value={f.channel} onChange={(e) => go({ channel: e.target.value })} options={CHANNELS} />
       </label>
 
       <label className="rf-date" title={statusNote || 'งานที่จบแล้ว = ปิดการขาย / ลูกค้ารับของแล้ว'}>
         <span>สถานะงาน</span>
-        <select
+        <Select
           value={f.status}
           disabled={!!statusNote}
           onChange={(e) => go({ status: e.target.value })}
-        >
-          {STATUSES.map(([key, label]) => (
-            <option key={key} value={key}>{label}</option>
-          ))}
-        </select>
+          options={STATUSES}
+        />
       </label>
 
-      <span className="rf-range" title="ช่วงที่กำลังดูอยู่">
-        <Icon name="📅" /> {rangeLabel(f.from, f.to)}
-      </span>
-
-      <div className="rf-actions">{actions}</div>
-    </div>
+    </FilterBar>
   );
 }
 

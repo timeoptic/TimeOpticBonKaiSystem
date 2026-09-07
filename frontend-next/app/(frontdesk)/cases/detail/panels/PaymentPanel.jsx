@@ -14,7 +14,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { api } from '../../../../../lib/apiClient.js';
-import { useAsync, readForm } from '../../../../../lib/hooks.js';
+import { useAsync, readForm, useNowLocal } from '../../../../../lib/hooks.js';
 import { useToast } from '../../../../../components/Toast.jsx';
 import { useConfirm } from '../../../../../components/Confirm.jsx';
 import { Badge, Card, Field, FormGrid, Row, Split } from '../../../../../components/ui.jsx';
@@ -22,9 +22,10 @@ import { EmployeeSelect } from '../../../../../components/Selects.jsx';
 import { Icon } from '../../../../../components/Icon.jsx';
 import { useMeta } from '../../../../../contexts/MetaContext.jsx';
 import {
-  custName, dateOnly, fmtDate, fmtDateTime, money, nowLocal, todayISO, toStamp,
+  custName, dateOnly, fmtDate, fmtDateTime, money, todayISO, toStamp,
 } from '../../../../../lib/format.js';
 import { DateField } from '../../../../../components/DateField.jsx';
+import { DateTimeField } from '../../../../../components/DateTimeField.jsx';
 
 /* "จ่ายบางส่วน" ออกแล้ว — มันกับ "มัดจำ" ตอบคำถามเดียวกัน (จ่ายมาไม่ครบ) ต่างกันแค่
    ว่าเป็นก้อนแรกหรือไม่ ซึ่งระบบดูจากประวัติเองได้ ตัวเลือกที่ต้องหยุดคิดว่าจะเลือก
@@ -139,11 +140,114 @@ function PickupDateCard({ c, reload }) {
   );
 }
 
+/* พรีวิวไฟล์ที่เลือกไว้แต่ยังไม่ได้อัปโหลด
+   URL ของรูปต้องคืนเมื่อไฟล์หลุดจากรายการ — เรียก createObjectURL ตอน render
+   จะสร้างใหม่ทุกรอบแล้วรั่วทิ้งไว้ทั้งหมด */
+function SlipThumb({ file, onRemove }) {
+  const pdf = file.type === 'application/pdf';
+  const [url, setUrl] = useState(null);
+
+  useEffect(() => {
+    if (pdf) return undefined;
+    const made = URL.createObjectURL(file);
+    setUrl(made);
+    return () => URL.revokeObjectURL(made);
+  }, [file, pdf]);
+
+  return (
+    <span className="slip-pick" title={file.name}>
+      {pdf || !url
+        ? <span className="slip-file"><Icon name="file" /></span>
+        : <img src={url} alt={file.name} />}
+      <button
+        type="button"
+        className="slip-pick-x"
+        onClick={onRemove}
+        aria-label={`เอา ${file.name} ออก`}
+      >
+        <Icon name="x" />
+      </button>
+    </span>
+  );
+}
+
+/* การ์ดอัปโหลดสลิป — ทั้งใบเป็นที่วางไฟล์ ไม่ใช่ปุ่มเล็กๆ มุมขวา
+   คนหน้าร้านเปิดแอปธนาคารค้างอยู่แล้ว ลากรูปทิ้งลงการ์ดตรงๆ เร็วกว่าไล่หาใน dialog
+   และเห็นรูปที่จะแนบเรียงอยู่ก่อนกดบันทึก ว่าใช่สลิปใบที่ตั้งใจจริง */
+function SlipDropCard({ files, onChange }) {
+  const inputRef = useRef(null);
+  const [over, setOver] = useState(false);
+  const [skipped, setSkipped] = useState(0);
+
+  /* ไฟล์ที่ลากมาวางไม่ผ่าน accept ของ <input> — ต้องกรองชนิดเองตรงนี้ และกัน
+     ไฟล์เดิมซ้ำ (ชื่อ+ขนาดตรงกัน) เพราะเลือกสองรอบคือแนบสลิปใบเดียวกันสองใบ */
+  const take = (list) => {
+    const incoming = Array.from(list || []);
+    const usable = incoming.filter((f) => f.type && ACCEPT.includes(f.type));
+    setSkipped(incoming.length - usable.length);
+    const next = [...files];
+    for (const f of usable) {
+      if (!next.some((e) => e.name === f.name && e.size === f.size)) next.push(f);
+    }
+    onChange(next);
+  };
+
+  return (
+    <div
+      className={`slip-drop ${over ? 'over' : ''}`}
+      onDragOver={(e) => { e.preventDefault(); setOver(true); }}
+      onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setOver(false); }}
+      onDrop={(e) => { e.preventDefault(); setOver(false); take(e.dataTransfer?.files); }}
+    >
+      <input
+        ref={inputRef}
+        type="file"
+        accept={ACCEPT}
+        multiple
+        style={{ display: 'none' }}
+        onChange={(e) => { take(e.target.files); e.target.value = ''; }}
+      />
+
+      <button type="button" className="slip-drop-zone" onClick={() => inputRef.current?.click()}>
+        <span className="slip-drop-icon"><Icon name="upload" /></span>
+        <b>ลากสลิปมาวางที่นี่ หรือกดเพื่อเลือกไฟล์</b>
+        <span className="muted">รูปหรือ PDF · แนบได้หลายไฟล์ · ผูกกับรายการนี้</span>
+      </button>
+
+      {files.length > 0 ? (
+        <div className="slip-drop-files">
+          {files.map((f) => (
+            <SlipThumb
+              key={`${f.name}-${f.size}`}
+              file={f}
+              onRemove={() => { setSkipped(0); onChange(files.filter((x) => x !== f)); }}
+            />
+          ))}
+          <button
+            type="button"
+            className="btn btn-sm btn-light"
+            onClick={() => { setSkipped(0); onChange([]); }}
+          >
+            <Icon name="trash" /> ล้างไฟล์
+          </button>
+        </div>
+      ) : (
+        <p className="slip-drop-note muted">ยังไม่ได้แนบไฟล์ — บันทึกได้โดยไม่มีสลิป</p>
+      )}
+
+      {skipped > 0 ? (
+        <p className="slip-drop-note skip">
+          <Icon name="warning" /> {`ข้าม ${skipped} ไฟล์ที่ไม่ใช่รูปหรือ PDF`}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 export function PaymentPanel({ c, reload }) {
   const { ok, err } = useToast();
   const confirm = useConfirm();
   const { meta } = useMeta();
-  const slipRef = useRef(null);
   const rowSlipRef = useRef(null);
 
   const [slips, setSlips] = useState([]);          // files chosen for the payment being written
@@ -152,6 +256,10 @@ export function PaymentPanel({ c, reload }) {
   const [kind, setKind] = useState(Number(c.paid) > 0 ? 'final' : 'deposit');
   const [amount, setAmount] = useState(Number(c.balance) > 0 ? String(c.balance) : '');
   const [receivedBy, setReceivedBy] = useState('');
+
+  /* นาฬิกาของช่อง "รับเมื่อ" — เดินตลอด เพราะการ์ดนี้เป็นการ์ดรับเงิน "เข้ามาใหม่"
+     ค่าที่ใส่ในใบจึงเป็นเวลาปัจจุบันเสมอ ไม่มีเคสที่ต้องแสดงเวลาที่บันทึกไว้แล้ว */
+  const clockNow = useNowLocal();
 
   const { data: files, reload: reloadFiles } = useAsync(
     () => api.get('/api/uploads', { case_id: c.id }),
@@ -215,7 +323,6 @@ export function PaymentPanel({ c, reload }) {
       });
       for (const file of slips) await sendSlip(file, saved.id);
       setSlips([]);
-      if (slipRef.current) slipRef.current.value = '';
       ok(slips.length ? `บันทึกการรับเงินและแนบสลิป ${slips.length} ไฟล์แล้ว` : 'บันทึกการรับเงินแล้ว');
       reload();
       reloadFiles();
@@ -344,46 +451,16 @@ export function PaymentPanel({ c, reload }) {
                 required
               />
             </Field>
-            <Field label="รับเมื่อ">
-              <input name="paid_at" type="datetime-local" defaultValue={nowLocal()} />
+            {/* เวลารับเงินเป็นของที่ระบบรู้เอง ไม่ใช่คำถามที่ต้องถามคนเก็บเงิน — แก้ไม่ได้
+                เพราะใบรับเงินที่ย้อนเวลาได้ ทำให้ตอนปิดยอดสิ้นวันตอบไม่ได้ว่าเงินก้อนนี้
+                เข้าลิ้นชักตอนไหนจริง ๆ · ก่อนหน้านี้เป็น defaultValue ที่ค้างอยู่ที่เวลา
+                ตอนเปิดหน้า รับเงินใบที่สองของบ่ายนั้นจึงติดเวลาของใบแรกไปด้วย */}
+            <Field label="รับเมื่อ" hint="ระบบประทับเวลาให้ตอนกดบันทึก">
+              <DateTimeField name="paid_at" readOnly value={clockNow} />
             </Field>
           </FormGrid>
 
-          <div className="slip-drop">
-            <div className="slip-drop-head">
-              <b><Icon name="receipt" /> สลิป / หลักฐานการโอน</b>
-              <span className="muted">รูปหรือ PDF แนบได้หลายไฟล์ · ผูกกับรายการนี้</span>
-              <button type="button" className="btn btn-sm btn-light" onClick={() => slipRef.current?.click()}>
-                <Icon name="camera" /> เลือกไฟล์
-              </button>
-            </div>
-            <input
-              ref={slipRef}
-              type="file"
-              accept={ACCEPT}
-              multiple
-              style={{ display: 'none' }}
-              onChange={(e) => setSlips(Array.from(e.target.files || []))}
-            />
-            {slips.length > 0 ? (
-              <Row style={{ gap: 8, marginTop: 10 }}>
-                {slips.map((f) => (
-                  <span className="slip-chip lg" key={f.name + f.size}>
-                    {f.type === 'application/pdf'
-                      ? <span className="slip-file"><Icon name="file" /></span>
-                      : <img src={URL.createObjectURL(f)} alt={f.name} />}
-                  </span>
-                ))}
-                <button
-                  type="button"
-                  className="btn btn-sm btn-light"
-                  onClick={() => { setSlips([]); if (slipRef.current) slipRef.current.value = ''; }}
-                >
-                  ล้างไฟล์
-                </button>
-              </Row>
-            ) : <p className="muted" style={{ margin: '8px 0 0' }}>ยังไม่ได้แนบไฟล์ — บันทึกได้โดยไม่มีสลิป</p>}
-          </div>
+          <SlipDropCard files={slips} onChange={setSlips} />
 
           <div className="pay-actions">
             {missingBeforeSave.length ? (

@@ -90,6 +90,7 @@ function BookingDetailInner() {
   };
 
   const removeNote = async (n) => {
+    if (!await confirm('ลบบันทึก', n.question || n.note || '', { confirmText: 'ลบ', danger: true })) return;
     try {
       await api.del(`/api/bookings/${b.id}/notes/${n.id}`);
       ok('ลบแล้ว');
@@ -241,16 +242,18 @@ function BookingDetailInner() {
         <div className="card-body tight">
           <DataTable
             columns={[
-              { label: 'เมื่อ', render: (n) => fmtDateTime(n.created_at), cls: 'nowrap' },
+              { label: 'เมื่อ', render: (n) => fmtDateTime(n.created_at), cls: 'nowrap', mobile: 'title' },
               {
                 label: 'ขั้นตอน',
+                mobile: 'status',
                 render: (n) => <Badge kind="blue">{BOOKING_STEP_LABEL[n.step] || n.step}</Badge>,
               },
-              { label: 'หัวข้อ/คำถาม', key: 'question' },
-              { label: 'บันทึก', key: 'note' },
-              { label: 'ผู้บันทึก', key: 'recorded_by_name' },
+              { label: 'หัวข้อ/คำถาม', key: 'question', mobile: 'subtitle' },
+              { label: 'บันทึก', key: 'note', mobile: 'body' },
+              { label: 'ผู้บันทึก', key: 'recorded_by_name', mobile: 'meta' },
               {
                 label: '',
+                mobile: 'extra',
                 cls: 'nowrap',
                 render: (n) => (
                   <button type="button" className="btn btn-sm btn-light" onClick={() => removeNote(n)}><Icon name="trash" /></button>

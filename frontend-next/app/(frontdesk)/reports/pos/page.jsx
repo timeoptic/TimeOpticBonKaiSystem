@@ -5,12 +5,14 @@
  * แถวที่ติดป้าย "ระบบเดิม" มาจากตาราง `sales` — การขายสินค้าทั่วไปยุคก่อนมี POS
  * ยังมีเงินจริงอยู่ในนั้น จึงนับรวมในยอด ไม่ใช่ถูกซ่อนเพราะมาจากตารางอื่น
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Badge, Card, Kpis } from '../../../../components/ui.jsx';
 import { Icon } from '../../../../components/Icon.jsx';
 import { DataTable } from '../../../../components/DataTable.jsx';
+import { Pager } from '../../../../components/Pager.jsx';
+import { PAGE_SIZES } from '../../../../lib/pager.js';
 import { ExportButtons, ReportFilter, useReport } from '../../../../components/ReportFilter.jsx';
 import {
   DrillKpi, NoData, ReportState, TableSearch, bucketNote, filterRows, toSeries,
@@ -26,21 +28,21 @@ const PAY_BADGE = {
 };
 
 const COLUMNS = [
-  { label: 'เลขบิล', sortKey: 'bill_no', render: (r) => (
+  { label: 'เลขบิล', sortKey: 'bill_no', mobile: 'title', render: (r) => (
     <>
       <span className="mono">{r.bill_no}</span>
       {r.src === 'legacy' ? <Badge kind="gray" style={{ marginLeft: 6 }}>ระบบเดิม</Badge> : null}
     </>
   ) },
-  { label: 'วันที่', sortKey: 'date', render: (r) => fmtDateTime(r.date) },
-  { label: 'พนักงาน', key: 'employee' },
+  { label: 'วันที่', sortKey: 'date', render: (r) => fmtDateTime(r.date), mobile: 'body' },
+  { label: 'พนักงาน', key: 'employee', mobile: 'meta' },
   { label: 'ลูกค้า', sortKey: 'customer', render: (r) => r.customer || <span className="muted">ขาจร</span> },
-  { label: 'สินค้า', sortKey: 'items', render: (r) => (
+  { label: 'สินค้า', sortKey: 'items', mobile: 'meta', render: (r) => (
     <span className="cell-clip" title={r.items || ''}>{r.items || '—'}</span>
   ) },
-  { label: 'จำนวน', cls: 'right', sortKey: 'qty', render: (r) => count(r.qty) },
-  { label: 'ยอดรวม', cls: 'right', sortKey: 'revenue', render: (r) => money(r.revenue) },
-  { label: 'การชำระ', sortKey: 'pay_status', render: (r) => {
+  { label: 'จำนวน', cls: 'right', sortKey: 'qty', render: (r) => count(r.qty), mobile: 'meta' },
+  { label: 'ยอดรวม', cls: 'right', sortKey: 'revenue', render: (r) => money(r.revenue), mobile: 'body' },
+  { label: 'การชำระ', sortKey: 'pay_status', mobile: 'status', render: (r) => {
     const [kind, label] = PAY_BADGE[r.pay_status] || ['gray', r.pay_status];
     return (
       <>
@@ -54,9 +56,14 @@ const COLUMNS = [
 export default function PosReport() {
   const { filter, data, error, loading } = useReport('pos');
   const [term, setTerm] = useState('');
+  const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(PAGE_SIZES[0]);
   const router = useRouter();
 
   const rows = filterRows(data?.bills || [], term);
+
+  /* เปลี่ยนช่วงวันที่ (ได้ data ชุดใหม่) หรือพิมพ์คำค้น = ผลคนละชุด กลับไปหน้า 1 */
+  useEffect(() => { setPage(1); }, [data, term, perPage]);
 
   const csv = () => downloadCsv(
     `รายงานขายหน้าร้าน ${filter.from} ถึง ${filter.to}`,
@@ -139,11 +146,23 @@ export default function PosReport() {
                 columns={COLUMNS}
                 rows={rows}
                 sortable
+                /* หั่นหน้าใน DataTable ไม่ใช่หั่นก่อนส่งเข้าไป — ตารางนี้เรียงคอลัมน์ได้
+                   ถ้าหั่นก่อน ปุ่ม "ยอดมากไปน้อย" จะเรียงแค่แถวของหน้าที่เปิดอยู่ */
                 defaultSort={{ key: 'date', dir: 'desc' }}
+                page={page}
+                perPage={perPage}
                 empty={term ? 'ไม่พบรายการที่ค้นหา' : 'ช่วงนี้ยังไม่มีบิลขายหน้าร้าน'}
                 /* บิลของระบบเดิมไม่มีหน้ารายละเอียดให้เปิด — กดแล้วไม่ไปไหน
                    ดีกว่าพาไปหน้า 404 ที่ดูเหมือนระบบพัง */
                 onRowClick={(r) => (r.src === 'pos' ? router.push(`/pos/detail?id=${r.id}`) : null)}
+              />
+
+              <Pager
+                total={rows.length}
+                page={page}
+                perPage={perPage}
+                onPage={setPage}
+                onPerPage={setPerPage}
               />
             </Card>
           </>

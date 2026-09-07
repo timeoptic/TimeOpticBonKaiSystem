@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { api } from '../../lib/apiClient.js';
 import { useAsync } from '../../lib/hooks.js';
 import { Badge, Card, Kpi, Kpis, Loading, PageHead } from '../../components/ui.jsx';
-import { DataTable } from '../../components/DataTable.jsx';
+import { PagedTable } from '../../components/Pager.jsx';
 import { stageInfo } from '../../lib/constants.js';
 import { custName, fmtDate, fmtDateTime, hhmm, money } from '../../lib/format.js';
 import { Icon } from '../../components/Icon.jsx';
@@ -55,15 +55,15 @@ export default function Home() {
   const bookings = d.bookings_today || [];
 
   const orderCols = [
-    { label: 'วันที่สั่ง', render: (o) => fmtDateTime(o.order_date), cls: 'nowrap' },
-    { label: 'Invoice', key: 'invoice_code', cls: 'mono' },
-    { label: 'ลูกค้า', render: custName },
-    { label: 'พนักงาน', render: (o) => o.employee_name || '-' },
-    { label: 'เลนส์', render: (o) => o.lens_name || '-' },
-    { label: 'กรอบ', render: (o) => o.frame_name || '-' },
-    { label: 'นัดรับ', render: (o) => fmtDate(o.appointment_date), cls: 'nowrap' },
-    { label: 'ยอดรวม', render: (o) => money(o.total_price), cls: 'num' },
-    { label: 'คงเหลือ', render: (o) => money(o.balance), cls: 'num' },
+    { label: 'วันที่สั่ง', render: (o) => fmtDateTime(o.order_date), cls: 'nowrap', mobile: 'body' },
+    { label: 'Invoice', key: 'invoice_code', cls: 'mono', mobile: 'title' },
+    { label: 'ลูกค้า', render: custName, mobile: 'subtitle' },
+    { label: 'พนักงาน', render: (o) => o.employee_name || '-', mobile: 'meta' },
+    { label: 'เลนส์', render: (o) => o.lens_name || '-', mobile: 'meta' },
+    { label: 'กรอบ', render: (o) => o.frame_name || '-', mobile: 'meta' },
+    { label: 'นัดรับ', render: (o) => fmtDate(o.appointment_date), cls: 'nowrap', mobile: 'body' },
+    { label: 'ยอดรวม', render: (o) => money(o.total_price), cls: 'num', mobile: 'body' },
+    { label: 'คงเหลือ', render: (o) => money(o.balance), cls: 'num', mobile: 'body' },
   ];
 
   return (
@@ -101,21 +101,22 @@ export default function Home() {
 
       {stages.length > 0 && (
         <Card title="งานค้างแต่ละขั้นตอน">
-          <div className="row" style={{ gap: 10 }}>
+          {/* หน้าตาของชิปย้ายไปอยู่ใน globals.css (.home-stages) ทั้งชุด — สไตล์ที่เขียน
+              ติดกับ element ชนะมีเดียคิวรีเสมอ ตราบใดที่ padding กับความกว้างยังอยู่ตรงนี้
+              จอโทรศัพท์ก็จัดแถวใหม่ไม่ได้ · เหลือไว้ตรงนี้แค่สีประจำขั้นตอน */}
+          <div className="home-stages">
             {stages.map(([g, n]) => {
               const info = stageInfo(g);
               return (
                 <Link
                   key={g}
+                  className="home-stage"
                   href={`/cases?stage=${g}`}
-                  style={{
-                    display: 'flex', gap: 9, alignItems: 'center', padding: '10px 15px',
-                    borderRadius: 9, background: `${info.color}14`, color: info.color,
-                    fontWeight: 700, textDecoration: 'none',
-                  }}
+                  style={{ '--chip': info.color }}
                 >
-                  <Icon name={info.icon} />{' '}{info.label}
-                  <span className="badge" style={{ background: info.color, color: '#fff' }}>{n}</span>
+                  <Icon name={info.icon} />
+                  <span className="hs-label">{info.label}</span>
+                  <span className="badge hs-count">{n}</span>
                 </Link>
               );
             })}
@@ -129,22 +130,23 @@ export default function Home() {
         badge={<Badge kind="blue">{bookings.length}</Badge>}
         right={<Link className="btn btn-sm btn-light" href="/bookings">ดูปฏิทิน</Link>}
       >
-        <DataTable
+        <PagedTable
           columns={[
-            { label: 'เวลา', cls: 'nowrap', render: (b) => <b>{hhmm(b.booking_time)}</b> },
-            { label: 'อีก', cls: 'num', render: (b) => <MinsAway value={b.mins_away} /> },
-            { label: 'รหัส', key: 'booking_code', cls: 'mono' },
-            { label: 'ลูกค้า', render: (b) => [b.first_name, b.last_name].filter(Boolean).join(' ') || '(ไม่ระบุ)' },
-            { label: 'เบอร์โทร', key: 'phone', cls: 'nowrap' },
-            { label: 'ผู้ดูแล', key: 'assigned_name' },
-            { label: 'สถานะ', key: 'status' },
+            { label: 'เวลา', cls: 'nowrap', render: (b) => <b>{hhmm(b.booking_time)}</b>, mobile: 'title' },
+            { label: 'อีก', cls: 'num', render: (b) => <MinsAway value={b.mins_away} />, mobile: 'status' },
+            { label: 'รหัส', key: 'booking_code', cls: 'mono', mobile: 'meta' },
+            { label: 'ลูกค้า', render: (b) => [b.first_name, b.last_name].filter(Boolean).join(' ') || '(ไม่ระบุ)', mobile: 'title' },
+            { label: 'เบอร์โทร', key: 'phone', cls: 'nowrap', mobile: 'subtitle' },
+            { label: 'ผู้ดูแล', key: 'assigned_name', mobile: 'meta' },
+            { label: 'สถานะ', key: 'status', mobile: 'body' },
             {
               label: 'แจ้งเตือน',
+              mobile: 'meta',
               render: (b) => (b.reminder_sent_at
                 ? <Badge kind="ok"><Icon name="bell" /> ส่งแล้ว</Badge>
                 : <span className="muted">{`ก่อน ${b.reminder_minutes} น.`}</span>),
             },
-            { label: 'บันทึกเบื้องต้น', render: (b) => (b.intake_note || '').slice(0, 70) },
+            { label: 'บันทึกเบื้องต้น', render: (b) => (b.intake_note || '').slice(0, 70), mobile: 'meta' },
           ]}
           rows={bookings}
           onRowClick={(b) => router.push(`/bookings/detail?id=${b.id}`)}
@@ -166,7 +168,7 @@ export default function Home() {
         tight
         badge={<Badge kind="warn">{d.unfilled.length}</Badge>}
       >
-        <DataTable
+        <PagedTable
           columns={orderCols}
           rows={d.unfilled}
           onRowClick={(o) => router.push(`/orders/detail?id=${o.id}`)}
@@ -179,7 +181,7 @@ export default function Home() {
         tight
         badge={<Badge kind="blue">{d.unclosed.length}</Badge>}
       >
-        <DataTable
+        <PagedTable
           columns={orderCols}
           rows={d.unclosed}
           onRowClick={(o) => router.push(`/orders/detail?id=${o.id}`)}

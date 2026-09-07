@@ -1,6 +1,6 @@
 'use client';
 /** The small presentational pieces the pages are built from. Port of frontend/src/components/ui.jsx. */
-import { Fragment, useState } from 'react';
+import { Fragment, cloneElement, isValidElement, useId, useState } from 'react';
 import Link from 'next/link';
 import { Icon } from './Icon.jsx';
 
@@ -52,11 +52,34 @@ export function Card({ title, badge, right, tight, children, className = '' }) {
   );
 }
 
+/**
+ * ป้าย + ช่องกรอกหนึ่งคู่
+ *
+ * ป้ายถูกผูกกับช่องด้วย htmlFor/id ไม่ใช่ด้วยการเอา <label> ไปครอบ — ครอบไม่ได้
+ * เพราะ <label> ส่งคลิกทุกครั้งไปที่ช่องที่มันคุมอยู่ แล้วการคลิกวันในปฏิทินของ
+ * <DateField> ที่ลอยอยู่ข้างในจะถูกส่งต่อไปหาช่องด้วย ปฏิทินจะกะพริบปิด-เปิด
+ * (เหตุผลเดียวกับที่ ReportFilter ใช้ <div> ไม่ใช่ <label>)
+ *
+ * ผูกเฉพาะตอนที่ลูกเป็นแท็กพื้นฐานจริง ๆ (input/select/textarea) — คอมโพเนนต์
+ * ของเราเอง (DateField, Select, MultiSelect …) ไม่ได้ส่ง id ต่อไปให้ช่องข้างใน
+ * ยัด id ให้มันจะได้ id ที่ไปเกาะ <div> ครอบแทน แล้วป้ายจะชี้ไปที่กล่องเปล่า
+ *
+ * ที่ผูกแล้วได้อะไร: แตะที่ป้ายแล้วเคอร์เซอร์ไปอยู่ในช่องเลย — บนมือถือนี่คือ
+ * พื้นที่กดที่กว้างขึ้นฟรี ๆ โดยไม่ต้องขยายอะไร และเป็นสิ่งที่โปรแกรมอ่านหน้าจอ
+ * ต้องใช้เพื่อบอกว่าช่องนี้ชื่ออะไร
+ */
 export function Field({ label, hint, children, className = '' }) {
+  const auto = useId();
+  const native = isValidElement(children)
+    && typeof children.type === 'string'
+    && ['input', 'select', 'textarea'].includes(children.type)
+    && !children.props.id;
+  const id = native ? auto : undefined;
+
   return (
     <div className={`field ${className}`}>
-      <label>{label}</label>
-      {children}
+      <label htmlFor={id}>{label}</label>
+      {native ? cloneElement(children, { id }) : children}
       {hint ? <div className="hint">{hint}</div> : null}
     </div>
   );

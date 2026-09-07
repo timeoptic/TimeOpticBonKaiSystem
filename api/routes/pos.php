@@ -139,11 +139,21 @@ function posSaleFull(int $id): ?array
    แคตตาล็อกสำหรับ POS
    --------------------------------------------------------------------------- */
 
+/** หมวดของ POS — โค้ดหมวดขึ้นต้นด้วยคำนี้ทุกตัวตั้งแต่ migration 018 */
+const POS_CATEGORY_PREFIX = 'Pos';
+
 /**
  * สินค้าทั้งหมดที่ POS ขายได้ จัดกลุ่มตามหมวด
  *
  * อ่านจาก products/categories ที่เป็นแคตตาล็อกกลางของทั้งระบบ — หน้าเว็บไม่มี
  * รายการสินค้าฝังอยู่ในโค้ดแม้แต่ตัวเดียว เพิ่มสินค้าที่ฐานแล้วขึ้นเองทันที
+ *
+ * **คืนเฉพาะหมวด `Pos*`** — ของหน้าร้านที่ขายเป็นของเบ็ดเตล็ด (บริการ อะไหล่
+ * น้ำยา คอนแทคเลนส์ กล่องแว่น) คนละชุดกับของในคลัง · ตาราง products ใช้ร่วมกับ
+ * โมดูลคลัง ถ้าไม่กรอง เลนส์ตัดแว่นทุกชิ้นกับล็อตของคลังจะไหลมาโผล่ในช่องเลือก
+ * สินค้าของ POS ทั้งที่ POS ไม่หัก remaining_qty ให้ — ขายไปก็เป็นของที่หายจาก
+ * คลังโดยไม่มีใครรู้ · การกรองที่ API ไม่ใช่ที่หน้าเว็บ เพราะหน้าเว็บที่ซ่อนของ
+ * แต่ API ยังคืนให้ คือ API ที่ไม่ได้กันอะไรเลย
  *
  * ส่ง attributes.pos_fields ติดไปด้วย = นิยามช่องกรอกเพิ่มของสินค้าตัวนั้น
  * (ค่าสายตา / สี / รหัสแว่น) หน้าเว็บวาดตามนี้ ไม่มีตารางแมปฝั่งหน้าเว็บ
@@ -151,20 +161,23 @@ function posSaleFull(int $id): ?array
 GET('/api/pos/products', function (array $req) {
     posRequireSeller(posActor());
 
-    $where = [];
-    $args  = [];
+    $where = ['c.code LIKE ?'];
+    $args  = [POS_CATEGORY_PREFIX . '%'];
     if ($term = str_or($req['query']['q'] ?? null)) {
         $p = like($term);
         $where[] = '(p.name LIKE ? OR p.sku LIKE ? OR p.brand LIKE ?)';
         array_push($args, $p, $p, $p);
     }
+    /* เรียงด้วย SKU ไม่ใช่ชื่อ — SKU ในหมวดเรียงตามลำดับที่เจ้าของร้านสั่งลงมา
+       (SRV-0001 คือ "ค่าประกอบแว่น" ตัวแรกในใบที่ให้มา) ส่วนการเรียงตามชื่อไทย
+       สลับลำดับนั้นทิ้งโดยไม่ได้อะไรกลับมา คนหน้าร้านกวาดตาหาตามใบที่จำได้ */
     $sql = 'SELECT p.id, p.sku, p.name, p.brand, p.product_type, p.base_selling_price,
                    p.attributes, c.id AS category_id, c.code AS category_code,
                    c.name AS category_name
               FROM products p
-              JOIN categories c ON c.id = p.category_id'
-         . ($where ? ' WHERE ' . implode(' AND ', $where) : '')
-         . ' ORDER BY c.id, p.name';
+              JOIN categories c ON c.id = p.category_id
+             WHERE ' . implode(' AND ', $where)
+         . ' ORDER BY c.id, p.sku';
 
     $rows = Db::all($sql, ...$args);
 
@@ -298,9 +311,19 @@ POST('/api/pos/sales', function (array $req) {
 
         $product = null;
         if ($pid !== null) {
-            $product = Db::get('SELECT id, sku, name, attributes FROM products WHERE id = ?', $pid);
+            /* ต้องอยู่ในหมวด Pos* — เงื่อนไขเดียวกับที่ /api/pos/products คืนให้
+               ไคลเอนต์เก่าที่จำ id ของเลนส์ในคลังไว้แล้วยิงเข้ามา ต้องไม่ผ่าน
+               ไม่ใช่ผ่านได้เพราะหน้าจอใหม่แค่ไม่แสดงให้เลือกแล้ว */
+            $product = Db::get(
+                'SELECT p.id, p.sku, p.name, p.attributes
+                   FROM products p
+                   JOIN categories c ON c.id = p.category_id
+                  WHERE p.id = ? AND c.code LIKE ?',
+                $pid,
+                POS_CATEGORY_PREFIX . '%'
+            );
             if (!$product) {
-                bad("รายการที่ $n: ไม่พบสินค้ารหัส $pid");
+                bad("รายการที่ $n: ไม่พบสินค้ารหัส $pid ในแคตตาล็อกของ POS");
             }
         }
 

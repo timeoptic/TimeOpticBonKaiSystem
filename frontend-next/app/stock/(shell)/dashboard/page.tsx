@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { can, useActor, WorkHead } from "@/stockmod/components/AppShell";
 import Select from "@/stockmod/components/Select";
@@ -14,6 +14,50 @@ import { IconCalendar, IconChart } from "@/stockmod/components/Icon";
 import { Filter, FilterBar } from "@/stockmod/components/FilterBar";
 import { download, type Mode, type Sheet } from "@/stockmod/lib/workbook";
 import { daysPng, INK, rankPng } from "@/stockmod/lib/chartimage";
+import Paginator from "@/stockmod/components/Paginator";
+
+/**
+ * ตารางในหน้านี้ที่ยาวได้ไม่จำกัด — แบ่งหน้าให้ทีละ 25 แถว
+ *
+ * สามตารางล่างของหน้านี้ยาวตามข้อมูลจริง ไม่ใช่ top-N เหมือนกราฟข้างบน: สาขา
+ * เดียวเบิกของเดือนละร้อยรายการเป็นเรื่องปกติ และ "ค้างสต๊อกนาน" ยิ่งร้านเก่ายิ่ง
+ * ยาว · หน้าที่ต้องเลื่อนผ่านตารางหนึ่งพันแถวเพื่อไปดูหัวข้อถัดไปคือหน้าที่ไม่มี
+ * ใครเลื่อนจนถึงท้าย
+ *
+ * เก็บเลขหน้าไว้ในตัวเอง เพราะกล่องพับของแต่ละสาขาต้องนับหน้าแยกกัน — ยกขึ้นไป
+ * ไว้ที่หน้าแม่แปลว่าต้องถือ state เป็นราย branchId
+ *
+ * ไม่ต้องมี effect รีเซ็ตตอนเปลี่ยนช่วงวันที่: `current` หนีบให้อยู่ในช่วงเสมอ
+ * ค้างอยู่หน้า 9 แล้วข้อมูลชุดใหม่มี 2 หน้า จะได้หน้า 2 ไม่ใช่ตารางโล่ง
+ */
+function Paged<T>({
+  rows,
+  label,
+  perPage = 25,
+  children,
+}: {
+  rows: T[];
+  label: string;
+  perPage?: number;
+  children: (shown: T[]) => ReactNode;
+}) {
+  const [page, setPage] = useState(1);
+  const last = Math.max(1, Math.ceil(rows.length / perPage));
+  const current = Math.min(page, last);
+
+  return (
+    <>
+      {children(rows.slice((current - 1) * perPage, current * perPage))}
+      <Paginator
+        page={current}
+        perPage={perPage}
+        total={rows.length}
+        onPage={setPage}
+        label={label}
+      />
+    </>
+  );
+}
 
 type Slot = { rows: number; qty: number; value: number | null; qtyNoCost: number };
 
@@ -1101,6 +1145,8 @@ export default function DashboardPage() {
                       {b.qtyNoCost > 0 ? ` · ${count(b.qtyNoCost)} ชิ้นยังไม่รู้ต้นทุน` : ""}
                     </span>
                   </summary>
+                  <Paged rows={b.items} label="รายการ">
+                  {(items) => (
                   <div className="tablewrap">
                   <table className="grid">
                     <caption className="sr-only">{`สินค้าที่ ${b.branch} เบิกไป`}</caption>
@@ -1115,7 +1161,7 @@ export default function DashboardPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {b.items.map((it) => (
+                      {items.map((it) => (
                         <tr key={`${b.branchId}-${it.sku}`} className="grid__row">
                           <td>
                             {it.name}
@@ -1145,6 +1191,8 @@ export default function DashboardPage() {
                     </tbody>
                   </table>
                   </div>
+                  )}
+                  </Paged>
                 </details>
               ))}
             </section>
@@ -1180,6 +1228,8 @@ export default function DashboardPage() {
                       {b.awaitingCost > 0 ? ` · ${count(b.awaitingCost)} ใบยังไม่ลงต้นทุน` : ""}
                     </span>
                   </summary>
+                  <Paged rows={b.items} label="รายการ">
+                  {(items) => (
                   <div className="tablewrap">
                   <table className="grid">
                     <caption className="sr-only">{`เลนส์ที่ ${b.branch} สั่งตัด`}</caption>
@@ -1195,7 +1245,7 @@ export default function DashboardPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {b.items.map((it) => (
+                      {items.map((it) => (
                         <tr key={`${b.branchId ?? "self"}-${it.sku}`} className="grid__row">
                           <td>
                             {it.name}
@@ -1232,6 +1282,8 @@ export default function DashboardPage() {
                     </tbody>
                   </table>
                   </div>
+                  )}
+                  </Paged>
                 </details>
               ))}
             </section>
@@ -1284,6 +1336,8 @@ export default function DashboardPage() {
                   ไม่มีสินค้าไหนค้างเกิน {span(movers.data.idleDays)} — ของในคลังหมุนอยู่
                 </p>
               ) : (
+                <Paged rows={movers.data.slow} label="รายการ">
+                {(items) => (
                 <div className="tablewrap">
                   <table className="grid">
                     <caption className="sr-only">
@@ -1300,7 +1354,7 @@ export default function DashboardPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {movers.data.slow.map((r) => (
+                      {items.map((r) => (
                         <tr key={r.id} className="grid__row">
                           <th scope="row">
                             <span className="grid__name">{r.name}</span>
@@ -1341,6 +1395,8 @@ export default function DashboardPage() {
                     </tbody>
                   </table>
                 </div>
+                )}
+                </Paged>
               )
             ) : null}
           </section>

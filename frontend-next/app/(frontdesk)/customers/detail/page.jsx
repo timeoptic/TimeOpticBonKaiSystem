@@ -8,7 +8,7 @@ import { useConfirm } from '../../../../components/Confirm.jsx';
 import {
   Card, FormActions, Kv, Loading, OrderStatusBadge, PageHead, Split,
 } from '../../../../components/ui.jsx';
-import { DataTable } from '../../../../components/DataTable.jsx';
+import { PagedTable } from '../../../../components/Pager.jsx';
 import { StatusChip } from '../../../../components/StatusChip.jsx';
 import { ExamHistory } from '../../../../components/ExamHistory.jsx';
 import { QueryParamPage } from '../../../../components/QueryParamPage.jsx';
@@ -83,13 +83,13 @@ function CustomerDetailInner() {
         </Card>
 
         <Card title="เคสของลูกค้า" tight>
-          <DataTable
+          <PagedTable
             columns={[
-              { label: 'เคส', key: 'case_code', cls: 'mono' },
-              { label: 'สถานะ', render: (k) => <StatusChip row={k} /> },
-              { label: 'เปิดเมื่อ', render: (k) => fmtDate(k.opened_at), cls: 'nowrap' },
-              { label: 'ยอด', render: (k) => (k.net_price === null ? '-' : money(k.net_price)), cls: 'num' },
-              { label: 'ค้าง', render: (k) => (k.balance === null ? '-' : money(k.balance)), cls: 'num' },
+              { label: 'เคส', key: 'case_code', cls: 'mono', mobile: 'title' },
+              { label: 'สถานะ', render: (k) => <StatusChip row={k} />, mobile: 'status' },
+              { label: 'เปิดเมื่อ', render: (k) => fmtDate(k.opened_at), cls: 'nowrap', mobile: 'body' },
+              { label: 'ยอด', render: (k) => (k.net_price === null ? '-' : money(k.net_price)), cls: 'num', mobile: 'body' },
+              { label: 'ค้าง', render: (k) => (k.balance === null ? '-' : money(k.balance)), cls: 'num', mobile: 'body' },
             ]}
             rows={c.cases}
             onRowClick={(k) => router.push('/cases/detail?id=' + k.id)}
@@ -106,16 +106,16 @@ function CustomerDetailInner() {
       </Card>
 
       <Card title="ประวัติการสั่งตัดแว่น" tight>
-        <DataTable
+        <PagedTable
           columns={[
-            { label: 'วันที่', render: (o) => fmtDateTime(o.order_date), cls: 'nowrap' },
-            { label: 'Invoice', key: 'invoice_code', cls: 'mono' },
-            { label: 'เลนส์', key: 'lens_name' },
-            { label: 'กรอบ', key: 'frame_name' },
-            { label: 'ยอดรวม', render: (o) => money(o.total_price), cls: 'num' },
-            { label: 'รับแล้ว', render: (o) => money(o.paid), cls: 'num' },
-            { label: 'คงเหลือ', render: (o) => money(o.balance), cls: 'num' },
-            { label: 'สถานะ', render: (o) => <OrderStatusBadge order={o} /> },
+            { label: 'วันที่', render: (o) => fmtDateTime(o.order_date), cls: 'nowrap', mobile: 'body' },
+            { label: 'Invoice', key: 'invoice_code', cls: 'mono', mobile: 'title' },
+            { label: 'เลนส์', key: 'lens_name', mobile: 'meta' },
+            { label: 'กรอบ', key: 'frame_name', mobile: 'meta' },
+            { label: 'ยอดรวม', render: (o) => money(o.total_price), cls: 'num', mobile: 'body' },
+            { label: 'รับแล้ว', render: (o) => money(o.paid), cls: 'num', mobile: 'meta' },
+            { label: 'คงเหลือ', render: (o) => money(o.balance), cls: 'num', mobile: 'body' },
+            { label: 'สถานะ', render: (o) => <OrderStatusBadge order={o} />, mobile: 'status' },
           ]}
           rows={c.orders}
           onRowClick={(o) => router.push('/orders/detail?id=' + o.id)}

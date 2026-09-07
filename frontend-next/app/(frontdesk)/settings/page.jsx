@@ -6,10 +6,11 @@ import { useToast } from '../../../components/Toast.jsx';
 import {
   Badge, Card, Field, FormActions, FormGrid, Loading, PageHead,
 } from '../../../components/ui.jsx';
-import { DataTable } from '../../../components/DataTable.jsx';
+import { PagedTable } from '../../../components/Pager.jsx';
 import { fmtDateTime } from '../../../lib/format.js';
 import { Icon } from '../../../components/Icon.jsx';
 import { AdminOnly } from '../../../components/AdminOnly.jsx';
+import { TimeField } from '../../../components/TimeField.jsx';
 
 function SettingsPageInner() {
   const { ok, err } = useToast();
@@ -132,10 +133,10 @@ function SettingsPageInner() {
             </Field>
             <Field label="ชื่อร้าน"><input name="shop_name" defaultValue={s.shop_name || ''} /></Field>
             <Field label="เวลาเปิดร้าน">
-              <input name="shop_open_time" type="time" defaultValue={s.shop_open_time || '10:00'} />
+              <TimeField name="shop_open_time" defaultValue={s.shop_open_time || '10:00'} />
             </Field>
             <Field label="เวลาปิดร้าน">
-              <input name="shop_close_time" type="time" defaultValue={s.shop_close_time || '20:00'} />
+              <TimeField name="shop_close_time" defaultValue={s.shop_close_time || '20:00'} />
             </Field>
           </FormGrid>
 
@@ -162,18 +163,19 @@ function SettingsPageInner() {
       </Card>
 
       <Card title="ประวัติการแจ้งเตือนล่าสุด" tight>
-        <DataTable
+        <PagedTable
           columns={[
-            { label: 'เมื่อ', render: (n) => fmtDateTime(n.created_at), cls: 'nowrap' },
-            { label: 'ประเภท', key: 'kind' },
-            { label: 'การจอง', key: 'booking_code', cls: 'mono' },
+            { label: 'เมื่อ', render: (n) => fmtDateTime(n.created_at), cls: 'nowrap', mobile: 'title' },
+            { label: 'ประเภท', key: 'kind', mobile: 'subtitle' },
+            { label: 'การจอง', key: 'booking_code', cls: 'mono', mobile: 'body' },
             {
               label: 'ผล',
+              mobile: 'status',
               render: (n) => (Number(n.ok)
                 ? <Badge kind="ok">สำเร็จ</Badge>
                 : <Badge kind="danger">ไม่สำเร็จ</Badge>),
             },
-            { label: 'ข้อผิดพลาด', key: 'error' },
+            { label: 'ข้อผิดพลาด', key: 'error', mobile: 'body' },
           ]}
           rows={logs}
           empty="ยังไม่มีการแจ้งเตือน"

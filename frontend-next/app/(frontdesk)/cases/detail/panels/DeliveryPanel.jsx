@@ -32,6 +32,7 @@ import { useProcessActions } from '../../../../../components/ProcessShell.jsx';
 import { useMeta } from '../../../../../contexts/MetaContext.jsx';
 import { custName, fmtDate, fmtDateTime, money, nowLocal, toStamp } from '../../../../../lib/format.js';
 import { Icon } from '../../../../../components/Icon.jsx';
+import { DateTimeField } from '../../../../../components/DateTimeField.jsx';
 
 /* ไอคอนต่อวิธีจ่าย — ชุดเดียวกับขั้น "ชำระเงิน" ตัวเลือกจริงมาจาก meta.lists.pay_type
    ไม่ได้พิมพ์รายการไว้เอง ร้านเพิ่มช่องทางใหม่แล้วที่นี่ขึ้นตาม */
@@ -438,11 +439,7 @@ export function DeliveryPanel({ c, reload, actorId }) {
                     />
                   </Field>
                   <Field label="วันที่รับเงิน">
-                    <input
-                      type="datetime-local"
-                      value={paidAt}
-                      onChange={(e) => setPaidAt(e.target.value)}
-                    />
+                    <DateTimeField value={paidAt} onChange={setPaidAt} />
                   </Field>
                 </FormGrid>
 
@@ -535,11 +532,7 @@ export function DeliveryPanel({ c, reload, actorId }) {
               />
             </Field>
             <Field label="วันที่ส่งมอบ">
-              <input
-                type="datetime-local"
-                value={deliveredAt}
-                onChange={(e) => setDeliveredAt(e.target.value)}
-              />
+              <DateTimeField value={deliveredAt} onChange={setDeliveredAt} />
             </Field>
           </FormGrid>
           <Field label="หมายเหตุ" className="full">

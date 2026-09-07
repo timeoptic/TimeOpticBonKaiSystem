@@ -58,7 +58,7 @@ function Round({ row, open }) {
               {[['r', 'R'], ['l', 'L']].map(([k, label]) => (
                 <tr key={k}>
                   <th scope="row">{label}</th>
-                  {RX_COLS.map(([f]) => <td key={f}><span>{cell(rx, k, f)}</span></td>)}
+                  {RX_COLS.map(([f, colLabel]) => <td key={f} data-col={colLabel}><span>{cell(rx, k, f)}</span></td>)}
                 </tr>
               ))}
             </tbody>

@@ -100,9 +100,12 @@
    ตัวเลือกที่ใช้ > จึงไม่โดนมันอีกต่อไป — เขียนให้กล่องห่อโปร่งใสแล้วส่งสไตล์ต่อไปที่ input ข้างใน */
 .pos-f > .datef{width:100%}
 
+/* ช่องเลือกถูกห่อด้วย .sel แล้ว เหตุผลเดียวกับ .datef ข้างบน — ปุ่มที่กดจริงคือลูกของกล่องห่อ */
+.pos-f > .sel{width:100%}
+
 .pos-f > input,
 .pos-f > .datef > input,
-.pos-f > select,
+.pos-f > .sel > .sel-trigger,
 .pos-f > textarea{
   width:100%;min-height:46px;padding:11px 14px 11px 38px;
   background:var(--field);border:1px solid transparent;border-radius:var(--radius-sm);
@@ -111,9 +114,10 @@
 
 .pos-f > textarea{min-height:46px;resize:vertical;padding-top:13px}
 
-.pos-f > select{padding-right:34px;cursor:pointer}
+.pos-f > .sel > .sel-trigger{padding-right:34px;cursor:pointer}
 
-.pos-f > input:focus,.pos-f > .datef > input:focus,.pos-f > select:focus,.pos-f > textarea:focus{
+.pos-f > input:focus,.pos-f > .datef > input:focus,.pos-f > textarea:focus,
+.pos-f > .sel > .sel-trigger:focus-visible,.pos-f > .sel.open > .sel-trigger{
   outline:none;background:var(--card);border-color:var(--green);box-shadow:0 0 0 3px var(--green-tint);
 }
 
@@ -122,12 +126,6 @@
 
 /* ปุ่มปฏิทินหลบไอคอนของ POS ที่นั่งอยู่ซ้ายช่อง และหลบลูกศรของ select ทางขวา */
 .pos-f > .datef .datef-open{width:40px}
-
-/* ลูกศรของ select วาดเอง เพราะ appearance:none ตัดของเบราว์เซอร์ทิ้งไปแล้ว */
-.pos-f.sel::after{
-  content:"▾";position:absolute;right:14px;top:50%;transform:translateY(-50%);
-  color:var(--ink-dim);pointer-events:none;
-}
 
 .pos-sep{border:0;border-top:1px solid var(--line-soft);margin:18px 0 16px}
 

@@ -98,7 +98,7 @@ export default function PaymentsReport() {
               <Card title="แยกตามช่องทาง" tight>
                 <DataTable
                   columns={[
-                    { label: 'ช่องทาง', sortKey: 'method', render: (r) => (
+                    { label: 'ช่องทาง', sortKey: 'method', mobile: 'title', render: (r) => (
                       <span className="row" style={{ gap: 8 }}>
                         <i
                           className="sw"
@@ -107,8 +107,8 @@ export default function PaymentsReport() {
                         {label(r.method)}
                       </span>
                     ) },
-                    { label: 'ครั้ง', cls: 'right', sortKey: 'count', render: (r) => count(r.count) },
-                    { label: 'ยอดเงิน', cls: 'right', sortKey: 'amount', render: (r) => money(r.amount) },
+                    { label: 'ครั้ง', cls: 'right', sortKey: 'count', render: (r) => count(r.count), mobile: 'body' },
+                    { label: 'ยอดเงิน', cls: 'right', sortKey: 'amount', render: (r) => money(r.amount), mobile: 'body' },
                     { label: 'สัดส่วน', cls: 'right', sortKey: 'share', render: (r) => `${r.share}%` },
                   ]}
                   rows={data.by_method}

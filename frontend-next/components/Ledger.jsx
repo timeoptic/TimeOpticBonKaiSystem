@@ -18,9 +18,12 @@ import { useAsync, useDebounced, onSubmit } from '../lib/hooks.js';
 import { useToast } from './Toast.jsx';
 import { useConfirm } from './Confirm.jsx';
 import {
-  Card, Field, FormGrid, Kpi, Kpis, Loading, PageHead, Toolbar,
+  Card, Field, FormGrid, Kpi, Kpis, Loading, PageHead,
 } from './ui.jsx';
 import { DataTable } from './DataTable.jsx';
+import { FilterBar } from './FilterBar.jsx';
+import { Pager } from './Pager.jsx';
+import { PAGE_SIZES } from '../lib/pager.js';
 import { ComboList, ListSelect } from './Selects.jsx';
 import { DateField } from './DateField.jsx';
 import { fmtDate, money, todayISO } from '../lib/format.js';
@@ -54,12 +57,17 @@ export function Ledger({ title, subtitle, icon, endpoint, typeKey, typeList, wit
   const [to, setTo] = useState('');
   const [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(PAGE_SIZES[0]);
   const q = useDebounced(term);
 
   const { data, loading, error, reload } = useAsync(
     () => api.get(endpoint, { q: q.trim(), from, to, limit: 500 }),
     [q, from, to]
   );
+
+  /* คำค้นหรือช่วงวันที่เปลี่ยน = สมุดคนละหน้า กลับไปหน้า 1 ไม่งั้นค้างอยู่หน้าที่ไม่มีอยู่จริง */
+  useEffect(() => { setPage(1); }, [q, from, to, perPage]);
 
   /* Esc ปิดกล่องได้ เป็นสิ่งที่คนคาดหวังจากกล่องลอยทุกใบ และเป็นทางออกเดียว
      ของคนที่ใช้คีย์บอร์ดอย่างเดียว */
@@ -101,6 +109,10 @@ export function Ledger({ title, subtitle, icon, endpoint, typeKey, typeList, wit
   /* มีตัวกรองค้างอยู่ไหม — จอว่างเพราะ "ยังไม่เคยบันทึก" กับเพราะ "กรองจนไม่เหลือ"
      เป็นคนละเรื่อง และทางออกก็คนละทาง */
   const filtered = !!(q.trim() || from || to);
+  /* ตัวเลขบนปุ่ม "ตัวกรอง (N)" — ช่วงวันที่นับเป็นตัวเดียว ไม่ใช่สองตัว เพราะ
+     "ตั้งแต่" กับ "ถึง" เป็นสองปลายของสิ่งเดียวกัน · คำค้นไม่นับ มันอยู่นอกแผ่น
+     และเห็นได้ด้วยตาอยู่แล้วว่าพิมพ์อะไรค้างไว้ */
+  const activeFilters = (from || to) ? 1 : 0;
 
   /* count/total/by_type คิดมาจากทุกแถวที่เข้าเงื่อนไข ส่วน rows ถูกตัดที่ 500
      — อย่าเอา rows.length มาแทน count เด็ดขาด สองอย่างนี้ไม่เท่ากันเมื่อรายการเยอะ */
@@ -111,19 +123,20 @@ export function Ledger({ title, subtitle, icon, endpoint, typeKey, typeList, wit
   const showBranch = new Set(rows.map((r) => r.branch || '')).size > 1;
 
   const columns = [
-    { label: 'ID', key: 'id', cls: 'mono' },
-    { label: 'วันที่', render: (r) => fmtDate(r.cf_date), cls: 'nowrap' },
-    { label: 'ประเภท', key: typeKey },
+    { label: 'ID', key: 'id', cls: 'mono', mobile: 'meta' },
+    { label: 'วันที่', render: (r) => fmtDate(r.cf_date), cls: 'nowrap', mobile: 'title' },
+    { label: 'ประเภท', key: typeKey, mobile: 'subtitle' },
     /* โผล่เฉพาะตอนที่แถวในจอไม่ได้เป็นสาขาเดียวกันหมด — คอลัมน์ที่ทุกแถวเขียนเหมือนกัน
        ไม่ได้บอกอะไร มีแต่เบียดที่ของคอลัมน์ที่บอก ส่วนแถวเก่าที่เป็น "ส่วนตัว" หรือ
        "ถูกดี" ปนอยู่ คอลัมน์จะกลับมาเองโดยไม่ต้องมีใครไปเปิด */
-    ...(showBranch ? [{ label: 'สาขา', key: 'branch' }] : []),
-    { label: 'จำนวนเงิน', render: (r) => money(r.amount), cls: 'num' },
-    ...(withPayType ? [{ label: 'ชำระ', key: 'pay_type' }] : []),
-    { label: 'หมายเหตุ', key: 'notes' },
+    ...(showBranch ? [{ label: 'สาขา', key: 'branch', mobile: 'meta' }] : []),
+    { label: 'จำนวนเงิน', render: (r) => money(r.amount), cls: 'num', mobile: 'body' },
+    ...(withPayType ? [{ label: 'ชำระ', key: 'pay_type', mobile: 'body' }] : []),
+    { label: 'หมายเหตุ', key: 'notes', mobile: 'body' },
     {
       label: '',
       cls: 'nowrap',
+      mobile: 'extra',
       render: (r) => (
         <button
           type="button"
@@ -157,36 +170,57 @@ export function Ledger({ title, subtitle, icon, endpoint, typeKey, typeList, wit
                เป็นคำที่ไม่ได้บอกอะไรเลย มีแต่ทำให้กล่องรก */
             sub={capped ? `ตารางข้างล่างแสดง ${rows.length.toLocaleString('th-TH')} รายการล่าสุด` : null}
           />
-          {/* ใบนี้ตอบคำถามที่ยอดรวมตอบไม่ได้: เงินก้อนนั้นไปกองอยู่ที่ประเภทไหน */}
-          <Kpi
-            kind="breakdown"
-            label="แยกตามประเภท"
-            value={(
-              <span className="kpi-breakdown">
-                {top.length === 0
-                  ? <span className="muted">ยังไม่มีรายการ</span>
-                  : top.map((t) => (
+          {/* ใบนี้ตอบคำถามที่ยอดรวมตอบไม่ได้: เงินก้อนนั้นไปกองอยู่ที่ประเภทไหน
+              ตอนยังไม่มีรายการมันไม่มีคำตอบให้ — ใบที่เขียนว่า "ยังไม่มีรายการ" ทวนสิ่งที่
+              เลข 0 ข้าง ๆ บอกไปแล้ว และบนจอโทรศัพท์มันกินเต็มแถวเพราะชื่อประเภทเป็น
+              ข้อความยาว ไม่ใช่ตัวเลขสั้น ๆ ที่ยืนครึ่งจอได้ */}
+          {top.length > 0 && (
+            <Kpi
+              kind="breakdown"
+              label="แยกตามประเภท"
+              value={(
+                <span className="kpi-breakdown">
+                  {top.map((t) => (
                     <span className="kb-row" key={t.type}>
                       <span className="kb-name" title={t.type}>{t.type}</span>
                       <span className="kb-val">{money(t.total)}</span>
                     </span>
                   ))}
-              </span>
-            )}
-            sub={rest > 0 ? `และอีก ${rest} ประเภท` : null}
-          />
+                </span>
+              )}
+              sub={rest > 0 ? `และอีก ${rest} ประเภท` : null}
+            />
+          )}
         </Kpis>
       )}
 
-      <Toolbar className="ledger-tools">
-        <Field label="ค้นหา" className="grow">
-          <input
-            type="search"
-            placeholder="ประเภท / สาขา / หมายเหตุ"
-            value={term}
-            onChange={(e) => setTerm(e.target.value)}
-          />
-        </Field>
+      {/* บนจอโทรศัพท์สามช่องนี้เคยตกลงมาเรียงกันในแนวตั้ง กินความสูงเกินครึ่งจอ
+          ก่อนที่ยอดแรกจะได้โผล่ · ตอนนี้เหลือช่องค้นหากับปุ่ม "ตัวกรอง (N)" สองแถว
+          ส่วนช่วงวันที่ย้ายไปอยู่ในแผ่นที่ดันขึ้นมาจากขอบล่างตอนกด
+          บนเดสก์ท็อปทุกช่องยังยืนเรียงกันแถวเดียวเหมือนเดิม (ดู .fb-panel ที่เป็น
+          display:contents ใน globals.css) */}
+      <FilterBar
+        className="ledger-tools"
+        count={activeFilters}
+        resultCount={count}
+        onReset={clearAll}
+        actions={(
+          <button type="button" className="btn ledger-add" onClick={() => setAdding(true)}>
+            <Icon name="plus" /> {addLabel}
+          </button>
+        )}
+        search={(
+          <div className="search-field">
+            <Icon name="search" />
+            <input
+              type="search"
+              placeholder="ประเภท / สาขา / หมายเหตุ"
+              value={term}
+              onChange={(e) => setTerm(e.target.value)}
+            />
+          </div>
+        )}
+      >
         <Field label="ตั้งแต่วันที่">
           <DateField value={from} onChange={setFrom} />
         </Field>
@@ -197,11 +231,7 @@ export function Ledger({ title, subtitle, icon, endpoint, typeKey, typeList, wit
         {(from || to) && (
           <button type="button" className="btn btn-light" onClick={clearRange}>ล้างช่วงวันที่</button>
         )}
-        {/* อยู่ท้ายแถวเดียวกับตัวกรอง ชิดขวาสุด — หัวเพจเหลือไว้บอกว่านี่หน้าอะไรอย่างเดียว */}
-        <button type="button" className="btn ledger-add" onClick={() => setAdding(true)}>
-          <Icon name="plus" /> {addLabel}
-        </button>
-      </Toolbar>
+      </FilterBar>
 
       {loading && <Loading />}
       {error && <Card><p className="muted">{error.message}</p></Card>}
@@ -210,6 +240,8 @@ export function Ledger({ title, subtitle, icon, endpoint, typeKey, typeList, wit
           <DataTable
             columns={columns}
             rows={rows}
+            page={page}
+            perPage={perPage}
             empty={(
               <div className="ledger-empty">
                 <p className="le-title">
@@ -236,12 +268,22 @@ export function Ledger({ title, subtitle, icon, endpoint, typeKey, typeList, wit
                 {/* ช่องซ้ายทั้งหมดก่อนคอลัมน์เงิน แล้วที่เหลือหลังจากนั้น — คิดจากจำนวนคอลัมน์จริง
                     ไม่ใช่เลขที่เขียนตายไว้ ไม่งั้นวันที่คอลัมน์สาขาหายไปยอดรวมจะเลื่อนไปผิดช่อง */}
                 <td colSpan={showBranch ? 4 : 3}>
-                  {`รวม ${rows.length.toLocaleString('th-TH')} รายการที่แสดง`}
+                  {/* "ที่โหลดมา" ไม่ใช่ "ที่แสดง" — ตั้งแต่มีแถบแบ่งหน้า สิ่งที่แสดงคือสิบแถวของหน้านี้
+                      ส่วนยอดข้างขวาเป็นยอดของทั้งชุดที่โหลดมา (ไม่เกิน 500) ตามเดิม */}
+                  {`รวม ${rows.length.toLocaleString('th-TH')} รายการที่โหลดมา`}
                 </td>
                 <td className="num">{money(rows.reduce((a, r) => a + Number(r.amount || 0), 0))}</td>
                 <td colSpan={withPayType ? 3 : 2} />
               </tr>
             ) : null}
+          />
+
+          <Pager
+            total={rows.length}
+            page={page}
+            perPage={perPage}
+            onPage={setPage}
+            onPerPage={setPerPage}
           />
         </Card>
       )}

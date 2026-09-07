@@ -32,6 +32,7 @@ import { CartItemRow } from '../../../components/pos/CartItemRow.jsx';
 import { ConfirmSaleModal } from '../../../components/pos/ConfirmSaleModal.jsx';
 import { PosField, PosOut } from '../../../components/pos/PosField.jsx';
 import { DateField } from '../../../components/DateField.jsx';
+import { Select } from '../../../components/Selects.jsx';
 
 const blankForm = () => ({
   customerName: '',
@@ -245,20 +246,18 @@ export default function PosPage() {
                   onChange={setSaleDate}
                 />
               </PosField>
-              <PosField label="ช่องทางชำระเงิน" icon="💳" select>
-                <select value={form.method} onChange={(e) => set('method', e.target.value)}>
-                  {PAY_METHODS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
-                </select>
+              <PosField label="ช่องทางชำระเงิน" icon="💳">
+                <Select value={form.method} onChange={(e) => set('method', e.target.value)} options={PAY_METHODS} />
               </PosField>
             </div>
 
             <div className="pos-row one">
-              <PosField label="รูปแบบการชำระ" icon="⚖️" select>
-                <select value={form.mode} onChange={(e) => set('mode', e.target.value)}>
-                  <option value="full">ชำระเต็มจำนวน</option>
-                  <option value="deposit">มัดจำ / ชำระบางส่วน</option>
-                  <option value="none">ยังไม่รับเงิน</option>
-                </select>
+              <PosField label="รูปแบบการชำระ" icon="⚖️">
+                <Select
+                  value={form.mode}
+                  onChange={(e) => set('mode', e.target.value)}
+                  options={[['full', 'ชำระเต็มจำนวน'], ['deposit', 'มัดจำ / ชำระบางส่วน'], ['none', 'ยังไม่รับเงิน']]}
+                />
               </PosField>
             </div>
 

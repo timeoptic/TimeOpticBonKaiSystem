@@ -50,7 +50,7 @@ export function RxSetBlock({ row, title, sub, star = false }) {
               {[['r', 'R / ขวา'], ['l', 'L / ซ้าย']].map(([k, label]) => (
                 <tr key={k}>
                   <th scope="row">{label}</th>
-                  {COLS.map(([f]) => <td key={f}><span>{cell(row, k, f)}</span></td>)}
+                  {COLS.map(([f, colLabel]) => <td key={f} data-col={colLabel}><span>{cell(row, k, f)}</span></td>)}
                 </tr>
               ))}
             </tbody>
