@@ -47,7 +47,7 @@ const PICK: Record<SortKey, (b: BranchRow) => string | number | null> = {
  */
 export default function BranchesPage() {
   const actor = useActor();
-  const mayEdit = actor.role === "owner";
+  const mayEdit = can.manageBranches(actor);
   const money$ = can.seeCost(actor);
   const list = useApi<{ branches: BranchRow[] }>("/branches");
   const [adding, setAdding] = useState(false);

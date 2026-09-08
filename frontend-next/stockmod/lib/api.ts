@@ -145,12 +145,26 @@ export type Actor = {
   username: string | null;
   displayName: string;
   jobTitle: string | null;
-  role: "superuser" | "owner" | "admin" | "sales" | "stock";
-  roleLabel: string;
-  /** หน้าแรกของบทบาทนี้ ตอบมาจาก `Roles::home` ฝั่ง API ที่เดียว */
+  /** บทบาทที่ถืออยู่ · หนึ่งคนถือได้หลายใบ สิทธิ์จริงคือยูเนียน */
+  roles: RoleKey[];
+  roleNames: string[];
+  /** "Owner + Admin" — ประกอบมาแล้วจากฝั่ง API ให้หน้าจอเอาไปแสดงตรง ๆ */
+  roleText: string;
+  /**
+   * สิทธิ์ที่ได้จริงหลังรวมทุกบทบาท เช่น `cost.view`
+   *
+   * คำนวณที่ `Roles::permsOf` ฝั่งเดียว หน้าจอจึงไม่ต้องถือสำเนาของกฎไว้อีกชุด
+   * แล้วลืมแก้ตอนเพิ่มบทบาท — ดู `lib/roles.js`
+   */
+  perms: string[];
+  /** หน้าแรกของคนนี้ ตอบมาจาก `Roles::home` ฝั่ง API ที่เดียว */
   home: string;
   employeeId: number | null;
+  /** รหัสถูกตั้งโดยคนอื่น — ต้องตั้งใหม่ก่อนใช้งานต่อ */
+  mustChangePassword: boolean;
 };
+
+export type RoleKey = "superuser" | "owner" | "admin" | "sales" | "trainee" | "stock";
 
 /**
  * The five product types, in the order every screen lists them.

@@ -141,6 +141,10 @@ final class ActivityLog
         'frame-fittings'  => 'บันทึกวัดกรอบ',
         'case-deliveries' => 'บันทึกการส่งมอบ',
         'case-keywords'   => 'แก้คำค้นของเคส',
+        'reset-password'  => 'รีเซ็ตรหัสผ่าน',
+        'change-password' => 'เปลี่ยนรหัสผ่านของตัวเอง',
+        'revoke'          => 'ยกเลิกบัญชีเข้าใช้งาน',
+        'password'        => 'ตั้งรหัสผ่านให้',
         /* เส้นอ่านข้อมูลที่ไม่มีตารางของตัวเอง — ไม่ใส่ก็ได้ แต่แถวจะขึ้นเป็นคำ
            อังกฤษดิบจาก path ซึ่งอ่านไม่ออกสำหรับคนที่มาเปิดล็อก */
         'meta'          => 'โหลดข้อมูลตั้งต้น',
@@ -152,6 +156,17 @@ final class ActivityLog
 
     /** ช่องที่ต้องปิดก่อนเก็บเสมอ — เทียบแบบ "ชื่อช่องมีคำนี้อยู่" */
     private const SECRET_HINTS = ['password', 'passwd', 'secret', 'token', 'hash'];
+
+    /**
+     * ช่องที่ชื่อไปโดน SECRET_HINTS เข้าโดยบังเอิญ แต่ไม่ได้เป็นความลับ
+     *
+     * `must_change_password` เป็นธง 0/1 ไม่ใช่รหัสผ่าน · ปิดมันทิ้งทำให้ล็อกอ่านว่า
+     * "มีบางอย่างเปลี่ยน" โดยไม่บอกว่าอะไร ทั้งที่สิ่งที่เปลี่ยนคือเรื่องที่คนเปิดล็อก
+     * อยากรู้พอดี: บัญชีนี้ถูกสั่งให้ตั้งรหัสใหม่แล้วหรือยัง
+     *
+     * เป็นรายการขาว ไม่ใช่การผ่อนกฎ — ชื่อที่ไม่อยู่ในนี้ยังถูกปิดตามเดิม
+     */
+    private const NOT_SECRET = ['must_change_password'];
 
     /** ช่องที่เปลี่ยนทุกครั้งอยู่แล้ว — ขึ้นใน diff ก็เป็นเสียงรบกวนล้วน */
     private const NOISE_COLUMNS = ['updated_at', 'created_at'];
@@ -429,6 +444,9 @@ final class ActivityLog
     private static function isSecret(string $field): bool
     {
         $f = strtolower($field);
+        if (in_array($f, self::NOT_SECRET, true)) {
+            return false;
+        }
         foreach (self::SECRET_HINTS as $hint) {
             if (str_contains($f, $hint)) {
                 return true;

@@ -58,7 +58,7 @@ export default function HubPage() {
           สวัสดี {actor.displayName}
         </h1>
         <p className="muted" style={{ margin: 0 }}>
-          {actor.roleLabel} · เลือกระบบที่จะเข้าใช้
+          {actor.roleText} · เลือกระบบที่จะเข้าใช้
         </p>
       </div>
 

@@ -1,13 +1,18 @@
 /**
- * บทบาทผู้ใช้ — ฝั่งหน้าเว็บ ใช้ร่วมกันทั้งสองฝั่งของแอป
+ * สิทธิ์ผู้ใช้ — ฝั่งหน้าเว็บ ใช้ร่วมกันทั้งสองฝั่งของแอป
  *
  * ของจริงอยู่ที่ `stock/api/src/Roles.php` และ API ตรวจซ้ำทุกคำขออยู่แล้ว
  * ไฟล์นี้มีไว้ตอบคำถามของหน้าจอเท่านั้น: จะวาดปุ่มนี้ไหม จะพาไปหน้าไหน
  * ซ่อนปุ่มที่ API จะปฏิเสธอยู่ดีเป็นมารยาท ไม่ใช่ด่านกัน
  *
- * `home` ไม่ได้คำนวณที่นี่ — มันมากับ actor จาก API (`actor.home`) จะได้ไม่มี
- * กฎสองชุดที่ต้องคอยแก้ให้ตรงกัน ตัวที่อยู่ตรงนี้คือ `RANK` ซึ่งสะท้อน
- * `Roles::RANK` ฝั่ง PHP · เพิ่มบทบาทใหม่เมื่อไหร่ ต้องแก้สองที่
+ * ── ไม่มีสำเนาของกฎอยู่ในไฟล์นี้แล้ว ──────────────────────────────────────
+ * เมื่อก่อนที่นี่ถือตาราง `RANK` คัดลอกมาจาก PHP แล้วคำนวณเองว่าใครทำอะไรได้
+ * ซึ่งแปลว่าเพิ่มบทบาทหรือขยับสิทธิ์หนึ่งข้อ ต้องแก้สองที่ให้ตรงกัน และวันที่
+ * แก้ไม่ครบ หน้าจอจะวาดปุ่มที่ API ปฏิเสธ หรือซ่อนปุ่มที่จริง ๆ กดได้
+ *
+ * ตอนนี้ API ส่งสิทธิ์ที่คำนวณแล้วมากับ actor (`actor.perms` — ยูเนียนของทุก
+ * บทบาทที่ถือ) ทุกฟังก์ชันข้างล่างจึงเป็นแค่การถามว่าชื่อนี้อยู่ในรายการไหม
+ * ชื่อสิทธิ์ทั้งหมดดูได้ที่ `Roles::PERMS` ฝั่ง PHP หรือที่ `/api/auth/policy`
  */
 
 export const ROLE = {
@@ -15,29 +20,45 @@ export const ROLE = {
   OWNER: 'owner',
   ADMIN: 'admin',
   SALES: 'sales',
+  TRAINEE: 'trainee',
   STOCK: 'stock',
 };
 
-/** พนักงานขายกับพนักงานคลังอยู่ระดับเดียวกัน — คนละงาน ไม่ใช่คนละชั้น */
-const RANK = {
-  [ROLE.SUPERUSER]: 4,
-  [ROLE.OWNER]: 3,
-  [ROLE.ADMIN]: 2,
-  [ROLE.SALES]: 1,
-  [ROLE.STOCK]: 1,
-};
+/**
+ * คนนี้มีสิทธิ์ชื่อนี้ไหม
+ *
+ * @param {{perms?: string[]} | null | undefined} actor
+ * @param {string} perm ชื่อสิทธิ์ เช่น 'cost.view'
+ */
+export const can = (actor, perm) => Array.isArray(actor?.perms) && actor.perms.includes(perm);
 
-/** @param {{role?: string} | null | undefined} actor */
-export const rank = (actor) => RANK[actor?.role ?? ''] ?? 0;
-
-/** ตั้งแต่แอดมินขึ้นไป — ต้นทุน แคตตาล็อก เงินของสาขา จัดการผู้ใช้ */
-export const isAdminUp = (actor) => rank(actor) >= RANK[ROLE.ADMIN];
+/** งานของแอดมิน — เงินของร้าน ข้อมูลระบบ รายงาน บันทึกการใช้งาน */
+export const isAdminUp = (actor) => can(actor, 'admin.zone');
 
 /** ทำงานได้ทั้งสองฝั่ง จึงต้องเลือกเองว่าจะเข้าฝั่งไหน */
-export const worksBothSides = isAdminUp;
+export const worksBothSides = (actor) => can(actor, 'frontdesk.use') && can(actor, 'stock.use');
 
 /** งานระบบ ไม่ใช่งานของร้าน */
-export const isSuperuser = (actor) => actor?.role === ROLE.SUPERUSER;
+export const isSuperuser = (actor) => can(actor, 'system.manage');
+
+/**
+ * ฝั่งไหนที่คนนี้เข้าได้บ้าง — ใช้เด้งคนที่เดินมาผิดฝั่ง
+ *
+ * พนักงานคลังเปิดหน้าร้านแล้วไม่มีอะไรให้ทำ · ต่างจากเมื่อก่อนตรงที่ตอนนี้
+ * API ปฏิเสธ `/api/*` ทั้งกลุ่มให้ด้วย (ดูประตูที่สองใน `api/index.php`)
+ * ตรงนี้จึงเป็นแค่การไม่ปล่อยให้คนยืนอยู่หน้าจอที่ทุกคำขอตอบ 403
+ */
+export const mayUseFrontdesk = (actor) => can(actor, 'frontdesk.use');
+export const mayUseStock = (actor) => can(actor, 'stock.use');
+
+/** ดูเคสลูกค้าได้ทุกใบ — ทุกคนที่ทำงานหน้าร้านมีสิทธิ์นี้ */
+export const mayViewAllCases = (actor) => can(actor, 'case.view_all');
+
+/** รหัสถูกตั้งโดยคนอื่น — ต้องตั้งใหม่ก่อนใช้งานต่อ */
+export const mustChangePassword = (actor) => actor?.mustChangePassword === true;
+
+/** "Owner + Admin" — ข้อความบทบาทที่ API ประกอบมาให้แล้ว */
+export const roleTextOf = (actor) => actor?.roleText || '—';
 
 /**
  * หน้าแรกของคนคนนี้ ตามที่ API บอกมา
@@ -47,20 +68,8 @@ export const isSuperuser = (actor) => actor?.role === ROLE.SUPERUSER;
  */
 export function homeFor(actor) {
   if (actor?.home) return actor.home;
-  if (actor?.role === ROLE.SALES) return '/';
-  if (actor?.role === ROLE.STOCK) return '/stock/';
-  return '/hub/';
+  return mayUseStock(actor) ? '/stock/dashboard/' : '/';
 }
-
-/**
- * ฝั่งไหนที่บทบาทนี้เข้าได้บ้าง — ใช้เด้งคนที่เดินมาผิดฝั่ง
- *
- * พนักงานขายเปิด /stock ไม่มีอะไรให้ทำ และพนักงานคลังเปิดหน้าร้านก็เหมือนกัน
- * ไม่ใช่เรื่องความปลอดภัย (API กันของจริงอยู่แล้ว) แต่เป็นเรื่องไม่ปล่อยให้คน
- * ยืนอยู่หน้าจอที่ทุกปุ่มตอบว่าไม่มีสิทธิ์
- */
-export const mayUseFrontdesk = (actor) => rank(actor) > 0 && actor.role !== ROLE.STOCK;
-export const mayUseStock = (actor) => rank(actor) > 0 && actor.role !== ROLE.SALES;
 
 /**
  * งานของแอดมิน — เงินของร้าน และข้อมูลระบบ

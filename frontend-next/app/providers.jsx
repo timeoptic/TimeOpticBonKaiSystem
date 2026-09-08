@@ -4,7 +4,7 @@ import { ToastProvider } from '../components/Toast.jsx';
 import { ConfirmProvider } from '../components/Confirm.jsx';
 import { MetaProvider, useMeta } from '../contexts/MetaContext.jsx';
 import { AuthProvider, useAuth } from '../contexts/AuthContext.jsx';
-import { homeFor, mayUseFrontdesk } from '../lib/roles.js';
+import { homeFor, mayUseFrontdesk, mustChangePassword } from '../lib/roles.js';
 import { Shell } from '../components/Shell.jsx';
 import { Card, Loading, PageHead } from '../components/ui.jsx';
 
@@ -44,6 +44,10 @@ function Gate({ children }) {
  *
  * พนักงานคลังที่เดินมาหน้าร้านก็ถูกส่งกลับไปฝั่งของตัวเอง — ไม่ใช่ด่านกัน
  * (API ตรวจของจริงทุกคำขอ) แต่เพื่อไม่ให้ยืนอยู่หน้าจอที่ทุกปุ่มตอบว่าไม่มีสิทธิ์
+ *
+ * คนที่รหัสผ่านถูกคนอื่นตั้งให้ ถูกส่งไปตั้งรหัสของตัวเองก่อน · API ปฏิเสธทุก
+ * เส้นด้วย 403 อยู่แล้ว ถ้าไม่เด้ง หน้าจอจะโหลดขึ้นมาแล้วทุกการ์ดขึ้นข้อความ
+ * ผิดพลาดพร้อมกัน ซึ่งอ่านได้ว่าระบบพัง ไม่ใช่ว่าต้องไปเปลี่ยนรหัส
  */
 function AuthGate({ children }) {
   const { actor, ready } = useAuth();
@@ -52,12 +56,14 @@ function AuthGate({ children }) {
     if (!ready) return;
     if (!actor) {
       location.assign('/login/');
+    } else if (mustChangePassword(actor)) {
+      location.assign('/change-password/');
     } else if (!mayUseFrontdesk(actor)) {
       location.assign(homeFor(actor));
     }
   }, [ready, actor]);
 
-  if (!ready || !actor || !mayUseFrontdesk(actor)) {
+  if (!ready || !actor || mustChangePassword(actor) || !mayUseFrontdesk(actor)) {
     return <Loading text="กำลังตรวจสอบสิทธิ์…" />;
   }
   return (

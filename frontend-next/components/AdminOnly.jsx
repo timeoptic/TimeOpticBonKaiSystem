@@ -13,7 +13,7 @@
  */
 import Link from 'next/link';
 import { useAuth } from '../contexts/AuthContext.jsx';
-import { isAdminUp } from '../lib/roles.js';
+import { isAdminUp, roleTextOf } from '../lib/roles.js';
 import { Card, Loading, PageHead } from './ui.jsx';
 import { Icon } from './Icon.jsx';
 
@@ -28,7 +28,7 @@ export function AdminOnly({ children }) {
       <PageHead icon="lock" title="เมนูนี้สำหรับผู้ดูแลระบบ" subtitle="Admin only" />
       <Card>
         <p>
-          บัญชีของคุณ ({actor?.roleLabel || '—'}) ไม่มีสิทธิ์เข้าถึงส่วน
+          บัญชีของคุณ ({roleTextOf(actor)}) ไม่มีสิทธิ์เข้าถึงส่วน
           <b> การเงิน</b> และ <b>ข้อมูลระบบ</b>
         </p>
         <p className="muted">

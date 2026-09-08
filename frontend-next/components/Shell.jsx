@@ -121,7 +121,7 @@ function WhoAmI() {
       <span className="whoami-mark" aria-hidden="true">{initial}</span>
       <span className="whoami-text">
         <b>{name}</b>
-        <small>{actor.roleLabel}</small>
+        <small>{actor.roleText}</small>
       </span>
       <button type="button" className="btn btn-ghost btn-sm" onClick={logout} title="ออกจากระบบ">
         ออก

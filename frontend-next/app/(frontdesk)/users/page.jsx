@@ -2,74 +2,82 @@
 /**
  * ผู้ใช้และสิทธิ์ — บัญชีที่เข้าใช้งานได้ ทั้งหน้าร้านและคลัง
  *
- * ── ทำไมหน้านี้ถึงย้ายมาอยู่กลุ่ม (frontdesk) ─────────────────────────────
- * เดิมหน้านี้เขียนด้วยคอมโพเนนต์ของฝั่งคลังทั้งใบ อยู่ในกลุ่ม `(users)` ที่มี
- * layout ของตัวเองซึ่ง import สไตล์ฝั่งคลังและห่อด้วย `AppShell` ของฝั่งนั้น ·
- * ผลคือกดจากเมนูหน้าร้านแล้วแถบข้างเปลี่ยนเป็นของคลังทั้งแถบ ทั้งที่ยังทำงาน
- * เรื่องเดียวกันอยู่ · ทางแก้ที่ไม่ต้องรื้อ CSS สองชุดให้ชนกันคือเขียนหน้านี้ใหม่
- * ด้วยของหน้าร้าน ซึ่งคือไฟล์นี้ · กลุ่ม `(users)` ถูกลบไปแล้วทั้งกลุ่ม
- *
- * ── ทำไม path ของ API ยังขึ้นต้นด้วย /stock-api ──────────────────────────
+ * ── ทำไมหน้านี้ถึงอยู่กลุ่ม (frontdesk) ทั้งที่ API อยู่ฝั่งคลัง ─────────────
  * ตาราง `admins` กับกฎสิทธิ์ทั้งชุดอยู่ในโค้ดฝั่งคลัง (`stock/api/src/Service/
  * Users.php`, `Roles.php`) และเส้นทางของมันลงทะเบียนไว้ใต้ `/stock-api` · ที่ย้าย
- * คือหน้าจอ ไม่ใช่ API — ย้าย API ตามด้วยแปลว่าต้องมีสองที่ที่ตัดสินเรื่องสิทธิ์
+ * มาคือหน้าจอ ไม่ใช่ API — ย้าย API ตามด้วยแปลว่าต้องมีสองที่ที่ตัดสินเรื่องสิทธิ์
  * ซึ่งเป็นสิ่งเดียวที่ห้ามมีสองที่
+ *
+ * ── หนึ่งคนถือได้หลายบทบาท ────────────────────────────────────────────────
+ * สิทธิ์ที่ได้คือยูเนียนของทุกใบที่ถือ · ช่องเลือกบทบาทจึงเป็นเช็กบ็อกซ์ ไม่ใช่
+ * ดรอปดาวน์ และมี "สิทธิ์ที่จะได้" อยู่ข้าง ๆ ที่คำนวณสดจากตารางสิทธิ์ตัวจริง
+ * (`/api/auth/policy`) — คนที่กำลังติ๊กจะได้เห็นผลก่อนกดบันทึก ไม่ใช่ไปรู้ทีหลัง
+ * ตอนมีคนโทรมาบอกว่าเข้าหน้านั้นไม่ได้
  *
  * ── สิ่งที่หน้านี้ไม่ได้ตัดสินเอง ────────────────────────────────────────
  * `AdminOnly` เป็นแค่คำอธิบายให้คนอ่าน · ด่านจริงคือ `Roles::require()` ใน API
- * ซึ่งตรวจทุกคำขอไม่ว่าหน้าเว็บจะวาดอะไร
+ * ซึ่งตรวจทุกคำขอไม่ว่าหน้าเว็บจะวาดอะไร · รายการบทบาทที่ติ๊กได้ก็เหมือนกัน —
+ * ที่กรองไว้เพราะการโชว์ตัวเลือกที่จะถูกปฏิเสธแน่ ๆ คือการหลอกให้กดแล้วเจอ error
+ *
+ * ── ชื่อกับตำแหน่งแก้ที่นี่ไม่ได้ ────────────────────────────────────────
+ * ทั้งสองอย่างเป็นของ `employees` ที่เดียว (migration 027 บังคับที่ฐานแล้วว่า
+ * บัญชีทุกใบต้องมีพนักงานรองรับ) · รับแก้ที่นี่ด้วยแปลว่ามีสองที่ที่ตั้งชื่อคน
+ * คนเดียวกัน แล้ววันหนึ่งใบเสร็จกับรายงานจะพิมพ์คนละชื่อ
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api } from '../../../lib/apiClient.js';
 import { useAsync } from '../../../lib/hooks.js';
 import { useAuth } from '../../../contexts/AuthContext.jsx';
 import { useToast } from '../../../components/Toast.jsx';
 import { AdminOnly } from '../../../components/AdminOnly.jsx';
-import { Badge, Card, Field, Fieldset, FormGrid, Loading, PageHead } from '../../../components/ui.jsx';
+import { Badge, Card, Check, Field, Fieldset, FormGrid, Loading, PageHead, Row } from '../../../components/ui.jsx';
 import { DataTable } from '../../../components/DataTable.jsx';
 import { Select } from '../../../components/Selects.jsx';
 import { Icon } from '../../../components/Icon.jsx';
-import { count, fmtDateTime } from '../../../lib/format.js';
+import { fmtDateTime } from '../../../lib/format.js';
 
-/**
- * บทบาททั้งหมด เรียงจากสิทธิ์มากไปน้อย
- *
- * `rank` ตรงกับ `Roles::RANK` ฝั่ง API และใช้กรองรายการนี้ให้เหลือเฉพาะบทบาทที่
- * คนที่กำลังกรอกฟอร์มตั้งให้คนอื่นได้จริง — API ปฏิเสธอยู่แล้วถ้าตั้งเกินตัว
- * แต่การโชว์ตัวเลือกที่จะถูกปฏิเสธแน่ ๆ คือการหลอกให้กดแล้วเจอ error
- */
-const ROLES = [
-  { key: 'superuser', rank: 4, label: 'ผู้ดูแลระบบ', note: 'ทุกอย่างของเจ้าของร้าน บวกงานระบบ' },
-  { key: 'owner', rank: 3, label: 'เจ้าของร้าน', note: 'เห็นและทำได้ทุกอย่างในร้าน' },
-  { key: 'admin', rank: 2, label: 'แอดมิน', note: 'จัดการผู้ใช้ ต้นทุน แคตตาล็อก และแดชบอร์ด ทั้งสองฝั่ง' },
-  { key: 'sales', rank: 1, label: 'พนักงานขาย', note: 'เข้าระบบแล้วอยู่หน้าร้าน ไม่เห็นต้นทุน' },
-  { key: 'stock', rank: 1, label: 'พนักงานคลัง', note: 'เข้าระบบแล้วอยู่ฝั่งคลัง ไม่เห็นต้นทุน' },
-];
-
-const RANK_OF = Object.fromEntries(ROLES.map((r) => [r.key, r.rank]));
+/** ป้ายบทบาทหลายใบเรียงกัน — คอลัมน์ Role ของตาราง */
+function RoleTags({ names }) {
+  if (!names || names.length === 0) {
+    return <span className="muted">ยังไม่ได้กำหนดสิทธิ์</span>;
+  }
+  return (
+    <span style={{ display: 'inline-flex', flexWrap: 'wrap', gap: 4 }}>
+      {names.map((n) => <Badge key={n} kind="blue">{n}</Badge>)}
+    </span>
+  );
+}
 
 function UsersInner() {
   const { actor } = useAuth();
-  const { data, loading, error, reload } = useAsync(() => api.get('/stock-api/users'), []);
+  const list = useAsync(() => api.get('/stock-api/users'), []);
+  /* ตารางสิทธิ์ตัวจริงจาก API — ใช้ทั้งวาดการ์ดล่างสุด และคำนวณ "สิทธิ์ที่จะได้"
+     ในกล่องแก้ไข · โหลดที่นี่ครั้งเดียวแล้วส่งลงไป ไม่ให้ทุกกล่องยิงซ้ำ */
+  const policy = useAsync(() => api.get('/api/auth/policy'), []);
+
   const [editing, setEditing] = useState(null);
+  const [resetting, setResetting] = useState(null);
   const [creating, setCreating] = useState(false);
 
-  const rows = data?.users || [];
+  const rows = list.data?.users || [];
+  const candidates = list.data?.candidates || [];
 
-  if (loading) return <Loading />;
+  if (list.loading || policy.loading) return <Loading />;
+
+  const reload = () => { list.reload(); };
 
   return (
     <>
       <PageHead icon="lock" title="Users & Roles" subtitle="ผู้ใช้และสิทธิ์" />
 
-      {error && (
+      {list.error && (
         <Card>
-          <p className="muted">{error.message}</p>
+          <p className="muted">{list.error.message}</p>
           <button type="button" className="btn" onClick={reload}>ลองใหม่</button>
         </Card>
       )}
 
-      {!error && (
+      {!list.error && (
         <Card
           title="รายชื่อผู้ใช้"
           /* ปุ่มเพิ่มยืนบนหัวของรายชื่อที่มันจะเพิ่มเข้าไป แบบเดียวกับหน้าพนักงาน */
@@ -86,13 +94,12 @@ function UsersInner() {
                เท่ากับบัญชีที่ยังใช้งาน — แถบซ้ายสีเทาบอกโดยไม่ต้องอ่านคอลัมน์สถานะ */
             rowClass={(u) => (u.isActive ? '' : 'row-gray')}
             /* ไม่ตั้ง defaultSort — ลำดับที่ API ส่งมาคือลำดับที่ต้องการอยู่แล้ว
-               (ใช้งานอยู่ก่อน · สิทธิ์สูงก่อน · แล้วเรียงชื่อ) การเรียงใหม่เป็น
-               ของคนอ่าน กดที่หัวคอลัมน์หรือช่อง "เรียงตาม" บนมือถือ */
+               (ใช้งานอยู่ก่อน · สิทธิ์สูงก่อน · แล้วเรียงชื่อ) */
             sortable
             columns={[
-              { label: 'ชื่อที่แสดง', key: 'displayName', mobile: 'title' },
+              { label: 'ชื่อพนักงาน', key: 'displayName', mobile: 'title' },
               {
-                label: 'ชื่อผู้ใช้',
+                label: 'Username',
                 sortKey: 'username',
                 cls: 'mono',
                 mobile: 'subtitle',
@@ -101,31 +108,26 @@ function UsersInner() {
                 render: (u) => (u.username || <span className="muted">ไม่มีบัญชีล็อกอิน</span>),
               },
               {
-                label: 'สิทธิ์',
-                sortKey: 'role',
+                label: 'Role',
+                sortKey: 'roleText',
                 mobile: 'body',
-                render: (u) => <Badge kind="blue">{u.roleLabel}</Badge>,
+                render: (u) => <RoleTags names={u.roleNames} />,
               },
-              { label: 'ตำแหน่งงาน', key: 'jobTitle', mobile: 'meta' },
+              { label: 'ตำแหน่ง', key: 'jobTitle', mobile: 'meta' },
               {
                 label: 'สถานะ',
                 sortKey: (u) => (u.isActive ? 1 : 0),
                 mobile: 'status',
                 render: (u) => (!u.isActive
-                  ? <Badge kind="gray">ปิดใช้งาน</Badge>
-                  : u.canSignIn
-                    ? <Badge kind="ok">ล็อกอินได้</Badge>
-                    : <Badge kind="warn">ยังไม่มีบัญชี</Badge>),
+                  ? <Badge kind="gray">Inactive</Badge>
+                  : u.mustChangePassword
+                    ? <Badge kind="warn" title="รหัสถูกตั้งโดยผู้ดูแล ต้องตั้งใหม่ก่อนใช้งาน">รอตั้งรหัส</Badge>
+                    : u.canSignIn
+                      ? <Badge kind="ok">Active</Badge>
+                      : <Badge kind="warn">ยังไม่มีบัญชี</Badge>),
               },
               {
-                label: 'รายการที่ทำ',
-                sortKey: 'movements',
-                cls: 'num',
-                mobile: 'body',
-                render: (u) => count(u.movements),
-              },
-              {
-                label: 'เข้าล่าสุด',
+                label: 'Last Login',
                 sortKey: 'lastLoginAt',
                 cls: 'nowrap',
                 mobile: 'body',
@@ -138,9 +140,18 @@ function UsersInner() {
                 cls: 'nowrap',
                 mobile: 'extra',
                 render: (u) => (
-                  <button type="button" className="btn btn-sm btn-light" onClick={() => setEditing(u)}>
-                    <Icon name="pencil" /> แก้ไข
-                  </button>
+                  <Row>
+                    <button type="button" className="btn btn-sm btn-light" onClick={() => setEditing(u)}>
+                      <Icon name="pencil" /> แก้ไข
+                    </button>
+                    {/* รีเซ็ตอยู่นอกกล่องแก้ไข เพราะมันเป็นงานที่มาเป็นเรื่องของ
+                        ตัวเอง — "โทรมาบอกว่าลืมรหัส" ไม่ได้มาพร้อมการแก้อย่างอื่น */}
+                    {u.canSignIn && (
+                      <button type="button" className="btn btn-sm btn-light" onClick={() => setResetting(u)}>
+                        <Icon name="lock" /> รีเซ็ตรหัส
+                      </button>
+                    )}
+                  </Row>
                 ),
               },
             ]}
@@ -152,51 +163,57 @@ function UsersInner() {
 
       {/* กฎอยู่ใต้คนที่กฎบังคับใช้ — "คนนี้เป็นใคร" กับ "บทบาทนั้นทำอะไรได้"
           จึงตอบได้ในจอเดียว ไม่ต้องจำข้ามหน้า */}
-      <PolicyCard />
+      <PolicyCard policy={policy.data} />
+      <RoleHistoryCard />
 
       {(creating || editing) && (
         <UserDialog
           /* key ผูกกับแถวที่กำลังแก้ — ค่าเริ่มต้นของช่องในกล่องมาจาก props ตอน
              mount ครั้งแรกเท่านั้น ถ้าวันหน้ามีทางเปิดกล่องของอีกคนโดยไม่ปิดก่อน
-             จะได้ชื่อคนเก่าค้างอยู่ในช่อง · key ทำให้ React สร้างกล่องใหม่ให้แทน */
+             จะได้ค่าคนเก่าค้างอยู่ · key ทำให้ React สร้างกล่องใหม่ให้แทน */
           key={editing ? editing.id : 'new'}
           user={editing}
           actor={actor}
+          policy={policy.data}
+          candidates={candidates}
           onClose={() => { setCreating(false); setEditing(null); }}
           onSaved={() => { setCreating(false); setEditing(null); reload(); }}
+        />
+      )}
+
+      {resetting && (
+        <ResetDialog
+          key={`reset-${resetting.id}`}
+          user={resetting}
+          onClose={() => setResetting(null)}
+          onDone={() => { setResetting(null); reload(); }}
         />
       )}
     </>
   );
 }
 
+/* ------------------------------------------------------------- ตารางสิทธิ์ */
+
 /**
  * ตารางสิทธิ์ของแต่ละบทบาท — อ่านจาก API ตรง ๆ
  *
- * API สร้างตารางนี้ด้วยการเรียกฟังก์ชันตรวจสิทธิ์ตัวเดียวกับที่มันใช้บังคับจริง
- * ทุกคำขอ หน้าจอจึงขัดกับโค้ดไม่ได้ · ตารางสิทธิ์ที่ค้างเก่าอยู่แย่กว่าไม่มีเลย
- * เพราะจะมีคนเชื่อมัน
+ * API สร้างตารางนี้จากชุดสิทธิ์ตัวเดียวกับที่มันใช้บังคับจริงทุกคำขอ หน้าจอจึง
+ * ขัดกับโค้ดไม่ได้ · ตารางสิทธิ์ที่ค้างเก่าอยู่แย่กว่าไม่มีเลย เพราะจะมีคนเชื่อมัน
  */
-function PolicyCard() {
-  const { data, loading, error } = useAsync(() => api.get('/api/auth/policy'), []);
-
-  if (loading || error) {
-    /* โหลดไม่ได้ก็เงียบไป — ตารางนี้เป็นของอ้างอิง ไม่ใช่งานของหน้านี้
-       การ์ดแดงใต้รายชื่อที่โหลดสำเร็จแล้วอ่านได้ว่าหน้าพัง ทั้งที่ไม่ได้พัง */
-    return null;
-  }
-
-  const roles = data.roles || [];
+function PolicyCard({ policy }) {
+  if (!policy) return null;
+  const roles = policy.roles || [];
 
   return (
     <Card title="สิทธิ์ของแต่ละบทบาท">
       <p className="muted" style={{ marginTop: 0 }}>
-        ตารางนี้สร้างจากกฎที่ API ใช้บังคับจริงทุกครั้งที่มีคำขอ — ไม่ได้พิมพ์ไว้ซ้ำ
-        แก้กฎในโค้ดเมื่อไหร่ ตารางเปลี่ยนตามทันที · เปลี่ยนสิทธิ์ของแต่ละบทบาทต้องแก้ที่โค้ด
-        ส่วนการกำหนดว่าใครอยู่บทบาทไหน ทำได้ในตารางผู้ใช้ด้านบน
+        ตารางนี้สร้างจากชุดสิทธิ์ที่ API ใช้บังคับจริงทุกครั้งที่มีคำขอ — ไม่ได้พิมพ์ไว้ซ้ำ
+        แก้กฎในโค้ดเมื่อไหร่ ตารางเปลี่ยนตามทันที · คนหนึ่งคนถือได้หลายบทบาท และสิทธิ์
+        ที่ได้จริงคือทุกช่องที่ติ๊กไว้ของทุกบทบาทที่ถือรวมกัน
       </p>
 
-      {(data.groups || []).map((group) => (
+      {(policy.groups || []).map((group) => (
         <div key={group.title} style={{ marginTop: 14 }}>
           <h3 style={{ margin: '0 0 8px', fontSize: 'var(--t-base)' }}>{group.title}</h3>
           <DataTable
@@ -207,12 +224,13 @@ function PolicyCard() {
                 render: (row) => (
                   <>
                     <b>{row.label}</b>
+                    <div className="muted mono" style={{ fontSize: 'var(--t-xs)' }}>{row.perm}</div>
                     {row.note ? <div className="muted">{row.note}</div> : null}
                   </>
                 ),
               },
               ...roles.map((r) => ({
-                label: r.label,
+                label: r.name,
                 cls: 'num',
                 mobile: 'body',
                 /* อย่าบอกด้วยสีอย่างเดียว และอย่าบอกด้วยเครื่องหมายอย่างเดียว —
@@ -224,7 +242,7 @@ function PolicyCard() {
               })),
             ]}
             rows={group.rows}
-            rowKey={(row) => row.label}
+            rowKey={(row) => row.perm}
             empty="ไม่มีข้อมูลสิทธิ์"
           />
         </div>
@@ -233,33 +251,132 @@ function PolicyCard() {
   );
 }
 
-/* -------------------------------------------------------------------------- */
+/**
+ * ประวัติการเปลี่ยนสิทธิ์ — ดึงจากบันทึกการใช้งานเดิม ไม่มีตารางใหม่
+ *
+ * `ActivityLog` ดักที่ประตูเดียวของ API และบันทึกทุกคำขอที่เขียนข้อมูลพร้อม
+ * ค่าก่อน→หลังอยู่แล้ว · ที่นี่แค่ถามมันด้วยตัวกรอง `entity=admins` แล้วเอา
+ * ช่องที่เปลี่ยนมาแสดง — บรรทัด `roles: sales → sales+admin` มาจากช่องสังเคราะห์
+ * ที่ `ActivityLog::snapshot()` ต่อให้ (ดูเหตุผลในไฟล์นั้น)
+ */
+function RoleHistoryCard() {
+  const { data, loading, error } = useAsync(
+    () => api.get('/api/logs?entity=admins&kind=audit&limit=25'),
+    [],
+  );
+
+  /* โหลดไม่ได้ก็เงียบไป — การ์ดนี้เป็นของอ้างอิง ไม่ใช่งานของหน้านี้
+     การ์ดแดงใต้รายชื่อที่โหลดสำเร็จแล้วอ่านได้ว่าหน้าพัง ทั้งที่ไม่ได้พัง */
+  if (loading || error) return null;
+
+  const rows = data?.rows || [];
+
+  return (
+    <Card title="ประวัติการเพิ่ม แก้ไข และเปลี่ยนสิทธิ์" tight>
+      <DataTable
+        columns={[
+          {
+            label: 'เมื่อ',
+            cls: 'nowrap',
+            mobile: 'subtitle',
+            render: (r) => fmtDateTime(r.at),
+          },
+          {
+            label: 'ใคร',
+            mobile: 'title',
+            render: (r) => (
+              <>
+                {r.actor_name || <span className="muted">(ไม่ทราบ)</span>}
+                {r.actor_role ? <div className="muted">{r.actor_role}</div> : null}
+              </>
+            ),
+          },
+          { label: 'ทำอะไร', key: 'summary', mobile: 'body' },
+          {
+            label: 'ที่เปลี่ยน',
+            mobile: 'body',
+            render: (r) => {
+              const changes = r.changes || [];
+              if (changes.length === 0) return <span className="muted">—</span>;
+              return (
+                <ul style={{ margin: 0, paddingLeft: 16 }}>
+                  {changes.map((c) => (
+                    <li key={c.field} className="mono" style={{ fontSize: 'var(--t-xs)' }}>
+                      {c.field}: {String(c.before ?? '—')} → {String(c.after ?? '—')}
+                    </li>
+                  ))}
+                </ul>
+              );
+            },
+          },
+        ]}
+        rows={rows}
+        rowKey={(r) => r.id}
+        empty="ยังไม่มีการเปลี่ยนแปลงที่บันทึกไว้"
+      />
+      <p className="muted" style={{ marginBottom: 0 }}>
+        เก็บ 3 ปี · ดูทั้งหมดพร้อมตัวกรองได้ที่หน้า <b>บันทึกการใช้งาน</b>
+      </p>
+    </Card>
+  );
+}
+
+/* --------------------------------------------------------------- กล่องแก้ไข */
+
+/** ยศสูงสุดของบทบาทที่คนคนนี้ถือ — ใช้กรองบทบาทที่ติ๊กให้คนอื่นได้ */
+function rankOf(policy, roleKeys) {
+  const byKey = Object.fromEntries((policy?.roles || []).map((r) => [r.key, r.rank]));
+  return (roleKeys || []).reduce((best, k) => Math.max(best, byKey[k] ?? 0), 0);
+}
+
+/** สิทธิ์ที่ชุดบทบาทนี้จะได้ — คำนวณจากตารางสิทธิ์ตัวจริง ไม่ได้เดาเอง */
+function permsFor(policy, roleKeys) {
+  const out = [];
+  for (const group of policy?.groups || []) {
+    const rows = group.rows.filter((r) => roleKeys.some((k) => r.allow[k]));
+    if (rows.length > 0) out.push({ title: group.title, rows });
+  }
+  return out;
+}
 
 /**
  * กล่องเพิ่ม/แก้บัญชี
  *
- * สามส่วนเรียงลงมา: ข้อมูลบัญชี · ตั้งรหัสผ่านใหม่ · ลบ — เรียงตามความย้อนกลับ
- * ไม่ได้ จากน้อยไปมาก ปุ่มลบจึงไม่ได้อยู่ในระยะที่นิ้วที่เล็งปุ่ม "บันทึก" จะโดน
+ * เรียงลงมาตามความย้อนกลับไม่ได้ จากน้อยไปมาก: ข้อมูลบัญชี · สิทธิ์ · รหัสผ่าน ·
+ * ยกเลิกบัญชี — ปุ่มที่อันตรายที่สุดจึงไม่ได้อยู่ในระยะที่นิ้วที่เล็ง "บันทึก" จะโดน
  */
-function UserDialog({ user, actor, onClose, onSaved }) {
+function UserDialog({ user, actor, policy, candidates, onClose, onSaved }) {
   const isSelf = user?.id === actor?.id;
   const { ok } = useToast();
 
-  const [displayName, setDisplayName] = useState(user?.displayName ?? '');
-  const [jobTitle, setJobTitle] = useState(user?.jobTitle ?? '');
+  /* ── ฟอร์มเพิ่ม: เลือกพนักงานที่มีอยู่ หรือเปิดคนใหม่ในฟอร์มเดียวกัน ──
+     ชื่อกับตำแหน่งเป็นของ `employees` ที่เดียว การ "เพิ่มผู้ใช้" จึงเป็นการ
+     เลือกคนก่อน แล้วค่อยให้สิทธิ์เข้าใช้งาน — สองการตัดสินใจที่แยกกันอยู่แล้ว
+     ในฐาน แต่มักเกิดขึ้นในนาทีเดียวกันตอนรับคนใหม่ */
+  const [employeeId, setEmployeeId] = useState('');
+  const [newName, setNewName] = useState('');
+  const [newJobTitle, setNewJobTitle] = useState('');
+  const addingPerson = employeeId === 'new';
+
   const [username, setUsername] = useState(user?.username ?? '');
-  const [role, setRole] = useState(user?.role ?? 'sales');
+  const [roles, setRoles] = useState(user?.roles ?? ['sales']);
   const [isActive, setIsActive] = useState(user?.isActive ?? true);
   const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState(null);
-  /* แยกจาก `problem` เพราะข้อความของฟอร์มอยู่เหนือกล่องนี้ขึ้นไปสองบล็อก
-     เหตุผลที่ลบไม่ได้คือสิ่งที่ต้องอ่าน — วางไว้ตรงปุ่มที่เพิ่งกด */
-  const [deleteProblem, setDeleteProblem] = useState(null);
-  const [confirmDelete, setConfirmDelete] = useState(false);
 
-  /* ตั้งบทบาทได้ไม่เกินของตัวเอง ตามกฎเดียวกับที่ API บังคับ (Roles::canGrant) */
-  const grantable = ROLES.filter((r) => r.rank <= (RANK_OF[actor?.role] ?? 0));
+  /* แยกจาก `problem` เพราะข้อความของฟอร์มอยู่เหนือกล่องนี้ขึ้นไปสองบล็อก
+     เหตุผลที่ยกเลิกไม่ได้คือสิ่งที่ต้องอ่าน — วางไว้ตรงปุ่มที่เพิ่งกด */
+  const [revokeProblem, setRevokeProblem] = useState(null);
+  const [confirmRevoke, setConfirmRevoke] = useState(false);
+
+  /* ติ๊กให้คนอื่นได้ไม่เกินยศสูงสุดของตัวเอง ตามกฎเดียวกับที่ API บังคับ
+     (`Roles::canGrant`) — โชว์ตัวเลือกที่จะถูกปฏิเสธแน่ ๆ คือการหลอกให้กด */
+  const ceiling = rankOf(policy, actor?.roles);
+  const grantable = (policy?.roles || []).filter((r) => r.rank <= ceiling);
+
+  const preview = useMemo(() => permsFor(policy, roles), [policy, roles]);
 
   /* Esc ปิดกล่อง — ทางออกเดียวกับป๊อปอัปอื่นทั้งระบบ */
   useEffect(() => {
@@ -268,36 +385,48 @@ function UserDialog({ user, actor, onClose, onSaved }) {
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose]);
 
+  const toggleRole = (key) => setRoles(
+    (now) => (now.includes(key) ? now.filter((r) => r !== key) : [...now, key]),
+  );
+
   async function save(e) {
     e.preventDefault();
+    if (!user && password !== confirm) {
+      setProblem('รหัสผ่านสองช่องไม่ตรงกัน');
+      return;
+    }
     setBusy(true);
     setProblem(null);
     try {
       if (user) {
         await api.post(`/stock-api/users/${user.id}/update`, {
-          display_name: displayName.trim(),
-          job_title: jobTitle.trim() || null,
           username: username.trim() || null,
-          role,
+          roles,
           is_active: isActive,
         });
+        ok(isActive
+          ? `แก้บัญชี ${user.displayName} แล้ว`
+          : `แก้บัญชี ${user.displayName} แล้ว — บัญชีนี้ปิดใช้งานอยู่ เข้าระบบไม่ได้`);
       } else {
+        /* เปิดพนักงานใหม่ก่อน แล้วค่อยให้สิทธิ์ · ถ้าขั้นที่สองล้ม พนักงานที่เพิ่ง
+           สร้างยังอยู่ ซึ่งถูกแล้ว — คนคนนั้นมีตัวตนจริงและจะโผล่ในช่องเลือกรอบหน้า
+           ไม่ใช่ขยะที่ต้องตามลบ */
+        let empId = Number(employeeId);
+        if (addingPerson) {
+          const made = await api.post('/api/employees', {
+            employee_name: newName.trim(),
+            roles: newJobTitle.trim() || null,
+          });
+          empId = Number(made.id);
+        }
+
         await api.post('/stock-api/users', {
-          display_name: displayName.trim(),
-          job_title: jobTitle.trim() || null,
-          username: username.trim() || null,
-          password: username.trim() ? password : null,
-          role,
+          employee_id: empId,
+          username: username.trim(),
+          password,
+          roles,
         });
-      }
-      /* บัญชีที่ไม่มีชื่อผู้ใช้เข้าระบบไม่ได้ — เป็นชื่อไว้ลงในสมุดเฉย ๆ ซึ่งเป็น
-         สิ่งที่คนเพิ่งกดบันทึกมักไม่ได้ตั้งใจ ถ้าตั้งใจจะเพิ่มคนเข้าใช้งาน */
-      if (username.trim() === '') {
-        ok(`${user ? 'แก้' : 'เพิ่ม'}บัญชี ${displayName.trim()} แล้ว — ยังไม่มีชื่อผู้ใช้ จึงเข้าระบบไม่ได้`);
-      } else if (!isActive && user) {
-        ok(`แก้บัญชี ${displayName.trim()} แล้ว — บัญชีนี้ปิดใช้งานอยู่ เข้าระบบไม่ได้`);
-      } else {
-        ok(`${user ? 'แก้' : 'เพิ่ม'}บัญชี ${displayName.trim()} แล้ว`);
+        ok(`เพิ่มผู้ใช้ ${username.trim()} แล้ว`);
       }
       onSaved();
     } catch (ex) {
@@ -312,8 +441,9 @@ function UserDialog({ user, actor, onClose, onSaved }) {
     setProblem(null);
     try {
       await api.post(`/stock-api/users/${user.id}/password`, { password });
-      ok(`ตั้งรหัสผ่านใหม่ให้ ${user.displayName} แล้ว`);
+      ok(`ตั้งรหัสผ่านใหม่ให้ ${user.displayName} แล้ว — เขาต้องตั้งรหัสของตัวเองตอนเข้าครั้งถัดไป`);
       setPassword('');
+      setConfirm('');
     } catch (ex) {
       setProblem(ex.message || 'ตั้งรหัสผ่านไม่สำเร็จ');
     } finally {
@@ -322,176 +452,262 @@ function UserDialog({ user, actor, onClose, onSaved }) {
   }
 
   /**
-   * ผ่านได้เฉพาะบัญชีที่ไม่มีประวัติชี้มาหา — API นับร่องรอยแล้วปฏิเสธที่เหลือ
-   * เอง และคำปฏิเสธนั้นคือสิ่งที่ไปโผล่ใน `deleteProblem` · การถามซ้ำก่อนคือ
-   * ความระวังครึ่งฝั่งของเรา: ชื่อคนหนึ่งถูกพิมพ์อยู่บนทุกรายการที่เขาเป็นคนคีย์
+   * เอาสิทธิ์เข้าใช้งานคืน โดยที่คนยังอยู่ในระบบ
+   *
+   * ไม่มีปุ่ม "ลบผู้ใช้" อีกแล้ว — แถวใน `admins` ลบไม่ได้ เพราะทุกรายการที่คนนี้
+   * เคยคีย์ชี้มาที่มัน · สิ่งที่ยกเลิกได้คือชื่อผู้ใช้ รหัสผ่าน และบทบาท
    */
-  async function remove() {
+  async function revoke() {
     if (!user) return;
     setBusy(true);
-    setDeleteProblem(null);
+    setRevokeProblem(null);
     try {
-      await api.post(`/stock-api/users/${user.id}/delete`, {});
-      ok(`ลบบัญชี ${user.displayName} แล้ว`);
+      await api.post(`/stock-api/users/${user.id}/revoke`, {});
+      ok(`ยกเลิกบัญชีเข้าใช้งานของ ${user.displayName} แล้ว — ชื่อยังอยู่ในประวัติ`);
       onSaved();
     } catch (ex) {
-      setDeleteProblem(ex.message || 'ลบไม่สำเร็จ');
-      setConfirmDelete(false);
+      setRevokeProblem(ex.message || 'ยกเลิกบัญชีไม่สำเร็จ');
+      setConfirmRevoke(false);
       setBusy(false);
     }
   }
+
+  const canSubmit = user
+    ? true
+    : (addingPerson ? newName.trim() !== '' : employeeId !== '')
+      && username.trim() !== '' && password !== '' && roles.length > 0;
 
   return (
     <div
       className="modal-back"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="modal" role="dialog" aria-modal="true">
-        <h3>{user ? `แก้ไข ${user.displayName}` : 'เพิ่มผู้ใช้'}</h3>
+      <div className="modal wide" role="dialog" aria-modal="true">
+        <h3>{user ? `แก้ไข ${user.displayName}` : 'เพิ่มผู้ใช้งาน'}</h3>
 
         <form onSubmit={save} noValidate>
           <div className="m-body">
-            <div className="form-2col">
-              <FormGrid>
-                <Field label="ชื่อที่แสดง">
-                  <input
-                    value={displayName}
-                    onChange={(e) => setDisplayName(e.target.value)}
-                    disabled={busy}
-                    autoFocus
-                    autoComplete="off"
-                  />
-                </Field>
-                <Field label="ตำแหน่งงาน" hint="อธิบายว่าทำงานอะไร ไม่มีผลต่อสิทธิ์">
-                  <input
-                    value={jobTitle}
-                    onChange={(e) => setJobTitle(e.target.value)}
-                    placeholder="เช่น technician, reception"
-                    disabled={busy}
-                    autoComplete="off"
-                  />
-                </Field>
-                <Field label="ชื่อผู้ใช้">
-                  <input
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    placeholder="เว้นว่างถ้ายังไม่ต้องล็อกอิน"
-                    disabled={busy}
-                    autoComplete="off"
-                  />
-                </Field>
+            <FormGrid>
+              {user ? (
+                <>
+                  {/* อ่านอย่างเดียว — ทั้งสองช่องเป็นของหน้าพนักงานที่เดียว */}
+                  <Field label="ชื่อ" hint="แก้ได้ที่หน้าพนักงาน">
+                    <input value={user.displayName} readOnly disabled />
+                  </Field>
+                  <Field label="ตำแหน่ง" hint="แก้ได้ที่หน้าพนักงาน">
+                    <input value={user.jobTitle || '—'} readOnly disabled />
+                  </Field>
+                </>
+              ) : (
+                <>
+                  <Field
+                    label="พนักงาน"
+                    className={addingPerson ? '' : 'full'}
+                    hint="บัญชีทุกใบต้องผูกกับพนักงานหนึ่งคน"
+                  >
+                    <Select
+                      value={employeeId}
+                      onChange={(e) => setEmployeeId(e.target.value)}
+                      disabled={busy}
+                      options={[
+                        ['', '— เลือกพนักงาน —'],
+                        ...candidates.map((c) => [
+                          String(c.employeeId),
+                          c.jobTitle ? `${c.displayName} (${c.jobTitle})` : c.displayName,
+                        ]),
+                        ['new', '+ เพิ่มพนักงานใหม่…'],
+                      ]}
+                    />
+                  </Field>
+                  {addingPerson && (
+                    <Field label="ชื่อ-นามสกุล">
+                      <input
+                        value={newName}
+                        onChange={(e) => setNewName(e.target.value)}
+                        disabled={busy}
+                        autoFocus
+                        autoComplete="off"
+                      />
+                    </Field>
+                  )}
+                  {addingPerson && (
+                    <Field label="ตำแหน่ง" hint="อธิบายว่าทำงานอะไร ไม่มีผลต่อสิทธิ์">
+                      <input
+                        value={newJobTitle}
+                        onChange={(e) => setNewJobTitle(e.target.value)}
+                        placeholder="เช่น พนักงานขาย, ช่างประกอบ"
+                        disabled={busy}
+                        autoComplete="off"
+                      />
+                    </Field>
+                  )}
+                </>
+              )}
+
+              <Field label="Username" hint={user ? null : '3–64 ตัว ใช้ได้เฉพาะ a–z 0–9 . - _'}>
+                <input
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  disabled={busy}
+                  autoComplete="off"
+                />
+              </Field>
+
+              {user ? (
                 <Field
-                  label="สิทธิ์"
-                  hint={isSelf ? 'ลดสิทธิ์ตัวเองไม่ได้' : ROLES.find((r) => r.key === role)?.note}
+                  label="สถานะ"
+                  hint={isSelf
+                    ? 'ปิดบัญชีตัวเองไม่ได้'
+                    : 'ปิดแทนการลบ เพราะประวัติต้องอ่านย้อนหลังได้'}
                 >
                   <Select
-                    value={role}
-                    onChange={(e) => setRole(e.target.value)}
+                    value={isActive ? '1' : '0'}
+                    onChange={(e) => setIsActive(e.target.value === '1')}
                     disabled={busy || isSelf}
-                    options={grantable.map((r) => [r.key, r.label])}
+                    options={[['1', 'เปิดใช้งาน'], ['0', 'ปิดใช้งาน']]}
                   />
                 </Field>
-
-                {!user && (
-                  <Field label="รหัสผ่าน" className="full">
+              ) : (
+                <>
+                  <Field label="Password" hint="อย่างน้อย 10 ตัวอักษร">
                     <input
                       type="password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      placeholder={username.trim() ? 'อย่างน้อย 10 ตัวอักษร' : 'ไม่ต้องใส่ ถ้ายังไม่ให้ล็อกอิน'}
-                      disabled={busy || !username.trim()}
+                      disabled={busy}
                       autoComplete="new-password"
                     />
                   </Field>
-                )}
-
-                {user && (
-                  <Field
-                    label="สถานะ"
-                    className="full"
-                    hint={isSelf
-                      ? 'ปิดบัญชีตัวเองไม่ได้'
-                      : 'ปิดแทนการลบ เพราะประวัติต้องอ่านย้อนหลังได้ — คนที่ยังไม่เคยทำอะไรเลย ลบได้ข้างล่าง'}
-                  >
-                    <Select
-                      value={isActive ? '1' : '0'}
-                      onChange={(e) => setIsActive(e.target.value === '1')}
-                      disabled={busy || isSelf}
-                      options={[['1', 'ใช้งานอยู่'], ['0', 'ปิดใช้งาน']]}
+                  <Field label="ยืนยัน Password">
+                    <input
+                      type="password"
+                      value={confirm}
+                      onChange={(e) => setConfirm(e.target.value)}
+                      disabled={busy}
+                      autoComplete="new-password"
                     />
                   </Field>
-                )}
-              </FormGrid>
-            </div>
+                </>
+              )}
+            </FormGrid>
+
+            <Fieldset legend="กำหนดสิทธิ์">
+              {isSelf && (
+                <p className="muted" style={{ marginTop: 0 }}>
+                  ลดสิทธิ์ของตัวเองไม่ได้ — ให้คนที่สิทธิ์สูงกว่าทำให้
+                </p>
+              )}
+              <div className="stack">
+                {grantable.map((r) => (
+                  <Check
+                    key={r.key}
+                    checked={roles.includes(r.key)}
+                    onChange={() => toggleRole(r.key)}
+                  >
+                    <b>{r.name}</b> <span className="muted">· {r.label} — {r.note}</span>
+                  </Check>
+                ))}
+              </div>
+              {roles.length === 0 && (
+                <p className="muted" style={{ marginBottom: 0 }}>
+                  ยังไม่ได้ติ๊กอะไรเลย — บัญชีที่ไม่มีสิทธิ์เข้าระบบไม่ได้
+                </p>
+              )}
+            </Fieldset>
+
+            {/* คนที่กำลังติ๊กเห็นผลก่อนกดบันทึก ไม่ใช่ไปรู้ทีหลังตอนมีคนโทรมาถาม */}
+            {roles.length > 0 && (
+              <Fieldset legend={`สิทธิ์ที่จะได้ (รวมจาก ${roles.length} บทบาท)`}>
+                {preview.map((g) => (
+                  <div key={g.title} style={{ marginBottom: 6 }}>
+                    <div className="muted" style={{ fontSize: 'var(--t-xs)' }}>{g.title}</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                      {g.rows.map((row) => (
+                        <Badge key={row.perm} kind="ok" title={row.perm}>{row.label}</Badge>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </Fieldset>
+            )}
 
             {problem && <div className="note danger" role="alert">{problem}</div>}
 
-            {user && (
-              <Fieldset legend="ตั้งรหัสผ่านใหม่">
-                <Field
-                  label="รหัสผ่านใหม่"
-                  hint={user.username ? null : 'ต้องตั้งชื่อผู้ใช้ก่อนจึงจะตั้งรหัสผ่านได้'}
-                >
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="อย่างน้อย 10 ตัวอักษร"
-                    disabled={busy || !user.username}
-                    autoComplete="new-password"
-                  />
-                </Field>
+            {user && user.canSignIn && (
+              <Fieldset legend="เปลี่ยนรหัสผ่าน">
+                <p className="muted" style={{ marginTop: 0 }}>
+                  ไม่แสดงรหัสเดิม และไม่มีทางอ่านมันได้ · รหัสที่ตั้งจากที่นี่ใช้ได้ครั้งเดียว
+                  เจ้าตัวต้องตั้งรหัสของตัวเองตอนเข้าครั้งถัดไป
+                </p>
+                <FormGrid>
+                  <Field label="Password ใหม่" hint="อย่างน้อย 10 ตัวอักษร">
+                    <input
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      disabled={busy}
+                      autoComplete="new-password"
+                    />
+                  </Field>
+                  <Field label="ยืนยัน Password">
+                    <input
+                      type="password"
+                      value={confirm}
+                      onChange={(e) => setConfirm(e.target.value)}
+                      disabled={busy}
+                      autoComplete="new-password"
+                    />
+                  </Field>
+                </FormGrid>
                 <button
                   type="button"
                   className="btn btn-sm btn-light"
                   onClick={setPasswordOnly}
-                  disabled={busy || !password || !user.username}
+                  disabled={busy || !password || password !== confirm}
                 >
-                  <Icon name="lock" /> ตั้งรหัสผ่าน
+                  <Icon name="lock" /> เปลี่ยนรหัสผ่าน
                 </button>
               </Fieldset>
             )}
 
-            {/* บล็อกสุดท้ายของกล่อง ใต้บล็อกรหัสผ่าน: การลบเป็นอย่างเดียวที่นี่ที่
-                ย้อนไม่ได้ · บัญชีที่กำลังล็อกอินอยู่ API ปฏิเสธเองอยู่แล้ว จึงไม่เสนอ */}
-            {user && !isSelf && (
-              <Fieldset legend="ลบผู้ใช้">
-                {deleteProblem && <div className="note danger" role="alert">{deleteProblem}</div>}
-                {confirmDelete ? (
+            {/* บล็อกสุดท้ายของกล่อง: อย่างเดียวที่นี่ที่พาบัญชีออกจากระบบ
+                บัญชีที่กำลังล็อกอินอยู่ API ปฏิเสธเองอยู่แล้ว จึงไม่เสนอ */}
+            {user && user.canSignIn && !isSelf && (
+              <Fieldset legend="ยกเลิกบัญชีเข้าใช้งาน">
+                {revokeProblem && <div className="note danger" role="alert">{revokeProblem}</div>}
+                {confirmRevoke ? (
                   <>
-                    <p className="muted">ลบ {user.displayName} ถาวร — ทำแล้วย้อนไม่ได้</p>
-                    <div className="row">
-                      <button
-                        type="button"
-                        className="btn btn-sm btn-danger"
-                        onClick={remove}
-                        disabled={busy}
-                      >
-                        <Icon name="trash" /> ยืนยันลบ
+                    <p className="muted">
+                      {user.displayName} จะเข้าระบบไม่ได้อีก และสิทธิ์ทั้งหมดถูกถอด —
+                      แต่ชื่อยังอยู่ในทุกรายการที่เคยคีย์ · เปิดบัญชีใหม่ให้ทีหลังได้
+                    </p>
+                    <Row>
+                      <button type="button" className="btn btn-sm btn-danger" onClick={revoke} disabled={busy}>
+                        <Icon name="check" /> ยืนยันยกเลิกบัญชี
                       </button>
                       <button
                         type="button"
                         className="btn btn-sm btn-light"
-                        onClick={() => setConfirmDelete(false)}
+                        onClick={() => setConfirmRevoke(false)}
                         disabled={busy}
                       >
-                        ยกเลิก
+                        ไม่เอาแล้ว
                       </button>
-                    </div>
+                    </Row>
                   </>
                 ) : (
                   <>
                     <button
                       type="button"
                       className="btn btn-sm btn-light"
-                      onClick={() => setConfirmDelete(true)}
+                      onClick={() => setConfirmRevoke(true)}
                       disabled={busy}
                     >
-                      <Icon name="trash" /> ลบผู้ใช้นี้
+                      <Icon name="trash" /> ยกเลิกบัญชีเข้าใช้งาน
                     </button>
                     <p className="muted" style={{ marginBottom: 0 }}>
-                      ลบได้เฉพาะคนที่ยังไม่เคยทำรายการและไม่เคยรับของ — คนที่มีประวัติแล้วให้ปิดใช้งานแทน
-                      ประวัติจะได้ยังอ่านชื่อได้
+                      ไม่มีการลบผู้ใช้ทิ้ง — ประวัติต้องอ่านชื่อคนคีย์ได้เสมอ
+                      ถ้าแค่พักงานชั่วคราว ใช้ "ปิดใช้งาน" ข้างบนแทน
                     </p>
                   </>
                 )}
@@ -503,11 +719,116 @@ function UserDialog({ user, actor, onClose, onSaved }) {
             <button type="button" className="btn btn-light" onClick={onClose} disabled={busy}>
               ยกเลิก
             </button>
-            <button className="btn" type="submit" disabled={busy}>
-              <Icon name="check" /> {busy ? 'กำลังบันทึก…' : user ? 'บันทึกการแก้ไข' : 'เพิ่มผู้ใช้'}
+            <button className="btn" type="submit" disabled={busy || !canSubmit}>
+              <Icon name="check" /> {busy ? 'กำลังบันทึก…' : user ? 'บันทึกการแก้ไข' : 'บันทึก'}
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------ รีเซ็ตรหัสผ่าน */
+
+/**
+ * รีเซ็ตรหัสผ่าน — ระบบสุ่มให้ แล้วแสดงครั้งเดียว
+ *
+ * รหัสดิบอยู่ในคำตอบของคำขอนี้ที่เดียว ไม่ได้ถูกเก็บไว้ที่ไหนอีกและอ่านย้อนหลัง
+ * ไม่ได้ (บันทึกการใช้งานปิดทุกช่องที่ชื่อมีคำว่า password) · ปิดหน้าต่างก่อน
+ * คัดลอกแปลว่าต้องกดรีเซ็ตใหม่ ซึ่งถูกแล้ว — รหัสที่ยังอ่านย้อนหลังได้ ไม่ใช่
+ * รหัสชั่วคราว
+ */
+function ResetDialog({ user, onClose, onDone }) {
+  const { ok } = useToast();
+  const [password, setPassword] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') (password ? onDone() : onClose()); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose, onDone, password]);
+
+  async function run() {
+    setBusy(true);
+    setProblem(null);
+    try {
+      const res = await api.post(`/stock-api/users/${user.id}/reset-password`, {});
+      setPassword(res.password);
+      ok(`รีเซ็ตรหัสผ่านของ ${user.displayName} แล้ว`);
+    } catch (ex) {
+      setProblem(ex.message || 'รีเซ็ตรหัสผ่านไม่สำเร็จ');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(password);
+      setCopied(true);
+    } catch {
+      /* คลิปบอร์ดถูกปิดในบางเบราว์เซอร์/บริบท — รหัสยังอ่านจากจอได้อยู่
+         จึงไม่ขึ้นข้อความผิดพลาด แค่ไม่เปลี่ยนปุ่มเป็น "คัดลอกแล้ว" */
+    }
+  }
+
+  return (
+    <div
+      className="modal-back"
+      onClick={(e) => { if (e.target === e.currentTarget) (password ? onDone() : onClose()); }}
+    >
+      <div className="modal" role="dialog" aria-modal="true">
+        <h3>รีเซ็ตรหัสผ่าน — {user.displayName}</h3>
+        <div className="m-body">
+          {password ? (
+            <>
+              <p>รหัสผ่านใหม่ · แสดงครั้งเดียว ปิดหน้าต่างแล้วอ่านย้อนหลังไม่ได้</p>
+              <p
+                className="mono"
+                style={{
+                  fontSize: 'var(--t-lg)', letterSpacing: 1, padding: '10px 12px',
+                  background: 'var(--surface-2, #f4f4f5)', borderRadius: 8, userSelect: 'all',
+                }}
+              >
+                {password}
+              </p>
+              <Row>
+                <button type="button" className="btn btn-sm btn-light" onClick={copy}>
+                  <Icon name={copied ? 'check' : 'clipboard'} /> {copied ? 'คัดลอกแล้ว' : 'Copy'}
+                </button>
+              </Row>
+              <p className="muted" style={{ marginBottom: 0 }}>
+                {user.displayName} ใช้รหัสนี้เข้าระบบได้ครั้งเดียว แล้วระบบจะบังคับให้ตั้งรหัสของตัวเอง
+                — รหัสที่คุณเพิ่งอ่านจึงใช้ต่อไม่ได้หลังจากนั้น
+              </p>
+            </>
+          ) : (
+            <>
+              <p>
+                ระบบจะสุ่มรหัสใหม่ให้ · รหัสเดิมของ {user.displayName} จะใช้ไม่ได้ทันที
+              </p>
+              {problem && <div className="note danger" role="alert">{problem}</div>}
+            </>
+          )}
+        </div>
+        <div className="m-foot">
+          {password ? (
+            <button type="button" className="btn" onClick={onDone}>เสร็จแล้ว</button>
+          ) : (
+            <>
+              <button type="button" className="btn btn-light" onClick={onClose} disabled={busy}>
+                ยกเลิก
+              </button>
+              <button type="button" className="btn" onClick={run} disabled={busy}>
+                <Icon name="lock" /> {busy ? 'กำลังรีเซ็ต…' : 'ยืนยัน'}
+              </button>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );

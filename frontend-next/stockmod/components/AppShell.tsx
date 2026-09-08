@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { api, ApiError, type Actor } from "@/stockmod/lib/api";
-import { homeFor, isAdminUp, mayUseStock } from "@/lib/roles.js";
+import { can as allowed, homeFor, mayUseStock, mustChangePassword } from "@/lib/roles.js";
 import CommandPalette from "./CommandPalette";
 import { ToastProvider } from "./Toaster";
 import SideRail, { sectionFor } from "./SideRail";
@@ -37,29 +37,31 @@ export function useActor(): Actor {
 }
 
 /**
- * ทุกอย่างตั้งแต่แอดมินขึ้นไปตอบเหมือนกันหมด — เงินและแคตตาล็อกเป็นสิทธิ์ชุด
- * เดียวกันในฝั่งนี้ · แยกเป็นคนละชื่อไว้เพราะจุดที่เรียกใช้อ่านรู้เรื่องกว่า
- * และวันที่กฎข้อใดข้อหนึ่งแยกออกไป จะแก้ที่เดียวโดยไม่กระทบข้ออื่น
+ * สิทธิ์ที่หน้าจอฝั่งนี้ถาม — ทุกตัวอ่านจาก `actor.perms` ที่ API ส่งมา
+ *
+ * เมื่อก่อนแต่ละตัวคำนวณจากยศเอง (`isAdminUp`) ซึ่งเป็นสำเนาของกฎที่ต้องแก้ให้
+ * ตรงกับ PHP ทุกครั้ง · ตอนนี้เป็นการถามชื่อสิทธิ์ตรง ๆ ชื่อเดียวกับที่ API ใช้
+ * บังคับจริง จึงขัดกันไม่ได้ · ยังแยกเป็นคนละชื่อไว้เพราะจุดที่เรียกใช้อ่านรู้เรื่อง
+ * กว่าการเขียน `can(a, "cost.view")` กระจายอยู่ทั่วไฟล์
+ *
+ * ทั้งหมดนี้เป็นมารยาท ไม่ใช่ด่าน — API ตรวจซ้ำทุกคำขอไม่ว่าหน้าจอจะวาดอะไร
+ * ที่มันมีอยู่คือเพื่อไม่ให้ช่างเห็นช่องต้นทุนที่กดแล้วโดนปฏิเสธอยู่ดี
  */
 export const can = {
-  enterCost: (a: Actor) => isAdminUp(a),
-  editCatalog: (a: Actor) => isAdminUp(a),
+  /** ต้นทุนแยกสองข้อ: เห็น กับ กรอก — แอดมินอยู่คนละฝั่งของสองข้อนี้ */
+  enterCost: (a: Actor) => allowed(a, "cost.edit"),
+  seeCost: (a: Actor) => allowed(a, "cost.view"),
+  editCatalog: (a: Actor) => allowed(a, "catalog.edit"),
   /**
    * เพิ่มของที่ยังไม่มีในแคตตาล็อก — ทำได้ทุกบทบาท ต่างจากการแก้และการลบ
    *
    * ของใหม่ถูกค้นพบตอนทำงาน ไม่ใช่ตอนจัดแคตตาล็อก · ฝั่งเซิร์ฟเวอร์ตอบด้วย
    * `Roles::addProduct` ตัวเดียวกัน ที่นี่มีไว้ไม่ให้ปุ่มหายไปจากคนที่กดได้
    */
-  addProduct: (_a: Actor) => true,
-  manageUsers: (a: Actor) => isAdminUp(a),
-  /**
-   * Seeing what stock cost us. The API already withholds those numbers from
-   * anyone else, so this is not the guard — it is what stops a screen drawing an
-   * empty column and an em dash where a staff member would read "ยังไม่มีต้นทุน".
-   */
-  seeCost: (a: Actor) => isAdminUp(a),
-  seeBranchMoney: (a: Actor) => isAdminUp(a),
-  manageBranches: (a: Actor) => a.role === "owner" || a.role === "superuser",
+  addProduct: (a: Actor) => allowed(a, "product.add"),
+  manageUsers: (a: Actor) => allowed(a, "users.manage"),
+  seeBranchMoney: (a: Actor) => allowed(a, "branch.money"),
+  manageBranches: (a: Actor) => allowed(a, "branch.manage"),
   /**
    * ลงชื่อ "คนอื่น" ว่าเป็นคนทำของเสีย
    *
@@ -67,7 +69,7 @@ export const can = {
    * คือการลงชื่อเพื่อนร่วมงาน ซึ่งแดชบอร์ดเอาไปรวมเป็นยอดรายคน · ด่านจริงอยู่
    * ที่ `StockGate::blamed` ตรงนี้แค่ไม่วาดปุ่มที่จะโดนปฏิเสธอยู่ดี
    */
-  blameScrap: (a: Actor) => a.role === "owner" || a.role === "superuser",
+  blameScrap: (a: Actor) => allowed(a, "scrap.blame"),
 };
 
 /**
@@ -93,6 +95,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         if (!alive) return;
         if (actor === null) {
           location.assign("/login/");
+          return;
+        }
+        /* รหัสที่คนอื่นตั้งให้ ใช้ได้ครั้งเดียวเพื่อเข้ามาตั้งรหัสจริง — API ปฏิเสธ
+           ทุกเส้นด้วย 403 อยู่แล้ว ถ้าไม่เด้ง หน้าจอจะขึ้นมาแล้วพังทุกการ์ดพร้อมกัน */
+        if (mustChangePassword(actor)) {
+          location.assign("/change-password/");
           return;
         }
         /* พนักงานขายเดินมาฝั่งคลังก็ไม่มีอะไรให้ทำ ส่งกลับไปที่ทำงานของเขา */
@@ -194,7 +202,7 @@ function WorkBar({ actor, onSignOut }: { actor: Actor; onSignOut: () => void }) 
         <span className="whoami-mark" aria-hidden="true">{initial}</span>
         <span className="whoami-text">
           <b>{actor.displayName}</b>
-          <small>{actor.roleLabel}</small>
+          <small>{actor.roleText}</small>
         </span>
         <button type="button" className="btn btn--quiet btn--small" onClick={onSignOut} title="ออกจากระบบ">
           ออก
