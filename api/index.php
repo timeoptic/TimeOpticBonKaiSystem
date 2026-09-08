@@ -34,6 +34,7 @@ require __DIR__ . '/services/SalesReport.php';
 require __DIR__ . '/services/Xlsx.php';
 require __DIR__ . '/services/SalesExport.php';
 require __DIR__ . '/services/CaseSource.php';
+require __DIR__ . '/services/ActivityLog.php';
 
 Db::configure($config['db']);
 /* โหลดโค้ดฝั่งคลังจาก stock/ แล้วยกคอนเนกชันกับ session ให้ใช้ตัวเดียวกัน
@@ -48,7 +49,7 @@ foreach ([
     'auth', 'meta', 'dashboard', 'cases', 'customers', 'employees', 'prescriptions',
     'stock', 'locations', 'suppliers', 'orders', 'payments',
     'workflow', 'processes', 'uploads', 'sales', 'pos', 'receipts', 'cashflow', 'reports', 'analytics',
-    'bookings', 'settings',
+    'bookings', 'settings', 'logs',
 ] as $group) {
     require __DIR__ . "/routes/$group.php";
 }
@@ -86,6 +87,9 @@ if ($path === '' || $path[0] !== '/') {
    กลายเป็น /api/stock-api/... แล้วไม่ตรงกับอะไรเลย · และก่อนประตูตรวจ session
    เพราะฝั่งคลังตรวจสิทธิ์เองทุกเส้นและตอบ reason ที่หน้าเว็บแยกแยะได้ */
 if ($path === '/stock-api' || str_starts_with($path, '/stock-api/')) {
+    /* ฝั่งคลัง dispatch แล้ว exit เอง ไม่กลับมาที่ไฟล์นี้ — ตัวบันทึกปิดงานให้เอง
+       ตอน shutdown · การเพิ่ม-ลบบัญชีผู้ใช้เดินทางนี้ จึงต้องบันทึกด้วย */
+    ActivityLog::start($method, $path);
     StockModule::boot();
     \Optic\Http::mountUnder('/stock-api');
     require __DIR__ . '/../stock/api/public/index.php'; // ลงทะเบียนเส้นทางแล้ว dispatch เอง
@@ -96,6 +100,15 @@ if ($path === '/stock-api' || str_starts_with($path, '/stock-api/')) {
 if (!str_starts_with($path, '/api/') && $path !== '/api') {
     $path = '/api' . ($path === '/' ? '' : $path);
 }
+
+/* ประตูที่สาม — บันทึกว่าใครทำอะไร (ดู services/ActivityLog.php)
+ *
+ * ต้องมาก่อนสองด่านข้างล่าง เพราะสิ่งที่คนเปิดล็อกอยากเห็นที่สุดอย่างหนึ่งคือคำขอ
+ * ที่ "ไม่ผ่าน" — 401 ที่แปลว่า session หมดอายุกลางงาน และ 403 ที่แปลว่ามีคนกด
+ * เข้าหน้าที่ไม่ใช่ของตัวเอง · ทั้งสองอย่างจบด้วย exit() ตรงนั้น ไม่มีทางเดินมาถึง
+ * บรรทัดสุดท้ายของไฟล์นี้ ตัวบันทึกจึงปิดงานตัวเองตอน shutdown
+ */
+ActivityLog::start($method, $path);
 
 /* ประตูเดียวของทั้ง API — ไม่มี session ก็ไม่ได้เข้า
    ยกเว้นสามเส้นที่ต้องเรียกได้ก่อนล็อกอิน ไม่งั้นจะล็อกอินไม่ได้เลย */
@@ -120,6 +133,7 @@ const ADMIN_PREFIXES = [
     '/api/income', '/api/expense',          // การเงิน
     '/api/employees', '/api/suppliers',     // ข้อมูลระบบ
     '/api/reports', '/api/notifications', '/api/reminders',
+    '/api/logs',                            // บันทึกการใช้งาน — ใครทำอะไร
 ];
 if (!$open) {
     $actor    = StockModule::actor();
@@ -147,6 +161,9 @@ if (!$open) {
     }
 }
 
+/* คำขอที่ยังอ่านไม่ได้ตอนนี้ ("Invalid JSON body") ก็ยังต้องมีร่องรอย — ตัวแปรนี้
+   จึงต้องมีค่าอยู่แล้วก่อนเข้า try ไม่ใช่ประกาศข้างใน */
+$body = [];
 try {
     $body = ($method === 'GET') ? [] : Http::body();
     // null is a real answer here ("this case has no fitting row yet"), so it is
@@ -155,17 +172,24 @@ try {
     /* ต้นทุนออกจากที่นี่ได้เฉพาะคนที่มีสิทธิ์เห็น — ตัดที่ทางออก ไม่ใช่ซ่อนในหน้าเว็บ
        หน้าจอที่แค่ไม่วาดตัวเลข ก็ยังได้รับตัวเลขนั้นไปแล้ว เปิด DevTools ก็เห็น */
     Http::json(200, StockModule::redactCost($result, StockModule::actor()));
+    /* บันทึกหลังส่งคำตอบออกไปแล้วเสมอ — คนกดปุ่มไม่ต้องรอการเขียนล็อก และล็อกที่
+       พังก็ทำอะไรกับคำตอบที่ส่งไปแล้วไม่ได้ ซึ่งเป็นผลที่ตั้งใจ */
+    ActivityLog::finish(200, $body, $result);
 } catch (HttpError $e) {
     Http::json($e->status, ['error' => $e->getMessage()]);
+    ActivityLog::finish($e->status, $body, null, $e->getMessage());
 } catch (\Optic\ApiError $e) {
     /* ฝั่งคลังตอบเป็น reason ที่โค้ดแตกเงื่อนไขได้ ส่งต่อทั้งคู่ ไม่ยุบเหลือข้อความ */
     Http::json($e->status, ['error' => $e->getMessage()] + $e->payload());
+    ActivityLog::finish($e->status, $body, null, $e->getMessage());
 } catch (StockApiError $e) {
     /* คำปฏิเสธของฝั่งคลังที่เดินผ่าน StockClient มา — มันห่อ ApiError ไว้อีกชั้น
        ถ้าไม่ดักตรงนี้จะไปตกที่ Throwable ข้างล่างแล้วกลายเป็น 500 ทั้งที่เป็นเรื่อง
        ที่คนกดแก้ได้เอง เช่น "ต้องระบุรุ่นเลนส์ที่จะสั่ง" */
     Http::json($e->status ?: 400, ['error' => $e->getMessage(), 'reason' => $e->reason] + $e->payload);
+    ActivityLog::finish($e->status ?: 400, $body, null, $e->getMessage());
 } catch (Throwable $e) {
     error_log(sprintf('[%s %s] %s', $method, $path, $e->getMessage()));
     Http::json(500, ['error' => $e->getMessage()]);
+    ActivityLog::finish(500, $body, null, $e->getMessage());
 }

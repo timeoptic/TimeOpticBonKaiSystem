@@ -32,6 +32,41 @@ final class Migrate
                 PRIMARY KEY (`key`)
               ) $c",
 
+            /* บันทึกการใช้งานของทั้งระบบ — ใครทำอะไร เมื่อไหร่ (ดู services/ActivityLog.php)
+
+               ไม่มี FOREIGN KEY ไปที่ `admins` โดยตั้งใจ: ร่องรอยต้องอยู่ต่อได้แม้
+               บัญชีที่ทำจะถูกลบทิ้ง จึงเก็บชื่อกับบทบาท ณ เวลานั้นเป็นสำเนาไว้ในแถว
+               แทนที่จะ join กลับไปหาแถวที่อาจไม่มีอยู่แล้ว
+
+               `at` เป็น datetime(3) เพราะวันหนึ่งมีหลายพันแถว — ความละเอียดระดับ
+               วินาทีทำให้ลำดับของสิ่งที่เกิดในวินาทีเดียวกันอ่านไม่ออก ซึ่งเป็น
+               วินาทีที่คนมาเปิดล็อกอ่านสนใจที่สุด */
+            'activity_log' => "CREATE TABLE IF NOT EXISTS activity_log (
+                id          bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+                at          datetime(3) NOT NULL DEFAULT current_timestamp(3),
+                kind        varchar(12) NOT NULL COMMENT 'audit | auth | error | request',
+                actor_id    int(10) unsigned DEFAULT NULL COMMENT 'admins.id — ไม่ผูก FK โดยตั้งใจ',
+                actor_name  varchar(120) DEFAULT NULL COMMENT 'ชื่อ ณ เวลานั้น',
+                actor_role  varchar(20)  DEFAULT NULL,
+                method      varchar(8)  NOT NULL,
+                path        varchar(255) NOT NULL,
+                status      smallint(6) NOT NULL DEFAULT 0,
+                duration_ms int(10) unsigned NOT NULL DEFAULT 0,
+                entity      varchar(40) DEFAULT NULL COMMENT 'ชื่อตารางที่ถูกแตะ',
+                entity_id   int(10) unsigned DEFAULT NULL,
+                action      varchar(40) DEFAULT NULL,
+                summary     varchar(255) DEFAULT NULL COMMENT 'ข้อความไทยพร้อมอ่าน',
+                changes     text DEFAULT NULL COMMENT 'JSON [{field, before, after}]',
+                payload     text DEFAULT NULL,
+                ip          varchar(45)  DEFAULT NULL,
+                user_agent  varchar(255) DEFAULT NULL,
+                PRIMARY KEY (id),
+                KEY idx_log_at (at),
+                KEY idx_log_kind (kind, at),
+                KEY idx_log_actor (actor_id, at),
+                KEY idx_log_entity (entity, entity_id, at)
+              ) $c",
+
             /* advance queue bookings (จองคิวล่วงหน้า) */
             'bookings' => "CREATE TABLE IF NOT EXISTS bookings (
                 id               int(10) unsigned NOT NULL AUTO_INCREMENT,

@@ -39,4 +39,5 @@ export const ROUTES = [
   ['/reports/payments/', 'รายงาน — การรับเงิน'],
   ['/reports/profit/', 'รายงาน — กำไร'],
   ['/settings/', 'ตั้งค่า/แจ้งเตือน'],
+  ['/logs/', 'บันทึกการใช้งาน'],
 ];

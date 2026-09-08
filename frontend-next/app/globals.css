@@ -4059,6 +4059,42 @@ th.right .th-sort{justify-content:flex-end}
 
 .seg button.active{background:var(--card);color:var(--ink);box-shadow:var(--shadow-sm)}
 
+/* ---------------- บันทึกการใช้งาน (/logs) ----------------
+   หน้านี้ยืมตาราง ตัวกรอง และกล่องลอยของทั้งแอปมาใช้ทั้งหมด · ที่เหลืออยู่ตรงนี้
+   มีแค่การอ่าน "ก่อน → หลัง" ให้ออกด้วยตาเดียว ซึ่งเป็นสิ่งเดียวที่หน้าอื่นไม่มี */
+
+/* ค่าที่ไม่ได้กรอกไว้ ต่างจากค่าที่ยังไม่ได้โหลด — ต้องเขียนออกมา ไม่ใช่ช่องโล่ง */
+.log-empty{color:var(--ink-faint);font-style:italic}
+
+/* จำนวนช่องที่เปลี่ยน — ป้ายเล็กที่บอกว่าแถวนี้กดเข้าไปแล้วมีอะไรให้ดู */
+.log-chg{
+  display:inline-block;padding:1px 8px;border-radius:999px;
+  background:var(--cyan-tint);color:var(--cyan-deep);border:1px solid var(--cyan-edge);
+  font-size:11.5px;font-weight:600;white-space:nowrap;
+}
+
+.log-bad{color:var(--danger)}
+
+.log-h4{margin:18px 0 8px;font-size:14px;font-weight:650}
+.log-kv dd.log-path,.log-kv dd.log-ua{word-break:break-all}
+.log-kv dd.log-ua{color:var(--ink-dim);font-size:12.5px}
+
+/* ตารางเทียบค่า — สีบอกทิศทางแทนคำว่า "เดิม/ใหม่" ที่ต้องอ่านหัวตารางทุกครั้ง
+   เขียว = ค่าที่ใช้อยู่ตอนนี้ · แดงจาง = ค่าที่ถูกทับไปแล้ว */
+.log-diff{width:100%;border-collapse:collapse;font-size:13px}
+.log-diff th,.log-diff td{padding:7px 10px;border-bottom:1px solid var(--line-soft);text-align:left;vertical-align:top}
+.log-diff th{font-size:12px;color:var(--ink-faint);font-weight:600;white-space:nowrap}
+.log-diff td{word-break:break-word}
+.log-diff .log-before{color:#9F0F33;background:var(--danger-soft)}
+.log-diff .log-after{color:var(--green-deep);background:var(--green-tint)}
+
+.log-json{
+  margin:0;padding:12px 14px;border-radius:10px;
+  background:var(--surface-alt);border:1px solid var(--line-soft);
+  font-size:12.5px;line-height:1.6;white-space:pre-wrap;word-break:break-word;
+  max-height:320px;overflow:auto;
+}
+
 /* ---------------- ตัวคั่นหมวดในหน้ายาว ---------------- */
 .section-head{
   display:flex;align-items:center;gap:10px;

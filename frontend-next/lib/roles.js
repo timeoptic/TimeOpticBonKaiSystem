@@ -78,7 +78,7 @@ export const mayUseStock = (actor) => rank(actor) > 0 && actor.role !== ROLE.SAL
  */
 export const ADMIN_PATHS = [
   '/income', '/expense',
-  '/employees', '/users', '/suppliers', '/reports', '/settings',
+  '/employees', '/users', '/suppliers', '/reports', '/settings', '/logs',
 ];
 
 export const isAdminPath = (path) => ADMIN_PATHS.some(

@@ -20,6 +20,7 @@ export const TITLES = [
   ['/bookings/detail', 'รายละเอียดคิว'],
   ['/bookings', 'ปฏิทินจองคิว'],
   ['/settings', 'ตั้งค่า/แจ้งเตือน'],
+  ['/logs', 'บันทึกการใช้งาน'],
   ['/cases/new', 'เปิดเคสใหม่'],
   ['/cases/detail', 'รายละเอียดเคส'],
   ['/cases', 'กระดานงาน'],

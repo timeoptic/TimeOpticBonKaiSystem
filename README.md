@@ -17,8 +17,8 @@ timeoptic-web/
 │   ├── .htaccess               ทางเข้าเวลาให้ Apache เสิร์ฟ
 │   ├── config.php              อ่านค่าจาก .env / environment
 │   ├── core/                   Db(PDO) · Router · Http · Helpers · Sql · Lookups
-│   ├── services/               Telegram · Migrate · Scheduler · Booking
-│   ├── routes/                 19 ไฟล์ — หนึ่งไฟล์ต่อหนึ่งกลุ่มข้อมูล
+│   ├── services/               Telegram · Migrate · Scheduler · Booking · ActivityLog
+│   ├── routes/                 20 ไฟล์ — หนึ่งไฟล์ต่อหนึ่งกลุ่มข้อมูล
 │   └── cli/                    reminder.php (Task Scheduler) · serve.php (banner)
 │
 ├── frontend-next/            Frontend — Next.js 15 (App Router) + React 19 · static export
@@ -31,7 +31,7 @@ timeoptic-web/
 └── start-api.bat
 ```
 
-ที่แยก `api/routes/` เป็น 19 ไฟล์เพราะรุ่นแรก (Node) รวม endpoint ทั้ง 85 ตัวไว้ในไฟล์
+ที่แยก `api/routes/` เป็น 20 ไฟล์เพราะรุ่นแรก (Node) รวม endpoint ทั้ง 85 ตัวไว้ในไฟล์
 เดียว 1,773 บรรทัด — จะแก้อะไรทีต้องไล่หาทั้งไฟล์ ตอนนี้แก้ `bookings` ก็เปิดแค่
 `api/routes/bookings.php`
 
@@ -155,6 +155,7 @@ reception   exam       sales           payment    centering    delivery
 | **เมนูหลัก** | KPI วันนี้ + งานค้างแต่ละขั้นตอน + **คิวจองวันนี้ (นับถอยหลัง)** + ออเดอร์ว่าง / ออเดอร์ที่ยังไม่ปิด |
 | **📅 ปฏิทินจองคิว** | ปฏิทินรายเดือน + คิวรายวัน + จอง/แก้ไข/ยกเลิก + เปิดเคสจากคิว |
 | **⚙️ ตั้งค่า/แจ้งเตือน** | ตั้งค่า Telegram · ทดสอบส่ง · รันตัวเตือนเอง · ประวัติการแจ้งเตือน |
+| **🕘 บันทึกการใช้งาน** | ใครทำอะไรเมื่อไหร่ · เห็นค่าก่อน → หลังของทุกการแก้ · เข้า-ออกระบบ · ข้อผิดพลาด · กรองตามคน/ชนิด/ช่วงวัน · ส่งออก CSV (แอดมินขึ้นไป) |
 | **กระดานงาน** (Case Board) | คิวงานแบบ kanban 6 คอลัมน์ตามขั้นตอน · แยกสมุด SightFirst / ลูกค้าร้าน · กรองงานด่วน/ค้างชำระ · ซ่อนขั้นที่ว่าง |
 | **รายละเอียดเคส** | แถบ 6 ขั้น + แผงของขั้นที่เปิดอยู่ (รับลูกค้า · วัดสายตา · ขาย · ชำระเงิน · วัด Center · ส่งมอบ) + ภาพรวม · ติดต่อลูกค้า · ไทม์ไลน์ |
 | **ส่งมอบ** | เคสที่พร้อมให้ลูกค้ามารับ · แยก พร้อมส่ง / รอลูกค้า / ยังไม่พร้อม · ยอดค้างชำระไม่ปิดกั้นการส่งมอบ |
@@ -202,7 +203,7 @@ balance = total_price − discount − paid
 
 ## ตารางที่ใช้
 
-ใช้ schema เดิมทั้ง 27 ตาราง **โดยไม่แก้ไขหรือลบอะไรเลย** และเพิ่มใหม่ 4 ตารางสำหรับระบบจองคิว
+ใช้ schema เดิมทั้ง 27 ตาราง **โดยไม่แก้ไขหรือลบอะไรเลย** และเพิ่มใหม่ 5 ตาราง (จองคิว + บันทึกการใช้งาน)
 (สร้างอัตโนมัติตอน start ด้วย `CREATE TABLE IF NOT EXISTS` — ดู `api/services/Migrate.php`):
 
 ```
@@ -210,6 +211,8 @@ bookings          การจองคิว (วัน/เวลา/บริ�
 booking_notes     บันทึกเบื้องต้นทีละขั้น (step + คำถาม + คำตอบ + ผู้บันทึก)
 notification_log  ทุกข้อความ Telegram ที่ส่ง สำเร็จ/ไม่สำเร็จ พร้อมสาเหตุ
 app_settings      key/value เก็บ Telegram token, chat id, ค่าปริยายต่าง ๆ
+activity_log      ใครทำอะไรเมื่อไหร่ — หนึ่งคำขอหนึ่งแถว พร้อม diff ก่อน/หลัง
+                  (audit/auth เก็บ 3 ปี · error 1 ปี · request 30 วัน แล้วลบเอง)
 ```
 
 ตารางเดิมที่ใช้:
@@ -283,6 +286,10 @@ POST   /api/bookings/:id/open-case      สร้างลูกค้า(ถ้
 POST   /api/bookings/:id/remind         ส่งแจ้งเตือนเดี๋ยวนี้
 GET/PUT /api/settings  ·  POST /api/settings/telegram/test
 GET    /api/notifications  ·  POST /api/reminders/run
+
+# บันทึกการใช้งาน — อ่านอย่างเดียว แอดมินขึ้นไป (services/ActivityLog.php เป็นคนเขียน)
+GET    /api/logs?kind=&actor_id=&entity=&entity_id=&q=&from=&to=&limit=&offset=
+GET    /api/logs/actors    รายชื่อคนที่มีร่องรอยในล็อก · GET /api/logs/stats  ตัวเลขของวันนี้
 
 GET    /api/reports/daily-closed?from=&to=
 GET    /api/reports/income-by-month · /checklist?type= · /stock-labels · /unsold-stock?days=
