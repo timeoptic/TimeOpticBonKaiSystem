@@ -1138,3 +1138,51 @@ test('บัญชีที่ไม่มีสิทธิ์เลย ล็�
         throwsReason('no_roles', fn() => Auth::login($u, 'a-strong-password'), 'ล็อกอินโดยไม่มีสิทธิ์');
     });
 });
+
+group('สร้างบัญชีไว้ก่อนวันเริ่มงาน');
+
+test('สร้างบัญชีแบบปิดใช้งานไว้ก่อนได้ และล็อกอินยังไม่ได้', function () {
+    withRollback(function () {
+        $u = uname();
+        $emp = anEmployee('เริ่มงานเดือนหน้า');
+        $out = Users::grantAccount(
+            $emp,
+            [
+                'username'  => $u,
+                'password'  => 'a-strong-password',
+                'roles'     => [Roles::SALES],
+                'is_active' => false,
+            ],
+            [Roles::OWNER],
+            1,
+        );
+
+        eq($out['isActive'], false, 'คืนค่าว่าปิดอยู่');
+        eq((int) Db::value('SELECT is_active FROM admins WHERE id = ?', [$out['id']]), 0, 'แถวถูกปิดจริง');
+        throwsReason('bad_credentials', fn() => Auth::login($u, 'a-strong-password'), 'ล็อกอินบัญชีที่ยังปิดอยู่');
+
+        /* เปิดทีหลังแล้วเข้าได้ทันที — ไม่ต้องตั้งรหัสใหม่ เพราะรหัสนี้เจ้าตัวเป็นคน
+           ได้รับมาตั้งแต่วันสร้าง ไม่ได้ถูกใครรีเซ็ตให้ */
+        Users::update(
+            $out['id'],
+            ['username' => $u, 'roles' => [Roles::SALES], 'is_active' => true],
+            [Roles::OWNER],
+            1,
+        );
+        $actor = Auth::login($u, 'a-strong-password');
+        eq($actor['mustChangePassword'], false, 'ไม่ติดธงบังคับเปลี่ยน');
+    });
+});
+
+test('ไม่ส่ง is_active มา ถือว่าเปิดใช้งาน', function () {
+    withRollback(function () {
+        $emp = anEmployee('ค่าปริยาย');
+        $out = Users::grantAccount(
+            $emp,
+            ['username' => uname(), 'password' => 'a-strong-password', 'roles' => [Roles::SALES]],
+            [Roles::OWNER],
+            1,
+        );
+        eq($out['isActive'], true, 'ค่าปริยายคือเปิด');
+    });
+});

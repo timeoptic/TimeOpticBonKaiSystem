@@ -425,6 +425,7 @@ function UserDialog({ user, actor, policy, candidates, onClose, onSaved }) {
           username: username.trim(),
           password,
           roles,
+          is_active: isActive,
         });
         ok(`เพิ่มผู้ใช้ ${username.trim()} แล้ว`);
       }
@@ -585,6 +586,16 @@ function UserDialog({ user, actor, policy, candidates, onClose, onSaved }) {
                       onChange={(e) => setConfirm(e.target.value)}
                       disabled={busy}
                       autoComplete="new-password"
+                    />
+                  </Field>
+                  {/* สร้างไว้ปิดก็ได้ — คนที่จะเริ่มงานเดือนหน้าควรมีบัญชีรออยู่ได้
+                      โดยที่ยังเข้าระบบไม่ได้ */}
+                  <Field label="สถานะ" hint="ปิดไว้ก่อนได้ ถ้ายังไม่ถึงวันเริ่มงาน">
+                    <Select
+                      value={isActive ? '1' : '0'}
+                      onChange={(e) => setIsActive(e.target.value === '1')}
+                      disabled={busy}
+                      options={[['1', 'เปิดใช้งาน'], ['0', 'ปิดใช้งาน']]}
                     />
                   </Field>
                 </>

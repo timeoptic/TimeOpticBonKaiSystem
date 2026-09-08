@@ -275,10 +275,15 @@ final class Users
             throw ApiError::conflict('duplicate_username', "มีชื่อผู้ใช้ “{$username}” อยู่แล้ว", ['username' => $username]);
         }
 
+        /* เปิดใช้งานทันทีเป็นค่าปริยาย แต่สร้างไว้ปิดก็ได้ — คนที่จะเริ่มงานเดือนหน้า
+           ควรมีบัญชีรออยู่ได้โดยที่ยังเข้าระบบไม่ได้ · แถวที่ ensureFor() เพิ่งสร้าง
+           เปิดอยู่เสมอ จึงต้องเขียนค่านี้ทับ ไม่ใช่ปล่อยตามเดิม */
+        $isActive = (bool) ($req['is_active'] ?? true);
+
         Db::run(
-            'UPDATE admins SET username = ?, password_hash = ?, is_active = 1, must_change_password = 0
+            'UPDATE admins SET username = ?, password_hash = ?, is_active = ?, must_change_password = 0
               WHERE id = ?',
-            [$username, Auth::hashPassword($password), $id],
+            [$username, Auth::hashPassword($password), $isActive ? 1 : 0, $id],
         );
         self::setRoles($id, $newRoles, $actorId);
 
@@ -288,6 +293,7 @@ final class Users
             'username'    => $username,
             'displayName' => (string) $employee['employee_name'],
             'roles'       => $newRoles,
+            'isActive'    => $isActive,
         ];
     }
 
