@@ -7,13 +7,18 @@
  * วิธีที่ระบบเดิมทำ ซึ่งคนที่ร้านชินมือแล้ว
  *
  * ใช้ของ POS เท่านั้น ไม่ใช่ `Field` กลางของแอป เพราะหน้าตาคนละชุดกันโดยตั้งใจ
+ *
+ * `icon` รับ "ชื่อไอคอน" ของ lib/icons.js ไม่ใช่ตัวอักษร — เขียนลงหน้าจอตรง ๆ
+ * ไม่ได้ เพราะ .pos-ico วางทับในช่องกรอก คำว่า "bag" จะไปซ้อน placeholder
  */
+import { Icon } from '../Icon.jsx';
+
 export function PosField({ label, icon, children, className = '' }) {
   return (
     <div className={className}>
       {label && <span className="pos-lab">{label}</span>}
       <div className="pos-f">
-        {icon && <span className="pos-ico" aria-hidden="true">{icon}</span>}
+        {icon && <span className="pos-ico icon-only" aria-hidden="true"><Icon name={icon} /></span>}
         {children}
       </div>
     </div>
@@ -26,7 +31,7 @@ export function PosOut({ label, icon, tone, children }) {
     <div>
       {label && <span className="pos-lab">{label}</span>}
       <div className="pos-f">
-        {icon && <span className="pos-ico" aria-hidden="true">{icon}</span>}
+        {icon && <span className="pos-ico icon-only" aria-hidden="true"><Icon name={icon} /></span>}
         <div className={`pos-out ${tone}`}>{children}</div>
       </div>
     </div>

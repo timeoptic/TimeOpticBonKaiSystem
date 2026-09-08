@@ -47,6 +47,13 @@ const line = (desc, qty, unit, amount, indent = false) => ({ desc, indent, qty, 
  * ส่วน spec คือของที่ลูกค้าอาจคาดว่ามีราคา แต่ตอบไม่ได้ — ต้องบอกว่าไม่มี ไม่ใช่เว้นว่างเงียบ ๆ
  */
 const spec = (desc, indent = true) => ({ desc, indent, qty: null, unit: DASH, amount: DASH });
+/**
+ * บรรทัดค่าสายตา — note ที่ติดธง rx ไว้ เพราะเป็นกลุ่มเดียวบนใบที่ "เลือกได้ว่าจะพิมพ์ไหม"
+ * ลูกค้าบางคนไม่อยากให้ค่าสายตาติดไปกับใบที่ยื่นเบิก/ยื่นภาษี ปุ่มบนแถบเครื่องมือ
+ * ของ /print/receipt จึงกรองบรรทัดพวกนี้ออกได้ด้วย withoutRx() ข้างล่าง
+ * ธงอยู่ตรงนี้ ไม่ใช่ให้หน้าเว็บเดาจากข้อความ (/^R :/) — ข้อความเปลี่ยนเมื่อไหร่ก็พัง
+ */
+const rxNote = (desc) => ({ ...note(desc, true), rx: true });
 
 const DASH = '—';
 
@@ -156,10 +163,10 @@ export function orderReceipt(o, receiptNo) {
     const l = eyeLine(rx, 'l');
     const add = [rx.r_add, rx.l_add].map((v) => String(v ?? '').trim()).filter(Boolean);
     if (r || l || add.length) {
-      lines.push(note('Prescription', true));
-      if (r) lines.push(note(`R : ${r}`, true));
-      if (l) lines.push(note(`L : ${l}`, true));
-      if (add.length) lines.push(note(`Add : ${add.join(' / ')}`, true));
+      lines.push(rxNote('Prescription'));
+      if (r) lines.push(rxNote(`R : ${r}`));
+      if (l) lines.push(rxNote(`L : ${l}`));
+      if (add.length) lines.push(rxNote(`Add : ${add.join(' / ')}`));
     }
   }
 
@@ -218,3 +225,14 @@ export const linesTotal = (lines) =>
   ));
 
 export { DASH, round2 };
+
+/**
+ * ใบนี้มีค่าสายตาให้เลือกซ่อนไหม — ใบขาย POS ไม่มี ปุ่มสลับจึงไม่ต้องขึ้นให้กดเปล่า ๆ
+ */
+export const hasRx = (r) => (r?.lines || []).some((l) => l.rx);
+
+/**
+ * ใบเดิมแต่ตัดบรรทัดค่าสายตาออก — ค่าสายตาไม่มีราคา ยอดท้ายใบจึงไม่ขยับ
+ * (ธง rx อยู่บน note ล้วน ๆ ที่ amount เป็น null ดู rxNote ข้างบน)
+ */
+export const withoutRx = (r) => ({ ...r, lines: (r?.lines || []).filter((l) => !l.rx) });

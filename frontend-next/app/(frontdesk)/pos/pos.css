@@ -91,10 +91,13 @@
 /* ---- ช่องกรอกที่มีไอคอนอยู่ในช่อง ---- */
 .pos-f{position:relative}
 
+/* ไอคอนเป็น <svg> สูงกว่า line-height ของ span — ใช้ flex ให้กึ่งกลางตรงจริง
+   ไม่ใช่กะเอาจากเส้นฐานตัวอักษรที่ไม่มีอยู่ */
 .pos-f > .pos-ico{
   position:absolute;left:13px;top:50%;transform:translateY(-50%);
-  font-size:14px;line-height:1;pointer-events:none;opacity:.5;
+  display:flex;font-size:14px;line-height:1;pointer-events:none;opacity:.5;
 }
+.pos-f > .pos-ico .ico{vertical-align:baseline}
 
 /* ช่องวันที่ถูกห่อด้วย .datef แล้ว ลูกโดยตรงของ .pos-f จึงเป็นกล่องห่อ ไม่ใช่ <input>
    ตัวเลือกที่ใช้ > จึงไม่โดนมันอีกต่อไป — เขียนให้กล่องห่อโปร่งใสแล้วส่งสไตล์ต่อไปที่ input ข้างใน */

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  vatBreakdown, orderReceipt, saleReceipt, linesTotal,
+  vatBreakdown, orderReceipt, saleReceipt, linesTotal, hasRx, withoutRx,
 } from '../receipt.js';
 
 test('vatBreakdown: ถอด VAT ออกจากราคาที่รวมแล้ว ไม่ใช่บวกเพิ่ม', () => {
@@ -140,6 +140,34 @@ test('orderReceipt: ค่าสายตาไม่มีราคาและ
     assert.equal(l.amount, null, l.desc);
     assert.equal(l.unit, null, l.desc);
   }
+});
+
+/* ปุ่ม "โชว์ค่าสายตา / ไม่โชว์" บนหน้าพิมพ์กรองด้วยธง rx ตัวนี้ ไม่ได้อ่านจากข้อความ —
+   ถ้าธงหลุดจากบรรทัดไหน บรรทัดนั้นจะค้างอยู่บนใบที่พนักงานสั่งว่าไม่ให้โชว์ */
+test('orderReceipt: บรรทัดค่าสายตาต้องติดธง rx และมีเฉพาะบรรทัดค่าสายตาเท่านั้น', () => {
+  const lines = orderReceipt(ORDER).lines;
+  const flagged = lines.filter((l) => l.rx).map((l) => l.desc);
+  assert.deepEqual(flagged, ['Prescription', 'R : -1.25 / -0.50 x 180', 'L : -1.00', 'Add : +2.00 / +2.00']);
+});
+
+test('withoutRx: ซ่อนค่าสายตาแล้วบรรทัดอื่นและยอดต้องเหมือนเดิมเป๊ะ', () => {
+  const full = orderReceipt(ORDER, 'Bill-1');
+  const hidden = withoutRx(full);
+  assert.equal(hidden.lines.some((l) => l.rx), false);
+  assert.deepEqual(
+    hidden.lines.map((l) => l.desc),
+    full.lines.filter((l) => !l.rx).map((l) => l.desc),
+  );
+  assert.equal(hidden.total, full.total);
+  assert.equal(linesTotal(hidden.lines), linesTotal(full.lines));
+  assert.equal(hidden.billNo, full.billNo);
+});
+
+/* ปุ่มขึ้นเฉพาะใบที่มีอะไรให้ซ่อน — ใบขาย POS ไม่มีค่าสายตา กดแล้วต้องไม่มีอะไรเกิดขึ้น */
+test('hasRx: ใบออเดอร์แว่นมีค่าสายตา ใบขาย POS ไม่มี', () => {
+  assert.equal(hasRx(orderReceipt(ORDER)), true);
+  assert.equal(hasRx(orderReceipt({ id: 7, total_price: '900.00', discount: '0.00' })), false);
+  assert.equal(hasRx(saleReceipt(SALE)), false);
 });
 
 test('orderReceipt: ส่วนลดเป็นบรรทัดติดลบ ผลรวมบรรทัดยังเท่ากับยอดสุทธิ', () => {

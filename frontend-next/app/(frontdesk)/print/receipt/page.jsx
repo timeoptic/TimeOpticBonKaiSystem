@@ -33,7 +33,7 @@ import { Icon } from '../../../../components/Icon.jsx';
 import { useConfirm } from '../../../../components/Confirm.jsx';
 import { fmtDate } from '../../../../lib/format.js';
 import { bahtText, bahtTextEn } from '../../../../lib/bahttext.js';
-import { orderReceipt, saleReceipt, vatBreakdown } from '../../../../lib/receipt.js';
+import { hasRx, orderReceipt, saleReceipt, vatBreakdown, withoutRx } from '../../../../lib/receipt.js';
 
 /* ที่ติดต่อของร้านบนหัวใบ — ยังไม่มีช่องเก็บในตาราง settings (มีแค่ shop_name
    กับเวลาเปิด-ปิด) เหมือน /print/order แก้ตรงนี้ที่เดียวเมื่อร้านย้ายหรือเปลี่ยนเบอร์
@@ -234,11 +234,15 @@ function ReceiptSheet() {
   const orderId = params.get('order');
   const saleId = params.get('sale');
 
-  /* ภาษาของป้ายบนใบ · แผงกรอกข้อมูลเปิดอยู่ไหม · ค่าสี่ช่องของบล็อกลูกค้า
-     ทั้งสามอยู่ตรงนี้ไม่ใช่ใน <Copy> เพราะแผ่นหนึ่งมีสองใบที่ต้องเหมือนกันเป๊ะ */
+  /* ภาษาของป้ายบนใบ · แผงกรอกข้อมูลเปิดอยู่ไหม · ค่าสี่ช่องของบล็อกลูกค้า · โชว์ค่าสายตาไหม
+     ทุกตัวอยู่ตรงนี้ไม่ใช่ใน <Copy> เพราะแผ่นหนึ่งมีสองใบที่ต้องเหมือนกันเป๊ะ */
   const [lang, setLang] = useState('th');
   const [editing, setEditing] = useState(false);
   const [cust, setCust] = useState(EMPTY_CUST);
+  /* ค่าสายตาขึ้นบนใบไหม — ตั้งต้นเป็น "โชว์" เพราะเป็นสิ่งที่ลูกค้าส่วนใหญ่อยากได้ติดใบไว้
+     ที่ต้องเลือกได้เพราะใบเดียวกันถูกเอาไปใช้สองแบบ: เก็บไว้เองกับยื่นเบิก/ยื่นภาษี
+     แบบหลังเป็นเอกสารที่ผ่านมือคนอื่น ค่าสายตาเป็นข้อมูลสุขภาพ ไม่ใช่รายการที่ต้องมี */
+  const [showRx, setShowRx] = useState(true);
 
   /**
    * เปิดหน้านี้ = ออกเลขใบเสร็จ
@@ -298,6 +302,12 @@ function ReceiptSheet() {
     setCust(EMPTY_CUST);
   };
 
+  /* ตัดบรรทัดค่าสายตาที่ lib/receipt.js ไม่ใช่ตอนวาด — <Copy> ยังรับ "ใบหนึ่งใบ" เหมือนเดิม
+     และเติมแถวเปล่าให้ครบความสูงเองอยู่แล้ว ซ่อนแล้วใบจึงไม่เตี้ยลง */
+  const sheet = showRx ? data : withoutRx(data);
+  const rxAvailable = hasRx(data);
+
+  /* ยอดคิดจาก data ไม่ใช่ sheet — ค่าสายตาไม่มีราคา ซ่อนแล้วยอดต้องเท่าเดิมเป๊ะ */
   const vat = vatBreakdown(data.total);
   const back = orderId
     ? { href: `/orders/detail?id=${orderId}`, icon: 'glasses', label: 'เปิดออเดอร์' }
@@ -314,11 +324,11 @@ function ReceiptSheet() {
 
         {/* สองช่องติดกัน ไม่ใช่ dropdown — เห็นได้ทันทีว่าใบตอนนี้เป็นภาษาอะไร
             และสลับได้ในคลิกเดียว ไม่ต้องกดเปิดดูก่อน */}
-        <div className="rc-lang" role="group" aria-label="ภาษาบนใบเสร็จ">
+        <div className="rc-seg" role="group" aria-label="ภาษาบนใบเสร็จ">
           <button
             type="button"
             aria-pressed={lang === 'th'}
-            className={`rc-lang-b${lang === 'th' ? ' is-on' : ''}`}
+            className={`rc-seg-b${lang === 'th' ? ' is-on' : ''}`}
             onClick={() => setLang('th')}
           >
             ไทย
@@ -326,12 +336,36 @@ function ReceiptSheet() {
           <button
             type="button"
             aria-pressed={lang === 'en'}
-            className={`rc-lang-b${lang === 'en' ? ' is-on' : ''}`}
+            className={`rc-seg-b${lang === 'en' ? ' is-on' : ''}`}
             onClick={() => setLang('en')}
           >
             English
           </button>
         </div>
+
+        {/* โชว์ค่าสายตาไหม — ขึ้นเฉพาะใบที่มีค่าสายตาให้ซ่อน (ใบขาย POS ไม่มี)
+            เป็นสองช่องแบบเดียวกับปุ่มภาษา ไม่ใช่ปุ่มกดสลับปุ่มเดียว เพราะคนกดต้อง
+            "เห็น" ว่าใบที่กำลังจะพิมพ์เป็นแบบไหน ไม่ใช่เดาจากปุ่มที่เขียนคำสั่งไว้ */}
+        {rxAvailable ? (
+          <div className="rc-seg" role="group" aria-label="ค่าสายตาบนใบเสร็จ">
+            <button
+              type="button"
+              aria-pressed={showRx}
+              className={`rc-seg-b${showRx ? ' is-on' : ''}`}
+              onClick={() => setShowRx(true)}
+            >
+              <Icon name="eye" /> โชว์ค่าสายตา
+            </button>
+            <button
+              type="button"
+              aria-pressed={!showRx}
+              className={`rc-seg-b${!showRx ? ' is-on' : ''}`}
+              onClick={() => setShowRx(false)}
+            >
+              ไม่โชว์
+            </button>
+          </div>
+        ) : null}
 
         <button
           type="button"
@@ -403,9 +437,9 @@ function ReceiptSheet() {
       </div>
 
       <div className="rc-sheet">
-        <Copy r={data} cust={cust} t={t} lang={lang} vat={vat} kind={t.original} />
+        <Copy r={sheet} cust={cust} t={t} lang={lang} vat={vat} kind={t.original} />
         <div className="rc-cut" />
-        <Copy r={data} cust={cust} t={t} lang={lang} vat={vat} kind={t.dup} />
+        <Copy r={sheet} cust={cust} t={t} lang={lang} vat={vat} kind={t.dup} />
       </div>
     </>
   );
@@ -566,16 +600,21 @@ const sheetCss = `
 .rc-hint p{margin:8px 0 0}
 .rc-hint .rc-vat-note{padding-top:8px;border-top:1px dashed #e3c98a;color:#6b5a2d}
 
-/* ปุ่มสลับภาษาเป็นสองช่องติดกัน สีทึบคือช่องที่กำลังใช้อยู่ ไม่ได้พึ่งเครื่องหมายถูก
-   เล็ก ๆ อย่างเดียว เพราะแถบนี้ถูกกวาดตาผ่านเร็ว ๆ ก่อนกดพิมพ์ */
-.rc-lang{display:inline-flex;overflow:hidden;background:var(--card);
+/* ปุ่มสลับบนแถบเครื่องมือ (ภาษา · ค่าสายตา) เป็นสองช่องติดกัน สีทึบคือช่องที่กำลังใช้อยู่
+   ไม่ได้พึ่งเครื่องหมายถูกเล็ก ๆ อย่างเดียว เพราะแถบนี้ถูกกวาดตาผ่านเร็ว ๆ ก่อนกดพิมพ์
+   ทั้งสองชุดใช้หน้าตาเดียวกัน — เป็นการเลือกแบบเดียวกัน จึงต้องดูเหมือนกัน */
+.rc-seg{display:inline-flex;overflow:hidden;background:var(--card);
   border:1px solid var(--line);border-radius:var(--radius-pill);
   box-shadow:var(--shadow-sm)}
-.rc-lang-b{appearance:none;border:0;background:transparent;cursor:pointer;
+.rc-seg-b{appearance:none;border:0;background:transparent;cursor:pointer;
+  display:inline-flex;align-items:center;gap:6px;
   padding:10px 18px;font:inherit;font-size:var(--t-base);font-weight:500;
   line-height:1.2;color:var(--ink-soft)}
-.rc-lang-b + .rc-lang-b{border-left:1px solid var(--line)}
-.rc-lang-b.is-on{background:var(--green);color:var(--ink);font-weight:600}
+.rc-seg-b + .rc-seg-b{border-left:1px solid var(--line)}
+.rc-seg-b.is-on{background:var(--green);color:var(--ink);font-weight:600}
+/* ระยะไอคอน-ข้อความมาจาก gap ของปุ่ม ไม่ใช่ margin เริ่มต้นของ .ico ใน globals.css
+   (ปุ่มนี้ไม่ใช่ .btn จึงไม่โดนยกเว้นให้อัตโนมัติ ถ้าไม่ล้างจะได้ระยะซ้อนสองชั้น) */
+.rc-seg-b .ico{margin:0}
 
 /* แผงกรอกข้อมูลลูกค้า — กรอบเดียวกับ .rc-hint แต่สีกลาง ๆ เพราะเป็นที่ให้ทำงาน
    ไม่ใช่คำเตือน · ช่องเรียงตัวเองตามความกว้างจอ (auto-fit) ไม่ตายตัวเป็นสี่คอลัมน์ */
