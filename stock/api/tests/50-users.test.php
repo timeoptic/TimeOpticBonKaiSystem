@@ -642,6 +642,27 @@ test('สร้างบัญชีต้องมีทั้งชื่อ�
     });
 });
 
+test('สร้างบัญชีด้วยชื่อผู้ใช้ที่คนอื่นใช้อยู่แล้วไม่ได้', function () {
+    withRollback(function () {
+        $u = uname();
+        Users::grantAccount(
+            anEmployee('คนแรก'),
+            ['username' => $u, 'password' => 'a-strong-password', 'role' => Roles::SALES],
+            Roles::OWNER,
+        );
+
+        throwsReason(
+            'duplicate_username',
+            fn() => Users::grantAccount(
+                anEmployee('คนที่สอง'),
+                ['username' => $u, 'password' => 'a-strong-password', 'role' => Roles::SALES],
+                Roles::OWNER,
+            ),
+            'ชื่อผู้ใช้ซ้ำกับพนักงานอีกคน',
+        );
+    });
+});
+
 test('ตั้งบทบาทสูงกว่าตัวเองตอนสร้างบัญชีไม่ได้', function () {
     withRollback(function () {
         $emp = anEmployee('อยากเป็นเจ้าของ');
@@ -724,5 +745,43 @@ test('ยกเลิกบัญชีเจ้าของร้านที�
             fn() => Users::revokeAccount(1, Roles::OWNER, 2),
             'ยกเลิกบัญชีเจ้าของร้านคนสุดท้าย',
         );
+    });
+});
+
+/* กฎเจ้าของร้านคนสุดท้ายมีสองแบบ และเทสต์ข้างบนแยกสองแบบนี้ไม่ออก เพราะมันปิดบัญชี
+   อีกใบทิ้ง ซึ่งทำให้ทั้งสองแบบนับได้ศูนย์เหมือนกัน · เคสที่แยกออกจริงคือเจ้าของร้าน
+   ที่เปิดใช้งานอยู่แต่ไม่มีรหัสผ่าน — นับว่า "ใช้งานอยู่" แต่ไม่นับว่า "เข้าระบบได้" */
+test('เจ้าของร้านที่เปิดอยู่แต่ไม่มีรหัสผ่าน ไม่นับว่าเป็นคนที่เข้าระบบได้', function () {
+    withRollback(function () {
+        /* สร้างเจ้าของร้านทั้งสองคนเอง ไม่พึ่งบัญชีที่ seed มา — เทสต์นี้ต้องการคู่ที่
+           ต่างกันตรงจุดที่กำลังวัดพอดี และบัญชี id 1 ยังไม่ผูกกับพนักงานจนกว่าจะถึง
+           migration 027 การอ้างถึงมันตอนนี้คือการอ้างถึงสถานะที่ยังมาไม่ถึง */
+        Db::run("UPDATE admins SET is_active = 0 WHERE role = 'owner'");
+
+        $empReal = anEmployee('เจ้าของที่เข้าระบบได้');
+        $real = Users::grantAccount(
+            $empReal,
+            ['username' => uname(), 'password' => 'a-strong-password', 'role' => Roles::OWNER],
+            Roles::OWNER,
+        );
+
+        $empGhost = anEmployee('เจ้าของที่ยังไม่มีบัญชี');
+        $ghost = Users::ensureFor($empGhost, 'เจ้าของที่ยังไม่มีบัญชี', null, true);
+        Db::run("UPDATE admins SET role = 'owner' WHERE id = ?", [$ghost]);
+
+        /* ยกเลิกบัญชีของคนที่เข้าระบบได้ไม่ได้ — คนที่เหลือเปิดใช้งานอยู่ก็จริง
+           แต่ไม่มีรหัสผ่าน จึงเข้าระบบไม่ได้ ร้านจะไม่เหลือใครเปิดประตูเข้ามา */
+        throwsReason(
+            'last_owner',
+            fn() => Users::revokeAccount($real['id'], Roles::OWNER, $ghost),
+            'ยกเลิกบัญชีเจ้าของร้านคนสุดท้ายที่เข้าระบบได้',
+        );
+
+        /* แต่การ "ปิดใช้งาน" คนเดียวกันผ่าน เพราะคำถามของมันคือยังเหลือเจ้าของร้านที่
+           ใช้งานอยู่ไหม ซึ่งตอบว่าเหลือ · สองท่อนนี้คือหลักฐานว่าสองคำถามให้คำตอบ
+           ต่างกันจริง และ revokeAccount() ถามข้อที่ถูก — วันที่มีคนถอด signInOnly ออก
+           ท่อนบนจะเลิกโยน แล้วเทสต์นี้จะแดงทันที ซึ่งเป็นเหตุผลเดียวที่มันมีอยู่ */
+        Users::syncFromEmployee($empReal, 'เจ้าของที่เข้าระบบได้', null, false, $ghost);
+        eq((int) Db::value('SELECT is_active FROM admins WHERE id = ?', [$real['id']]), 0, 'ปิดใช้งานผ่าน');
     });
 });
