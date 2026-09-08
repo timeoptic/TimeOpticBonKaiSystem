@@ -8,7 +8,7 @@ declare(strict_types=1);
  * สร้างบัญชีตัวอย่างของทุกบทบาท รหัสผ่าน `1234` ทุกบัญชี สำหรับไล่ทดสอบว่า
  * แต่ละบทบาทเห็นอะไรและถูกพาไปหน้าไหน
  *
- * **รหัสผ่านสั้นกว่าขั้นต่ำ 10 ตัวที่ Users::create บังคับไว้** สคริปต์นี้เขียนลง
+ * **รหัสผ่านสั้นกว่าขั้นต่ำ 10 ตัวที่ Users บังคับไว้ปกติ** สคริปต์นี้เขียนลง
  * ตารางตรง ๆ จึงข้ามกฎนั้นได้ ซึ่งเป็นเหตุผลเดียวที่มันมีอยู่ และเป็นเหตุผลที่
  * มันต้องไม่ถูกรันบนเครื่องจริง — ลบบัญชีพวกนี้ทิ้งด้วย --remove ก่อนเปิดใช้งานจริง
  *
@@ -20,6 +20,7 @@ require __DIR__ . '/../src/bootstrap.php';
 use Optic\Auth;
 use Optic\Db;
 use Optic\Roles;
+use Optic\Service\Users;
 
 /** ชื่อผู้ใช้ => [บทบาท, ชื่อที่แสดง, ตำแหน่งงาน] */
 const ACCOUNTS = [
@@ -60,10 +61,15 @@ echo "\nบัญชีทดสอบ (รหัสผ่าน " . PASSWORD . 
 foreach (ACCOUNTS as $username => [$role, $displayName, $jobTitle]) {
     $existing = Db::value('SELECT id FROM admins WHERE username = ?', [$username]);
     if ($existing === null) {
+        /* บัญชีทุกใบต้องมีพนักงานรองรับ — บัญชีทดสอบก็เป็นคนในสายตาของระบบ
+           และจะโผล่ในรายชื่อพนักงาน ซึ่งเป็นสิ่งที่ตั้งใจ ไม่ใช่ผลข้างเคียง */
+        Db::run('INSERT INTO employees (employee_name, roles, active) VALUES (?, ?, 1)', [$displayName, $jobTitle]);
+        $employeeId = (int) Db::value('SELECT LAST_INSERT_ID()');
+        $id = Users::ensureFor($employeeId, $displayName, $jobTitle, true);
+
         Db::run(
-            'INSERT INTO admins (username, display_name, job_title, password_hash, role, is_active)
-             VALUES (?, ?, ?, ?, ?, 1)',
-            [$username, $displayName, $jobTitle, $hash, $role],
+            'UPDATE admins SET username = ?, password_hash = ?, role = ?, is_active = 1 WHERE id = ?',
+            [$username, $hash, $role, $id],
         );
         $what = 'สร้าง';
     } else {

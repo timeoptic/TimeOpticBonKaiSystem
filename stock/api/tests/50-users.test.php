@@ -47,9 +47,10 @@ test('ผู้ที่จัดการผู้ใช้ได้เท่�
 test('บัญชีที่สูงกว่าคนดู ไม่โผล่ในรายชื่อและแก้ไม่ได้', function () {
     withRollback(function () {
         $u = uname();
-        $super = Users::create(
-            ['display_name' => 'ผู้ดูแลระบบทดสอบ', 'role' => Roles::SUPERUSER, 'username' => $u,
-             'password' => 'a-strong-password'],
+        $emp = anEmployee('ผู้ดูแลระบบทดสอบ');
+        $super = Users::grantAccount(
+            $emp,
+            ['username' => $u, 'password' => 'a-strong-password', 'role' => Roles::SUPERUSER],
             Roles::SUPERUSER,
         );
 
@@ -63,7 +64,7 @@ test('บัญชีที่สูงกว่าคนดู ไม่โผ�
             'forbidden',
             fn() => Users::update(
                 (int) $super['id'],
-                ['display_name' => 'ยึดบัญชี', 'role' => Roles::SUPERUSER, 'username' => $u, 'is_active' => true],
+                ['role' => Roles::SUPERUSER, 'username' => $u, 'is_active' => true],
                 Roles::OWNER,
                 1,
             ),
@@ -79,11 +80,12 @@ test('บัญชีที่สูงกว่าคนดู ไม่โผ�
 
 test('ตั้งบทบาทสูงกว่าตัวเองไม่ได้', function () {
     withRollback(function () {
+        $emp = anEmployee('เจ้าของปลอม');
         throwsReason(
             'forbidden',
-            fn() => Users::create(
-                ['display_name' => 'เจ้าของปลอม', 'role' => Roles::OWNER, 'username' => uname(),
-                 'password' => 'a-strong-password'],
+            fn() => Users::grantAccount(
+                $emp,
+                ['username' => uname(), 'password' => 'a-strong-password', 'role' => Roles::OWNER],
                 Roles::ADMIN,
             ),
             'แอดมินสร้างบัญชีเจ้าของร้าน',
@@ -106,13 +108,10 @@ test('รายชื่อบอกว่าใครล็อกอินไ�
 
 test('เพิ่มคนที่ยังไม่ต้องล็อกอินได้ — ต้องมีตัวตนไว้บันทึกว่าใครทำ', function () {
     withRollback(function () {
-        $out = Users::create(
-            ['display_name' => 'ช่างใหม่', 'role' => Roles::SALES, 'job_title' => 'technician'],
-            Roles::OWNER,
-        );
-        eq($out['canSignIn'], false, 'ยังล็อกอินไม่ได้');
+        $emp = anEmployee('ช่างใหม่', true, 'technician');
+        $made = ['id' => Users::ensureFor($emp, 'ช่างใหม่', 'technician', true)];
 
-        $row = Db::one('SELECT * FROM admins WHERE id = ?', [$out['id']]);
+        $row = Db::one('SELECT * FROM admins WHERE id = ?', [$made['id']]);
         eq($row['username'], null, 'ไม่มีชื่อผู้ใช้');
         eq($row['password_hash'], null, 'ไม่มีรหัสผ่าน');
         eq($row['job_title'], 'technician', 'ตำแหน่งงาน');
@@ -122,8 +121,10 @@ test('เพิ่มคนที่ยังไม่ต้องล็อก�
 test('เพิ่มคนพร้อมบัญชีล็อกอินแล้วเข้าระบบได้จริง', function () {
     withRollback(function () {
         $u = uname();
-        Users::create(
-            ['display_name' => 'ฝ่ายบัญชีใหม่', 'role' => Roles::ADMIN, 'username' => $u, 'password' => 'a-strong-password'],
+        $emp = anEmployee('ฝ่ายบัญชีใหม่');
+        Users::grantAccount(
+            $emp,
+            ['username' => $u, 'password' => 'a-strong-password', 'role' => Roles::ADMIN],
             Roles::OWNER,
         );
 
@@ -135,9 +136,10 @@ test('เพิ่มคนพร้อมบัญชีล็อกอิน�
 
 test('ตั้งชื่อผู้ใช้แล้วต้องมีรหัสผ่านด้วย', function () {
     withRollback(function () {
+        $emp = anEmployee('ไม่มีรหัส');
         throwsReason(
             'missing_field',
-            fn() => Users::create(['display_name' => 'ไม่มีรหัส', 'role' => Roles::SALES, 'username' => uname()], Roles::OWNER),
+            fn() => Users::grantAccount($emp, ['username' => uname(), 'role' => Roles::SALES], Roles::OWNER),
             'มี username แต่ไม่มีรหัส',
         );
     });
@@ -145,10 +147,12 @@ test('ตั้งชื่อผู้ใช้แล้วต้องมี�
 
 test('รหัสผ่านสั้นเกินไปถูกปฏิเสธ', function () {
     withRollback(function () {
+        $emp = anEmployee('รหัสสั้น');
         throwsReason(
             'weak_password',
-            fn() => Users::create(
-                ['display_name' => 'รหัสสั้น', 'role' => Roles::SALES, 'username' => uname(), 'password' => '1234'],
+            fn() => Users::grantAccount(
+                $emp,
+                ['username' => uname(), 'password' => '1234', 'role' => Roles::SALES],
                 Roles::OWNER,
             ),
             'รหัส 4 ตัว',
@@ -158,10 +162,12 @@ test('รหัสผ่านสั้นเกินไปถูกปฏิ�
 
 test('ชื่อผู้ใช้ซ้ำถูกปฏิเสธ', function () {
     withRollback(function () {
+        $emp = anEmployee('ซ้ำ');
         throwsReason(
             'duplicate_username',
-            fn() => Users::create(
-                ['display_name' => 'ซ้ำ', 'role' => Roles::SALES, 'username' => 'owner', 'password' => 'a-strong-password'],
+            fn() => Users::grantAccount(
+                $emp,
+                ['username' => 'owner', 'password' => 'a-strong-password', 'role' => Roles::SALES],
                 Roles::OWNER,
             ),
             'username ซ้ำ',
@@ -172,10 +178,12 @@ test('ชื่อผู้ใช้ซ้ำถูกปฏิเสธ', funct
 test('ชื่อผู้ใช้ที่มีอักขระต้องห้ามถูกปฏิเสธ', function () {
     withRollback(function () {
         foreach (['ก ข', 'ab', 'has space'] as $bad) {
+            $emp = anEmployee('x');
             throwsReason(
                 'bad_username',
-                fn() => Users::create(
-                    ['display_name' => 'x', 'role' => Roles::SALES, 'username' => $bad, 'password' => 'a-strong-password'],
+                fn() => Users::grantAccount(
+                    $emp,
+                    ['username' => $bad, 'password' => 'a-strong-password', 'role' => Roles::SALES],
                     Roles::OWNER,
                 ),
                 "username \"{$bad}\"",
@@ -186,35 +194,39 @@ test('ชื่อผู้ใช้ที่มีอักขระต้อ�
 
 group('แก้ไขผู้ใช้');
 
-test('เปลี่ยนบทบาทและตำแหน่งงานได้ และสองอย่างนี้แยกกัน', function () {
+test('เปลี่ยนบทบาทได้ โดยไม่แตะชื่อและตำแหน่งงาน — สองอย่างนั้นมาจากหน้าพนักงาน', function () {
     withRollback(function () {
-        $made = Users::create(['display_name' => 'คนทดสอบ', 'role' => Roles::SALES], Roles::OWNER);
+        $emp = anEmployee('คนทดสอบ', true, 'admin,reception');
+        $made = ['id' => Users::ensureFor($emp, 'คนทดสอบ', 'admin,reception', true)];
 
         Users::update(
             $made['id'],
-            ['display_name' => 'คนทดสอบ', 'role' => Roles::ADMIN, 'job_title' => 'admin,reception', 'is_active' => true],
+            ['role' => Roles::ADMIN, 'is_active' => true],
             Roles::OWNER,
             1,
         );
 
-        $row = Db::one('SELECT role, job_title FROM admins WHERE id = ?', [$made['id']]);
+        $row = Db::one('SELECT role, display_name, job_title FROM admins WHERE id = ?', [$made['id']]);
         eq($row['role'], Roles::ADMIN, 'บทบาทที่ตั้ง');
-        eq($row['job_title'], 'admin,reception', 'ตำแหน่งงานเก็บคำว่า admin ไว้ได้โดยไม่กลายเป็นสิทธิ์');
+        eq($row['display_name'], 'คนทดสอบ', 'ชื่อไม่เปลี่ยนเพราะ update() ไม่รับชื่อแล้ว');
+        eq($row['job_title'], 'admin,reception', 'ตำแหน่งงานไม่เปลี่ยนเพราะ update() ไม่รับตำแหน่งงานแล้ว');
     });
 });
 
 test('ปิดใช้งานบัญชีแล้วล็อกอินไม่ได้', function () {
     withRollback(function () {
         $u = uname();
-        $made = Users::create(
-            ['display_name' => 'จะถูกปิด', 'role' => Roles::SALES, 'username' => $u, 'password' => 'a-strong-password'],
+        $emp = anEmployee('จะถูกปิด');
+        $made = Users::grantAccount(
+            $emp,
+            ['username' => $u, 'password' => 'a-strong-password', 'role' => Roles::SALES],
             Roles::OWNER,
         );
         Auth::login($u, 'a-strong-password');
 
         Users::update(
             $made['id'],
-            ['display_name' => 'จะถูกปิด', 'role' => Roles::SALES, 'username' => $u, 'is_active' => false],
+            ['role' => Roles::SALES, 'username' => $u, 'is_active' => false],
             Roles::OWNER,
             1,
         );
@@ -227,7 +239,7 @@ test('ปิดใช้งานบัญชีตัวเองไม่ไ�
     withRollback(function () {
         throwsReason(
             'self_lockout',
-            fn() => Users::update(1, ['display_name' => 'เจ้าของร้าน', 'role' => Roles::OWNER, 'username' => 'owner', 'is_active' => false], Roles::OWNER, 1),
+            fn() => Users::update(1, ['role' => Roles::OWNER, 'username' => 'owner', 'is_active' => false], Roles::OWNER, 1),
             'ปิดบัญชีตัวเอง',
         );
     });
@@ -237,7 +249,7 @@ test('ลดสิทธิ์ตัวเองไม่ได้', function ()
     withRollback(function () {
         throwsReason(
             'self_lockout',
-            fn() => Users::update(1, ['display_name' => 'เจ้าของร้าน', 'role' => Roles::SALES, 'username' => 'owner', 'is_active' => true], Roles::OWNER, 1),
+            fn() => Users::update(1, ['role' => Roles::SALES, 'username' => 'owner', 'is_active' => true], Roles::OWNER, 1),
             'ลดสิทธิ์ตัวเอง',
         );
     });
@@ -251,20 +263,22 @@ test('ต้องเหลือเจ้าของร้านที่ใ�
         Db::run("UPDATE admins SET is_active = 0 WHERE role = 'owner' AND id <> 1");
 
         // สร้างเจ้าของคนที่สองแล้วให้เขาปลดเจ้าของคนแรก จะได้ไม่ชนกฎ "ห้ามแก้ตัวเอง"
-        $second = Users::create(
-            ['display_name' => 'เจ้าของสอง', 'role' => Roles::OWNER, 'username' => uname(), 'password' => 'a-strong-password'],
+        $emp = anEmployee('เจ้าของสอง');
+        $second = Users::grantAccount(
+            $emp,
+            ['username' => uname(), 'password' => 'a-strong-password', 'role' => Roles::OWNER],
             Roles::OWNER,
         );
 
         // ตอนนี้มีสองคน ปลดคนแรกได้
-        Users::update(1, ['display_name' => 'เจ้าของร้าน', 'role' => Roles::SALES, 'username' => 'owner', 'is_active' => true], Roles::OWNER, $second['id']);
+        Users::update(1, ['role' => Roles::SALES, 'username' => 'owner', 'is_active' => true], Roles::OWNER, $second['id']);
 
         // เหลือคนเดียว ปลดต่อไม่ได้แล้ว
         throwsReason(
             'last_owner',
             fn() => Users::update(
                 $second['id'],
-                ['display_name' => 'เจ้าของสอง', 'role' => Roles::SALES, 'username' => 'x' . uname(), 'is_active' => true],
+                ['role' => Roles::SALES, 'username' => 'x' . uname(), 'is_active' => true],
                 Roles::OWNER,
                 1,
             ),
@@ -278,8 +292,10 @@ group('ตั้งรหัสผ่าน');
 test('เจ้าของร้านตั้งรหัสให้คนอื่นได้ และรหัสใหม่ใช้ได้จริง', function () {
     withRollback(function () {
         $u = uname();
-        $made = Users::create(
-            ['display_name' => 'เปลี่ยนรหัส', 'role' => Roles::SALES, 'username' => $u, 'password' => 'first-password-x'],
+        $emp = anEmployee('เปลี่ยนรหัส');
+        $made = Users::grantAccount(
+            $emp,
+            ['username' => $u, 'password' => 'first-password-x', 'role' => Roles::SALES],
             Roles::OWNER,
         );
 
@@ -293,7 +309,8 @@ test('เจ้าของร้านตั้งรหัสให้คน�
 
 test('ตั้งรหัสให้คนที่ยังไม่มีชื่อผู้ใช้ไม่ได้', function () {
     withRollback(function () {
-        $made = Users::create(['display_name' => 'ไม่มี username', 'role' => Roles::SALES], Roles::OWNER);
+        $emp = anEmployee('ไม่มี username');
+        $made = ['id' => Users::ensureFor($emp, 'ไม่มี username', null, true)];
         throwsReason(
             'no_username',
             fn() => Users::setPassword($made['id'], ['password' => 'a-strong-password'], Roles::OWNER),
@@ -312,115 +329,96 @@ test('ฝ่ายบัญชีตั้งรหัสให้คนอื�
     });
 });
 
-group('ลบผู้ใช้');
+group('ลบผู้ใช้ไม่ได้อีกแล้ว');
 
-test('ลบคนที่ยังไม่เคยทำอะไรในระบบได้', function () {
+test('เมธอดลบผู้ใช้ไม่มีอยู่แล้ว', function () {
+    ok(!method_exists(Users::class, 'delete'), 'Users::delete ต้องถูกถอดออก');
+    ok(!method_exists(Users::class, 'create'), 'Users::create ต้องถูกถอดออก');
+});
+
+test('ฐานข้อมูลปฏิเสธบัญชีที่ไม่มีพนักงานรองรับ', function () {
     withRollback(function () {
-        $made = Users::create(['display_name' => 'คีย์ผิด ลบทิ้ง', 'role' => Roles::STOCK], Roles::OWNER);
-
-        $gone = Users::delete($made['id'], Roles::OWNER, 1);
-        eq($gone['id'], $made['id'], 'คืน id ของคนที่ลบ');
-        eq(Db::value('SELECT COUNT(*) FROM admins WHERE id = ?', [$made['id']]), 0, 'แถวต้องหายไปจริง');
+        $threw = false;
+        try {
+            Db::run("INSERT INTO admins (display_name, role, is_active) VALUES ('ไม่มีพนักงาน', 'sales', 1)");
+        } catch (\PDOException $e) {
+            $threw = true;
+        }
+        ok($threw, 'INSERT ที่ไม่ใส่ employee_id ต้องถูกฐานปฏิเสธ');
     });
 });
 
-test('คนที่เคยคีย์รายการแล้ว ลบไม่ได้ — ประวัติต้องอ่านย้อนหลังได้', function () {
+test('บัญชีที่ชี้ไปยังพนักงานที่ไม่มีอยู่ ฐานปฏิเสธ', function () {
     withRollback(function () {
-        $made = Users::create(['display_name' => 'เคยคีย์ของ', 'role' => Roles::STOCK], Roles::OWNER);
-        $product = aProduct();
-
-        Db::run(
-            'INSERT INTO inventory_logs (product_id, action_type, quantity, created_by, created_by_kind)
-             VALUES (?, ?, ?, ?, ?)',
-            [$product, 'ADJUST', 1, $made['id'], 'admin'],
-        );
-
-        $e = throwsReason(
-            'user_has_history',
-            fn() => Users::delete($made['id'], Roles::OWNER, 1),
-            'ลบคนที่เคยคีย์รายการ',
-        );
-        eq($e->payload()['traces'], 1, 'บอกจำนวนร่องรอยที่ค้างอยู่');
+        $threw = false;
+        try {
+            Db::run("INSERT INTO admins (employee_id, display_name, role, is_active) VALUES (999999999, 'ผี', 'sales', 1)");
+        } catch (\PDOException $e) {
+            $threw = true;
+        }
+        ok($threw, 'foreign key ต้องปฏิเสธ employee_id ที่ไม่มีจริง');
     });
 });
 
-test('คนที่เคยรับของไป ลบไม่ได้ ถึงจะไม่เคยคีย์อะไรเลย', function () {
+test('เปิดบัญชีของคนที่ลาออกไปแล้วไม่ได้', function () {
     withRollback(function () {
-        /* คนที่ไม่มีบัญชีล็อกอินมีไว้เพื่อการนี้โดยเฉพาะ — เป็นชื่อผู้รับของ
-           ไม่ใช่คนคีย์ ถ้านับแค่ created_by คนกลุ่มนี้จะลบได้ทั้งที่ประวัติชี้อยู่ */
-        $made = Users::create(['display_name' => 'ช่างที่มารับของ', 'role' => Roles::STOCK], Roles::OWNER);
-        $product = aProduct();
-
-        Db::run(
-            'INSERT INTO inventory_logs (product_id, action_type, quantity, created_by, created_by_kind, issued_to_admin_id)
-             VALUES (?, ?, ?, ?, ?, ?)',
-            [$product, 'OUT', -1, 1, 'admin', $made['id']],
-        );
-
-        throwsReason(
-            'user_has_history',
-            fn() => Users::delete($made['id'], Roles::OWNER, 1),
-            'ลบคนที่เคยรับของ',
-        );
-    });
-});
-
-test('ลบบัญชีตัวเองไม่ได้', function () {
-    withRollback(function () {
-        $made = Users::create(['display_name' => 'ลบตัวเอง', 'role' => Roles::OWNER], Roles::OWNER);
-        throwsReason(
-            'self_lockout',
-            fn() => Users::delete($made['id'], Roles::OWNER, $made['id']),
-            'ลบบัญชีที่กำลังใช้อยู่',
-        );
-    });
-});
-
-test('ลบเจ้าของร้านคนสุดท้ายไม่ได้', function () {
-    withRollback(function () {
-        Db::run("UPDATE admins SET is_active = 0 WHERE role = 'owner' AND id <> 1");
-        // เจ้าของคนที่สองไว้เป็นคนกด จะได้ไม่ชนกฎ "ห้ามลบตัวเอง"
-        $second = Users::create(
-            ['display_name' => 'เจ้าของสอง', 'role' => Roles::OWNER, 'username' => uname(), 'password' => 'a-strong-password'],
+        $u = uname();
+        $emp = anEmployee('ลาออกแล้วแต่อยากกลับ');
+        $made = Users::grantAccount(
+            $emp,
+            ['username' => $u, 'password' => 'a-strong-password', 'role' => Roles::SALES],
             Roles::OWNER,
         );
 
-        // ตอนนี้มีสองคน ลบคนที่สองได้ (ยังไม่เคยทำอะไร) แล้วเหลือคนเดียว
-        Users::delete($second['id'], Roles::OWNER, 1);
-
-        $third = Users::create(['display_name' => 'เจ้าของสาม', 'role' => Roles::OWNER], Roles::OWNER);
-        Db::run('UPDATE admins SET is_active = 0 WHERE id = ?', [$third['id']]);
+        // Mirrors the real flow: the employee screen closes `employees.active`
+        // first, then mirrors that into `admins` via syncFromEmployee().
+        Db::run('UPDATE employees SET active = 0 WHERE id = ?', [$emp]);
+        Users::syncFromEmployee($emp, 'ลาออกแล้วแต่อยากกลับ', null, false, 1);
 
         throwsReason(
-            'last_owner',
-            fn() => Users::delete(1, Roles::OWNER, $third['id']),
-            'ลบเจ้าของร้านที่ใช้งานได้คนสุดท้าย',
+            'employee_inactive',
+            fn() => Users::update($made['id'], ['username' => $u, 'role' => Roles::SALES, 'is_active' => true], Roles::OWNER, 1),
+            'เปิดบัญชีของคนที่ลาออกแล้ว',
         );
     });
 });
 
-test('ลบบัญชีที่สิทธิ์สูงกว่าตัวเองไม่ได้', function () {
+/* สามเคสด้านล่างนี้เคยเป็นส่วนหนึ่งของกลุ่ม "ลบผู้ใช้" เดิม — ปกป้องกฎที่ยังมีผล
+   กับ revokeAccount() อยู่ (requireReach · Roles::require · notFound) จึงถูกแปลง
+   เป็นเวอร์ชัน revoke แทนการลบทิ้งไปพร้อมกับกลุ่มเดิม */
+
+test('ยกเลิกบัญชีที่สิทธิ์สูงกว่าตัวเองไม่ได้', function () {
     withRollback(function () {
-        $owner = Users::create(['display_name' => 'เจ้าของที่แอดมินเอื้อมไม่ถึง', 'role' => Roles::OWNER], Roles::OWNER);
+        $emp = anEmployee('เจ้าของที่แอดมินเอื้อมไม่ถึง');
+        $owner = Users::grantAccount(
+            $emp,
+            ['username' => uname(), 'password' => 'a-strong-password', 'role' => Roles::OWNER],
+            Roles::OWNER,
+        );
         throwsReason(
             'forbidden',
-            fn() => Users::delete($owner['id'], Roles::ADMIN, 1),
-            'แอดมินลบบัญชีเจ้าของร้าน',
+            fn() => Users::revokeAccount($owner['id'], Roles::ADMIN, 1),
+            'แอดมินยกเลิกบัญชีเจ้าของร้าน',
         );
     });
 });
 
-test('พนักงานลบใครไม่ได้', function () {
+test('พนักงานยกเลิกบัญชีใครไม่ได้', function () {
     withRollback(function () {
-        $made = Users::create(['display_name' => 'เป้าหมาย', 'role' => Roles::STOCK], Roles::OWNER);
-        throwsReason('forbidden', fn() => Users::delete($made['id'], Roles::SALES, 1), 'พนักงานขายลบผู้ใช้');
-        throwsReason('forbidden', fn() => Users::delete($made['id'], Roles::STOCK, 1), 'พนักงานคลังลบผู้ใช้');
+        $emp = anEmployee('เป้าหมาย');
+        $made = Users::grantAccount(
+            $emp,
+            ['username' => uname(), 'password' => 'a-strong-password', 'role' => Roles::STOCK],
+            Roles::OWNER,
+        );
+        throwsReason('forbidden', fn() => Users::revokeAccount($made['id'], Roles::SALES, 1), 'พนักงานขายยกเลิกบัญชี');
+        throwsReason('forbidden', fn() => Users::revokeAccount($made['id'], Roles::STOCK, 1), 'พนักงานคลังยกเลิกบัญชี');
     });
 });
 
-test('ลบคนที่ไม่มีอยู่จริง ตอบว่าไม่พบ', function () {
+test('ยกเลิกบัญชีของคนที่ไม่มีอยู่จริง ตอบว่าไม่พบ', function () {
     withRollback(function () {
-        throwsReason('not_found', fn() => Users::delete(999999, Roles::OWNER, 1), 'ลบ id ที่ไม่มี');
+        throwsReason('not_found', fn() => Users::revokeAccount(999999, Roles::OWNER, 1), 'ยกเลิกบัญชี id ที่ไม่มี');
     });
 });
 

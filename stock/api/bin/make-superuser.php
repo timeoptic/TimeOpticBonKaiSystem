@@ -20,6 +20,7 @@ require __DIR__ . '/../src/bootstrap.php';
 use Optic\Auth;
 use Optic\Db;
 use Optic\Roles;
+use Optic\Service\Users;
 
 $username = trim((string) ($argv[1] ?? ''));
 if ($username === '') {
@@ -78,10 +79,17 @@ $hash = Auth::hashPassword($password);
 
 if ($existing === null) {
     $displayName = trim((string) ($argv[2] ?? '')) ?: $username;
+
+    /* บัญชีทุกใบต้องมีพนักงานรองรับตั้งแต่ migration 027 — บัญชีกู้ระบบก็ไม่ยกเว้น
+       สร้างพนักงานให้ก่อนแล้วค่อยเติมชื่อผู้ใช้กับรหัสผ่านลงในแถวที่ได้ · เจ้าของร้าน
+       เปลี่ยนชื่อคนนี้ทีหลังได้ที่หน้าพนักงาน */
+    Db::run('INSERT INTO employees (employee_name, active) VALUES (?, 1)', [mb_substr($displayName, 0, 120)]);
+    $employeeId = (int) Db::value('SELECT LAST_INSERT_ID()');
+    $id = Users::ensureFor($employeeId, $displayName, null, true);
+
     Db::run(
-        'INSERT INTO admins (username, display_name, password_hash, role, is_active)
-         VALUES (?, ?, ?, ?, 1)',
-        [$username, $displayName, $hash, Roles::SUPERUSER],
+        'UPDATE admins SET username = ?, password_hash = ?, role = ?, is_active = 1 WHERE id = ?',
+        [$username, $hash, Roles::SUPERUSER, $id],
     );
     echo "\n  สร้างแล้ว — ล็อกอินด้วย “{$username}” ได้เลย\n\n";
 } else {
