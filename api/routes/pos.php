@@ -34,10 +34,10 @@ function posActor(): array
     return $a;
 }
 
-/** ตั้งแต่แอดมินขึ้นไป — แก้วันที่ย้อนหลัง และยกเลิกใบ */
+/** งานของแอดมิน — แก้วันที่ย้อนหลัง และยกเลิกใบ */
 function posIsAdminUp(array $actor): bool
 {
-    return \Optic\Roles::rank((string) $actor['role']) >= \Optic\Roles::rank(\Optic\Roles::ADMIN);
+    return \Optic\Roles::adminZone($actor['roles']);
 }
 
 /**
@@ -46,8 +46,8 @@ function posIsAdminUp(array $actor): bool
  */
 function posRequireSeller(array $actor): void
 {
-    if ((string) $actor['role'] === \Optic\Roles::STOCK) {
-        bad('บทบาทนี้ใช้งาน POS ไม่ได้');
+    if (!\Optic\Roles::useFrontdesk($actor['roles'])) {
+        bad('สิทธิ์ของคุณใช้งาน POS ไม่ได้');
     }
 }
 

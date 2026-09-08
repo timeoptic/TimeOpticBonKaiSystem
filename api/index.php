@@ -86,11 +86,41 @@ if ($path === '' || $path[0] !== '/') {
    ต้องมาก่อนสองอย่างข้างล่าง: ก่อนบรรทัดที่เติม /api ให้อัตโนมัติ ไม่งั้นจะ
    กลายเป็น /api/stock-api/... แล้วไม่ตรงกับอะไรเลย · และก่อนประตูตรวจ session
    เพราะฝั่งคลังตรวจสิทธิ์เองทุกเส้นและตอบ reason ที่หน้าเว็บแยกแยะได้ */
+/**
+ * ธงบังคับเปลี่ยนรหัสผ่าน — ปิดทุกเส้นยกเว้นทางที่ใช้เปลี่ยนมันเอง
+ *
+ * ธงขึ้นตอนที่ *คนอื่น* เป็นคนตั้งรหัสให้ (ปุ่มรีเซ็ต · ช่องตั้งรหัสในหน้าแก้ไขผู้ใช้)
+ * รหัสแบบนั้นมีคนที่สองรู้อยู่แล้ว จึงใช้ได้ครั้งเดียวเพื่อเข้ามาตั้งรหัสจริง ไม่ใช่
+ * กลายเป็นรหัสถาวรที่บัญชีมีเจ้าของสองคนตลอดไป
+ *
+ * เรียกสองที่ เพราะ `/stock-api` ออกจากไฟล์นี้ไปก่อนด่านข้างล่างทั้งหมด — กันแต่
+ * ฝั่งหน้าร้านแปลว่าคนที่ยังไม่เปลี่ยนรหัสยังใช้ระบบคลังได้ทั้งระบบ
+ *
+ * คำตอบมีทั้ง `error` และ `message` เพราะสองฝั่งอ่านคนละชื่อ (ฝั่งคลังใช้ซองของ
+ * `Optic\ApiError`) — ส่งชื่อเดียวแปลว่าอีกฝั่งขึ้นกล่องเปล่า
+ */
+function requirePasswordChange(string $path, string $prefix): void
+{
+    $actor = StockModule::actor();
+    if ($actor === null || !($actor['mustChangePassword'] ?? false)) {
+        return;
+    }
+    foreach (['/auth/login', '/auth/logout', '/auth/me', '/auth/change-password'] as $free) {
+        if ($path === $prefix . $free) {
+            return;
+        }
+    }
+    $msg = 'ต้องตั้งรหัสผ่านใหม่ก่อนใช้งานต่อ';
+    Http::json(403, ['error' => $msg, 'message' => $msg, 'reason' => 'password_change_required']);
+    exit;
+}
+
 if ($path === '/stock-api' || str_starts_with($path, '/stock-api/')) {
     /* ฝั่งคลัง dispatch แล้ว exit เอง ไม่กลับมาที่ไฟล์นี้ — ตัวบันทึกปิดงานให้เอง
        ตอน shutdown · การเพิ่ม-ลบบัญชีผู้ใช้เดินทางนี้ จึงต้องบันทึกด้วย */
     ActivityLog::start($method, $path);
     StockModule::boot();
+    requirePasswordChange($path, '/stock-api');
     \Optic\Http::mountUnder('/stock-api');
     require __DIR__ . '/../stock/api/public/index.php'; // ลงทะเบียนเส้นทางแล้ว dispatch เอง
     exit;                                              // เผื่อวันที่ dispatch เลิก exit เอง
@@ -101,9 +131,9 @@ if (!str_starts_with($path, '/api/') && $path !== '/api') {
     $path = '/api' . ($path === '/' ? '' : $path);
 }
 
-/* ประตูที่สาม — บันทึกว่าใครทำอะไร (ดู services/ActivityLog.php)
+/* ประตูแรกสุด — บันทึกว่าใครทำอะไร (ดู services/ActivityLog.php)
  *
- * ต้องมาก่อนสองด่านข้างล่าง เพราะสิ่งที่คนเปิดล็อกอยากเห็นที่สุดอย่างหนึ่งคือคำขอ
+ * ต้องมาก่อนทุกด่านข้างล่าง เพราะสิ่งที่คนเปิดล็อกอยากเห็นที่สุดอย่างหนึ่งคือคำขอ
  * ที่ "ไม่ผ่าน" — 401 ที่แปลว่า session หมดอายุกลางงาน และ 403 ที่แปลว่ามีคนกด
  * เข้าหน้าที่ไม่ใช่ของตัวเอง · ทั้งสองอย่างจบด้วย exit() ตรงนั้น ไม่มีทางเดินมาถึง
  * บรรทัดสุดท้ายของไฟล์นี้ ตัวบันทึกจึงปิดงานตัวเองตอน shutdown
@@ -118,7 +148,31 @@ if (!$open && StockModule::actor() === null) {
     exit;
 }
 
-/* ประตูที่สอง — งานของแอดมิน
+/* คนที่กำลังกดอยู่ · null ได้เฉพาะสามเส้นที่เปิดไว้ก่อนล็อกอิน — ด่านข้างบนกันแล้ว
+   อ่านครั้งเดียวแล้วส่งต่อให้ด่านที่เหลือ ไม่ใช่ถามใหม่ทุกด่าน */
+$actor = $open ? null : StockModule::actor();
+
+requirePasswordChange($path, '/api');
+
+/* ประตูที่สอง — ฝั่งที่ใช่
+ *
+ * คนที่ไม่มีสิทธิ์ `frontdesk.use` (พนักงานคลังล้วน) ไม่มีอะไรให้ทำใน /api เลย —
+ * เคส ใบวัดสายตา POS การรับเงิน คิวจอง ล้วนเป็นงานหน้าร้านทั้งหมด · กันทั้งกลุ่ม
+ * ที่นี่ ไม่ใช่ไล่เติมบรรทัดในทุกเส้น และนี่คือที่ที่ `case.view_all` ถูกบังคับจริง
+ * ส่วนหน้าจอที่ซ่อนเมนูให้เป็นแค่มารยาท
+ *
+ * หน้าจอฝั่งคลังคุยกับ `/stock-api` อย่างเดียว (`frontend-next/stockmod/lib/api.ts`)
+ * ด่านนี้จึงไม่ตัดงานของพนักงานคลังสักอย่าง
+ */
+if ($actor !== null && !\Optic\Roles::useFrontdesk($actor['roles'])) {
+    Http::json(403, [
+        'error'  => 'บัญชีนี้เป็นของฝั่งคลัง ใช้งานระบบหน้าร้านไม่ได้',
+        'reason' => 'frontdesk_only',
+    ]);
+    exit;
+}
+
+/* ประตูที่สาม — งานของแอดมิน
  *
  * เงินของร้านและข้อมูลระบบ (พนักงาน ซัพพลายเออร์ รายงาน การตั้งค่า) ไม่ใช่งาน
  * ของคนหน้าร้าน · กันที่นี่ที่เดียวด้วยคำนำหน้าเส้นทาง ไม่ใช่ไปเติมบรรทัดตรวจสิทธิ์
@@ -135,9 +189,8 @@ const ADMIN_PREFIXES = [
     '/api/reports', '/api/notifications', '/api/reminders',
     '/api/logs',                            // บันทึกการใช้งาน — ใครทำอะไร
 ];
-if (!$open) {
-    $actor    = StockModule::actor();
-    $isAdmin  = \Optic\Roles::rank((string) $actor['role']) >= \Optic\Roles::rank(\Optic\Roles::ADMIN);
+if ($actor !== null) {
+    $isAdmin  = \Optic\Roles::adminZone($actor['roles']);
     $prefixed = static fn(string $p): bool => $path === $p || str_starts_with($path, $p . '/');
 
     $needsAdmin = false;

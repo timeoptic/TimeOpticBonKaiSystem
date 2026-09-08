@@ -51,10 +51,10 @@ final class Catalog
     /* -------------------------------------------------------------- product */
 
     /** @param array<string,mixed> $req @return array<string,mixed> */
-    public static function createProduct(array $req, string $role): array
+    public static function createProduct(array $req, array $roles): array
     {
         // เพิ่มของใหม่ ไม่ใช่แก้ของที่มีอยู่ — คนละสิทธิ์ ดูเหตุผลใน Roles::addProduct
-        Roles::require(Roles::addProduct($role), 'เพิ่มสินค้า');
+        Roles::require(Roles::addProduct($roles), 'เพิ่มสินค้า');
 
         $data = self::productFields($req);
 
@@ -87,9 +87,9 @@ final class Catalog
     }
 
     /** @param array<string,mixed> $req @return array<string,mixed> */
-    public static function updateProduct(int $id, array $req, string $role, ?int $actorId = null): array
+    public static function updateProduct(int $id, array $req, array $roles, ?int $actorId = null): array
     {
-        Roles::require(Roles::editCatalog($role), 'แก้ไขสินค้า');
+        Roles::require(Roles::editCatalog($roles), 'แก้ไขสินค้า');
 
         $current = Db::one('SELECT * FROM products WHERE id = ?', [$id]);
         if ($current === null) {
@@ -170,9 +170,9 @@ final class Catalog
     }
 
     /** @return array<string,mixed> */
-    public static function deleteProduct(int $id, string $role): array
+    public static function deleteProduct(int $id, array $roles): array
     {
-        Roles::require(Roles::editCatalog($role), 'ลบสินค้า');
+        Roles::require(Roles::editCatalog($roles), 'ลบสินค้า');
 
         $p = Db::one('SELECT id, sku, name FROM products WHERE id = ?', [$id]);
         if ($p === null) {
@@ -208,9 +208,9 @@ final class Catalog
      * @param array<string,mixed> $req
      * @return array<string,mixed>
      */
-    public static function updateLot(int $lotId, array $req, string $role, int $actorId): array
+    public static function updateLot(int $lotId, array $req, array $roles, int $actorId): array
     {
-        Roles::require(Roles::moveStock($role), 'แก้ไขล็อต');
+        Roles::require(Roles::moveStock($roles), 'แก้ไขล็อต');
 
         $lot = Db::one(
             'SELECT l.*, p.sku FROM stock_lots l JOIN products p ON p.id = l.product_id WHERE l.id = ?',
@@ -229,7 +229,7 @@ final class Catalog
         $supplier = array_key_exists('supplier_id', $req) ? self::supplierOrNull($req['supplier_id']) : false;
 
         if ($cost !== false) {
-            Roles::require(Roles::enterRxCost($role), 'แก้ต้นทุน');
+            Roles::require(Roles::enterRxCost($roles), 'แก้ต้นทุน');
         }
 
         $newRemaining = $remaining ?? (int) $lot['remaining_qty'];
@@ -339,9 +339,9 @@ final class Catalog
      *
      * @return array<string,mixed>
      */
-    public static function deleteLot(int $lotId, string $role): array
+    public static function deleteLot(int $lotId, array $roles): array
     {
-        Roles::require(Roles::editCatalog($role), 'ลบล็อต');
+        Roles::require(Roles::editCatalog($roles), 'ลบล็อต');
 
         $lot = Db::one('SELECT * FROM stock_lots WHERE id = ?', [$lotId]);
         if ($lot === null) {

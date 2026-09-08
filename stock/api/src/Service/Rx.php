@@ -29,13 +29,13 @@ final class Rx
      * @param array<string,mixed> $req
      * @return array<string,mixed>
      */
-    public static function order(array $req, string $role, int $actorId): array
+    public static function order(array $req, array $roles, int $actorId): array
     {
         // Either the model is already in the catalogue, or its name is enough
         // to put it there. Making someone leave a half-written order to go and
         // create a product first is two jobs where the shop only has one.
         $sku = trim((string) ($req['sku'] ?? '')) === ''
-            ? self::modelByName($req, $role)
+            ? self::modelByName($req, $roles)
             : self::str($req, 'sku', 100);
 
         // No number sent means "issue one". The shop's own numbering is still
@@ -63,7 +63,7 @@ final class Rx
          * blank left in the field instead.
          */
         if ($cost !== null) {
-            Roles::require(Roles::enterRxCost($role), 'กรอกต้นทุนจากผู้ขาย');
+            Roles::require(Roles::enterRxCost($roles), 'กรอกต้นทุนจากผู้ขาย');
         }
 
         $p = Db::one('SELECT id, sku, name, is_custom_made FROM products WHERE sku = ?', [$sku]);
@@ -147,9 +147,9 @@ final class Rx
      * ตัวเลขเงินคือเหตุการณ์ที่เกิดวันนี้ ต้องตรวจย้อนหลังได้ว่าใครแก้ จากเท่าไร
      * เป็นเท่าไร — ไม่งั้นราคาที่เปลี่ยนได้ตลอดจะกลายเป็นตัวเลขที่ไม่มีใครรับผิดชอบ
      */
-    public static function setPrice(int $logId, mixed $rawPrice, string $role, ?int $actorId = null): array
+    public static function setPrice(int $logId, mixed $rawPrice, array $roles, ?int $actorId = null): array
     {
-        Roles::require(Roles::moveStock($role), 'แก้ราคาขาย');
+        Roles::require(Roles::moveStock($roles), 'แก้ราคาขาย');
 
         $raw = trim((string) ($rawPrice ?? ''));
         $price = $raw === '' ? null : $raw;
@@ -214,9 +214,9 @@ final class Rx
         ];
     }
 
-    public static function setCost(int $logId, mixed $rawCost, string $role, ?int $actorId = null): array
+    public static function setCost(int $logId, mixed $rawCost, array $roles, ?int $actorId = null): array
     {
-        Roles::require(Roles::enterRxCost($role), 'กรอกต้นทุน');
+        Roles::require(Roles::enterRxCost($roles), 'กรอกต้นทุน');
 
         $cost = self::cost(['unit_cost' => $rawCost]);
         if ($cost === null) {
@@ -335,9 +335,9 @@ final class Rx
      * @param array<string,mixed> $body
      * @return array<string,mixed>
      */
-    public static function edit(int $logId, array $body, string $role, ?int $actorId = null): array
+    public static function edit(int $logId, array $body, array $roles, ?int $actorId = null): array
     {
-        Roles::require(Roles::moveStock($role), 'แก้ใบสั่งตัด RX');
+        Roles::require(Roles::moveStock($roles), 'แก้ใบสั่งตัด RX');
 
         $log = self::liveOrder($logId);
         $spec = self::spec($body);
@@ -366,7 +366,7 @@ final class Rx
            ทรานแซกชันของตัวเอง และตัดสินใจเองว่าจะลงบรรทัด PRICE ไหม ซึ่งเป็น
            สองอย่างที่ไม่ควรมีสำเนาที่สองไว้ตรงนี้ให้คอยตามแก้ให้ตรงกัน */
         if (array_key_exists('sale_price', $body)) {
-            self::setPrice($logId, $body['sale_price'], $role, $actorId);
+            self::setPrice($logId, $body['sale_price'], $roles, $actorId);
         }
 
         return self::byId($logId);
@@ -392,9 +392,9 @@ final class Rx
      * @param array<string,mixed> $body
      * @return array<string,mixed>
      */
-    public static function remove(int $logId, array $body, string $role, ?int $actorId = null): array
+    public static function remove(int $logId, array $body, array $roles, ?int $actorId = null): array
     {
-        Roles::require(Roles::moveStock($role), 'ลบใบสั่งตัด RX');
+        Roles::require(Roles::moveStock($roles), 'ลบใบสั่งตัด RX');
 
         $log = self::liveOrder($logId);
         $bound = $log['unit_cost'] !== null || $log['sale_price'] !== null;
@@ -420,7 +420,7 @@ final class Rx
             throw ApiError::badRequest('ยกเลิกใบสั่งตัดต้องบอกเหตุผลไว้ด้วย', 'missing_field');
         }
 
-        Roles::require(Roles::enterRxCost($role), 'ยกเลิกใบสั่งตัดที่มีตัวเลขเงินแล้ว');
+        Roles::require(Roles::enterRxCost($roles), 'ยกเลิกใบสั่งตัดที่มีตัวเลขเงินแล้ว');
 
         Db::tx(static function (PDO $pdo) use ($logId, $log, $note, $actorId): void {
             self::ensureDetail($pdo, $logId);
@@ -554,7 +554,7 @@ final class Rx
      *
      * @param array<string,mixed> $req
      */
-    private static function modelByName(array $req, string $role): string
+    private static function modelByName(array $req, array $roles): string
     {
         /**
          * Either shape is accepted: the four spec boxes the order form asks
@@ -595,7 +595,7 @@ final class Rx
         /* เปิดรุ่นเลนส์ใหม่คือการเพิ่มของ ไม่ใช่การแก้ของที่มีอยู่ — และมันเกิด
            ตรงที่คนขายกำลังเขียนใบสั่งให้ลูกค้าที่ยืนรออยู่ ถ้าห้ามไว้ พนักงานจะ
            เลือกรุ่นที่ใกล้เคียงที่สุดแทน แล้วใบสั่งจะบอกรุ่นผิดตลอดไป */
-        Roles::require(Roles::addProduct($role), 'เพิ่มรุ่นเลนส์ใหม่');
+        Roles::require(Roles::addProduct($roles), 'เพิ่มรุ่นเลนส์ใหม่');
 
         $categoryId = Db::value("SELECT id FROM categories WHERE code = 'Lens'");
         if ($categoryId === null) {
@@ -614,7 +614,7 @@ final class Rx
             'is_custom_made'     => true,
             'brand'              => $brand,
             'attributes'         => $attrs,
-        ], $role)['sku'];
+        ], $roles)['sku'];
     }
 
     /**

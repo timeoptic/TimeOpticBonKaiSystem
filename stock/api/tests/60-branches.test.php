@@ -22,26 +22,26 @@ function branchName(): string
 /** Creates a branch and returns its id. */
 function aBranch(): int
 {
-    return Branches::create(['name' => branchName(), 'contact' => '081-000-0000'], Roles::OWNER)['id'];
+    return Branches::create(['name' => branchName(), 'contact' => '081-000-0000'], [Roles::OWNER])['id'];
 }
 
 group('สาขา');
 
 test('เจ้าของร้านเท่านั้นที่เพิ่มสาขาได้', function () {
     withRollback(function () {
-        $b = Branches::create(['name' => branchName()], Roles::OWNER);
+        $b = Branches::create(['name' => branchName()], [Roles::OWNER]);
         ok($b['id'] > 0, 'ต้องได้ id กลับมา');
         eq($b['isActive'], true, 'สาขาใหม่ต้องเปิดใช้งาน');
         eq($b['pendingCount'], 0, 'สาขาใหม่ยังไม่มีรายการค้าง');
 
         throwsReason(
             'forbidden',
-            fn() => Branches::create(['name' => branchName()], Roles::ADMIN),
+            fn() => Branches::create(['name' => branchName()], [Roles::ADMIN]),
             'ฝ่ายบัญชีเพิ่มสาขา',
         );
         throwsReason(
             'forbidden',
-            fn() => Branches::create(['name' => branchName()], Roles::SALES),
+            fn() => Branches::create(['name' => branchName()], [Roles::SALES]),
             'พนักงานเพิ่มสาขา',
         );
     });
@@ -50,10 +50,10 @@ test('เจ้าของร้านเท่านั้นที่เพ�
 test('ชื่อสาขาซ้ำถูกปฏิเสธ — ไม่งั้นหนี้จะกระจายไปสองก้อน', function () {
     withRollback(function () {
         $name = branchName();
-        Branches::create(['name' => $name], Roles::OWNER);
+        Branches::create(['name' => $name], [Roles::OWNER]);
         throwsReason(
             'duplicate_branch',
-            fn() => Branches::create(['name' => $name], Roles::OWNER),
+            fn() => Branches::create(['name' => $name], [Roles::OWNER]),
             'สร้างสาขาชื่อซ้ำ',
         );
     });
@@ -132,7 +132,7 @@ test('สาขาที่ปิดใช้งานแล้วเบิก�
     withRollback(function () {
         $sku = skuWithLots(1);
         $branch = aBranch();
-        Branches::update($branch, ['is_active' => false], Roles::OWNER);
+        Branches::update($branch, ['is_active' => false], [Roles::OWNER]);
 
         throwsReason(
             'branch_inactive',
@@ -156,7 +156,7 @@ test('สาขายังค้างเงินอยู่ ปิดใช�
 
         throwsReason(
             'branch_has_debt',
-            fn() => Branches::update($branch, ['is_active' => false], Roles::OWNER),
+            fn() => Branches::update($branch, ['is_active' => false], [Roles::OWNER]),
             'ปิดสาขาที่ยังค้างเงิน',
         );
     });
@@ -268,7 +268,7 @@ test('รับเงินแล้วกำไรจึงเกิด แล�
         $cost = (float) $before['cost_total'];
 
         $today = date('Y-m-d');
-        $result = Settlement::settle($id, ['amount' => $cost + 500, 'received_date' => $today], Roles::OWNER, 1);
+        $result = Settlement::settle($id, ['amount' => $cost + 500, 'received_date' => $today], [Roles::OWNER], 1);
 
         eq($result['status'], 'settled', 'สถานะหลังรับเงิน');
         eq($result['profit'], round(500.0, 2), 'กำไร = เงินที่ได้ − ต้นทุน');
@@ -287,7 +287,7 @@ test('รายการที่ยังค้างไม่มีกำไ�
             'taken_by'  => 'สมชาย',
         ]));
 
-        $rows = Settlement::list(['status' => 'pending', 'branch_id' => $branch], Roles::OWNER)['rows'];
+        $rows = Settlement::list(['status' => 'pending', 'branch_id' => $branch], [Roles::OWNER])['rows'];
         $row = array_values(array_filter($rows, fn($r) => $r['id'] === $out['branch_issue_id']))[0] ?? null;
 
         ok($row !== null, 'ต้องเห็นรายการค้างในรายการ');
@@ -308,7 +308,7 @@ test('พนักงานหน้าร้านบันทึกรับ�
 
         throwsReason(
             'forbidden',
-            fn() => Settlement::settle($out['branch_issue_id'], ['amount' => 100], Roles::SALES, 1),
+            fn() => Settlement::settle($out['branch_issue_id'], ['amount' => 100], [Roles::SALES], 1),
             'พนักงานรับเงิน',
         );
     });
@@ -323,10 +323,10 @@ test('รับเงินซ้ำรายการเดิมไม่ไ�
             'taken_by'  => 'สมชาย',
         ]));
 
-        Settlement::settle($out['branch_issue_id'], ['amount' => 100], Roles::OWNER, 1);
+        Settlement::settle($out['branch_issue_id'], ['amount' => 100], [Roles::OWNER], 1);
         throwsReason(
             'not_pending',
-            fn() => Settlement::settle($out['branch_issue_id'], ['amount' => 100], Roles::OWNER, 1),
+            fn() => Settlement::settle($out['branch_issue_id'], ['amount' => 100], [Roles::OWNER], 1),
             'รับเงินซ้ำ',
         );
     });
@@ -344,12 +344,12 @@ test('วันที่รับเงินก่อนวันเบิก �
 
         throwsReason(
             'bad_settled_date',
-            fn() => Settlement::settle($id, ['amount' => 100, 'received_date' => '2000-01-01'], Roles::OWNER, 1),
+            fn() => Settlement::settle($id, ['amount' => 100, 'received_date' => '2000-01-01'], [Roles::OWNER], 1),
             'วันรับเงินก่อนวันเบิก',
         );
         throwsReason(
             'bad_date',
-            fn() => Settlement::settle($id, ['amount' => 100, 'received_date' => '2999-01-01'], Roles::OWNER, 1),
+            fn() => Settlement::settle($id, ['amount' => 100, 'received_date' => '2999-01-01'], [Roles::OWNER], 1),
             'วันรับเงินในอนาคต',
         );
     });
@@ -365,9 +365,9 @@ test('ยอดเงินที่ไม่ใช่ตัวเลขหร�
         ]));
         $id = $out['branch_issue_id'];
 
-        throwsReason('bad_amount', fn() => Settlement::settle($id, ['amount' => 'มาก'], Roles::OWNER, 1), 'ยอดเป็นข้อความ');
-        throwsReason('bad_amount', fn() => Settlement::settle($id, ['amount' => -5], Roles::OWNER, 1), 'ยอดติดลบ');
-        throwsReason('bad_amount', fn() => Settlement::settle($id, [], Roles::OWNER, 1), 'ไม่ใส่ยอด');
+        throwsReason('bad_amount', fn() => Settlement::settle($id, ['amount' => 'มาก'], [Roles::OWNER], 1), 'ยอดเป็นข้อความ');
+        throwsReason('bad_amount', fn() => Settlement::settle($id, ['amount' => -5], [Roles::OWNER], 1), 'ยอดติดลบ');
+        throwsReason('bad_amount', fn() => Settlement::settle($id, [], [Roles::OWNER], 1), 'ไม่ใส่ยอด');
     });
 });
 
@@ -381,9 +381,9 @@ test('ตัดหนี้สูญต้องมีเหตุผล แล�
         ]));
         $id = $out['branch_issue_id'];
 
-        throwsReason('missing_field', fn() => Settlement::writeOff($id, [], Roles::OWNER, 1), 'ตัดหนี้สูญไม่บอกเหตุผล');
+        throwsReason('missing_field', fn() => Settlement::writeOff($id, [], [Roles::OWNER], 1), 'ตัดหนี้สูญไม่บอกเหตุผล');
 
-        $r = Settlement::writeOff($id, ['note' => 'สาขาปิดกิจการ'], Roles::OWNER, 1);
+        $r = Settlement::writeOff($id, ['note' => 'สาขาปิดกิจการ'], [Roles::OWNER], 1);
         eq($r['status'], 'written_off', 'สถานะหลังตัดหนี้สูญ');
         eq($r['profit'], null, 'หนี้สูญไม่ใช่กำไร');
     });
@@ -424,7 +424,7 @@ test('รับเงินไปแล้ว คืนของย้อนห�
             'branch_id' => $branch,
             'taken_by'  => 'สมชาย',
         ]));
-        Settlement::settle($out['branch_issue_id'], ['amount' => 999], Roles::OWNER, 1);
+        Settlement::settle($out['branch_issue_id'], ['amount' => 999], [Roles::OWNER], 1);
 
         throwsReason(
             'already_settled',
@@ -596,7 +596,7 @@ test('รับเงินแล้ว แถวเดิมใน log แส�
             'taken_by'  => 'คุณบี',
         ]));
         $cost = (float) Db::value('SELECT cost_total FROM branch_issues WHERE id = ?', [$out['branch_issue_id']]);
-        Settlement::settle($out['branch_issue_id'], ['amount' => $cost + 250], Roles::OWNER, 1);
+        Settlement::settle($out['branch_issue_id'], ['amount' => $cost + 250], [Roles::OWNER], 1);
 
         $rows = Inventory::movements(['who' => 'branch'], true)['rows'];
         $row = array_values(array_filter($rows, fn($r) => $r['branchIssueId'] === $out['branch_issue_id']))[0] ?? null;
@@ -629,7 +629,7 @@ group('พนักงานหน้าร้านต้องไม่เห�
 
 test('รายการสินค้าไม่ส่งต้นทุนไปให้พนักงาน แต่ยังส่งราคาขาย', function () {
     withRollback(function () {
-        $staff = Inventory::products([], Roles::seeCost(Roles::SALES))['rows'];
+        $staff = Inventory::products([], Roles::seeCost([Roles::SALES]))['rows'];
         ok(count($staff) > 0, 'ต้องมีสินค้า');
 
         foreach ($staff as $r) {
@@ -647,11 +647,11 @@ test('รายการสินค้าไม่ส่งต้นทุน�
         $sku = skuWithLots(1);
         Receiving::receive(
             ['sku' => $sku, 'quantity' => 1, 'cost_per_unit' => '123.00', 'received_date' => date('Y-m-d')],
-            Roles::OWNER,
+            [Roles::OWNER],
             1,
         );
 
-        $owner = Inventory::products(['q' => $sku], Roles::seeCost(Roles::OWNER))['rows'];
+        $owner = Inventory::products(['q' => $sku], Roles::seeCost([Roles::OWNER]))['rows'];
         ok(count($owner) > 0, 'ต้องหาสินค้าที่เพิ่งรับเข้าเจอ');
         $row = $owner[0];
         ok(
@@ -663,19 +663,19 @@ test('รายการสินค้าไม่ส่งต้นทุน�
 
 test('ล็อตและความเคลื่อนไหวไม่ส่งต้นทุนไปให้พนักงาน', function () {
     withRollback(function () {
-        foreach (Inventory::lots([], Roles::seeCost(Roles::SALES))['rows'] as $r) {
+        foreach (Inventory::lots([], Roles::seeCost([Roles::SALES]))['rows'] as $r) {
             eq($r['costPerUnit'], null, "ต้นทุน/ชิ้นของล็อต {$r['lotNumber']}");
             eq($r['value'], null, "มูลค่าของล็อต {$r['lotNumber']}");
             ok(is_int($r['remainingQty']), 'ยอดคงเหลือต้องยังเห็นได้');
         }
 
-        foreach (Inventory::movements([], Roles::seeCost(Roles::SALES))['rows'] as $r) {
+        foreach (Inventory::movements([], Roles::seeCost([Roles::SALES]))['rows'] as $r) {
             eq($r['unitCost'], null, "ต้นทุน/ชิ้นของรายการ {$r['id']}");
             eq($r['settledAmount'], null, "ยอดรับเงินของรายการ {$r['id']}");
             eq($r['branchProfit'], null, "กำไรของรายการ {$r['id']}");
         }
 
-        $ownerLots = Inventory::lots([], Roles::seeCost(Roles::OWNER))['rows'];
+        $ownerLots = Inventory::lots([], Roles::seeCost([Roles::OWNER]))['rows'];
         ok(
             count(array_filter($ownerLots, fn($r) => $r['costPerUnit'] !== null)) > 0,
             'เจ้าของร้านต้องเห็นต้นทุนล็อตจริง',
@@ -688,7 +688,7 @@ test('รายละเอียดสินค้าและค่าเร�
         $sku = skuWithLots(1);
         $id = (int) Db::value('SELECT id FROM products WHERE sku = ?', [$sku]);
 
-        $d = Inventory::product($id, Roles::seeCost(Roles::SALES));
+        $d = Inventory::product($id, Roles::seeCost([Roles::SALES]));
         eq($d['stockValue'], null, 'มูลค่าต้นทุนในหน้ารายละเอียด');
         foreach ($d['lots'] as $l) {
             eq($l['costPerUnit'], null, "ต้นทุนของล็อต {$l['lotNumber']}");
@@ -697,7 +697,7 @@ test('รายละเอียดสินค้าและค่าเร�
             eq($g['unitCost'], null, "ต้นทุนของ log {$g['id']}");
         }
 
-        $r = Inventory::receiveDefaults($sku, Roles::seeCost(Roles::SALES));
+        $r = Inventory::receiveDefaults($sku, Roles::seeCost([Roles::SALES]));
         if ($r['lastLot'] !== null) {
             eq($r['lastLot']['costPerUnit'], null, 'ต้นทุนล็อตก่อนหน้าตอนรับของ');
             ok($r['lastLot']['lotNumber'] !== null, 'แต่เลขล็อตยังต้องเติมให้ได้');
@@ -708,19 +708,19 @@ test('รายละเอียดสินค้าและค่าเร�
 
 test('ยอดรวมของคลังไม่ส่งมูลค่าต้นทุนไปให้พนักงาน', function () {
     withRollback(function () {
-        eq(Inventory::summary(Roles::seeCost(Roles::SALES))['stockValue'], null, 'มูลค่าคลังสำหรับพนักงาน');
-        ok(Inventory::summary(Roles::seeCost(Roles::OWNER))['stockValue'] > 0, 'เจ้าของร้านเห็นมูลค่าจริง');
+        eq(Inventory::summary(Roles::seeCost([Roles::SALES]))['stockValue'], null, 'มูลค่าคลังสำหรับพนักงาน');
+        ok(Inventory::summary(Roles::seeCost([Roles::OWNER]))['stockValue'] > 0, 'เจ้าของร้านเห็นมูลค่าจริง');
     });
 });
 
 test('พนักงานเปิดหน้าค้างรับจากสาขาไม่ได้เลย ไม่ใช่แค่เห็นเป็นค่าว่าง', function () {
     withRollback(function () {
-        throwsReason('forbidden', fn() => Settlement::list([], Roles::SALES), 'พนักงานดูรายการค้างรับ');
-        throwsReason('forbidden', fn() => Settlement::summary(Roles::SALES), 'พนักงานดูยอดค้างรับ');
+        throwsReason('forbidden', fn() => Settlement::list([], [Roles::SALES]), 'พนักงานดูรายการค้างรับ');
+        throwsReason('forbidden', fn() => Settlement::summary([Roles::SALES]), 'พนักงานดูยอดค้างรับ');
 
         // The two roles that keep the books still get in.
-        ok(is_array(Settlement::list([], Roles::OWNER)), 'เจ้าของร้านดูได้');
-        ok(is_array(Settlement::summary(Roles::ADMIN)), 'ฝ่ายบัญชีดูได้');
+        ok(is_array(Settlement::list([], [Roles::OWNER])), 'เจ้าของร้านดูได้');
+        ok(is_array(Settlement::summary([Roles::ADMIN])), 'ฝ่ายบัญชีดูได้');
     });
 });
 
@@ -733,15 +733,15 @@ test('ตัวเลขสรุปเดินตามตัวกรอง�
         /* การ์ดข้างบนกับตารางข้างล่างอ่านคู่กันเสมอ — คนที่กรองเหลือสาขาเดียวแล้ว
            เห็นการ์ดบอกยอดของทุกสาขา จะอ่านว่าสาขานั้นเบิกไปเท่านั้นจริง ๆ ซึ่งเป็น
            ตัวเลขที่ผิดโดยไม่มีอะไรบอกว่าผิด */
-        $one = Settlement::summary(Roles::OWNER, ['branch_id' => $branch]);
+        $one = Settlement::summary([Roles::OWNER], ['branch_id' => $branch]);
         eq(
             $one['pendingCount'],
-            Settlement::list(['status' => 'pending', 'branch_id' => $branch], Roles::OWNER)['total'],
+            Settlement::list(['status' => 'pending', 'branch_id' => $branch], [Roles::OWNER])['total'],
             'ตัวเลขบนการ์ดต้องเท่ากับจำนวนแถวที่ตารางคืนมา',
         );
 
         ok(
-            Settlement::summary(Roles::OWNER)['pendingCount'] >= $one['pendingCount'],
+            Settlement::summary([Roles::OWNER])['pendingCount'] >= $one['pendingCount'],
             'กรองสาขาเดียวแล้วต้องไม่มากกว่าทั้งร้าน',
         );
     });
@@ -756,13 +756,13 @@ test('รายชื่อสาขาให้พนักงานเห็�
             'taken_by'  => 'สมชาย',
         ]));
 
-        $staffView = Branches::list(false, Roles::seeCost(Roles::SALES));
+        $staffView = Branches::list(false, Roles::seeCost([Roles::SALES]));
         $row = array_values(array_filter($staffView, fn($b) => $b['id'] === $branch))[0];
         eq($row['pendingCost'], null, 'ยอดเงินที่ค้าง');
         eq($row['pendingCount'], 1, 'จำนวนรายการค้าง — เป็นข้อมูลสต็อก ยังเห็นได้');
         ok($row['name'] !== '', 'ชื่อสาขาต้องเห็นได้ ไม่งั้นบันทึกการเบิกไม่ได้');
 
-        $ownerView = Branches::list(false, Roles::seeCost(Roles::OWNER));
+        $ownerView = Branches::list(false, Roles::seeCost([Roles::OWNER]));
         $ownerRow = array_values(array_filter($ownerView, fn($b) => $b['id'] === $branch))[0];
         ok($ownerRow['pendingCost'] >= 0 && $ownerRow['pendingCost'] !== null, 'เจ้าของร้านเห็นยอด');
     });
@@ -777,9 +777,9 @@ test('ค่าเริ่มต้นของสิทธิ์คือไ�
         foreach (Inventory::lots()['rows'] as $r) {
             eq($r['costPerUnit'], null, 'lots() ที่ไม่ส่งสิทธิ์');
         }
-        eq(Roles::seeCost(Roles::SALES), false, 'พนักงานไม่เห็นต้นทุน');
-        eq(Roles::seeCost(Roles::ADMIN), true, 'ฝ่ายบัญชีเห็น');
-        eq(Roles::seeCost(Roles::OWNER), true, 'เจ้าของร้านเห็น');
+        eq(Roles::seeCost([Roles::SALES]), false, 'พนักงานไม่เห็นต้นทุน');
+        eq(Roles::seeCost([Roles::ADMIN]), true, 'ฝ่ายบัญชีเห็น');
+        eq(Roles::seeCost([Roles::OWNER]), true, 'เจ้าของร้านเห็น');
     });
 });
 
@@ -820,7 +820,7 @@ test('วันที่รูปแบบผิดหรือไม่มี�
 
 test('รายงานไม่ส่งตัวเลขเงินให้พนักงาน แต่ยังบอกจำนวนชิ้น', function () {
     withRollback(function () {
-        $r = Reports::overview(date('Y-m-01'), date('Y-m-d'), Roles::seeCost(Roles::SALES));
+        $r = Reports::overview(date('Y-m-01'), date('Y-m-d'), Roles::seeCost([Roles::SALES]));
 
         eq($r['out']['value'], null, 'มูลค่าที่จ่ายออก');
         eq($r['branch']['settledProfit'], null, 'กำไรจากสาขา');
@@ -1052,13 +1052,13 @@ test('รายการค้างรับเรียงได้ และ�
         $paid = Stock::issue(issueReq($sku, 1, idem('sortpaid'), [
             'branch_id' => $branch, 'taken_by' => 'ก',
         ]));
-        Settlement::settle($paid['branch_issue_id'], ['amount' => 1000], Roles::OWNER, 1);
+        Settlement::settle($paid['branch_issue_id'], ['amount' => 1000], [Roles::OWNER], 1);
         Stock::issue(issueReq($sku, 1, idem('sortowed'), [
             'branch_id' => $branch, 'taken_by' => 'ข',
         ]));
 
         foreach (['qty', 'cost', 'branch', 'issued', 'amount'] as $key) {
-            $rows = Settlement::list(['branch_id' => $branch, 'sort' => $key], Roles::OWNER)['rows'];
+            $rows = Settlement::list(['branch_id' => $branch, 'sort' => $key], [Roles::OWNER])['rows'];
             ok(count($rows) >= 2, "ต้องมีรายการพอให้เรียงตาม {$key}");
             eq($rows[0]['status'], 'pending', "เรียงตาม {$key} แล้วของที่ค้างต้องยังอยู่บนสุด");
         }
@@ -1067,8 +1067,8 @@ test('รายการค้างรับเรียงได้ และ�
 
 test('คอลัมน์เรียงรายการค้างรับที่ไม่รู้จัก ไม่หลุดเข้า SQL', function () {
     withRollback(function () {
-        $safe = Settlement::list(['sort' => "i.id; DELETE FROM branches"], Roles::OWNER);
-        $plain = Settlement::list([], Roles::OWNER);
+        $safe = Settlement::list(['sort' => "i.id; DELETE FROM branches"], [Roles::OWNER]);
+        $plain = Settlement::list([], [Roles::OWNER]);
         eq(array_column($safe['rows'], 'id'), array_column($plain['rows'], 'id'), 'ต้องเหมือนค่าเริ่มต้น');
         ok((int) Db::value('SELECT COUNT(*) FROM products') > 0, 'ฐานข้อมูลต้องยังอยู่ครบ');
     });
@@ -1127,7 +1127,7 @@ test('บันทึกค่าสายตาเป็นตัวเลข �
                 'coating' => 'Crizal Sapphire HR', 'sph' => -2.25, 'cyl' => -0.75,
                 'axis' => 175, 'add' => '+2.00',
             ],
-        ], Roles::OWNER);
+        ], [Roles::OWNER]);
 
         $back = Inventory::product($p['id'], true);
         $a = $back['attributes'];
@@ -1152,14 +1152,14 @@ test('แก้ไขสินค้าแล้วคีย์ที่ฟอ�
             'sku' => $sku, 'name' => 'กรอบทดสอบ', 'product_type' => 'Frame',
             'category_id' => $cat, 'base_selling_price' => '1000', 'is_custom_made' => false,
             'attributes' => ['color' => 'ดำ', 'product_line' => 'Eyewear', 'legacy_pos_key' => 'X1'],
-        ], Roles::OWNER);
+        ], [Roles::OWNER]);
 
         // The form always sends the whole product back, so the test does too.
         \Optic\Service\Catalog::updateProduct($p['id'], [
             'sku' => $sku, 'name' => 'กรอบทดสอบ', 'product_type' => 'Frame',
             'category_id' => $cat, 'base_selling_price' => '1000', 'is_custom_made' => false,
             'attributes' => ['color' => 'แดง', 'product_line' => 'Eyewear', 'legacy_pos_key' => 'X1'],
-        ], Roles::OWNER);
+        ], [Roles::OWNER]);
 
         $a = Inventory::product($p['id'], true)['attributes'];
         eq($a['color'], 'แดง', 'ค่าที่แก้');
@@ -1183,7 +1183,7 @@ test('เลนส์สำเร็จรูปเก็บค่าสาย�
                 'lens_design' => 'Single Vision', 'lens_index' => '1.56',
                 'sph' => -2.0, 'cyl' => -0.5, 'axis' => 90,
             ],
-        ], Roles::OWNER);
+        ], [Roles::OWNER]);
 
         $a = Inventory::product($p['id'], true)['attributes'];
         // JSON has one number type, so -2.0 comes back as int -2. Compare by
@@ -1215,7 +1215,7 @@ test('สินค้าทุกชนิดเก็บสเปกของ�
                 'sku' => $sku, 'name' => "ทดสอบ {$type}", 'product_type' => $type,
                 'category_id' => $cat, 'base_selling_price' => '500',
                 'is_custom_made' => false, 'attributes' => $attrs,
-            ], Roles::OWNER);
+            ], [Roles::OWNER]);
 
             $back = Inventory::product($p['id'], true)['attributes'];
             foreach ($attrs as $k => $v) {
@@ -1234,7 +1234,7 @@ test('ค่าที่เว้นว่างต้องไม่ถูก�
             'sku' => $sku, 'name' => 'กรอบไม่ระบุสี', 'product_type' => 'Frame',
             'category_id' => $cat, 'base_selling_price' => '900',
             'is_custom_made' => false, 'attributes' => ['size' => '50-20-140'],
-        ], Roles::OWNER);
+        ], [Roles::OWNER]);
 
         $a = Inventory::product($p['id'], true)['attributes'];
         eq(array_key_exists('color', $a), false, 'คีย์ที่ไม่ได้กรอกต้องไม่มีอยู่เลย');
@@ -1318,7 +1318,7 @@ test('รับเงินเท่าต้นทุนพอดี ทำไ�
         $cost = (float) Db::value('SELECT cost_total FROM branch_issues WHERE id = ?', [$id]);
         ok($cost > 0, 'รายการตัวอย่างต้องมีต้นทุน');
 
-        $r = Settlement::settle($id, ['amount' => $cost, 'note' => 'รับเท่าทุน'], Roles::OWNER, 1);
+        $r = Settlement::settle($id, ['amount' => $cost, 'note' => 'รับเท่าทุน'], [Roles::OWNER], 1);
 
         eq($r['status'], 'settled', 'สถานะต้องเป็นรับเงินแล้ว');
         eq($r['settledAmount'], round($cost, 2), 'ยอดที่รับเท่ากับต้นทุนพอดี');
@@ -1342,7 +1342,7 @@ test('รับเงินน้อยกว่าต้นทุนได้ �
         // Sometimes a branch sends back less than the goods cost. The books have
         // to be able to say so rather than refusing to record what happened.
         $paid = round($cost / 2, 2);
-        $r = Settlement::settle($id, ['amount' => $paid], Roles::OWNER, 1);
+        $r = Settlement::settle($id, ['amount' => $paid], [Roles::OWNER], 1);
 
         eq($r['settledAmount'], $paid, 'ยอดที่รับจริง');
         eq($r['profit'], round($paid - $cost, 2), 'กำไรติดลบตามจริง');
@@ -1358,8 +1358,8 @@ test('รับเงินศูนย์บาททำได้ แต่ต�
         $a = Stock::issue(issueReq($sku, 1, idem('zero'), ['branch_id' => $branch, 'taken_by' => 'ก']));
         $b = Stock::issue(issueReq($sku, 1, idem('writeoff'), ['branch_id' => $branch, 'taken_by' => 'ข']));
 
-        $paid = Settlement::settle($a['branch_issue_id'], ['amount' => 0, 'note' => 'ให้เปล่า'], Roles::OWNER, 1);
-        $lost = Settlement::writeOff($b['branch_issue_id'], ['note' => 'สาขาปิดกิจการ'], Roles::OWNER, 1);
+        $paid = Settlement::settle($a['branch_issue_id'], ['amount' => 0, 'note' => 'ให้เปล่า'], [Roles::OWNER], 1);
+        $lost = Settlement::writeOff($b['branch_issue_id'], ['note' => 'สาขาปิดกิจการ'], [Roles::OWNER], 1);
 
         eq($paid['status'], 'settled', 'รับศูนย์บาทถือว่าปิดรายการแล้ว');
         eq($lost['status'], 'written_off', 'หนี้สูญเป็นคนละสถานะ');
@@ -1373,16 +1373,16 @@ test('รับเท่าทุนแล้ว กำไรรวมของ�
     withRollback(function () {
         $sku = skuWithCost(1);
         $branch = aBranch();
-        $before = Settlement::summary(Roles::OWNER)['monthProfit'];
+        $before = Settlement::summary([Roles::OWNER])['monthProfit'];
 
         $out = Stock::issue(issueReq($sku, 1, idem('nomove'), [
             'branch_id' => $branch, 'taken_by' => 'สมชาย',
         ]));
         $cost = (float) Db::value('SELECT cost_total FROM branch_issues WHERE id = ?', [$out['branch_issue_id']]);
-        Settlement::settle($out['branch_issue_id'], ['amount' => $cost], Roles::OWNER, 1);
+        Settlement::settle($out['branch_issue_id'], ['amount' => $cost], [Roles::OWNER], 1);
 
         eq(
-            round(Settlement::summary(Roles::OWNER)['monthProfit'], 2),
+            round(Settlement::summary([Roles::OWNER])['monthProfit'], 2),
             round($before, 2),
             'กำไรรวมต้องเท่าเดิม เพราะรายการนี้ไม่ได้กำไร',
         );
@@ -1431,10 +1431,21 @@ test('ตารางบอกตรงกับสิทธิ์จริง�
         };
 
         $cost = $row('ต้นทุน/ชิ้น');
-        eq($cost['allow'][Roles::OWNER], Roles::seeCost(Roles::OWNER), 'ต้นทุน · เจ้าของร้าน');
-        eq($cost['allow'][Roles::ADMIN], Roles::seeCost(Roles::ADMIN), 'ต้นทุน · ฝ่ายบัญชี');
-        eq($cost['allow'][Roles::SALES], Roles::seeCost(Roles::SALES), 'ต้นทุน · พนักงาน');
+        eq($cost['allow'][Roles::OWNER], Roles::seeCost([Roles::OWNER]), 'เห็นต้นทุน · เจ้าของร้าน');
+        eq($cost['allow'][Roles::ADMIN], Roles::seeCost([Roles::ADMIN]), 'เห็นต้นทุน · แอดมิน');
+        eq($cost['allow'][Roles::SALES], Roles::seeCost([Roles::SALES]), 'เห็นต้นทุน · พนักงาน');
         eq($cost['allow'][Roles::SALES], false, 'พนักงานต้องไม่เห็นต้นทุน');
+
+        /* เห็นกับกรอกเป็นคนละแถว และแอดมินอยู่คนละฝั่งของสองแถวนี้ — เป็นคู่ที่
+           บันไดยศเขียนไม่ได้ และเป็นเหตุผลที่ตารางนี้สร้างจากชุดสิทธิ์ ไม่ใช่จากยศ */
+        $enter = $row('กรอก/แก้ต้นทุน');
+        eq($enter['allow'][Roles::OWNER], true, 'เจ้าของร้านกรอกต้นทุนได้');
+        eq($enter['allow'][Roles::ADMIN], false, 'แอดมินกรอกต้นทุนไม่ได้');
+        eq($cost['allow'][Roles::ADMIN], true, 'แต่แถวเห็นต้นทุนยังเป็นของแอดมิน');
+
+        $cases = $row('ดู Case');
+        eq($cases['allow'][Roles::STOCK], false, 'พนักงานคลังไม่เห็นเคส');
+        eq($cases['allow'][Roles::TRAINEE], true, 'พนักงานฝึกหัดเห็นเคสทั้งหมด');
 
         $users = $row('จัดการผู้ใช้');
         eq($users['allow'][Roles::ADMIN], true, 'แอดมินจัดการผู้ใช้ได้');
@@ -1443,15 +1454,17 @@ test('ตารางบอกตรงกับสิทธิ์จริง�
         eq($users['allow'][Roles::OWNER], true, 'เจ้าของร้านจัดการผู้ใช้ได้');
 
         $branch = $row('เพิ่ม · แก้สาขา');
-        eq($branch['allow'][Roles::ADMIN], Roles::manageBranches(Roles::ADMIN), 'จัดการสาขา · ฝ่ายบัญชี');
+        eq($branch['allow'][Roles::ADMIN], Roles::manageBranches([Roles::ADMIN]), 'จัดการสาขา · ฝ่ายบัญชี');
 
         $move = $row('เบิก · ตัดของเสีย');
         foreach (Roles::ALL as $r) {
             eq($move['allow'][$r], true, "ทุกบทบาทต้องเบิกได้ — {$r}");
         }
 
-        $price = $row('สินค้า · ยอดคงเหลือ');
-        eq($price['always'], true, 'ราคาขายต้องถูกทำเครื่องหมายว่าเปิดให้ทุกคน');
+        /* แถวที่ทุกบทบาทได้เหมือนกันหมดถูกทำเครื่องหมาย `always` — หน้าจอจะได้
+           วาดต่างออกไป แทนที่จะวาดเครื่องหมายถูกหกอันเรียงกันที่ไม่ได้บอกอะไร */
+        eq($row('เพิ่มสินค้าใหม่')['always'], true, 'เพิ่มสินค้าใหม่เปิดให้ทุกบทบาท');
+        eq($row('กรอก/แก้ต้นทุน')['always'], false, 'ต้นทุนไม่ใช่ของทุกคน');
     });
 });
 
@@ -1473,7 +1486,7 @@ test('เปลี่ยนกฎในโค้ดแล้วตาราง�
                         continue;
                     }
                     foreach (Roles::ALL as $higher) {
-                        if (Roles::rank($higher) <= Roles::rank($lower)) {
+                        if (Roles::rank([$higher]) <= Roles::rank([$lower])) {
                             continue;
                         }
                         eq(
@@ -1522,7 +1535,7 @@ test('ลบสาขาที่ยังไม่เคยเบิกขอ�
     withRollback(function () {
         $branch = aBranch();
 
-        $gone = Branches::delete($branch, Roles::OWNER);
+        $gone = Branches::delete($branch, [Roles::OWNER]);
         eq($gone['id'], $branch, 'คืน id ของสาขาที่ลบ');
         eq(Db::value('SELECT COUNT(*) FROM branches WHERE id = ?', [$branch]), 0, 'แถวต้องหายจริง');
     });
@@ -1539,7 +1552,7 @@ test('สาขาที่เคยเบิกของแล้ว ลบไ�
 
         throwsReason(
             'branch_has_history',
-            fn() => Branches::delete($branch, Roles::OWNER),
+            fn() => Branches::delete($branch, [Roles::OWNER]),
             'ลบสาขาที่เคยเบิกของ',
         );
 
@@ -1551,12 +1564,12 @@ test('สาขาที่เคยเบิกของแล้ว ลบไ�
         Settlement::settle(
             (int) $issue['id'],
             ['amount' => '500.00', 'received_date' => date('Y-m-d')],
-            Roles::OWNER,
+            [Roles::OWNER],
             1,
         );
         throwsReason(
             'branch_has_history',
-            fn() => Branches::delete($branch, Roles::OWNER),
+            fn() => Branches::delete($branch, [Roles::OWNER]),
             'ลบสาขาที่เคลียร์เงินแล้ว',
         );
     });
@@ -1568,12 +1581,12 @@ test('ลบสาขาได้เฉพาะเจ้าของร้า�
 
         throwsReason(
             'forbidden',
-            fn() => Branches::delete($branch, Roles::ADMIN),
+            fn() => Branches::delete($branch, [Roles::ADMIN]),
             'ฝ่ายบัญชีลบสาขา',
         );
         throwsReason(
             'forbidden',
-            fn() => Branches::delete($branch, Roles::SALES),
+            fn() => Branches::delete($branch, [Roles::SALES]),
             'พนักงานลบสาขา',
         );
     });
@@ -1599,7 +1612,7 @@ function stockedForCancel(int $qty = 5): array
         'category_id'        => (int) Db::value("SELECT id FROM categories WHERE code = 'Frame'"),
         'base_selling_price' => '1200.00',
         'is_custom_made'     => false,
-    ], Roles::OWNER);
+    ], [Roles::OWNER]);
 
     $lot = 'LOT-' . strtoupper(bin2hex(random_bytes(3)));
     Receiving::receive([
@@ -1608,7 +1621,7 @@ function stockedForCancel(int $qty = 5): array
         'quantity'      => $qty,
         'cost_per_unit' => '400.00',
         'received_date' => date('Y-m-d'),
-    ], Roles::OWNER, 1);
+    ], [Roles::OWNER], 1);
 
     return ['sku' => $sku, 'lot' => $lot];
 }
@@ -1635,7 +1648,7 @@ test('แก้สาขา ผู้รับของ วันที่เบ
             'taken_by'  => 'สมหญิง',
             'issued_at' => '2026-08-01',
             'note'      => 'คีย์สาขาผิด แก้แล้ว',
-        ], Roles::OWNER, 1);
+        ], [Roles::OWNER], 1);
 
         eq($out['branchId'], $other, 'สาขา');
         eq($out['takenBy'], 'สมหญิง', 'ผู้รับของ');
@@ -1650,7 +1663,7 @@ test('แก้รายการค้างรับแล้ว ยอดใ�
         $id = aPendingIssue($p['sku'], 2);
         $before = lotRemaining($p['lot']);
 
-        Settlement::edit($id, ['taken_by' => 'คนใหม่'], Roles::OWNER, 1);
+        Settlement::edit($id, ['taken_by' => 'คนใหม่'], [Roles::OWNER], 1);
 
         eq(lotRemaining($p['lot']), $before, 'ยอดล็อตต้องเท่าเดิม');
     });
@@ -1660,11 +1673,11 @@ test('ใบที่รับเงินไปแล้ว แก้ไม่�
     withRollback(function () {
         $p = stockedForCancel();
         $id = aPendingIssue($p['sku']);
-        Settlement::settle($id, ['amount' => '1500'], Roles::OWNER, 1);
+        Settlement::settle($id, ['amount' => '1500'], [Roles::OWNER], 1);
 
         throwsReason(
             'not_pending',
-            fn() => Settlement::edit($id, ['taken_by' => 'ใครก็ได้'], Roles::OWNER, 1),
+            fn() => Settlement::edit($id, ['taken_by' => 'ใครก็ได้'], [Roles::OWNER], 1),
             'แก้ใบที่ปิดไปแล้ว',
         );
     });
@@ -1677,7 +1690,7 @@ test('พนักงานขายแก้รายการค้างร�
 
         throwsReason(
             'forbidden',
-            fn() => Settlement::edit($id, ['taken_by' => 'ใครก็ได้'], Roles::SALES, 1),
+            fn() => Settlement::edit($id, ['taken_by' => 'ใครก็ได้'], [Roles::SALES], 1),
             'staff แก้รายการค้างรับ',
         );
     });
@@ -1691,7 +1704,7 @@ test('ยกเลิกใบค้าง แล้วของกลับเ�
 
         eq(lotRemaining($p['lot']), $full - 2, 'เบิกแล้วยอดต้องลดก่อน');
 
-        $out = Settlement::cancel($id, ['note' => 'สาขาเอาของมาคืน'], Roles::OWNER, 1);
+        $out = Settlement::cancel($id, ['note' => 'สาขาเอาของมาคืน'], [Roles::OWNER], 1);
 
         eq($out['status'], 'cancelled', 'สถานะต้องเป็นยกเลิก');
         eq(lotRemaining($p['lot']), $full, 'ของต้องกลับเข้าล็อตเดิมครบ');
@@ -1703,7 +1716,7 @@ test('ยกเลิกแล้วสมุดกับยอดล็อต�
         $p = stockedForCancel(5);
         $id = aPendingIssue($p['sku'], 3);
 
-        Settlement::cancel($id, ['note' => 'คืนของ'], Roles::OWNER, 1);
+        Settlement::cancel($id, ['note' => 'คืนของ'], [Roles::OWNER], 1);
 
         $bad = Db::all(
             'SELECT l.lot_number FROM stock_lots l
@@ -1721,11 +1734,11 @@ test('ยกเลิกใบที่รับเงินไปแล้ว�
     withRollback(function () {
         $p = stockedForCancel();
         $id = aPendingIssue($p['sku']);
-        Settlement::settle($id, ['amount' => '1500'], Roles::OWNER, 1);
+        Settlement::settle($id, ['amount' => '1500'], [Roles::OWNER], 1);
 
         throwsReason(
             'already_settled',
-            fn() => Settlement::cancel($id, ['note' => 'ขอยกเลิก'], Roles::OWNER, 1),
+            fn() => Settlement::cancel($id, ['note' => 'ขอยกเลิก'], [Roles::OWNER], 1),
             'ยกเลิกใบที่รับเงินแล้ว',
         );
     });
@@ -1738,7 +1751,7 @@ test('ยกเลิกรายการค้างรับต้องบ�
 
         throwsReason(
             'missing_field',
-            fn() => Settlement::cancel($id, [], Roles::OWNER, 1),
+            fn() => Settlement::cancel($id, [], [Roles::OWNER], 1),
             'ยกเลิกโดยไม่บอกเหตุผล',
         );
     });
@@ -1750,10 +1763,10 @@ test('ยกเลิกซ้ำไม่ได้ — ของคืนไป
         $full = lotRemaining($p['lot']);
         $id = aPendingIssue($p['sku'], 2);
 
-        Settlement::cancel($id, ['note' => 'คืนของ'], Roles::OWNER, 1);
+        Settlement::cancel($id, ['note' => 'คืนของ'], [Roles::OWNER], 1);
         throwsReason(
             'not_pending',
-            fn() => Settlement::cancel($id, ['note' => 'คืนอีกรอบ'], Roles::OWNER, 1),
+            fn() => Settlement::cancel($id, ['note' => 'คืนอีกรอบ'], [Roles::OWNER], 1),
             'ยกเลิกซ้ำ',
         );
 
@@ -1800,7 +1813,7 @@ function anRxSale(array $over = []): array
     return Rx::order([
         'lens_name'     => 'เลนส์ทดสอบยอดขาย ' . bin2hex(random_bytes(3)),
         'reference_doc' => 'RX-SALE-' . strtoupper(bin2hex(random_bytes(3))),
-    ] + $over, Roles::OWNER, 1);
+    ] + $over, [Roles::OWNER], 1);
 }
 
 /** ตัวเลขยอดขายของวันนี้ ตามที่แดชบอร์ดจะได้ */
@@ -1869,7 +1882,7 @@ test('ใบสั่งตัดที่ยกเลิกแล้วไม�
         $before = salesToday();
 
         $o = anRxSale(['sale_price' => '9500', 'unit_cost' => '4000']);
-        Rx::remove((int) $o['id'], ['note' => 'ลูกค้ายกเลิก'], Roles::OWNER, 1);
+        Rx::remove((int) $o['id'], ['note' => 'ลูกค้ายกเลิก'], [Roles::OWNER], 1);
 
         $after = salesToday();
         eq($after['bills'], $before['bills'], 'จำนวนรายการต้องเท่าเดิม');
@@ -1892,7 +1905,7 @@ test('ของที่เพิ่งรับเข้าคลัง ไม�
         Receiving::receive([
             'sku' => $p['sku'], 'quantity' => 5,
             'cost_per_unit' => '400.00', 'received_date' => date('Y-m-d'),
-        ], Roles::OWNER, 1);
+        ], [Roles::OWNER], 1);
 
         eq(salesToday()['revenue'], $before['revenue'], 'ยอดขายต้องเท่าเดิม');
     });
@@ -1922,7 +1935,7 @@ test('กรอกต้นทุนทีหลัง แล้วใบค้�
             'quantity'      => 5,
             'cost_per_unit' => null,
             'received_date' => date('Y-m-d'),
-        ], Roles::OWNER, 1);
+        ], [Roles::OWNER], 1);
 
         // เบิกให้สาขาจากล็อตนั้นโดยตรง ไม่ให้ FIFO ไปหยิบล็อตเก่าที่รู้ต้นทุนแล้ว
         Db::conn()->prepare('UPDATE stock_lots SET remaining_qty = 0 WHERE product_id = ? AND id <> ?')
@@ -1939,7 +1952,7 @@ test('กรอกต้นทุนทีหลัง แล้วใบค้�
         eq(round((float) $before['cost_total'], 2), 0.0, 'ต้นทุนรวมจึงยังเป็นศูนย์');
 
         // ใบกำกับมาถึง กรอกต้นทุนลงล็อต
-        Catalog::updateLot((int) $lot['lotId'], ['cost_per_unit' => '40.00'], Roles::OWNER, 1);
+        Catalog::updateLot((int) $lot['lotId'], ['cost_per_unit' => '40.00'], [Roles::OWNER], 1);
 
         $after = Db::one('SELECT * FROM branch_issues WHERE id = ?', [$id]);
         eq((int) $after['cost_unknown_qty'], 0, 'กรอกแล้วต้องไม่เหลือชิ้นที่ไม่รู้ต้นทุน');
@@ -1965,7 +1978,7 @@ test('แก้ต้นทุนที่เคยกรอกไว้แล�
             'quantity'      => 5,
             'cost_per_unit' => '10.00',
             'received_date' => date('Y-m-d'),
-        ], Roles::OWNER, 1);
+        ], [Roles::OWNER], 1);
 
         Db::conn()->prepare('UPDATE stock_lots SET remaining_qty = 0 WHERE product_id = ? AND id <> ?')
             ->execute([(int) $product['id'], (int) $lot['lotId']]);
@@ -1977,7 +1990,7 @@ test('แก้ต้นทุนที่เคยกรอกไว้แล�
         $id = $out['branch_issue_id'];
 
         // นี่คือการ "แก้" ไม่ใช่การ "เติม" — ตัวเลขที่ตัดสินใจไปแล้วต้องอยู่นิ่ง
-        Catalog::updateLot((int) $lot['lotId'], ['cost_per_unit' => '99.00'], Roles::OWNER, 1);
+        Catalog::updateLot((int) $lot['lotId'], ['cost_per_unit' => '99.00'], [Roles::OWNER], 1);
 
         $after = Db::one('SELECT * FROM branch_issues WHERE id = ?', [$id]);
         eq(round((float) $after['cost_total'], 2), 20.0, 'ต้นทุนรวมเดิมต้องไม่ขยับ');
@@ -2012,7 +2025,7 @@ test('ระบุสาขาบนใบสั่ง แล้วค่าไ�
 
         $out = Rx::order(
             ['sku' => branchRxSku(), 'reference_doc' => $ref, 'branch_id' => $branch],
-            Roles::SALES,
+            [Roles::SALES],
             1,
         );
 
@@ -2029,7 +2042,7 @@ test('ระบุสาขาบนใบสั่ง แล้วค่าไ�
 test('ไม่ระบุสาขาคือร้านนี้สั่งเอง — ไม่ใช่ช่องที่ลืมกรอก', function () {
     withRollback(function () {
         $ref = branchRxDoc('RX-SELF');
-        $out = Rx::order(['sku' => branchRxSku(), 'reference_doc' => $ref], Roles::SALES, 1);
+        $out = Rx::order(['sku' => branchRxSku(), 'reference_doc' => $ref], [Roles::SALES], 1);
 
         // `id` ที่ Rx::order คืนมาคือ log_id ของสมุด ไม่ใช่ id ของแถวในตาราง rx_orders
         $row = Db::one('SELECT branch_id FROM rx_orders WHERE log_id = ?', [(int) $out['id']]);
@@ -2042,15 +2055,15 @@ test('สาขาที่ไม่มีจริง และสาขาท�
     withRollback(function () {
         throwsReason(
             'unknown_branch',
-            fn() => Rx::order(['sku' => branchRxSku(), 'branch_id' => 987654321], Roles::SALES, 1),
+            fn() => Rx::order(['sku' => branchRxSku(), 'branch_id' => 987654321], [Roles::SALES], 1),
             'สาขาที่ไม่มีจริง',
         );
 
         $branch = aBranch();
-        Branches::update($branch, ['is_active' => false], Roles::OWNER);
+        Branches::update($branch, ['is_active' => false], [Roles::OWNER]);
         throwsReason(
             'branch_inactive',
-            fn() => Rx::order(['sku' => branchRxSku(), 'branch_id' => $branch], Roles::SALES, 1),
+            fn() => Rx::order(['sku' => branchRxSku(), 'branch_id' => $branch], [Roles::SALES], 1),
             'สาขาที่ปิดใช้งานแล้ว',
         );
     });
@@ -2061,9 +2074,9 @@ test('แดชบอร์ดนับใบสั่งแยกตามค�
         $branch = aBranch();
         $today = date('Y-m-d');
 
-        Rx::order(['sku' => branchRxSku(), 'reference_doc' => branchRxDoc('RX-A'), 'branch_id' => $branch], Roles::SALES, 1);
-        Rx::order(['sku' => branchRxSku(), 'reference_doc' => branchRxDoc('RX-B'), 'branch_id' => $branch], Roles::SALES, 1);
-        Rx::order(['sku' => branchRxSku(), 'reference_doc' => branchRxDoc('RX-C')], Roles::SALES, 1);
+        Rx::order(['sku' => branchRxSku(), 'reference_doc' => branchRxDoc('RX-A'), 'branch_id' => $branch], [Roles::SALES], 1);
+        Rx::order(['sku' => branchRxSku(), 'reference_doc' => branchRxDoc('RX-B'), 'branch_id' => $branch], [Roles::SALES], 1);
+        Rx::order(['sku' => branchRxSku(), 'reference_doc' => branchRxDoc('RX-C')], [Roles::SALES], 1);
 
         $rows = Reports::overview($today, $today, true)['rxBranches'];
         $mine = null;
@@ -2093,7 +2106,7 @@ test('ตัวเลขเงินของแผงสาขาสั่ง�
     withRollback(function () {
         $branch = aBranch();
         $today = date('Y-m-d');
-        Rx::order(['sku' => branchRxSku(), 'reference_doc' => branchRxDoc('RX-M'), 'branch_id' => $branch], Roles::SALES, 1);
+        Rx::order(['sku' => branchRxSku(), 'reference_doc' => branchRxDoc('RX-M'), 'branch_id' => $branch], [Roles::SALES], 1);
 
         $rows = Reports::overview($today, $today, false)['rxBranches'];
         $mine = null;

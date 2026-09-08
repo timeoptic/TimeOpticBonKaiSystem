@@ -33,7 +33,7 @@ group('แคตตาล็อกสินค้า');
 test('เพิ่มสินค้าใหม่ได้', function () {
     withRollback(function () {
         $args = productArgs();
-        $out = Catalog::createProduct($args, Roles::OWNER);
+        $out = Catalog::createProduct($args, [Roles::OWNER]);
 
         ok($out['id'] > 0, 'ต้องได้ id กลับมา');
         $row = Db::one('SELECT * FROM products WHERE id = ?', [$out['id']]);
@@ -50,10 +50,10 @@ test('ไม่ส่ง SKU มา ระบบออกรหัสให้�
         $args = productArgs(['product_type' => 'Lens', 'category_id' => (int) Db::value("SELECT id FROM categories WHERE code = 'Lens'")]);
         unset($args['sku']);
 
-        $first = Catalog::createProduct($args, Roles::OWNER);
+        $first = Catalog::createProduct($args, [Roles::OWNER]);
         ok((bool) preg_match('/^LNS-\d{4}$/', $first['sku']), 'รหัสที่ออกให้ต้องขึ้นต้นด้วยชนิดสินค้า: ' . $first['sku']);
 
-        $second = Catalog::createProduct($args, Roles::OWNER);
+        $second = Catalog::createProduct($args, [Roles::OWNER]);
         ok($second['sku'] !== $first['sku'], 'สินค้าตัวถัดไปต้องได้รหัสใหม่ ไม่ชนกับตัวก่อน');
     });
 });
@@ -64,19 +64,19 @@ test('ของสั่งตัดนับรหัสคนละชุด�
 
         $stock = productArgs($lens);
         unset($stock['sku']);
-        $a = Catalog::createProduct($stock, Roles::OWNER);
+        $a = Catalog::createProduct($stock, [Roles::OWNER]);
         ok((bool) preg_match('/^LNS-\d{4}$/', $a['sku']), 'เลนส์สต็อกใช้ชุด LNS: ' . $a['sku']);
 
         $made = productArgs($lens + ['is_custom_made' => true]);
         unset($made['sku']);
-        $b = Catalog::createProduct($made, Roles::OWNER);
+        $b = Catalog::createProduct($made, [Roles::OWNER]);
         ok((bool) preg_match('/^RX-\d{4}$/', $b['sku']), 'เลนส์สั่งตัดใช้ชุด RX: ' . $b['sku']);
 
         // กรอบแว่นสั่งตัดก็ต้องอยู่ชุด RX เหมือนกัน — แยกตามวิธีได้มา ไม่ใช่ตามชนิด
         $frame = productArgs(['is_custom_made' => true]);
         unset($frame['sku']);
         ok(
-            str_starts_with(Catalog::createProduct($frame, Roles::OWNER)['sku'], 'RX-'),
+            str_starts_with(Catalog::createProduct($frame, [Roles::OWNER])['sku'], 'RX-'),
             'กรอบสั่งตัดก็ใช้ชุด RX',
         );
     });
@@ -85,7 +85,7 @@ test('ของสั่งตัดนับรหัสคนละชุด�
 test('ส่ง SKU มาเอง ระบบใช้ตามนั้น ไม่ออกรหัสทับ', function () {
     withRollback(function () {
         $args = productArgs(['sku' => 'SUPPLIER-OWN-1']);
-        eq(Catalog::createProduct($args, Roles::OWNER)['sku'], 'SUPPLIER-OWN-1', 'รหัสของผู้ขายต้องอยู่ครบ');
+        eq(Catalog::createProduct($args, [Roles::OWNER])['sku'], 'SUPPLIER-OWN-1', 'รหัสของผู้ขายต้องอยู่ครบ');
     });
 });
 
@@ -101,7 +101,7 @@ test('ตัวช่วยเติมชื่อและแบรนด์ �
         $bleed = array_intersect($hints['brands'], array_diff($ctl['brands'], $hints['brands']));
         eq(count($bleed), 0, 'ชนิดหนึ่งต้องไม่เห็นแบรนด์ของอีกชนิด');
 
-        $created = Catalog::createProduct(productArgs(['brand' => 'แบรนด์ที่เพิ่งพิมพ์']), Roles::OWNER);
+        $created = Catalog::createProduct(productArgs(['brand' => 'แบรนด์ที่เพิ่งพิมพ์']), [Roles::OWNER]);
         ok($created['id'] > 0, 'แบรนด์ใหม่ที่ไม่เคยมีต้องบันทึกได้ ไม่ใช่รายการปิด');
         ok(
             in_array('แบรนด์ที่เพิ่งพิมพ์', Inventory::productHints('Frame')['brands'], true),
@@ -114,16 +114,16 @@ test('พนักงานหน้าร้านเพิ่มสินค�
     withRollback(function () {
         /* ของใหม่ถูกค้นพบตอนขาย ลูกค้ายืนรออยู่ — ห้ามเพิ่มแล้วพนักงานจะเลือกของ
            ที่ใกล้เคียงที่สุดแทน ซึ่งผิดกว่าการมี SKU เกินมาหนึ่งตัว */
-        $made = Catalog::createProduct(productArgs(), Roles::SALES);
+        $made = Catalog::createProduct(productArgs(), [Roles::SALES]);
         ok($made['id'] > 0, 'พนักงานขายเพิ่มสินค้าได้');
 
         /* แต่ของที่มีประวัติของคนอื่นอยู่แล้ว ยังแตะไม่ได้ */
         throwsReason(
             'forbidden',
-            fn() => Catalog::updateProduct($made['id'], productArgs(['name' => 'เปลี่ยนชื่อ']), Roles::SALES),
+            fn() => Catalog::updateProduct($made['id'], productArgs(['name' => 'เปลี่ยนชื่อ']), [Roles::SALES]),
             'staff แก้สินค้า',
         );
-        throwsReason('forbidden', fn() => Catalog::deleteProduct($made['id'], Roles::SALES), 'staff ลบสินค้า');
+        throwsReason('forbidden', fn() => Catalog::deleteProduct($made['id'], [Roles::SALES]), 'staff ลบสินค้า');
 
         /* และต้นทุนยังเป็นสิทธิ์คนละใบ */
         throwsReason(
@@ -133,7 +133,7 @@ test('พนักงานหน้าร้านเพิ่มสินค�
                 'quantity'      => 1,
                 'cost_per_unit' => '100.00',
                 'received_date' => date('Y-m-d'),
-            ], Roles::SALES, 1),
+            ], [Roles::SALES], 1),
             'staff กรอกต้นทุน',
         );
     });
@@ -147,7 +147,7 @@ test('พนักงานหน้าร้านเพิ่มสินค�
  */
 test('แก้ราคาขายแล้วได้แถว PRICE ในสมุด', function () {
     withRollback(function () {
-        $new = Catalog::createProduct(productArgs(['base_selling_price' => '1000.00']), Roles::OWNER);
+        $new = Catalog::createProduct(productArgs(['base_selling_price' => '1000.00']), [Roles::OWNER]);
         $before = (int) Db::value(
             "SELECT COUNT(*) FROM inventory_logs WHERE product_id = ? AND action_type = 'PRICE'",
             [$new['id']],
@@ -156,7 +156,7 @@ test('แก้ราคาขายแล้วได้แถว PRICE ใน�
         Catalog::updateProduct(
             $new['id'],
             productArgs(['sku' => $new['sku'], 'base_selling_price' => '1250.00']),
-            Roles::OWNER,
+            [Roles::OWNER],
         );
 
         $row = Db::one(
@@ -175,12 +175,12 @@ test('แก้ราคาขายแล้วได้แถว PRICE ใน�
 
 test('แก้ชื่อสินค้าเฉย ๆ ไม่ควรได้แถวราคาแถมมา', function () {
     withRollback(function () {
-        $new = Catalog::createProduct(productArgs(['base_selling_price' => '1000.00']), Roles::OWNER);
+        $new = Catalog::createProduct(productArgs(['base_selling_price' => '1000.00']), [Roles::OWNER]);
 
         Catalog::updateProduct(
             $new['id'],
             productArgs(['sku' => $new['sku'], 'base_selling_price' => '1000.00', 'name' => 'ชื่อใหม่']),
-            Roles::OWNER,
+            [Roles::OWNER],
         );
 
         $n = (int) Db::value(
@@ -196,7 +196,7 @@ test('SKU ซ้ำถูกปฏิเสธ', function () {
         $existing = (string) Db::value('SELECT sku FROM products LIMIT 1');
         throwsReason(
             'duplicate_sku',
-            fn() => Catalog::createProduct(productArgs(['sku' => $existing]), Roles::OWNER),
+            fn() => Catalog::createProduct(productArgs(['sku' => $existing]), [Roles::OWNER]),
             'SKU ซ้ำ',
         );
     });
@@ -204,30 +204,30 @@ test('SKU ซ้ำถูกปฏิเสธ', function () {
 
 test('ค่าที่ไม่ถูกต้องถูกปฏิเสธก่อนเขียน', function () {
     withRollback(function () {
-        throwsReason('bad_sku', fn() => Catalog::createProduct(productArgs(['sku' => 'มีช่องว่าง ไม่ได้']), Roles::OWNER), 'SKU มีอักขระต้องห้าม');
+        throwsReason('bad_sku', fn() => Catalog::createProduct(productArgs(['sku' => 'มีช่องว่าง ไม่ได้']), [Roles::OWNER]), 'SKU มีอักขระต้องห้าม');
         // A blank name is now an instruction to compose one from the spec, so
         // it is only refused when there is no spec to compose from.
         throwsReason(
             'bad_name',
             fn() => Catalog::createProduct(
                 productArgs(['name' => '', 'brand' => null, 'attributes' => []]),
-                Roles::OWNER,
+                [Roles::OWNER],
             ),
             'ชื่อว่างและไม่มีสเปกให้ประกอบชื่อ',
         );
-        throwsReason('bad_type', fn() => Catalog::createProduct(productArgs(['product_type' => 'Spaceship']), Roles::OWNER), 'ชนิดไม่รู้จัก');
-        throwsReason('bad_price', fn() => Catalog::createProduct(productArgs(['base_selling_price' => '-5']), Roles::OWNER), 'ราคาติดลบ');
-        throwsReason('unknown_category', fn() => Catalog::createProduct(productArgs(['category_id' => 9999]), Roles::OWNER), 'หมวดหมู่ไม่มีจริง');
+        throwsReason('bad_type', fn() => Catalog::createProduct(productArgs(['product_type' => 'Spaceship']), [Roles::OWNER]), 'ชนิดไม่รู้จัก');
+        throwsReason('bad_price', fn() => Catalog::createProduct(productArgs(['base_selling_price' => '-5']), [Roles::OWNER]), 'ราคาติดลบ');
+        throwsReason('unknown_category', fn() => Catalog::createProduct(productArgs(['category_id' => 9999]), [Roles::OWNER]), 'หมวดหมู่ไม่มีจริง');
     });
 });
 
 test('แก้ไขสินค้าได้', function () {
     withRollback(function () {
-        $created = Catalog::createProduct(productArgs(), Roles::OWNER);
+        $created = Catalog::createProduct(productArgs(), [Roles::OWNER]);
         $out = Catalog::updateProduct(
             $created['id'],
             productArgs(['sku' => $created['sku'], 'name' => 'ชื่อใหม่', 'base_selling_price' => '2500.00']),
-            Roles::ADMIN,
+            [Roles::ADMIN],
         );
         eq($out['name'], 'ชื่อใหม่', 'ชื่อที่แก้');
         eq((string) Db::value('SELECT base_selling_price FROM products WHERE id = ?', [$created['id']]), '2500.00', 'ราคาใหม่');
@@ -244,7 +244,7 @@ test('เปลี่ยนสินค้าที่ยังมีสต็�
             fn() => Catalog::updateProduct(
                 (int) $p['id'],
                 productArgs(['sku' => $sku, 'is_custom_made' => true, 'category_id' => (int) $p['category_id'], 'product_type' => $p['product_type']]),
-                Roles::OWNER,
+                [Roles::OWNER],
             ),
             'เปลี่ยนเป็นสั่งตัดทั้งที่มีของ',
         );
@@ -254,8 +254,8 @@ test('เปลี่ยนสินค้าที่ยังมีสต็�
 
 test('ลบสินค้าที่ไม่เคยมีประวัติได้', function () {
     withRollback(function () {
-        $created = Catalog::createProduct(productArgs(), Roles::OWNER);
-        $out = Catalog::deleteProduct($created['id'], Roles::OWNER);
+        $created = Catalog::createProduct(productArgs(), [Roles::OWNER]);
+        $out = Catalog::deleteProduct($created['id'], [Roles::OWNER]);
         eq($out['sku'], $created['sku'], 'SKU ที่ลบ');
         eq(Db::value('SELECT id FROM products WHERE id = ?', [$created['id']]), null, 'ต้องหายจากฐานข้อมูล');
     });
@@ -265,7 +265,7 @@ test('ลบสินค้าที่มีประวัติไม่ไ�
     withRollback(function () {
         $sku = skuWithLots(1);
         $id = (int) Db::value('SELECT id FROM products WHERE sku = ?', [$sku]);
-        $e = throwsReason('has_history', fn() => Catalog::deleteProduct($id, Roles::OWNER), 'ลบสินค้าที่มีประวัติ');
+        $e = throwsReason('has_history', fn() => Catalog::deleteProduct($id, [Roles::OWNER]), 'ลบสินค้าที่มีประวัติ');
         ok($e->payload()['logs'] > 0, 'ต้องบอกจำนวนประวัติ');
     });
 });
@@ -277,7 +277,7 @@ test('ปรับยอดคงเหลือแล้วเกิด log ADJ
         $lot = Db::one('SELECT * FROM stock_lots WHERE remaining_qty > 1 ORDER BY id LIMIT 1');
         $target = (int) $lot['remaining_qty'] - 1;
 
-        $out = Catalog::updateLot((int) $lot['id'], ['remaining_qty' => $target], Roles::SALES, 1);
+        $out = Catalog::updateLot((int) $lot['id'], ['remaining_qty' => $target], [Roles::SALES], 1);
 
         eq($out['remaining'], $target, 'ยอดใหม่');
         eq($out['adjusted'], -1, 'ส่วนต่างที่ปรับ');
@@ -295,7 +295,7 @@ test('ปรับยอดคงเหลือแล้วเกิด log ADJ
 test('ปรับยอดแล้วสมุดยังตรง', function () {
     withRollback(function () {
         $lot = Db::one('SELECT * FROM stock_lots WHERE remaining_qty > 1 ORDER BY id LIMIT 1');
-        Catalog::updateLot((int) $lot['id'], ['remaining_qty' => (int) $lot['remaining_qty'] - 1], Roles::SALES, 1);
+        Catalog::updateLot((int) $lot['id'], ['remaining_qty' => (int) $lot['remaining_qty'] - 1], [Roles::SALES], 1);
 
         $bad = Db::all(
             'SELECT l.lot_number FROM stock_lots l
@@ -316,7 +316,7 @@ test('คงเหลือมากกว่าที่รับเข้า�
         // surplus also types 100 where 10 was meant.
         throwsReason(
             'over_initial_needs_note',
-            fn() => Catalog::updateLot((int) $lot['id'], ['remaining_qty' => $over], Roles::OWNER, 1),
+            fn() => Catalog::updateLot((int) $lot['id'], ['remaining_qty' => $over], [Roles::OWNER], 1),
             'คงเหลือเกินที่รับเข้าโดยไม่บอกเหตุผล',
         );
 
@@ -324,7 +324,7 @@ test('คงเหลือมากกว่าที่รับเข้า�
         Catalog::updateLot(
             (int) $lot['id'],
             ['remaining_qty' => $over, 'note' => 'ตรวจนับประจำเดือน ของเกิน 1 ชิ้น'],
-            Roles::OWNER,
+            [Roles::OWNER],
             1,
         );
 
@@ -353,7 +353,7 @@ test('ปรับยอดเกินจำนวนรับเข้าแ�
         Catalog::updateLot(
             (int) $lot['id'],
             ['remaining_qty' => (int) $lot['initial_qty'] + 3, 'note' => 'ผู้ขายส่งเกิน'],
-            Roles::OWNER,
+            [Roles::OWNER],
             1,
         );
 
@@ -372,7 +372,7 @@ test('ปรับยอดปกติ (ไม่เกินที่รับ
         $lot = Db::one('SELECT * FROM stock_lots WHERE remaining_qty > 1 ORDER BY id LIMIT 1');
         $lower = (int) $lot['remaining_qty'] - 1;
 
-        Catalog::updateLot((int) $lot['id'], ['remaining_qty' => $lower], Roles::OWNER, 1);
+        Catalog::updateLot((int) $lot['id'], ['remaining_qty' => $lower], [Roles::OWNER], 1);
         eq(lotRemaining((string) $lot['lot_number']), $lower, 'ลดยอดได้โดยไม่ต้องมีเหตุผล');
     });
 });
@@ -383,11 +383,11 @@ test('พนักงานหน้าร้านแก้ต้นทุน�
 
         throwsReason(
             'forbidden',
-            fn() => Catalog::updateLot((int) $lot['id'], ['cost_per_unit' => '55.00'], Roles::SALES, 1),
+            fn() => Catalog::updateLot((int) $lot['id'], ['cost_per_unit' => '55.00'], [Roles::SALES], 1),
             'staff แก้ต้นทุน',
         );
 
-        $out = Catalog::updateLot((int) $lot['id'], ['remaining_qty' => (int) $lot['remaining_qty'] - 1], Roles::SALES, 1);
+        $out = Catalog::updateLot((int) $lot['id'], ['remaining_qty' => (int) $lot['remaining_qty'] - 1], [Roles::SALES], 1);
         eq($out['adjusted'], -1, 'staff ปรับยอดได้');
     });
 });
@@ -400,11 +400,11 @@ test('ลบล็อตที่ยังไม่มีการเคลื�
         $lotNo = 'LOT-DEL' . random_int(10000, 99999);
         $made = Receiving::receive(
             ['sku' => $sku, 'lot_number' => $lotNo, 'quantity' => 4, 'received_date' => '2026-08-01'],
-            Roles::OWNER,
+            [Roles::OWNER],
             1,
         );
 
-        $out = Catalog::deleteLot($made['lotId'], Roles::OWNER);
+        $out = Catalog::deleteLot($made['lotId'], [Roles::OWNER]);
         eq($out['lotNumber'], $lotNo, 'ล็อตที่ลบ');
         eq(Db::value('SELECT id FROM stock_lots WHERE id = ?', [$made['lotId']]), null, 'ล็อตต้องหาย');
         eq((int) Db::value('SELECT COUNT(*) FROM inventory_logs WHERE lot_id = ?', [$made['lotId']]), 0, 'log รับเข้าต้องหายไปด้วย');
@@ -417,7 +417,7 @@ test('ลบล็อตที่ตัดของออกไปแล้ว�
         $lotNo = 'LOT-USED' . random_int(10000, 99999);
         $made = Receiving::receive(
             ['sku' => $sku, 'lot_number' => $lotNo, 'quantity' => 2, 'received_date' => '2020-01-01'],
-            Roles::OWNER,
+            [Roles::OWNER],
             1,
         );
 
@@ -427,7 +427,7 @@ test('ลบล็อตที่ตัดของออกไปแล้ว�
             'sku' => $sku, 'quantity' => 1, 'actor_id' => 1,
         ]);
 
-        throwsReason('lot_in_use', fn() => Catalog::deleteLot($made['lotId'], Roles::OWNER), 'ลบล็อตที่ใช้ไปแล้ว');
+        throwsReason('lot_in_use', fn() => Catalog::deleteLot($made['lotId'], [Roles::OWNER]), 'ลบล็อตที่ใช้ไปแล้ว');
     });
 });
 
@@ -436,10 +436,10 @@ test('ลบล็อตแล้วสมุดยังตรง', function ()
         $sku = skuWithLots(1);
         $made = Receiving::receive(
             ['sku' => $sku, 'lot_number' => 'LOT-BAL' . random_int(10000, 99999), 'quantity' => 3, 'received_date' => '2026-08-02'],
-            Roles::OWNER,
+            [Roles::OWNER],
             1,
         );
-        Catalog::deleteLot($made['lotId'], Roles::OWNER);
+        Catalog::deleteLot($made['lotId'], [Roles::OWNER]);
 
         $bad = Db::all(
             'SELECT l.lot_number FROM stock_lots l

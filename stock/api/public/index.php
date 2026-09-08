@@ -43,11 +43,23 @@ Http::post('/api/auth/logout', static function (): array {
 
 Http::get('/api/auth/me', static fn(): array => ['actor' => Auth::actor()]);
 
+/**
+ * เจ้าตัวเปลี่ยนรหัสผ่านของตัวเอง
+ *
+ * อยู่ใต้ `/auth` ไม่ใช่ `/users` เพราะไม่ต้องมีสิทธิ์จัดการผู้ใช้ก็ทำได้ — และ
+ * ต้องเรียกได้ตอนที่ธง `must_change_password` ขึ้นอยู่ ซึ่งเป็นตอนที่เส้นอื่น
+ * ทั้งหมดถูกด่านปฏิเสธ (ดู `api/index.php`)
+ */
+Http::post('/api/auth/change-password', static function (): array {
+    $actor = Auth::require();
+    return ['user' => Users::changeOwnPassword($actor['id'], Http::body())];
+});
+
 /* ------------------------------------------------------------------- read */
 
 Http::get('/api/summary', static function (): array {
     $actor = Auth::require();
-    return Inventory::summary(Roles::seeCost($actor['role']));
+    return Inventory::summary(Roles::seeCost($actor['roles']));
 });
 
 /**
@@ -57,7 +69,7 @@ Http::get('/api/summary', static function (): array {
  * so a shop-floor account is never sent a number it is not allowed to see —
  * whether or not any screen would have drawn it.
  */
-$maySeeCost = static fn(array $actor): bool => Roles::seeCost($actor['role']);
+$maySeeCost = static fn(array $actor): bool => Roles::seeCost($actor['roles']);
 
 Http::get('/api/products', static function () use ($maySeeCost): array {
     $actor = Auth::require();
@@ -285,7 +297,7 @@ $move = static function (string $action): callable {
         // what leaves here is trimmed to what this caller may see. Redacting at
         // the boundary rather than in the service keeps the stored answer honest
         // for whoever replays it later.
-        if (!Roles::seeCost($actor['role'])) {
+        if (!Roles::seeCost($actor['roles'])) {
             unset($result['total_cost']);
             if (isset($result['cuts']) && is_array($result['cuts'])) {
                 $result['cuts'] = array_map(static function (array $c): array {
@@ -321,7 +333,7 @@ $moveMany = static function (string $action): callable {
             ? StockGate::issueMany($body)
             : StockGate::scrapMany($body);
 
-        if (!Roles::seeCost($actor['role'])) {
+        if (!Roles::seeCost($actor['roles'])) {
             unset($result['total_cost']);
             $result['lines'] = array_map(static function (array $line): array {
                 unset($line['total_cost']);
@@ -344,8 +356,8 @@ Http::post('/api/stock/scrap-many', $moveMany('scrap'));
 
 Http::post('/api/rx', static function (): array {
     $actor = Auth::require();
-    Roles::require(Roles::moveStock($actor['role']), 'เปิดใบสั่งตัด RX');
-    return ['order' => Rx::order(Http::body(), $actor['role'], $actor['id'])];
+    Roles::require(Roles::moveStock($actor['roles']), 'เปิดใบสั่งตัด RX');
+    return ['order' => Rx::order(Http::body(), $actor['roles'], $actor['id'])];
 });
 
 /**
@@ -382,7 +394,7 @@ Http::post('/api/rx/{id}/cost', static function (array $p): array {
         throw ApiError::badRequest('id ต้องเป็นตัวเลข');
     }
     $body = Http::body();
-    return ['order' => Rx::setCost((int) $p['id'], $body['unit_cost'] ?? null, $actor['role'], (int) $actor['id'])];
+    return ['order' => Rx::setCost((int) $p['id'], $body['unit_cost'] ?? null, $actor['roles'], (int) $actor['id'])];
 });
 
 /**
@@ -397,7 +409,7 @@ Http::post('/api/rx/{id}/price', static function (array $p): array {
         throw ApiError::badRequest('id ต้องเป็นตัวเลข');
     }
     $body = Http::body();
-    return ['order' => Rx::setPrice((int) $p['id'], $body['sale_price'] ?? null, $actor['role'], (int) $actor['id'])];
+    return ['order' => Rx::setPrice((int) $p['id'], $body['sale_price'] ?? null, $actor['roles'], (int) $actor['id'])];
 });
 
 /**
@@ -411,7 +423,7 @@ Http::post('/api/rx/{id}/update', static function (array $p): array {
     if (!ctype_digit($p['id'])) {
         throw ApiError::badRequest('id ต้องเป็นตัวเลข');
     }
-    return ['order' => Rx::edit((int) $p['id'], Http::body(), $actor['role'], (int) $actor['id'])];
+    return ['order' => Rx::edit((int) $p['id'], Http::body(), $actor['roles'], (int) $actor['id'])];
 });
 
 /**
@@ -426,14 +438,14 @@ Http::post('/api/rx/{id}/delete', static function (array $p): array {
     if (!ctype_digit($p['id'])) {
         throw ApiError::badRequest('id ต้องเป็นตัวเลข');
     }
-    return Rx::remove((int) $p['id'], Http::body(), $actor['role'], (int) $actor['id']);
+    return Rx::remove((int) $p['id'], Http::body(), $actor['roles'], (int) $actor['id']);
 });
 
 /* -------------------------------------------------------------- receiving */
 
 Http::post('/api/lots', static function (): array {
     $actor = Auth::require();
-    return ['lot' => Receiving::receive(Http::body(), $actor['role'], $actor['id'])];
+    return ['lot' => Receiving::receive(Http::body(), $actor['roles'], $actor['id'])];
 });
 
 /* ---------------------------------------------------------------- catalog */
@@ -447,27 +459,27 @@ $numericId = static function (array $p): int {
 
 Http::post('/api/products', static function (): array {
     $actor = Auth::require();
-    return ['product' => Catalog::createProduct(Http::body(), $actor['role'])];
+    return ['product' => Catalog::createProduct(Http::body(), $actor['roles'])];
 });
 
 Http::post('/api/products/{id}/update', static function (array $p) use ($numericId): array {
     $actor = Auth::require();
-    return ['product' => Catalog::updateProduct($numericId($p), Http::body(), $actor['role'], (int) $actor['id'])];
+    return ['product' => Catalog::updateProduct($numericId($p), Http::body(), $actor['roles'], (int) $actor['id'])];
 });
 
 Http::post('/api/products/{id}/delete', static function (array $p) use ($numericId): array {
     $actor = Auth::require();
-    return ['deleted' => Catalog::deleteProduct($numericId($p), $actor['role'])];
+    return ['deleted' => Catalog::deleteProduct($numericId($p), $actor['roles'])];
 });
 
 Http::post('/api/lots/{id}/update', static function (array $p) use ($numericId): array {
     $actor = Auth::require();
-    return ['lot' => Catalog::updateLot($numericId($p), Http::body(), $actor['role'], $actor['id'])];
+    return ['lot' => Catalog::updateLot($numericId($p), Http::body(), $actor['roles'], $actor['id'])];
 });
 
 Http::post('/api/lots/{id}/delete', static function (array $p) use ($numericId): array {
     $actor = Auth::require();
-    return ['deleted' => Catalog::deleteLot($numericId($p), $actor['role'])];
+    return ['deleted' => Catalog::deleteLot($numericId($p), $actor['roles'])];
 });
 
 /* ------------------------------------------------------------------ users */
@@ -483,7 +495,7 @@ Http::get('/api/branches', static function () use ($maySeeCost): array {
 
 Http::post('/api/branches', static function (): array {
     $actor = Auth::require();
-    return ['branch' => Branches::create(Http::body(), $actor['role'])];
+    return ['branch' => Branches::create(Http::body(), $actor['roles'])];
 });
 
 Http::post('/api/branches/{id}/update', static function (array $p): array {
@@ -491,7 +503,7 @@ Http::post('/api/branches/{id}/update', static function (array $p): array {
     if (!ctype_digit($p['id'])) {
         throw ApiError::badRequest('id ต้องเป็นตัวเลข');
     }
-    return ['branch' => Branches::update((int) $p['id'], Http::body(), $actor['role'])];
+    return ['branch' => Branches::update((int) $p['id'], Http::body(), $actor['roles'])];
 });
 
 Http::post('/api/branches/{id}/delete', static function (array $p): array {
@@ -499,7 +511,7 @@ Http::post('/api/branches/{id}/delete', static function (array $p): array {
     if (!ctype_digit($p['id'])) {
         throw ApiError::badRequest('id ต้องเป็นตัวเลข');
     }
-    return Branches::delete((int) $p['id'], $actor['role']);
+    return Branches::delete((int) $p['id'], $actor['roles']);
 });
 
 /* ------------------------------------------------------ branch settlements */
@@ -518,8 +530,8 @@ Http::get('/api/settlements', static function (): array {
         'page'      => Http::query('page'),
     ];
 
-    return Settlement::list($filter, $actor['role'])
-        + ['summary' => Settlement::summary($actor['role'], $filter)];
+    return Settlement::list($filter, $actor['roles'])
+        + ['summary' => Settlement::summary($actor['roles'], $filter)];
 });
 
 Http::post('/api/settlements/{id}/settle', static function (array $p): array {
@@ -527,7 +539,7 @@ Http::post('/api/settlements/{id}/settle', static function (array $p): array {
     if (!ctype_digit($p['id'])) {
         throw ApiError::badRequest('id ต้องเป็นตัวเลข');
     }
-    return ['issue' => Settlement::settle((int) $p['id'], Http::body(), $actor['role'], $actor['id'])];
+    return ['issue' => Settlement::settle((int) $p['id'], Http::body(), $actor['roles'], $actor['id'])];
 });
 
 Http::post('/api/settlements/{id}/write-off', static function (array $p): array {
@@ -535,7 +547,7 @@ Http::post('/api/settlements/{id}/write-off', static function (array $p): array 
     if (!ctype_digit($p['id'])) {
         throw ApiError::badRequest('id ต้องเป็นตัวเลข');
     }
-    return ['issue' => Settlement::writeOff((int) $p['id'], Http::body(), $actor['role'], $actor['id'])];
+    return ['issue' => Settlement::writeOff((int) $p['id'], Http::body(), $actor['roles'], $actor['id'])];
 });
 
 /**
@@ -549,7 +561,7 @@ Http::post('/api/settlements/{id}/update', static function (array $p): array {
     if (!ctype_digit($p['id'])) {
         throw ApiError::badRequest('id ต้องเป็นตัวเลข');
     }
-    return ['issue' => Settlement::edit((int) $p['id'], Http::body(), $actor['role'], $actor['id'])];
+    return ['issue' => Settlement::edit((int) $p['id'], Http::body(), $actor['roles'], $actor['id'])];
 });
 
 /**
@@ -560,14 +572,20 @@ Http::post('/api/settlements/{id}/cancel', static function (array $p): array {
     if (!ctype_digit($p['id'])) {
         throw ApiError::badRequest('id ต้องเป็นตัวเลข');
     }
-    return ['issue' => Settlement::cancel((int) $p['id'], Http::body(), $actor['role'], $actor['id'])];
+    return ['issue' => Settlement::cancel((int) $p['id'], Http::body(), $actor['roles'], $actor['id'])];
 });
 
 /* ------------------------------------------------------------------ users */
 
+/**
+ * รายชื่อผู้ใช้ + พนักงานที่ยังไม่มีบัญชี
+ *
+ * คืนสองก้อนจากคำขอเดียว เพราะหน้าจอเดียวถามทั้งสองคำถามพร้อมกัน — ตารางกับ
+ * ช่องเลือกของฟอร์มเพิ่มผู้ใช้เปิดมาด้วยกันเสมอ สองคำขอจึงได้แค่ความช้าเพิ่ม
+ */
 Http::get('/api/users', static function (): array {
     $actor = Auth::require();
-    return ['users' => Users::list($actor['role'])];
+    return Users::list($actor['roles']);
 });
 
 /**
@@ -588,25 +606,53 @@ Http::get('/api/people', static function (): array {
     return ['people' => Users::pickable()];
 });
 
+/**
+ * ให้พนักงานที่มีอยู่แล้วเข้าใช้งานระบบได้
+ *
+ * `employee_id` ในบอดี้ ไม่ใช่ชื่อคน — คนถูกสร้างที่หน้าพนักงานไปแล้ว ที่นี่คือ
+ * การเติมชื่อผู้ใช้ รหัสผ่าน และบทบาทลงในแถวที่รออยู่ (`Users::grantAccount`)
+ */
 Http::post('/api/users', static function (): array {
     $actor = Auth::require();
-    return ['user' => Users::create(Http::body(), $actor['role'])];
+    $body  = Http::body();
+    return ['user' => Users::grantAccount(
+        (int) ($body['employee_id'] ?? 0),
+        $body,
+        $actor['roles'],
+        $actor['id'],
+    )];
 });
 
 Http::post('/api/users/{id}/update', static function (array $p) use ($numericId): array {
     $actor = Auth::require();
-    return ['user' => Users::update($numericId($p), Http::body(), $actor['role'], $actor['id'])];
+    return ['user' => Users::update($numericId($p), Http::body(), $actor['roles'], $actor['id'])];
 });
 
 Http::post('/api/users/{id}/password', static function (array $p) use ($numericId): array {
     $actor = Auth::require();
-    return ['user' => Users::setPassword($numericId($p), Http::body(), $actor['role'])];
+    return ['user' => Users::setPassword($numericId($p), Http::body(), $actor['roles'])];
 });
 
-/** ลบได้เฉพาะบัญชีที่ยังไม่มีประวัติในระบบ — ที่เหลือ Users::delete ปฏิเสธเอง */
-Http::post('/api/users/{id}/delete', static function (array $p) use ($numericId): array {
+/**
+ * ปุ่มรีเซ็ต — ระบบสุ่มรหัสให้ แล้วคืนออกไปครั้งเดียว
+ *
+ * รหัสดิบอยู่ในคำตอบของคำขอนี้ที่เดียวและไม่ได้ถูกเก็บที่ไหนอีก · `ActivityLog`
+ * ปิดทุกช่องที่ชื่อมีคำว่า password ก่อนบันทึกอยู่แล้ว บันทึกจึงเห็นแค่ว่ามีการรีเซ็ต
+ */
+Http::post('/api/users/{id}/reset-password', static function (array $p) use ($numericId): array {
     $actor = Auth::require();
-    return Users::delete($numericId($p), $actor['role'], $actor['id']);
+    return ['user' => Users::resetPassword($numericId($p), $actor['roles'])];
+});
+
+/**
+ * ยกเลิกบัญชีเข้าใช้งาน — คนยังอยู่ในระบบ
+ *
+ * แทนเส้น `/delete` เดิมที่หายไปพร้อม `Users::delete()` · แถวใน `admins` ลบไม่ได้
+ * เพราะ ledger เขียนชื่อจากมัน สิ่งที่ยกเลิกได้คือชื่อผู้ใช้ รหัสผ่าน และบทบาท
+ */
+Http::post('/api/users/{id}/revoke', static function (array $p) use ($numericId): array {
+    $actor = Auth::require();
+    return Users::revokeAccount($numericId($p), $actor['roles'], $actor['id']);
 });
 
 /* ----------------------------------------------------------------- health */

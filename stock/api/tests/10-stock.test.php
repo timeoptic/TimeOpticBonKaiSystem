@@ -336,7 +336,7 @@ test('รับของเข้าทีหลัง หักกลบยอ�
         eq(Stock::availability($sku)['on_hand'], -4, 'ค้างอยู่สี่ชิ้น');
 
         /* ของมาถึงหกชิ้น — สี่ชิ้นถูกกันไว้จ่ายของที่ขายค้างไว้ เหลือขายได้สอง */
-        Receiving::receive(['sku' => $sku, 'quantity' => 6, 'cost_per_unit' => 100, 'received_date' => date('Y-m-d')], Roles::OWNER, 1);
+        Receiving::receive(['sku' => $sku, 'quantity' => 6, 'cost_per_unit' => 100, 'received_date' => date('Y-m-d')], [Roles::OWNER], 1);
         eq(Stock::availability($sku)['on_hand'], 2, 'เหลือขายได้เท่าที่เกินจากหนี้');
 
         $neg = (int) Db::value(
@@ -354,7 +354,7 @@ test('ของมาถึงน้อยกว่าที่ค้าง ก�
         $onHand = Stock::availability($sku)['on_hand'];
         Stock::issue(saleReq($sku, $onHand + 5, idem('partial')));
 
-        Receiving::receive(['sku' => $sku, 'quantity' => 2, 'cost_per_unit' => 100, 'received_date' => date('Y-m-d')], Roles::OWNER, 1);
+        Receiving::receive(['sku' => $sku, 'quantity' => 2, 'cost_per_unit' => 100, 'received_date' => date('Y-m-d')], [Roles::OWNER], 1);
         eq(Stock::availability($sku)['on_hand'], -3, 'ยังค้างอยู่สามชิ้น');
     });
 });

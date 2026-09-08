@@ -27,9 +27,9 @@ final class Receiving
      * @param array<string,mixed> $req
      * @return array<string,mixed>
      */
-    public static function receive(array $req, string $role, int $actorId): array
+    public static function receive(array $req, array $roles, int $actorId): array
     {
-        Roles::require(Roles::moveStock($role), 'รับของเข้าคลัง');
+        Roles::require(Roles::moveStock($roles), 'รับของเข้าคลัง');
 
         $sku = self::str($req, 'sku', 100);
         $qty = self::qty($req);
@@ -41,7 +41,7 @@ final class Receiving
 
         // A cost is money, and money is a narrower permission than moving stock.
         if ($cost !== null) {
-            Roles::require(Roles::enterRxCost($role), 'กรอกต้นทุน');
+            Roles::require(Roles::enterRxCost($roles), 'กรอกต้นทุน');
         }
 
         /* ดึง base_selling_price มาด้วย เพื่อบันทึก "ราคาขาย ณ ตอนรับเข้า" ลงสมุด

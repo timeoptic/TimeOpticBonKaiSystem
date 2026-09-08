@@ -54,25 +54,31 @@ foreach ([
     require "$root/api/routes/$group.php";
 }
 
-/** ผู้ใช้จริงจากตาราง admins ในบทบาทที่ขอ */
+/** ผู้ใช้จริงจากตาราง admins ที่ถือบทบาทที่ขอ (บทบาทอยู่ที่ `admin_roles`) */
 function actorWithRole(string $role): array
 {
     $r = Db::get(
-        'SELECT id, username, display_name, job_title, role FROM admins WHERE role = ? AND is_active = 1 LIMIT 1',
+        'SELECT a.id, a.username, a.display_name, a.job_title, a.employee_id
+           FROM admins a JOIN admin_roles r ON r.admin_id = a.id
+          WHERE r.role = ? AND a.is_active = 1 LIMIT 1',
         $role,
     );
     if (!$r) {
         throw new RuntimeException("ไม่มีบัญชี role=$role ในฐานข้อมูล");
     }
+    $roles = \Optic\Auth::rolesOf((int) $r['id']);
     return [
         'id'          => (int) $r['id'],
         'username'    => $r['username'],
         'displayName' => $r['display_name'],
         'jobTitle'    => $r['job_title'],
-        'role'        => $r['role'],
-        'roleLabel'   => \Optic\Roles::LABEL[$r['role']] ?? $r['role'],
-        'home'        => \Optic\Roles::home((string) $r['role']),
-        'employeeId'  => null,
+        'roles'       => $roles,
+        'roleNames'   => \Optic\Roles::namesOf($roles),
+        'roleText'    => \Optic\Roles::text($roles),
+        'perms'       => \Optic\Roles::permsOf($roles),
+        'home'        => \Optic\Roles::home($roles),
+        'employeeId'  => $r['employee_id'] === null ? null : (int) $r['employee_id'],
+        'mustChangePassword' => false,
     ];
 }
 

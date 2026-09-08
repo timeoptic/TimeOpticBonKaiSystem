@@ -82,7 +82,7 @@ final class StockGate
     private static function stamped(array $req): array
     {
         $actor = Auth::require();
-        Roles::require(Roles::moveStock($actor['role']), 'บันทึกความเคลื่อนไหวสต็อก');
+        Roles::require(Roles::moveStock($actor['roles']), 'บันทึกความเคลื่อนไหวสต็อก');
 
         // Assigned after the merge, not merged in — `+` keeps the left-hand key
         // when both sides have one, which would let a caller name someone else.
@@ -112,7 +112,7 @@ final class StockGate
         $named = $req['issued_to_admin_id'] ?? null;
         if ($named !== null && $named !== '' && (int) $named !== (int) $req['actor_id']) {
             $actor = Auth::require();
-            Roles::require(Roles::blameScrap($actor['role']), 'ระบุคนอื่นเป็นคนทำของเสีย');
+            Roles::require(Roles::blameScrap($actor['roles']), 'ระบุคนอื่นเป็นคนทำของเสีย');
         }
 
         return $req;

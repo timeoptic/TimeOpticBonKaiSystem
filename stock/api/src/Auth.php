@@ -114,7 +114,8 @@ final class Auth
         $username = trim($username);
 
         $row = Db::one(
-            'SELECT id, username, display_name, job_title, role, is_active, password_hash, employee_id
+            'SELECT id, username, display_name, job_title, is_active, password_hash, employee_id,
+                    must_change_password
              FROM admins WHERE username = ?',
             [$username],
         );
@@ -133,9 +134,22 @@ final class Auth
             );
         }
 
+        /* บัญชีที่ไม่มีบทบาทเลยเข้ามาได้ก็ทำอะไรไม่ได้สักอย่าง — ทุกหน้าตอบว่าไม่มี
+           สิทธิ์ ซึ่งอ่านได้ว่าระบบพัง · บอกความจริงตั้งแต่หน้าล็อกอินดีกว่า
+           (การให้สิทธิ์กันไว้ทางฝั่ง Users อยู่แล้ว ตรงนี้เป็นตาข่ายชั้นสอง เผื่อ
+           แถวที่ถูกแก้จากนอกแอป) */
+        $roles = self::rolesOf((int) $row['id']);
+        if ($roles === []) {
+            throw new ApiError(
+                403,
+                'no_roles',
+                'บัญชีนี้ยังไม่ได้กำหนดสิทธิ์ — ให้ผู้ดูแลระบบกำหนดก่อนจึงจะเข้าใช้งานได้',
+            );
+        }
+
         Db::run('UPDATE admins SET last_login_at = NOW() WHERE id = ?', [$row['id']]);
 
-        $actor = self::shape($row);
+        $actor = self::shape($row, $roles);
         self::start();
         if (session_status() === PHP_SESSION_ACTIVE) {
             session_regenerate_id(true);
@@ -172,7 +186,8 @@ final class Auth
         // downgrade or a deactivation has to take effect on the next request,
         // not whenever the person happens to sign out.
         $row = Db::one(
-            'SELECT id, username, display_name, job_title, role, is_active, employee_id
+            'SELECT id, username, display_name, job_title, is_active, employee_id,
+                    must_change_password
              FROM admins WHERE id = ?',
             [$actor['id']],
         );
@@ -206,20 +221,49 @@ final class Auth
         }
     }
 
-    /** @param array<string,mixed> $row @return array<string,mixed> */
-    private static function shape(array $row): array
+    /**
+     * บทบาทของบัญชีหนึ่งใบ เรียงจากสิทธิ์มากไปน้อย
+     *
+     * ผ่าน `Roles::clean()` เสมอ ไม่ได้เชื่อค่าที่อ่านจากฐานตรง ๆ — ค่าที่ ENUM
+     * ยอมรับวันนี้อาจเป็นค่าที่โค้ดเลิกรู้จักไปแล้ว และบทบาทที่ไม่มีนิยามคือสิทธิ์
+     * ที่ไม่มีใครตอบได้ว่าคืออะไร
+     *
+     * @return list<string>
+     */
+    public static function rolesOf(int $adminId): array
     {
+        return Roles::clean(array_column(
+            Db::all('SELECT role FROM admin_roles WHERE admin_id = ?', [$adminId]),
+            'role',
+        ));
+    }
+
+    /**
+     * @param array<string,mixed> $row
+     * @param list<string>|null $roles อ่านให้เองถ้าไม่ส่งมา
+     * @return array<string,mixed>
+     */
+    private static function shape(array $row, ?array $roles = null): array
+    {
+        $roles ??= self::rolesOf((int) $row['id']);
+
         return [
             'id'          => (int) $row['id'],
             'username'    => $row['username'],
             'displayName' => $row['display_name'],
             'jobTitle'    => $row['job_title'],
-            'role'        => $row['role'],
-            'roleLabel'   => Roles::LABEL[$row['role']] ?? $row['role'],
-            /* หน้าแรกของบทบาทนี้ ตอบจากที่เดียวกับที่ตัดสินสิทธิ์ หน้าเว็บจึงไม่
-               ต้องเก็บสำเนาของกฎไว้อีกชุด แล้วลืมแก้ตอนเพิ่มบทบาท */
-            'home'        => Roles::home((string) $row['role']),
+            /* บทบาทเป็นรายการเสมอ แม้จะมีใบเดียว — ที่เรียกใช้จะได้ไม่มีสองทาง
+               ให้เขียน แล้ววันหนึ่งทางหนึ่งลืมรองรับใบที่สอง */
+            'roles'       => $roles,
+            'roleNames'   => Roles::namesOf($roles),
+            'roleText'    => Roles::text($roles),
+            /* สิทธิ์ที่ได้จริงหลังรวมทุกบทบาท — หน้าเว็บใช้ตัวนี้ตัดสินว่าจะวาด
+               เมนูไหน แทนที่จะถือสำเนาของกฎไว้อีกชุดแล้วลืมแก้ตอนเพิ่มบทบาท */
+            'perms'       => Roles::permsOf($roles),
+            /* หน้าแรกของคนนี้ ตอบจากที่เดียวกับที่ตัดสินสิทธิ์ */
+            'home'        => Roles::home($roles),
             'employeeId'  => $row['employee_id'] === null ? null : (int) $row['employee_id'],
+            'mustChangePassword' => (bool) ($row['must_change_password'] ?? false),
         ];
     }
 }

@@ -61,9 +61,9 @@ final class Branches
     }
 
     /** @param array<string,mixed> $body @return array<string,mixed> */
-    public static function create(array $body, string $role): array
+    public static function create(array $body, array $roles): array
     {
-        Roles::require(Roles::manageBranches($role), 'เพิ่มสาขา');
+        Roles::require(Roles::manageBranches($roles), 'เพิ่มสาขา');
 
         $name = self::name($body);
         $contact = self::optional($body, 'contact', 160);
@@ -82,9 +82,9 @@ final class Branches
     }
 
     /** @param array<string,mixed> $body @return array<string,mixed> */
-    public static function update(int $id, array $body, string $role): array
+    public static function update(int $id, array $body, array $roles): array
     {
-        Roles::require(Roles::manageBranches($role), 'แก้ไขสาขา');
+        Roles::require(Roles::manageBranches($roles), 'แก้ไขสาขา');
 
         $current = Db::one('SELECT * FROM branches WHERE id = ?', [$id]);
         if ($current === null) {
@@ -149,9 +149,9 @@ final class Branches
      *
      * @return array<string,mixed>
      */
-    public static function delete(int $id, string $role): array
+    public static function delete(int $id, array $roles): array
     {
-        Roles::require(Roles::manageBranches($role), 'ลบสาขา');
+        Roles::require(Roles::manageBranches($roles), 'ลบสาขา');
 
         $b = Db::one('SELECT id, name FROM branches WHERE id = ?', [$id]);
         if ($b === null) {

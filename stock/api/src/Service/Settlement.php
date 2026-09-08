@@ -78,9 +78,9 @@ final class Settlement
         return [$where, $args];
     }
 
-    public static function list(array $filter, string $role): array
+    public static function list(array $filter, array $roles): array
     {
-        Roles::require(Roles::seeBranchMoney($role), 'ดูรายการค้างรับจากสาขา');
+        Roles::require(Roles::seeBranchMoney($roles), 'ดูรายการค้างรับจากสาขา');
 
         [$where, $args] = self::scope($filter);
 
@@ -142,9 +142,9 @@ final class Settlement
      * @param array{branch_id?:?int,q?:?string} $filter
      * @return array<string,mixed>
      */
-    public static function summary(string $role, array $filter = []): array
+    public static function summary(array $roles, array $filter = []): array
     {
-        Roles::require(Roles::seeBranchMoney($role), 'ดูยอดค้างรับจากสาขา');
+        Roles::require(Roles::seeBranchMoney($roles), 'ดูยอดค้างรับจากสาขา');
 
         [$where, $args] = self::scope($filter);
         $clause = implode(' AND ', $where);
@@ -192,9 +192,9 @@ final class Settlement
      * @param array<string,mixed> $body
      * @return array<string,mixed>
      */
-    public static function settle(int $id, array $body, string $role, int $actorId): array
+    public static function settle(int $id, array $body, array $roles, int $actorId): array
     {
-        Roles::require(Roles::settleBranch($role), 'บันทึกรับเงินจากสาขา');
+        Roles::require(Roles::settleBranch($roles), 'บันทึกรับเงินจากสาขา');
 
         $amount = self::amount($body);
         $when = self::when($body);
@@ -279,9 +279,9 @@ final class Settlement
      * @param array<string,mixed> $body
      * @return array<string,mixed>
      */
-    public static function writeOff(int $id, array $body, string $role, int $actorId): array
+    public static function writeOff(int $id, array $body, array $roles, int $actorId): array
     {
-        Roles::require(Roles::settleBranch($role), 'ตัดหนี้สูญ');
+        Roles::require(Roles::settleBranch($roles), 'ตัดหนี้สูญ');
 
         $note = self::optional($body, 'note', 500);
         if ($note === null) {
@@ -332,9 +332,9 @@ final class Settlement
      * @param array<string,mixed> $body
      * @return array<string,mixed>
      */
-    public static function edit(int $id, array $body, string $role, int $actorId): array
+    public static function edit(int $id, array $body, array $roles, int $actorId): array
     {
-        Roles::require(Roles::settleBranch($role), 'แก้รายการค้างรับจากสาขา');
+        Roles::require(Roles::settleBranch($roles), 'แก้รายการค้างรับจากสาขา');
 
         $issue = self::byIdRaw($id);
         self::mustBePending($issue);
@@ -384,9 +384,9 @@ final class Settlement
      * @param array<string,mixed> $body
      * @return array<string,mixed>
      */
-    public static function cancel(int $id, array $body, string $role, int $actorId): array
+    public static function cancel(int $id, array $body, array $roles, int $actorId): array
     {
-        Roles::require(Roles::settleBranch($role), 'ยกเลิกรายการค้างรับจากสาขา');
+        Roles::require(Roles::settleBranch($roles), 'ยกเลิกรายการค้างรับจากสาขา');
 
         $note = self::optional($body, 'note', 500);
         if ($note === null) {

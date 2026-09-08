@@ -33,12 +33,12 @@ group('ตัวเลขเงินที่กรอกทีหลัง');
 test('ลงต้นทุน RX แล้วได้แถวใหม่ในสมุด ลงวันที่วันนี้', function () {
     withRollback(function () {
         $ref = doc('RX-COSTLOG');
-        Rx::order(['sku' => customSku(), 'reference_doc' => $ref], Roles::SALES, 1);
+        Rx::order(['sku' => customSku(), 'reference_doc' => $ref], [Roles::SALES], 1);
         $id = (int) Db::value('SELECT id FROM inventory_logs WHERE reference_doc = ?', [$ref]);
 
         eq(count(ledgerRows('COST', $ref)), 0, 'ก่อนกรอกยังไม่มีแถวเรื่องเงิน');
 
-        Rx::setCost($id, '9800.00', Roles::ADMIN, 7);
+        Rx::setCost($id, '9800.00', [Roles::OWNER], 7);
 
         $rows = ledgerRows('COST', $ref);
         eq(count($rows), 1, 'กรอกครั้งเดียว ได้แถวเดียว');
@@ -55,9 +55,9 @@ test('ลงต้นทุน RX แล้วได้แถวใหม่ใ�
 test('แถวเรื่องเงินไม่ทำให้ยอดคงเหลือกับสมุดหลุดจากกัน', function () {
     withRollback(function () {
         $ref = doc('RX-LEDGER');
-        Rx::order(['sku' => customSku(), 'reference_doc' => $ref], Roles::SALES, 1);
+        Rx::order(['sku' => customSku(), 'reference_doc' => $ref], [Roles::SALES], 1);
         $id = (int) Db::value('SELECT id FROM inventory_logs WHERE reference_doc = ?', [$ref]);
-        Rx::setCost($id, '1200', Roles::OWNER, 1);
+        Rx::setCost($id, '1200', [Roles::OWNER], 1);
 
         $drift = Db::all(
             'SELECT l.id FROM stock_lots l
@@ -78,7 +78,7 @@ test('รับเงินจากสาขาแล้วได้แถว�
         ]));
         $issueId = (int) $out['branch_issue_id'];
 
-        Settlement::settle($issueId, ['amount' => 750, 'received_date' => date('Y-m-d')], Roles::OWNER, 3);
+        Settlement::settle($issueId, ['amount' => 750, 'received_date' => date('Y-m-d')], [Roles::OWNER], 3);
 
         $rows = Db::all(
             "SELECT * FROM inventory_logs WHERE action_type = 'SETTLE' AND branch_issue_id = ?",
@@ -101,7 +101,7 @@ test('ตัดหนี้สูญก็ต้องเห็นในสม�
         ]));
         $issueId = (int) $out['branch_issue_id'];
 
-        Settlement::writeOff($issueId, ['note' => 'สาขาปิดไปแล้ว'], Roles::OWNER, 4);
+        Settlement::writeOff($issueId, ['note' => 'สาขาปิดไปแล้ว'], [Roles::OWNER], 4);
 
         $rows = Db::all(
             "SELECT * FROM inventory_logs WHERE action_type = 'SETTLE' AND branch_issue_id = ?",

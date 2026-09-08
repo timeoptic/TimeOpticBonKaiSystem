@@ -74,7 +74,7 @@ final class StockModule
      */
     public static function redactCost(mixed $value, ?array $actor): mixed
     {
-        if ($actor !== null && \Optic\Roles::seeCost((string) $actor['role'])) {
+        if ($actor !== null && \Optic\Roles::seeCost($actor['roles'] ?? [])) {
             return $value;
         }
         return self::blankCosts($value);

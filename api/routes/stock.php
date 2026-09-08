@@ -43,14 +43,14 @@ function stockAttrs(array $b, array $current = []): array
     return $out;
 }
 
-/** คนที่ล็อกอินอยู่ ในรูปที่บริการฝั่งคลังรับ — [role, id] */
+/** คนที่ล็อกอินอยู่ ในรูปที่บริการฝั่งคลังรับ — [roles, id] */
 function stockActor(): array
 {
     $a = StockModule::actor();
     if ($a === null) {
         throw new HttpError(401, 'ต้องเข้าสู่ระบบก่อน');
     }
-    return [(string) $a['role'], (int) $a['id']];
+    return [$a['roles'], (int) $a['id']];
 }
 
 /**

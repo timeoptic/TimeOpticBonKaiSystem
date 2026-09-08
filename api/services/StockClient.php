@@ -131,6 +131,6 @@ final class StockClient
         if ($actor === null) {
             throw new StockApiError('unauthenticated', 'ต้องเข้าสู่ระบบก่อนจึงจะเปิดใบสั่งตัดได้', 401);
         }
-        return \Optic\Service\Rx::order($body, (string) $actor['role'], (int) $actor['id']);
+        return \Optic\Service\Rx::order($body, $actor['roles'], (int) $actor['id']);
     }
 }

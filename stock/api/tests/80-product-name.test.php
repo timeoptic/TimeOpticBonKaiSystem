@@ -124,7 +124,7 @@ test('ไม่ส่งชื่อมา ระบบตั้งชื่อ�
                 'model' => 'HiVision', 'coating' => 'MultiCoat',
                 'lens_index' => '1.60', 'sph' => -2.25, 'cyl' => -0.75,
             ],
-        ], Roles::OWNER);
+        ], [Roles::OWNER]);
 
         eq($out['name'], 'Hoya HiVision MultiCoat (1.60) -2.25/-0.75', 'ชื่อที่คืนกลับมา');
         eq(
@@ -146,7 +146,7 @@ test('พิมพ์ชื่อมาเอง ระบบไม่เขี�
             'brand'              => 'Hoya',
             'is_custom_made'     => false,
             'attributes'         => ['model' => 'HiVision', 'lens_index' => '1.60'],
-        ], Roles::OWNER);
+        ], [Roles::OWNER]);
 
         eq($out['name'], 'ชื่อที่ร้านเรียกเอง', 'ชื่อที่พิมพ์เองต้องชนะ');
     });
@@ -167,7 +167,7 @@ test('แก้สเปทแล้วล้างชื่อ ได้ชื�
 
         $out = Catalog::createProduct(
             $base + ['attributes' => ['model' => 'HiVision', 'lens_index' => '1.60']],
-            Roles::OWNER,
+            [Roles::OWNER],
         );
         eq($out['name'], 'Hoya HiVision (1.60)', 'ชื่อตอนสร้าง');
 
@@ -176,7 +176,7 @@ test('แก้สเปทแล้วล้างชื่อ ได้ชื�
         $again = Catalog::updateProduct(
             $out['id'],
             $base + ['name' => '', 'attributes' => ['model' => 'HiVision', 'lens_index' => '1.67']],
-            Roles::OWNER,
+            [Roles::OWNER],
         );
         eq($again['name'], 'Hoya HiVision (1.67)', 'ชื่อหลังแก้ Index');
     });
@@ -194,7 +194,7 @@ test('ไม่ใส่ราคาขาย บันทึกได้ แล
             'is_custom_made' => false,
             'attributes'     => ['model' => 'TS2088', 'color' => 'ดำเงา'],
             // ราคาไม่ได้ส่งมาเลย
-        ], Roles::OWNER);
+        ], [Roles::OWNER]);
 
         eq($out['name'], 'Hitop TS2088 ดำเงา', 'ยังตั้งชื่อให้ตามปกติ');
         eq(
@@ -215,7 +215,7 @@ test('ส่งราคามาเป็นสตริงว่าง ก็�
             'brand'              => 'Hitop',
             'is_custom_made'     => false,
             'attributes'         => ['model' => 'TS1042'],
-        ], Roles::OWNER);
+        ], [Roles::OWNER]);
 
         eq(Inventory::product($out['id'], true)['basePrice'], 0.0, 'ราคาที่อ่านกลับมา');
     });
@@ -233,8 +233,8 @@ test('ราคาที่ผิดรูปยังถูกปฏิเส�
             'attributes'         => ['model' => 'TS1042'],
         ];
 
-        throwsReason('bad_price', fn() => Catalog::createProduct($args('-50'), Roles::OWNER), 'ราคาติดลบ');
-        throwsReason('bad_price', fn() => Catalog::createProduct($args('ถูกมาก'), Roles::OWNER), 'ราคาเป็นตัวอักษร');
+        throwsReason('bad_price', fn() => Catalog::createProduct($args('-50'), [Roles::OWNER]), 'ราคาติดลบ');
+        throwsReason('bad_price', fn() => Catalog::createProduct($args('ถูกมาก'), [Roles::OWNER]), 'ราคาเป็นตัวอักษร');
     });
 });
 
@@ -260,7 +260,7 @@ test('ไม่ใส่ทั้งรุ่นและราคา ก็ย�
             'brand'          => 'Lens G',
             'is_custom_made' => false,
             'attributes'     => ['kind' => 'Cloth', 'color' => 'เทา'],
-        ], Roles::OWNER);
+        ], [Roles::OWNER]);
 
         eq($out['name'], 'Lens G เทา', 'ชื่อจากแบรนด์กับสี');
         eq(Inventory::product($out['id'], true)['basePrice'], 0.0, 'ยังไม่ตั้งราคา');
@@ -301,7 +301,7 @@ test('กรอกแบรนด์ รุ่น Coating Index บนใบ แ
             'sph'          => '-2.25',
             'cyl'          => '-0.50',
             'sale_price'   => '7900',
-        ], Roles::OWNER, 1);
+        ], [Roles::OWNER], 1);
 
         eq($out['name'], 'Nikon Presio MultiCoat (1.60)', 'ชื่อรุ่นที่ระบบตั้งให้');
         ok(str_starts_with($out['sku'], 'RX-'), 'ต้องเป็นรุ่นสั่งตัด');
@@ -328,8 +328,8 @@ test('สั่งเลนส์เดียวกันอีกใบ ใช�
             'lens_index'   => '1.60',
         ];
 
-        $first = \Optic\Service\Rx::order($lens + ['sph' => '-1.00', 'sale_price' => '7900'], Roles::OWNER, 1);
-        $second = \Optic\Service\Rx::order($lens + ['sph' => '-4.50', 'sale_price' => '8400'], Roles::OWNER, 1);
+        $first = \Optic\Service\Rx::order($lens + ['sph' => '-1.00', 'sale_price' => '7900'], [Roles::OWNER], 1);
+        $second = \Optic\Service\Rx::order($lens + ['sph' => '-4.50', 'sale_price' => '8400'], [Roles::OWNER], 1);
 
         eq($second['sku'], $first['sku'], 'สองใบต้องชี้รุ่นเดียวกัน');
         eq(
@@ -349,7 +349,7 @@ test('ไม่บอกเลนส์เลย ถูกปฏิเสธ', f
     withRollback(function () {
         throwsReason(
             'missing_field',
-            fn() => \Optic\Service\Rx::order(['sale_price' => '7900'], Roles::OWNER, 1),
+            fn() => \Optic\Service\Rx::order(['sale_price' => '7900'], [Roles::OWNER], 1),
             'เปิดใบสั่งโดยไม่บอกว่าสั่งเลนส์อะไร',
         );
     });

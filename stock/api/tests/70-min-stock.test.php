@@ -29,7 +29,7 @@ function productAtLevel(int $onHand, int $minStock): array
         'base_selling_price' => '900.00',
         'min_stock'          => $minStock,
         'is_custom_made'     => false,
-    ], Roles::OWNER);
+    ], [Roles::OWNER]);
 
     if ($onHand > 0) {
         Receiving::receive([
@@ -37,7 +37,7 @@ function productAtLevel(int $onHand, int $minStock): array
             'quantity'      => $onHand,
             'cost_per_unit' => '100.00',
             'received_date' => date('Y-m-d'),
-        ], Roles::OWNER, 1);
+        ], [Roles::OWNER], 1);
     }
 
     return ['id' => $out['id'], 'sku' => $sku];
@@ -124,7 +124,7 @@ test('สินค้าสั่งตัด RX ไม่เคยถูกน�
             // absence of a figure, or one saved by mistake would alert forever.
             'min_stock'          => 5,
             'is_custom_made'     => true,
-        ], Roles::OWNER);
+        ], [Roles::OWNER]);
 
         eq(inState($out['id'], 'low'), false, 'สินค้าสั่งตัดต้องไม่เข้าตัวกรอง low');
     });
@@ -158,7 +158,7 @@ test('แก้ราคาอย่างเดียว ต้องไม่�
             'min_stock'          => 3,
             'is_custom_made'     => false,
             'attributes'         => ['lens_index' => '1.60', 'coating' => 'Crizal', 'sph' => -2.25],
-        ], Roles::OWNER);
+        ], [Roles::OWNER]);
 
         // Exactly what the inline price edit on the product list sends: the
         // row's own facts, no `attributes`, no `min_stock`.
@@ -169,7 +169,7 @@ test('แก้ราคาอย่างเดียว ต้องไม่�
             'category_id'        => $lens,
             'base_selling_price' => '3400.00',
             'is_custom_made'     => false,
-        ], Roles::OWNER);
+        ], [Roles::OWNER]);
 
         $after = Inventory::product($out['id'], true);
         eq($after['basePrice'], 3400.0, 'ราคาที่แก้');
@@ -192,9 +192,9 @@ test('ส่ง attributes มาเป็นอ็อบเจกต์ว่�
             'base_selling_price' => '3200.00',
             'is_custom_made'     => false,
         ];
-        $out = Catalog::createProduct($base + ['attributes' => ['coating' => 'Crizal']], Roles::OWNER);
+        $out = Catalog::createProduct($base + ['attributes' => ['coating' => 'Crizal']], [Roles::OWNER]);
 
-        Catalog::updateProduct($out['id'], $base + ['attributes' => []], Roles::OWNER);
+        Catalog::updateProduct($out['id'], $base + ['attributes' => []], [Roles::OWNER]);
 
         eq(Inventory::product($out['id'], true)['coating'], null, 'สเปกถูกล้างตามที่สั่ง');
     });
@@ -212,10 +212,10 @@ test('ขั้นต่ำติดลบหรือไม่ใช่จำ�
             'is_custom_made'     => false,
         ];
 
-        throwsReason('bad_min_stock', fn() => Catalog::createProduct($args('-1'), Roles::OWNER), 'ขั้นต่ำติดลบ');
-        throwsReason('bad_min_stock', fn() => Catalog::createProduct($args('2.5'), Roles::OWNER), 'ขั้นต่ำมีทศนิยม');
-        throwsReason('bad_min_stock', fn() => Catalog::createProduct($args('มาก'), Roles::OWNER), 'ขั้นต่ำเป็นตัวอักษร');
-        throwsReason('bad_min_stock', fn() => Catalog::createProduct($args(1000000), Roles::OWNER), 'ขั้นต่ำสูงเกินจริง');
+        throwsReason('bad_min_stock', fn() => Catalog::createProduct($args('-1'), [Roles::OWNER]), 'ขั้นต่ำติดลบ');
+        throwsReason('bad_min_stock', fn() => Catalog::createProduct($args('2.5'), [Roles::OWNER]), 'ขั้นต่ำมีทศนิยม');
+        throwsReason('bad_min_stock', fn() => Catalog::createProduct($args('มาก'), [Roles::OWNER]), 'ขั้นต่ำเป็นตัวอักษร');
+        throwsReason('bad_min_stock', fn() => Catalog::createProduct($args(1000000), [Roles::OWNER]), 'ขั้นต่ำสูงเกินจริง');
     });
 });
 

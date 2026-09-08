@@ -360,7 +360,25 @@ final class ActivityLog
             return null;
         }
         /* ชื่อตารางมาจาก ENTITIES ซึ่งเป็นค่าคงที่ในไฟล์นี้ ไม่ใช่ค่าจากผู้ใช้ */
-        return Db::get("SELECT * FROM `$table` WHERE id = ?", self::$entityId);
+        $row = Db::get("SELECT * FROM `$table` WHERE id = ?", self::$entityId);
+
+        /* บทบาทของบัญชีอยู่คนละตาราง (`admin_roles`) — diff ที่อ่านแต่แถวหลักจึงมอง
+           การเปลี่ยนสิทธิ์ไม่เห็นเลย ทั้งที่มันคือสิ่งที่คนเปิดล็อกอยากเห็นที่สุด
+           เรื่องหนึ่ง · ต่อเป็นช่องสังเคราะห์เข้าไปในแถวที่อ่าน แทนที่จะไปเติมบรรทัด
+           บันทึกใน Users::setRoles() — เส้นทางที่เปลี่ยนบทบาทได้มีมากกว่าหนึ่ง และ
+           เส้นที่ใครเขียนเพิ่มวันหน้าจะได้บรรทัด `roles: sales → sales+admin` มาเอง
+           โดยไม่ต้องจำว่าต้องเรียกอะไร (หลักเดียวกับที่หัวไฟล์นี้อธิบายไว้) */
+        if ($row !== null && $table === 'admins') {
+            $row['roles'] = implode('+', array_column(
+                Db::all(
+                    'SELECT role FROM admin_roles WHERE admin_id = ? ORDER BY role',
+                    self::$entityId,
+                ),
+                'role',
+            ));
+        }
+
+        return $row;
     }
 
     /** [{field, before, after}] ของช่องที่เปลี่ยนจริง · null = ไม่มีอะไรเปลี่ยน */
@@ -484,7 +502,7 @@ final class ActivityLog
             $kind,
             int_or($actor['id'] ?? null),
             nul(mb_substr((string) ($actor['displayName'] ?? $actor['username'] ?? ''), 0, 120)),
-            nul((string) ($actor['role'] ?? '')),
+            nul(\Optic\Roles::text($actor['roles'] ?? [])),
             self::$method,
             mb_substr(self::$fullPath, 0, 255),
             $status,

@@ -27,7 +27,7 @@ function aProduct(): int
         'product_type'       => 'Frame',
         'category_id'        => (int) Db::value('SELECT id FROM categories ORDER BY id LIMIT 1'),
         'base_selling_price' => '100',
-    ], Roles::OWNER);
+    ], [Roles::OWNER]);
 
     return (int) $made['id'];
 }
@@ -36,11 +36,11 @@ group('จัดการผู้ใช้');
 
 test('ผู้ที่จัดการผู้ใช้ได้เท่านั้นที่ดูรายชื่อได้', function () {
     withRollback(function () {
-        $rows = Users::list(Roles::OWNER);
+        $rows = Users::list([Roles::OWNER])['users'];
         ok(count($rows) >= 6, 'ต้องเห็นทุกคน (เจ้าของ + พนักงานที่นำเข้ามา)');
-        ok(count(Users::list(Roles::ADMIN)) > 0, 'แอดมินดูรายชื่อได้');
-        throwsReason('forbidden', fn() => Users::list(Roles::SALES), 'พนักงานขายดูรายชื่อ');
-        throwsReason('forbidden', fn() => Users::list(Roles::STOCK), 'พนักงานคลังดูรายชื่อ');
+        ok(count(Users::list([Roles::ADMIN])['users']) > 0, 'แอดมินดูรายชื่อได้');
+        throwsReason('forbidden', fn() => Users::list([Roles::SALES])['users'], 'พนักงานขายดูรายชื่อ');
+        throwsReason('forbidden', fn() => Users::list([Roles::STOCK])['users'], 'พนักงานคลังดูรายชื่อ');
     });
 });
 
@@ -50,29 +50,29 @@ test('บัญชีที่สูงกว่าคนดู ไม่โผ�
         $emp = anEmployee('ผู้ดูแลระบบทดสอบ');
         $super = Users::grantAccount(
             $emp,
-            ['username' => $u, 'password' => 'a-strong-password', 'role' => Roles::SUPERUSER],
-            Roles::SUPERUSER,
+            ['username' => $u, 'password' => 'a-strong-password', 'roles' => [Roles::SUPERUSER]],
+            [Roles::SUPERUSER],
         );
 
-        $seenByAdmin = array_column(Users::list(Roles::ADMIN), 'username');
+        $seenByAdmin = array_column(Users::list([Roles::ADMIN])['users'], 'username');
         ok(!in_array($u, $seenByAdmin, true), 'แอดมินต้องไม่เห็นบัญชีผู้ดูแลระบบ');
         ok(!in_array('owner', $seenByAdmin, true), 'แอดมินต้องไม่เห็นบัญชีเจ้าของร้าน');
 
-        ok(in_array($u, array_column(Users::list(Roles::SUPERUSER), 'username'), true), 'ผู้ดูแลระบบเห็นบัญชีตัวเอง');
+        ok(in_array($u, array_column(Users::list([Roles::SUPERUSER])['users'], 'username'), true), 'ผู้ดูแลระบบเห็นบัญชีตัวเอง');
 
         throwsReason(
             'forbidden',
             fn() => Users::update(
                 (int) $super['id'],
-                ['role' => Roles::SUPERUSER, 'username' => $u, 'is_active' => true],
-                Roles::OWNER,
+                ['roles' => [Roles::SUPERUSER], 'username' => $u, 'is_active' => true],
+                [Roles::OWNER],
                 1,
             ),
             'เจ้าของร้านแก้บัญชีผู้ดูแลระบบ',
         );
         throwsReason(
             'forbidden',
-            fn() => Users::setPassword((int) $super['id'], ['password' => 'another-password'], Roles::OWNER),
+            fn() => Users::setPassword((int) $super['id'], ['password' => 'another-password'], [Roles::OWNER]),
             'เจ้าของร้านตั้งรหัสผ่านให้ผู้ดูแลระบบ',
         );
     });
@@ -85,8 +85,8 @@ test('ตั้งบทบาทสูงกว่าตัวเองไม�
             'forbidden',
             fn() => Users::grantAccount(
                 $emp,
-                ['username' => uname(), 'password' => 'a-strong-password', 'role' => Roles::OWNER],
-                Roles::ADMIN,
+                ['username' => uname(), 'password' => 'a-strong-password', 'roles' => [Roles::OWNER]],
+                [Roles::ADMIN],
             ),
             'แอดมินสร้างบัญชีเจ้าของร้าน',
         );
@@ -95,7 +95,7 @@ test('ตั้งบทบาทสูงกว่าตัวเองไม�
 
 test('รายชื่อบอกว่าใครล็อกอินได้บ้าง', function () {
     withRollback(function () {
-        $rows = Users::list(Roles::OWNER);
+        $rows = Users::list([Roles::OWNER])['users'];
         $owner = array_values(array_filter($rows, fn($r) => $r['username'] === 'owner'))[0] ?? null;
         ok($owner !== null, 'ต้องมีบัญชี owner');
         eq($owner['canSignIn'], true, 'owner ล็อกอินได้');
@@ -124,12 +124,12 @@ test('เพิ่มคนพร้อมบัญชีล็อกอิน�
         $emp = anEmployee('ฝ่ายบัญชีใหม่');
         Users::grantAccount(
             $emp,
-            ['username' => $u, 'password' => 'a-strong-password', 'role' => Roles::ADMIN],
-            Roles::OWNER,
+            ['username' => $u, 'password' => 'a-strong-password', 'roles' => [Roles::ADMIN]],
+            [Roles::OWNER],
         );
 
         $actor = Auth::login($u, 'a-strong-password');
-        eq($actor['role'], Roles::ADMIN, 'สิทธิ์ที่ได้');
+        eq($actor['roles'], [Roles::ADMIN], 'สิทธิ์ที่ได้');
         eq($actor['username'], $u, 'ชื่อผู้ใช้');
     });
 });
@@ -139,7 +139,7 @@ test('ตั้งชื่อผู้ใช้แล้วต้องมี�
         $emp = anEmployee('ไม่มีรหัส');
         throwsReason(
             'missing_field',
-            fn() => Users::grantAccount($emp, ['username' => uname(), 'role' => Roles::SALES], Roles::OWNER),
+            fn() => Users::grantAccount($emp, ['username' => uname(), 'roles' => [Roles::SALES]], [Roles::OWNER]),
             'มี username แต่ไม่มีรหัส',
         );
     });
@@ -152,8 +152,8 @@ test('รหัสผ่านสั้นเกินไปถูกปฏิ�
             'weak_password',
             fn() => Users::grantAccount(
                 $emp,
-                ['username' => uname(), 'password' => '1234', 'role' => Roles::SALES],
-                Roles::OWNER,
+                ['username' => uname(), 'password' => '1234', 'roles' => [Roles::SALES]],
+                [Roles::OWNER],
             ),
             'รหัส 4 ตัว',
         );
@@ -167,8 +167,8 @@ test('ชื่อผู้ใช้ซ้ำถูกปฏิเสธ', funct
             'duplicate_username',
             fn() => Users::grantAccount(
                 $emp,
-                ['username' => 'owner', 'password' => 'a-strong-password', 'role' => Roles::SALES],
-                Roles::OWNER,
+                ['username' => 'owner', 'password' => 'a-strong-password', 'roles' => [Roles::SALES]],
+                [Roles::OWNER],
             ),
             'username ซ้ำ',
         );
@@ -183,8 +183,8 @@ test('ชื่อผู้ใช้ที่มีอักขระต้อ�
                 'bad_username',
                 fn() => Users::grantAccount(
                     $emp,
-                    ['username' => $bad, 'password' => 'a-strong-password', 'role' => Roles::SALES],
-                    Roles::OWNER,
+                    ['username' => $bad, 'password' => 'a-strong-password', 'roles' => [Roles::SALES]],
+                    [Roles::OWNER],
                 ),
                 "username \"{$bad}\"",
             );
@@ -201,13 +201,13 @@ test('เปลี่ยนบทบาทได้ โดยไม่แตะ�
 
         Users::update(
             $made['id'],
-            ['role' => Roles::ADMIN, 'is_active' => true],
-            Roles::OWNER,
+            ['roles' => [Roles::ADMIN], 'is_active' => true],
+            [Roles::OWNER],
             1,
         );
 
-        $row = Db::one('SELECT role, display_name, job_title FROM admins WHERE id = ?', [$made['id']]);
-        eq($row['role'], Roles::ADMIN, 'บทบาทที่ตั้ง');
+        $row = Db::one('SELECT display_name, job_title FROM admins WHERE id = ?', [$made['id']]);
+        eq(Users::rolesOf($made['id']), [Roles::ADMIN], 'บทบาทที่ตั้ง');
         eq($row['display_name'], 'คนทดสอบ', 'ชื่อไม่เปลี่ยนเพราะ update() ไม่รับชื่อแล้ว');
         eq($row['job_title'], 'admin,reception', 'ตำแหน่งงานไม่เปลี่ยนเพราะ update() ไม่รับตำแหน่งงานแล้ว');
     });
@@ -219,15 +219,15 @@ test('ปิดใช้งานบัญชีแล้วล็อกอิ�
         $emp = anEmployee('จะถูกปิด');
         $made = Users::grantAccount(
             $emp,
-            ['username' => $u, 'password' => 'a-strong-password', 'role' => Roles::SALES],
-            Roles::OWNER,
+            ['username' => $u, 'password' => 'a-strong-password', 'roles' => [Roles::SALES]],
+            [Roles::OWNER],
         );
         Auth::login($u, 'a-strong-password');
 
         Users::update(
             $made['id'],
-            ['role' => Roles::SALES, 'username' => $u, 'is_active' => false],
-            Roles::OWNER,
+            ['roles' => [Roles::SALES], 'username' => $u, 'is_active' => false],
+            [Roles::OWNER],
             1,
         );
 
@@ -239,7 +239,7 @@ test('ปิดใช้งานบัญชีตัวเองไม่ไ�
     withRollback(function () {
         throwsReason(
             'self_lockout',
-            fn() => Users::update(1, ['role' => Roles::OWNER, 'username' => 'owner', 'is_active' => false], Roles::OWNER, 1),
+            fn() => Users::update(1, ['roles' => [Roles::OWNER], 'username' => 'owner', 'is_active' => false], [Roles::OWNER], 1),
             'ปิดบัญชีตัวเอง',
         );
     });
@@ -249,7 +249,7 @@ test('ลดสิทธิ์ตัวเองไม่ได้', function ()
     withRollback(function () {
         throwsReason(
             'self_lockout',
-            fn() => Users::update(1, ['role' => Roles::SALES, 'username' => 'owner', 'is_active' => true], Roles::OWNER, 1),
+            fn() => Users::update(1, ['roles' => [Roles::SALES], 'username' => 'owner', 'is_active' => true], [Roles::OWNER], 1),
             'ลดสิทธิ์ตัวเอง',
         );
     });
@@ -260,26 +260,27 @@ test('ต้องเหลือเจ้าของร้านที่ใ�
         /* เริ่มจากสถานะที่รู้แน่: เจ้าของร้านที่ใช้งานได้เหลือคนเดียวคือ id 1
            ก่อนหน้านี้เทสต์นี้เชื่อว่าฐานข้อมูลเป็นแบบนั้นอยู่แล้ว แล้วก็เงียบไป
            ทันทีที่มีบัญชีเจ้าของร้านเพิ่มเข้ามาอีกใบ (เช่น บัญชีทดสอบ) */
-        Db::run("UPDATE admins SET is_active = 0 WHERE role = 'owner' AND id <> 1");
+        Db::run("UPDATE admins a JOIN admin_roles r ON r.admin_id = a.id
+                  SET a.is_active = 0 WHERE r.role = 'owner' AND a.id <> 1");
 
         // สร้างเจ้าของคนที่สองแล้วให้เขาปลดเจ้าของคนแรก จะได้ไม่ชนกฎ "ห้ามแก้ตัวเอง"
         $emp = anEmployee('เจ้าของสอง');
         $second = Users::grantAccount(
             $emp,
-            ['username' => uname(), 'password' => 'a-strong-password', 'role' => Roles::OWNER],
-            Roles::OWNER,
+            ['username' => uname(), 'password' => 'a-strong-password', 'roles' => [Roles::OWNER]],
+            [Roles::OWNER],
         );
 
         // ตอนนี้มีสองคน ปลดคนแรกได้
-        Users::update(1, ['role' => Roles::SALES, 'username' => 'owner', 'is_active' => true], Roles::OWNER, $second['id']);
+        Users::update(1, ['roles' => [Roles::SALES], 'username' => 'owner', 'is_active' => true], [Roles::OWNER], $second['id']);
 
         // เหลือคนเดียว ปลดต่อไม่ได้แล้ว
         throwsReason(
             'last_owner',
             fn() => Users::update(
                 $second['id'],
-                ['role' => Roles::SALES, 'username' => 'x' . uname(), 'is_active' => true],
-                Roles::OWNER,
+                ['roles' => [Roles::SALES], 'username' => 'x' . uname(), 'is_active' => true],
+                [Roles::OWNER],
                 1,
             ),
             'ปลดเจ้าของคนสุดท้าย',
@@ -295,11 +296,11 @@ test('เจ้าของร้านตั้งรหัสให้คน�
         $emp = anEmployee('เปลี่ยนรหัส');
         $made = Users::grantAccount(
             $emp,
-            ['username' => $u, 'password' => 'first-password-x', 'role' => Roles::SALES],
-            Roles::OWNER,
+            ['username' => $u, 'password' => 'first-password-x', 'roles' => [Roles::SALES]],
+            [Roles::OWNER],
         );
 
-        Users::setPassword($made['id'], ['password' => 'second-password-x'], Roles::OWNER);
+        Users::setPassword($made['id'], ['password' => 'second-password-x'], [Roles::OWNER]);
 
         throwsReason('bad_credentials', fn() => Auth::login($u, 'first-password-x'), 'รหัสเก่าต้องใช้ไม่ได้');
         $actor = Auth::login($u, 'second-password-x');
@@ -313,7 +314,7 @@ test('ตั้งรหัสให้คนที่ยังไม่มี�
         $made = ['id' => Users::ensureFor($emp, 'ไม่มี username', null, true)];
         throwsReason(
             'no_username',
-            fn() => Users::setPassword($made['id'], ['password' => 'a-strong-password'], Roles::OWNER),
+            fn() => Users::setPassword($made['id'], ['password' => 'a-strong-password'], [Roles::OWNER]),
             'ตั้งรหัสก่อนมีชื่อผู้ใช้',
         );
     });
@@ -323,7 +324,7 @@ test('ฝ่ายบัญชีตั้งรหัสให้คนอื�
     withRollback(function () {
         throwsReason(
             'forbidden',
-            fn() => Users::setPassword(1, ['password' => 'a-strong-password'], Roles::ADMIN),
+            fn() => Users::setPassword(1, ['password' => 'a-strong-password'], [Roles::ADMIN]),
             'accountant ตั้งรหัส',
         );
     });
@@ -340,7 +341,7 @@ test('ฐานข้อมูลปฏิเสธบัญชีที่ไ�
     withRollback(function () {
         $threw = false;
         try {
-            Db::run("INSERT INTO admins (display_name, role, is_active) VALUES ('ไม่มีพนักงาน', 'sales', 1)");
+            Db::run("INSERT INTO admins (display_name, is_active) VALUES ('ไม่มีพนักงาน', 1)");
         } catch (\PDOException $e) {
             $threw = true;
         }
@@ -352,7 +353,7 @@ test('บัญชีที่ชี้ไปยังพนักงานท�
     withRollback(function () {
         $threw = false;
         try {
-            Db::run("INSERT INTO admins (employee_id, display_name, role, is_active) VALUES (999999999, 'ผี', 'sales', 1)");
+            Db::run("INSERT INTO admins (employee_id, display_name, is_active) VALUES (999999999, 'ผี', 1)");
         } catch (\PDOException $e) {
             $threw = true;
         }
@@ -366,8 +367,8 @@ test('เปิดบัญชีของคนที่ลาออกไป�
         $emp = anEmployee('ลาออกแล้วแต่อยากกลับ');
         $made = Users::grantAccount(
             $emp,
-            ['username' => $u, 'password' => 'a-strong-password', 'role' => Roles::SALES],
-            Roles::OWNER,
+            ['username' => $u, 'password' => 'a-strong-password', 'roles' => [Roles::SALES]],
+            [Roles::OWNER],
         );
 
         // Mirrors the real flow: the employee screen closes `employees.active`
@@ -377,7 +378,7 @@ test('เปิดบัญชีของคนที่ลาออกไป�
 
         throwsReason(
             'employee_inactive',
-            fn() => Users::update($made['id'], ['username' => $u, 'role' => Roles::SALES, 'is_active' => true], Roles::OWNER, 1),
+            fn() => Users::update($made['id'], ['username' => $u, 'roles' => [Roles::SALES], 'is_active' => true], [Roles::OWNER], 1),
             'เปิดบัญชีของคนที่ลาออกแล้ว',
         );
     });
@@ -392,12 +393,12 @@ test('ยกเลิกบัญชีที่สิทธิ์สูงก�
         $emp = anEmployee('เจ้าของที่แอดมินเอื้อมไม่ถึง');
         $owner = Users::grantAccount(
             $emp,
-            ['username' => uname(), 'password' => 'a-strong-password', 'role' => Roles::OWNER],
-            Roles::OWNER,
+            ['username' => uname(), 'password' => 'a-strong-password', 'roles' => [Roles::OWNER]],
+            [Roles::OWNER],
         );
         throwsReason(
             'forbidden',
-            fn() => Users::revokeAccount($owner['id'], Roles::ADMIN, 1),
+            fn() => Users::revokeAccount($owner['id'], [Roles::ADMIN], 1),
             'แอดมินยกเลิกบัญชีเจ้าของร้าน',
         );
     });
@@ -408,17 +409,17 @@ test('พนักงานยกเลิกบัญชีใครไม่�
         $emp = anEmployee('เป้าหมาย');
         $made = Users::grantAccount(
             $emp,
-            ['username' => uname(), 'password' => 'a-strong-password', 'role' => Roles::STOCK],
-            Roles::OWNER,
+            ['username' => uname(), 'password' => 'a-strong-password', 'roles' => [Roles::STOCK]],
+            [Roles::OWNER],
         );
-        throwsReason('forbidden', fn() => Users::revokeAccount($made['id'], Roles::SALES, 1), 'พนักงานขายยกเลิกบัญชี');
-        throwsReason('forbidden', fn() => Users::revokeAccount($made['id'], Roles::STOCK, 1), 'พนักงานคลังยกเลิกบัญชี');
+        throwsReason('forbidden', fn() => Users::revokeAccount($made['id'], [Roles::SALES], 1), 'พนักงานขายยกเลิกบัญชี');
+        throwsReason('forbidden', fn() => Users::revokeAccount($made['id'], [Roles::STOCK], 1), 'พนักงานคลังยกเลิกบัญชี');
     });
 });
 
 test('ยกเลิกบัญชีของคนที่ไม่มีอยู่จริง ตอบว่าไม่พบ', function () {
     withRollback(function () {
-        throwsReason('not_found', fn() => Users::revokeAccount(999999, Roles::OWNER, 1), 'ยกเลิกบัญชี id ที่ไม่มี');
+        throwsReason('not_found', fn() => Users::revokeAccount(999999, [Roles::OWNER], 1), 'ยกเลิกบัญชี id ที่ไม่มี');
     });
 });
 
@@ -489,6 +490,9 @@ test('ปิดพนักงานแล้วบัญชีถูกปิ�
             'UPDATE admins SET username = ?, password_hash = ? WHERE id = ?',
             [$u, Auth::hashPassword('a-strong-password'), $id],
         );
+        /* เขียนแถวตรง ๆ แบบนี้ข้าม grantAccount() ไป บทบาทจึงต้องใส่เอง —
+           บัญชีที่ไม่มีบทบาทเลยล็อกอินไม่ได้ตั้งแต่ Auth::login */
+        Db::run("INSERT INTO admin_roles (admin_id, role) VALUES (?, 'sales')", [$id]);
         Auth::login($u, 'a-strong-password');
 
         Users::syncFromEmployee($emp, 'จะลาออก', null, false, 1);
@@ -539,7 +543,8 @@ test('ปิดพนักงานที่เป็นบัญชีขอ�
 
 test('ปิดพนักงานที่เป็นเจ้าของร้านคนสุดท้ายไม่ได้', function () {
     withRollback(function () {
-        Db::run("UPDATE admins SET is_active = 0 WHERE role = 'owner' AND id <> 1");
+        Db::run("UPDATE admins a JOIN admin_roles r ON r.admin_id = a.id
+                  SET a.is_active = 0 WHERE r.role = 'owner' AND a.id <> 1");
         $emp = anEmployee('เจ้าของร้าน');
         Db::run('UPDATE admins SET employee_id = ? WHERE id = 1', [$emp]);
 
@@ -561,8 +566,8 @@ test('สร้างบัญชีให้พนักงานแล้ว�
 
         $out = Users::grantAccount(
             $emp,
-            ['username' => $u, 'password' => 'a-strong-password', 'role' => Roles::SALES],
-            Roles::OWNER,
+            ['username' => $u, 'password' => 'a-strong-password', 'roles' => [Roles::SALES]],
+            [Roles::OWNER],
         );
 
         eq($out['employeeId'], $emp, 'คืน employeeId ของคนที่ได้บัญชี');
@@ -570,7 +575,7 @@ test('สร้างบัญชีให้พนักงานแล้ว�
 
         $actor = Auth::login($u, 'a-strong-password');
         eq($actor['id'], $out['id'], 'ล็อกอินได้ด้วยบัญชีที่เพิ่งสร้าง');
-        eq($actor['role'], Roles::SALES, 'สิทธิ์ที่ได้');
+        eq($actor['roles'], [Roles::SALES], 'สิทธิ์ที่ได้');
     });
 });
 
@@ -580,8 +585,8 @@ test('สร้างบัญชีให้พนักงานที่ไ�
             'not_found',
             fn() => Users::grantAccount(
                 999999999,
-                ['username' => uname(), 'password' => 'a-strong-password', 'role' => Roles::SALES],
-                Roles::OWNER,
+                ['username' => uname(), 'password' => 'a-strong-password', 'roles' => [Roles::SALES]],
+                [Roles::OWNER],
             ),
             'สร้างบัญชีให้พนักงานที่ไม่มีอยู่',
         );
@@ -595,8 +600,8 @@ test('สร้างบัญชีให้พนักงานที่ล�
             'employee_inactive',
             fn() => Users::grantAccount(
                 $emp,
-                ['username' => uname(), 'password' => 'a-strong-password', 'role' => Roles::SALES],
-                Roles::OWNER,
+                ['username' => uname(), 'password' => 'a-strong-password', 'roles' => [Roles::SALES]],
+                [Roles::OWNER],
             ),
             'สร้างบัญชีให้คนที่ลาออกแล้ว',
         );
@@ -608,16 +613,16 @@ test('พนักงานคนเดียวมีสองบัญชี�
         $emp = anEmployee('มีบัญชีแล้ว');
         Users::grantAccount(
             $emp,
-            ['username' => uname(), 'password' => 'a-strong-password', 'role' => Roles::SALES],
-            Roles::OWNER,
+            ['username' => uname(), 'password' => 'a-strong-password', 'roles' => [Roles::SALES]],
+            [Roles::OWNER],
         );
 
         throwsReason(
             'account_exists',
             fn() => Users::grantAccount(
                 $emp,
-                ['username' => uname(), 'password' => 'a-strong-password', 'role' => Roles::SALES],
-                Roles::OWNER,
+                ['username' => uname(), 'password' => 'a-strong-password', 'roles' => [Roles::SALES]],
+                [Roles::OWNER],
             ),
             'สร้างบัญชีใบที่สองให้คนเดิม',
         );
@@ -629,12 +634,12 @@ test('สร้างบัญชีต้องมีทั้งชื่อ�
         $emp = anEmployee('ขาดของ');
         throwsReason(
             'missing_field',
-            fn() => Users::grantAccount($emp, ['password' => 'a-strong-password', 'role' => Roles::SALES], Roles::OWNER),
+            fn() => Users::grantAccount($emp, ['password' => 'a-strong-password', 'roles' => [Roles::SALES]], [Roles::OWNER]),
             'ไม่มีชื่อผู้ใช้',
         );
         throwsReason(
             'missing_field',
-            fn() => Users::grantAccount($emp, ['username' => uname(), 'role' => Roles::SALES], Roles::OWNER),
+            fn() => Users::grantAccount($emp, ['username' => uname(), 'roles' => [Roles::SALES]], [Roles::OWNER]),
             'ไม่มีรหัสผ่าน',
         );
     });
@@ -645,16 +650,16 @@ test('สร้างบัญชีด้วยชื่อผู้ใช้�
         $u = uname();
         Users::grantAccount(
             anEmployee('คนแรก'),
-            ['username' => $u, 'password' => 'a-strong-password', 'role' => Roles::SALES],
-            Roles::OWNER,
+            ['username' => $u, 'password' => 'a-strong-password', 'roles' => [Roles::SALES]],
+            [Roles::OWNER],
         );
 
         throwsReason(
             'duplicate_username',
             fn() => Users::grantAccount(
                 anEmployee('คนที่สอง'),
-                ['username' => $u, 'password' => 'a-strong-password', 'role' => Roles::SALES],
-                Roles::OWNER,
+                ['username' => $u, 'password' => 'a-strong-password', 'roles' => [Roles::SALES]],
+                [Roles::OWNER],
             ),
             'ชื่อผู้ใช้ซ้ำกับพนักงานอีกคน',
         );
@@ -668,8 +673,8 @@ test('ตั้งบทบาทสูงกว่าตัวเองตอ�
             'forbidden',
             fn() => Users::grantAccount(
                 $emp,
-                ['username' => uname(), 'password' => 'a-strong-password', 'role' => Roles::OWNER],
-                Roles::ADMIN,
+                ['username' => uname(), 'password' => 'a-strong-password', 'roles' => [Roles::OWNER]],
+                [Roles::ADMIN],
             ),
             'แอดมินสร้างบัญชีเจ้าของร้าน',
         );
@@ -682,8 +687,8 @@ test('ยกเลิกบัญชีแล้วเข้าระบบไ�
         $emp = anEmployee('จะถูกยกเลิกบัญชี');
         $out = Users::grantAccount(
             $emp,
-            ['username' => $u, 'password' => 'a-strong-password', 'role' => Roles::STOCK],
-            Roles::OWNER,
+            ['username' => $u, 'password' => 'a-strong-password', 'roles' => [Roles::STOCK]],
+            [Roles::OWNER],
         );
         $product = aProduct();
         Db::run(
@@ -692,7 +697,7 @@ test('ยกเลิกบัญชีแล้วเข้าระบบไ�
             [$product, 'ADJUST', 1, $out['id'], 'admin'],
         );
 
-        Users::revokeAccount($out['id'], Roles::OWNER, 1);
+        Users::revokeAccount($out['id'], [Roles::OWNER], 1);
 
         throwsReason('bad_credentials', fn() => Auth::login($u, 'a-strong-password'), 'ล็อกอินหลังถูกยกเลิกบัญชี');
 
@@ -711,7 +716,7 @@ test('ยกเลิกบัญชีที่ยังไม่มีบั�
 
         throwsReason(
             'no_account',
-            fn() => Users::revokeAccount($id, Roles::OWNER, 1),
+            fn() => Users::revokeAccount($id, [Roles::OWNER], 1),
             'ยกเลิกบัญชีที่ไม่มีอยู่',
         );
     });
@@ -722,13 +727,13 @@ test('ยกเลิกบัญชีตัวเองไม่ได้', fu
         $emp = anEmployee('ยกเลิกตัวเอง');
         $out = Users::grantAccount(
             $emp,
-            ['username' => uname(), 'password' => 'a-strong-password', 'role' => Roles::SALES],
-            Roles::OWNER,
+            ['username' => uname(), 'password' => 'a-strong-password', 'roles' => [Roles::SALES]],
+            [Roles::OWNER],
         );
 
         throwsReason(
             'self_lockout',
-            fn() => Users::revokeAccount($out['id'], Roles::OWNER, $out['id']),
+            fn() => Users::revokeAccount($out['id'], [Roles::OWNER], $out['id']),
             'ยกเลิกบัญชีที่กำลังใช้อยู่',
         );
     });
@@ -736,11 +741,12 @@ test('ยกเลิกบัญชีตัวเองไม่ได้', fu
 
 test('ยกเลิกบัญชีเจ้าของร้านที่เข้าระบบได้คนสุดท้ายไม่ได้', function () {
     withRollback(function () {
-        Db::run("UPDATE admins SET is_active = 0 WHERE role = 'owner' AND id <> 1");
+        Db::run("UPDATE admins a JOIN admin_roles r ON r.admin_id = a.id
+                  SET a.is_active = 0 WHERE r.role = 'owner' AND a.id <> 1");
 
         throwsReason(
             'last_owner',
-            fn() => Users::revokeAccount(1, Roles::OWNER, 2),
+            fn() => Users::revokeAccount(1, [Roles::OWNER], 2),
             'ยกเลิกบัญชีเจ้าของร้านคนสุดท้าย',
         );
     });
@@ -754,24 +760,25 @@ test('เจ้าของร้านที่เปิดอยู่แต�
         /* สร้างเจ้าของร้านทั้งสองคนเอง ไม่พึ่งบัญชีที่ seed มา — เทสต์นี้ต้องการคู่ที่
            ต่างกันตรงจุดที่กำลังวัดพอดี และบัญชี id 1 ยังไม่ผูกกับพนักงานจนกว่าจะถึง
            migration 027 การอ้างถึงมันตอนนี้คือการอ้างถึงสถานะที่ยังมาไม่ถึง */
-        Db::run("UPDATE admins SET is_active = 0 WHERE role = 'owner'");
+        Db::run("UPDATE admins a JOIN admin_roles r ON r.admin_id = a.id
+                  SET a.is_active = 0 WHERE r.role = 'owner'");
 
         $empReal = anEmployee('เจ้าของที่เข้าระบบได้');
         $real = Users::grantAccount(
             $empReal,
-            ['username' => uname(), 'password' => 'a-strong-password', 'role' => Roles::OWNER],
-            Roles::OWNER,
+            ['username' => uname(), 'password' => 'a-strong-password', 'roles' => [Roles::OWNER]],
+            [Roles::OWNER],
         );
 
         $empGhost = anEmployee('เจ้าของที่ยังไม่มีบัญชี');
         $ghost = Users::ensureFor($empGhost, 'เจ้าของที่ยังไม่มีบัญชี', null, true);
-        Db::run("UPDATE admins SET role = 'owner' WHERE id = ?", [$ghost]);
+        Db::run("INSERT INTO admin_roles (admin_id, role) VALUES (?, 'owner')", [$ghost]);
 
         /* ยกเลิกบัญชีของคนที่เข้าระบบได้ไม่ได้ — คนที่เหลือเปิดใช้งานอยู่ก็จริง
            แต่ไม่มีรหัสผ่าน จึงเข้าระบบไม่ได้ ร้านจะไม่เหลือใครเปิดประตูเข้ามา */
         throwsReason(
             'last_owner',
-            fn() => Users::revokeAccount($real['id'], Roles::OWNER, $ghost),
+            fn() => Users::revokeAccount($real['id'], [Roles::OWNER], $ghost),
             'ยกเลิกบัญชีเจ้าของร้านคนสุดท้ายที่เข้าระบบได้',
         );
 
@@ -781,5 +788,353 @@ test('เจ้าของร้านที่เปิดอยู่แต�
            ท่อนบนจะเลิกโยน แล้วเทสต์นี้จะแดงทันที ซึ่งเป็นเหตุผลเดียวที่มันมีอยู่ */
         Users::syncFromEmployee($empReal, 'เจ้าของที่เข้าระบบได้', null, false, $ghost);
         eq((int) Db::value('SELECT is_active FROM admins WHERE id = ?', [$real['id']]), 0, 'ปิดใช้งานผ่าน');
+    });
+});
+
+group('หลายบทบาทในคนเดียว');
+
+test('ให้หลายบทบาทตอนสร้างบัญชี แล้วสิทธิ์รวมกันจริง', function () {
+    withRollback(function () {
+        $u = uname();
+        $emp = anEmployee('ผู้จัดการ', true, 'manager');
+        $out = Users::grantAccount(
+            $emp,
+            [
+                'username' => $u,
+                'password' => 'a-strong-password',
+                'roles'    => [Roles::SALES, Roles::ADMIN],
+            ],
+            [Roles::OWNER],
+            1,
+        );
+
+        eq(Users::rolesOf($out['id']), [Roles::ADMIN, Roles::SALES], 'เก็บครบสองใบ เรียงตามยศ');
+
+        $actor = Auth::login($u, 'a-strong-password');
+        eq($actor['roleText'], 'Admin + Sales', 'ข้อความบทบาทที่หน้าจอเอาไปแสดง');
+        ok(Roles::useFrontdesk($actor['roles']), 'ได้ฝั่งหน้าร้าน');
+        ok(Roles::seeCost($actor['roles']), 'ได้สิทธิ์เห็นต้นทุนจากใบแอดมิน');
+        ok(!Roles::enterRxCost($actor['roles']), 'แต่ยังกรอกต้นทุนไม่ได้ ไม่มีใบไหนให้สิทธิ์นั้น');
+    });
+});
+
+test('เพิ่มและถอดบทบาททีหลังได้ โดยใบที่ถืออยู่แล้วไม่ถูกเขียนใหม่', function () {
+    withRollback(function () {
+        $u = uname();
+        $emp = anEmployee('เริ่มจากขาย');
+        $out = Users::grantAccount(
+            $emp,
+            ['username' => $u, 'password' => 'a-strong-password', 'roles' => [Roles::SALES]],
+            [Roles::OWNER],
+            1,
+        );
+
+        $firstGrant = Db::value(
+            "SELECT granted_at FROM admin_roles WHERE admin_id = ? AND role = 'sales'",
+            [$out['id']],
+        );
+
+        Users::update(
+            $out['id'],
+            ['username' => $u, 'roles' => [Roles::SALES, Roles::STOCK], 'is_active' => true],
+            [Roles::OWNER],
+            1,
+        );
+        eq(Users::rolesOf($out['id']), [Roles::SALES, Roles::STOCK], 'เพิ่มใบที่สอง');
+
+        /* ใบเดิมต้องไม่ถูกลบแล้วเขียนใหม่ ไม่งั้น "ใครให้สิทธิ์นี้เมื่อไหร่" จะกลาย
+           เป็นชื่อคนที่เผลอกดบันทึกโดยไม่ได้แก้อะไร */
+        eq(
+            Db::value("SELECT granted_at FROM admin_roles WHERE admin_id = ? AND role = 'sales'", [$out['id']]),
+            $firstGrant,
+            'granted_at ของใบเดิมไม่ถูกแตะ',
+        );
+
+        Users::update(
+            $out['id'],
+            ['username' => $u, 'roles' => [Roles::STOCK], 'is_active' => true],
+            [Roles::OWNER],
+            1,
+        );
+        eq(Users::rolesOf($out['id']), [Roles::STOCK], 'ถอดใบแรกออกแล้ว');
+    });
+});
+
+test('บัญชีที่เข้าระบบได้ต้องเหลือสิทธิ์อย่างน้อยหนึ่งอย่าง', function () {
+    withRollback(function () {
+        $u = uname();
+        $emp = anEmployee('จะถูกถอดหมด');
+        $out = Users::grantAccount(
+            $emp,
+            ['username' => $u, 'password' => 'a-strong-password', 'roles' => [Roles::SALES]],
+            [Roles::OWNER],
+            1,
+        );
+
+        throwsReason(
+            'no_roles',
+            fn() => Users::update($out['id'], ['username' => $u, 'roles' => [], 'is_active' => true], [Roles::OWNER], 1),
+            'ถอดสิทธิ์จนไม่เหลือ',
+        );
+    });
+});
+
+test('สิทธิ์ที่ระบบไม่รู้จักถูกปฏิเสธ ไม่ใช่ถูกเมิน', function () {
+    withRollback(function () {
+        $emp = anEmployee('สิทธิ์แปลก');
+        throwsReason(
+            'bad_role',
+            fn() => Users::grantAccount(
+                $emp,
+                ['username' => uname(), 'password' => 'a-strong-password', 'roles' => ['wizard']],
+                [Roles::OWNER],
+                1,
+            ),
+            'สิทธิ์ที่ไม่มีในระบบ',
+        );
+        throwsReason(
+            'bad_role',
+            fn() => Users::grantAccount(
+                $emp,
+                ['username' => uname(), 'password' => 'a-strong-password', 'roles' => 'sales'],
+                [Roles::OWNER],
+                1,
+            ),
+            'ส่งมาเป็นสตริงไม่ใช่รายการ',
+        );
+    });
+});
+
+test('ถอดบทบาทเจ้าของร้านออกจากคนสุดท้ายไม่ได้ แม้บัญชียังเปิดอยู่', function () {
+    withRollback(function () {
+        Db::run("UPDATE admins a JOIN admin_roles r ON r.admin_id = a.id
+                  SET a.is_active = 0 WHERE r.role = 'owner' AND a.id <> 1");
+
+        /* ต่างจากเคส "ปิดบัญชี" ตรงที่บัญชียังเปิดอยู่ทุกประการ เปลี่ยนแค่รายการ
+           บทบาท — ถ้ากฎไปผูกกับ is_active อย่างเดียว ทางนี้จะลอดผ่านไปได้ */
+        throwsReason(
+            'last_owner',
+            fn() => Users::update(
+                1,
+                ['username' => 'owner', 'roles' => [Roles::ADMIN], 'is_active' => true],
+                [Roles::OWNER],
+                2,
+            ),
+            'ถอดบทบาทเจ้าของร้านคนสุดท้าย',
+        );
+    });
+});
+
+test('ถือ Owner + Admin แล้วถอดแค่ Admin ออกได้ เจ้าของร้านยังอยู่', function () {
+    withRollback(function () {
+        Db::run("UPDATE admins a JOIN admin_roles r ON r.admin_id = a.id
+                  SET a.is_active = 0 WHERE r.role = 'owner' AND a.id <> 1");
+        Db::run("INSERT IGNORE INTO admin_roles (admin_id, role) VALUES (1, 'admin')");
+
+        Users::update(
+            1,
+            ['username' => 'owner', 'roles' => [Roles::OWNER], 'is_active' => true],
+            [Roles::SUPERUSER],
+            2,
+        );
+        eq(Users::rolesOf(1), [Roles::OWNER], 'เหลือแต่เจ้าของร้าน');
+    });
+});
+
+test('ยกเลิกบัญชีแล้วบทบาทถูกถอดไปด้วย', function () {
+    withRollback(function () {
+        $emp = anEmployee('ยกเลิกแล้วสิทธิ์ต้องหาย');
+        $out = Users::grantAccount(
+            $emp,
+            ['username' => uname(), 'password' => 'a-strong-password', 'roles' => [Roles::ADMIN]],
+            [Roles::OWNER],
+            1,
+        );
+
+        Users::revokeAccount($out['id'], [Roles::OWNER], 1);
+
+        /* สิทธิ์แอดมินที่ค้างอยู่บนแถวที่เข้าระบบไม่ได้ คือสิทธิ์ที่จะคืนมาเองในวันที่
+           มีคนเปิดบัญชีให้ใหม่ โดยไม่มีใครตั้งใจให้คืน */
+        eq(Users::rolesOf($out['id']), [], 'ไม่เหลือบทบาท');
+    });
+});
+
+test('รายชื่อแยกคนที่มีบัญชีออกจากพนักงานที่ยังไม่มี', function () {
+    withRollback(function () {
+        $emp = anEmployee('ยังไม่มีบัญชี');
+        $waiting = Users::ensureFor($emp, 'ยังไม่มีบัญชี', 'technician', true);
+
+        $out = Users::list([Roles::OWNER]);
+
+        $userIds = array_column($out['users'], 'id');
+        $candIds = array_column($out['candidates'], 'id');
+
+        ok(!in_array($waiting, $userIds, true), 'คนที่ยังไม่มีบัญชีไม่อยู่ในตารางผู้ใช้');
+        ok(in_array($waiting, $candIds, true), 'แต่อยู่ในรายการที่เลือกได้ตอนเพิ่มผู้ใช้');
+
+        $owner = array_values(array_filter($out['users'], fn($r) => $r['username'] === 'owner'))[0] ?? null;
+        ok($owner !== null, 'ต้องมีบัญชี owner ในตาราง');
+        eq($owner['roles'], [Roles::OWNER], 'บทบาทติดมากับแถว');
+        eq($owner['roleText'], 'Owner', 'ข้อความบทบาทสำหรับคอลัมน์ Role');
+    });
+});
+
+test('พนักงานที่ลาออกแล้วไม่โผล่ในรายการที่เลือกได้', function () {
+    withRollback(function () {
+        $emp = anEmployee('ลาออกแล้ว', false);
+        $gone = Users::ensureFor($emp, 'ลาออกแล้ว', null, false);
+
+        $out = Users::list([Roles::OWNER]);
+        ok(
+            !in_array($gone, array_column($out['candidates'], 'id'), true),
+            'คนที่ลาออกแล้วต้องไม่อยู่ในช่องเลือกของฟอร์มเพิ่มผู้ใช้',
+        );
+    });
+});
+
+group('รีเซ็ตและเปลี่ยนรหัสผ่าน');
+
+test('รีเซ็ตแล้วได้รหัสใหม่ที่ใช้ล็อกอินได้ และติดธงบังคับเปลี่ยน', function () {
+    withRollback(function () {
+        $u = uname();
+        $emp = anEmployee('ลืมรหัส');
+        $out = Users::grantAccount(
+            $emp,
+            ['username' => $u, 'password' => 'old-password-xx', 'roles' => [Roles::SALES]],
+            [Roles::OWNER],
+            1,
+        );
+
+        $reset = Users::resetPassword($out['id'], [Roles::OWNER]);
+
+        ok(mb_strlen($reset['password']) >= 10, 'รหัสที่สุ่มต้องผ่านขั้นต่ำเดียวกับที่บังคับคนอื่น');
+        ok(str_starts_with($reset['password'], 'TO'), 'ขึ้นต้นด้วย TO ให้อ่านออกว่าเป็นรหัสของร้าน');
+
+        throwsReason('bad_credentials', fn() => Auth::login($u, 'old-password-xx'), 'รหัสเดิมต้องใช้ไม่ได้');
+
+        $actor = Auth::login($u, $reset['password']);
+        eq($actor['mustChangePassword'], true, 'ล็อกอินได้ แต่ติดธงบังคับเปลี่ยน');
+    });
+});
+
+test('รหัสที่สุ่มไม่ซ้ำกันสองครั้งติด และไม่มีตัวอักษรที่อ่านสับสน', function () {
+    $a = Users::generatePassword();
+    $b = Users::generatePassword();
+    neq($a, $b, 'สองครั้งต้องไม่เหมือนกัน');
+
+    /* กฎ "ไม่มีตัวที่อ่านสับสน" ใช้กับส่วนที่สุ่ม ไม่ใช่กับหัว `TO2026@` ซึ่งคนอ่าน
+       เป็นคำกับปี ไม่ได้อ่านทีละตัว — เอา O กับ 0 ในหัวมานับด้วยจะเป็นการวัดผิดที่ */
+    $tail = substr($a, strpos($a, '@') + 1);
+    ok(strlen($tail) >= 6, 'ส่วนที่สุ่มต้องยาวพอ');
+    eq(preg_match('/[lIO01]/', $tail), 0, 'ส่วนที่สุ่มไม่มี l I O 0 1 ที่แยกไม่ออกด้วยตา');
+});
+
+test('เจ้าตัวเปลี่ยนรหัสเองแล้วธงลง', function () {
+    withRollback(function () {
+        $u = uname();
+        $emp = anEmployee('เปลี่ยนเอง');
+        $out = Users::grantAccount(
+            $emp,
+            ['username' => $u, 'password' => 'first-password-x', 'roles' => [Roles::SALES]],
+            [Roles::OWNER],
+            1,
+        );
+        $reset = Users::resetPassword($out['id'], [Roles::OWNER]);
+
+        Users::changeOwnPassword($out['id'], [
+            'current_password' => $reset['password'],
+            'password'         => 'chosen-by-me-x',
+        ]);
+
+        eq((int) Db::value('SELECT must_change_password FROM admins WHERE id = ?', [$out['id']]), 0, 'ธงลงแล้ว');
+        $actor = Auth::login($u, 'chosen-by-me-x');
+        eq($actor['mustChangePassword'], false, 'ล็อกอินได้ตามปกติ');
+    });
+});
+
+test('เปลี่ยนรหัสตัวเองต้องรู้รหัสเดิม และตั้งซ้ำของเดิมไม่ได้', function () {
+    withRollback(function () {
+        $emp = anEmployee('ไม่รู้รหัสเดิม');
+        $out = Users::grantAccount(
+            $emp,
+            ['username' => uname(), 'password' => 'the-real-password', 'roles' => [Roles::SALES]],
+            [Roles::OWNER],
+            1,
+        );
+
+        /* เครื่องที่ร้านถูกเปิดค้างไว้ทั้งวัน — คนที่เดินผ่านมาแล้วตั้งรหัสใหม่ได้
+           ในสองคลิก คือคนที่ยึดบัญชีไปได้เลย */
+        throwsReason(
+            'bad_credentials',
+            fn() => Users::changeOwnPassword($out['id'], [
+                'current_password' => 'guessing',
+                'password'         => 'brand-new-password',
+            ]),
+            'เดารหัสเดิม',
+        );
+        throwsReason(
+            'same_password',
+            fn() => Users::changeOwnPassword($out['id'], [
+                'current_password' => 'the-real-password',
+                'password'         => 'the-real-password',
+            ]),
+            'ตั้งรหัสเดิมซ้ำ',
+        );
+    });
+});
+
+test('แอดมินตั้งรหัสให้คนอื่น ก็ติดธงบังคับเปลี่ยนเหมือนกัน', function () {
+    withRollback(function () {
+        $u = uname();
+        $emp = anEmployee('ถูกตั้งรหัสให้');
+        $out = Users::grantAccount(
+            $emp,
+            ['username' => $u, 'password' => 'first-password-x', 'roles' => [Roles::SALES]],
+            [Roles::OWNER],
+            1,
+        );
+
+        /* รหัสที่คนอื่นเป็นคนตั้ง คือรหัสที่มีคนที่สองรู้อยู่แล้ว — ปล่อยให้เป็นรหัส
+           ถาวรแปลว่าบัญชีนั้นมีเจ้าของสองคนตลอดไป */
+        Users::setPassword($out['id'], ['password' => 'set-by-admin-x'], [Roles::OWNER]);
+
+        $actor = Auth::login($u, 'set-by-admin-x');
+        eq($actor['mustChangePassword'], true, 'ติดธงเหมือนทางรีเซ็ต');
+    });
+});
+
+test('รีเซ็ตรหัสให้บัญชีที่สูงกว่าตัวเองไม่ได้', function () {
+    withRollback(function () {
+        $emp = anEmployee('เจ้าของที่แอดมินเอื้อมไม่ถึง');
+        $owner = Users::grantAccount(
+            $emp,
+            ['username' => uname(), 'password' => 'a-strong-password', 'roles' => [Roles::OWNER]],
+            [Roles::OWNER],
+            1,
+        );
+
+        /* ตั้งรหัสให้บัญชีที่สูงกว่า = เข้าใช้บัญชีนั้นได้ทันที จึงเป็นทางลัดไปสู่
+           สิทธิ์ที่สูงกว่า และถูกปิดด้วยกฎเดียวกับการตั้งบทบาท */
+        throwsReason(
+            'forbidden',
+            fn() => Users::resetPassword($owner['id'], [Roles::ADMIN]),
+            'แอดมินรีเซ็ตรหัสเจ้าของร้าน',
+        );
+    });
+});
+
+test('บัญชีที่ไม่มีสิทธิ์เลย ล็อกอินไม่ได้ตั้งแต่แรก', function () {
+    withRollback(function () {
+        $u = uname();
+        $emp = anEmployee('มีรหัสแต่ไม่มีสิทธิ์');
+        $id = Users::ensureFor($emp, 'มีรหัสแต่ไม่มีสิทธิ์', null, true);
+        Db::run(
+            'UPDATE admins SET username = ?, password_hash = ? WHERE id = ?',
+            [$u, Auth::hashPassword('a-strong-password'), $id],
+        );
+
+        /* ปล่อยให้เข้ามาได้ แล้วทุกหน้าตอบว่าไม่มีสิทธิ์ คนที่เจอจะอ่านว่าระบบพัง
+           บอกความจริงตั้งแต่หน้าล็อกอินดีกว่า */
+        throwsReason('no_roles', fn() => Auth::login($u, 'a-strong-password'), 'ล็อกอินโดยไม่มีสิทธิ์');
     });
 });

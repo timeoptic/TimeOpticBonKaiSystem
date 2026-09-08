@@ -58,12 +58,26 @@ function askSecret(string $prompt): string
     return trim((string) $line);
 }
 
-$existing = Db::one('SELECT id, display_name, role FROM admins WHERE username = ?', [$username]);
+/**
+ * ให้บทบาทผู้ดูแลระบบ โดยไม่แตะบทบาทอื่นที่บัญชีนี้ถืออยู่
+ *
+ * บัญชีกู้ระบบมักเป็นบัญชีที่มีอยู่แล้ว — เขียนทับทั้งชุดแปลว่าเจ้าของร้านที่รัน
+ * สคริปต์นี้กับบัญชีตัวเอง จะเสียบทบาทเจ้าของร้านไปเงียบ ๆ
+ */
+function grantSuperuser(int $adminId): void
+{
+    Db::run(
+        'INSERT IGNORE INTO admin_roles (admin_id, role) VALUES (?, ?)',
+        [$adminId, Roles::SUPERUSER],
+    );
+}
+
+$existing = Db::one('SELECT id, display_name FROM admins WHERE username = ?', [$username]);
 
 echo "\nบัญชีผู้ดูแลระบบ\n";
 echo $existing === null
     ? "  จะสร้างบัญชีใหม่ชื่อ “{$username}”\n"
-    : "  มีบัญชีนี้อยู่แล้ว ({$existing['display_name']} · {$existing['role']}) จะเลื่อนเป็นผู้ดูแลระบบและตั้งรหัสผ่านใหม่\n";
+    : "  มีบัญชีนี้อยู่แล้ว ({$existing['display_name']} · " . Roles::text(Auth::rolesOf((int) $existing['id'])) . ") จะเลื่อนเป็นผู้ดูแลระบบและตั้งรหัสผ่านใหม่\n";
 
 $password = askSecret('  รหัสผ่าน (อย่างน้อย 10 ตัว): ');
 if (mb_strlen($password) < 10) {
@@ -88,14 +102,17 @@ if ($existing === null) {
     $id = Users::ensureFor($employeeId, $displayName, null, true);
 
     Db::run(
-        'UPDATE admins SET username = ?, password_hash = ?, role = ?, is_active = 1 WHERE id = ?',
-        [$username, $hash, Roles::SUPERUSER, $id],
+        'UPDATE admins SET username = ?, password_hash = ?, is_active = 1, must_change_password = 0
+          WHERE id = ?',
+        [$username, $hash, $id],
     );
+    grantSuperuser($id);
     echo "\n  สร้างแล้ว — ล็อกอินด้วย “{$username}” ได้เลย\n\n";
 } else {
     Db::run(
-        'UPDATE admins SET password_hash = ?, role = ?, is_active = 1 WHERE id = ?',
-        [$hash, Roles::SUPERUSER, (int) $existing['id']],
+        'UPDATE admins SET password_hash = ?, is_active = 1, must_change_password = 0 WHERE id = ?',
+        [$hash, (int) $existing['id']],
     );
+    grantSuperuser((int) $existing['id']);
     echo "\n  อัปเดตแล้ว — บัญชี “{$username}” เป็นผู้ดูแลระบบและใช้รหัสผ่านใหม่\n\n";
 }

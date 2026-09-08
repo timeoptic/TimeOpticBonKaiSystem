@@ -8,92 +8,290 @@ namespace Optic;
  * The one place that answers "who may do what".
  *
  * A person's `job_title` ("technician", "reception,sales") describes the work
- * they do and is never consulted here. Permission comes from `role` alone, which
- * an owner sets deliberately. Conflating the two is how a new technician quietly
- * ends up able to edit prices.
+ * they do and is never consulted here. Permission comes from the roles an owner
+ * sets deliberately. Conflating the two is how a new technician quietly ends up
+ * able to edit prices.
+ *
+ * ── หนึ่งคนถือได้หลายบทบาท ────────────────────────────────────────────────
+ * ทุกฟังก์ชันในไฟล์นี้รับ **รายการ** บทบาท ไม่ใช่บทบาทเดียว และสิทธิ์ที่ได้คือ
+ * ยูเนียนของทุกบทบาทที่ถือ · ผู้จัดการที่ขายหน้าร้านด้วยดูแลระบบด้วยจึงถือ
+ * sales + admin ได้ตรง ๆ แทนที่จะต้องเลือกอย่างเดียวแล้วเปิดบัญชีที่สองไว้ทำอีกอย่าง
+ *
+ * ── ทำไมเลิกใช้บันไดยศตัดสินสิทธิ์ ────────────────────────────────────────
+ * เดิมทุกคำถามตอบด้วย `rank($role) >= rank(ADMIN)` ซึ่งอ่านง่ายตราบใดที่สิทธิ์
+ * ซ้อนกันเป็นชั้นจริง · โจทย์สองข้อทำให้ไม่จริงอีกต่อไป:
+ *
+ *   · แอดมิน **เห็น** ต้นทุนได้ แต่ **กรอก** ไม่ได้ — สองคำถามนี้เคยเป็นเงื่อนไข
+ *     เดียวกัน ถ้าอันหลังขยับไปเป็นเจ้าของร้านเท่านั้น บันไดต้องมีเงื่อนไขเฉพาะกิจ
+ *     แทรก แล้วมันจะไม่ใช่บันไดอีกต่อไป แต่ยังหน้าตาเหมือนบันได
+ *   · `case.view_all` ไม่ใช่เรื่องยศเลย — พนักงานคลังยศเท่าพนักงานขาย แต่ไม่มี
+ *     สิทธิ์นี้ เพราะทำงานคนละฝั่ง ไม่ใช่เพราะอยู่ต่ำกว่า
+ *
+ * สิทธิ์จึงมีชื่อของตัวเอง (`PERMS`) และบทบาทคือชุดของชื่อพวกนั้น (`GRANTS`)
+ * `rank` ยังอยู่ แต่เหลืองานเดียว: ตอบว่าใครตั้งบทบาทให้ใครได้ ซึ่งเป็นงานที่
+ * docblock ของมันเขียนไว้แต่แรกอยู่แล้ว
  */
 final class Roles
 {
     /** ผม/ผู้ดูแลระบบ — ทุกอย่างที่เจ้าของร้านทำได้ บวกงานระบบที่ร้านไม่ต้องยุ่ง */
     public const SUPERUSER = 'superuser';
     public const OWNER = 'owner';
-    /** แอดมินของทั้งสองฝั่ง — จัดการผู้ใช้ ต้นทุน แดชบอร์ด แต่ไม่ใช่เจ้าของร้าน */
+    /** แอดมินของทั้งสองฝั่ง — จัดการผู้ใช้ แดชบอร์ด เห็นต้นทุน แต่กรอกต้นทุนไม่ได้ */
     public const ADMIN = 'admin';
     /** พนักงานขายหน้าร้าน — เข้าระบบแล้วอยู่ฝั่งหน้าร้าน */
     public const SALES = 'sales';
+    /** เด็กฝึกงานหน้าร้าน — ชุดสิทธิ์เดียวกับพนักงานขายทุกช่อง ต่างกันแค่ป้าย */
+    public const TRAINEE = 'trainee';
     /** พนักงานคลัง — เข้าระบบแล้วอยู่ฝั่งคลัง */
     public const STOCK = 'stock';
 
-    public const ALL = [self::SUPERUSER, self::OWNER, self::ADMIN, self::SALES, self::STOCK];
+    public const ALL = [
+        self::SUPERUSER, self::OWNER, self::ADMIN,
+        self::SALES, self::TRAINEE, self::STOCK,
+    ];
+
+    /** ชื่อที่ใช้เป็นแท็กในตารางผู้ใช้ — สั้น ไม่ตัดบรรทัดเวลามีหลายอัน */
+    public const NAME = [
+        self::SUPERUSER => 'Superuser',
+        self::OWNER     => 'Owner',
+        self::ADMIN     => 'Admin',
+        self::SALES     => 'Sales',
+        self::TRAINEE   => 'Trainee Staff',
+        self::STOCK     => 'Stock',
+    ];
 
     public const LABEL = [
         self::SUPERUSER => 'ผู้ดูแลระบบ',
         self::OWNER     => 'เจ้าของร้าน',
         self::ADMIN     => 'แอดมิน',
         self::SALES     => 'พนักงานขาย',
+        self::TRAINEE   => 'พนักงานฝึกหัด',
         self::STOCK     => 'พนักงานคลัง',
+    ];
+
+    /** คำอธิบายหนึ่งบรรทัดข้างเช็กบ็อกซ์ตอนกำหนดสิทธิ์ */
+    public const NOTE = [
+        self::SUPERUSER => 'ทุกอย่างของเจ้าของร้าน บวกงานระบบ',
+        self::OWNER     => 'เห็นและทำได้ทุกอย่างในร้าน รวมถึงต้นทุน',
+        self::ADMIN     => 'ทุกระบบ เห็นต้นทุนได้ แต่กรอก/แก้ต้นทุนไม่ได้',
+        self::SALES     => 'ระบบหน้าร้านทั้งหมด และดูเคสลูกค้าได้ทุกใบ',
+        self::TRAINEE   => 'เหมือนพนักงานขายทุกอย่าง — ป้ายไว้ให้รายงานอ่านออก',
+        self::STOCK     => 'เฉพาะระบบคลัง ไม่เห็นเคสลูกค้าและไม่เห็นต้นทุน',
     ];
 
     /**
      * ลำดับสิทธิ์ ใช้ตอบคำถามเดียว: ใครตั้งบทบาทให้ใครได้
      *
-     * ไม่ได้แปลว่าบทบาทที่สูงกว่าทำได้ทุกอย่างของบทบาทที่ต่ำกว่าเสมอไป
-     * ความสามารถแต่ละอย่างยังตอบด้วยฟังก์ชันของตัวเองข้างล่าง — ตัวเลขนี้มีไว้
-     * กันการยกระดับตัวเอง: แอดมินตั้งใครเป็นเจ้าของร้านหรือผู้ดูแลระบบไม่ได้
-     * ไม่งั้นสิทธิ์ "จัดการผู้ใช้" กลายเป็นสิทธิ์ "เป็นอะไรก็ได้" ในสองคลิก
+     * ไม่ได้แปลว่าบทบาทที่สูงกว่าทำได้ทุกอย่างของบทบาทที่ต่ำกว่า — คำตอบนั้นอยู่ที่
+     * `GRANTS` ข้างล่าง · ตัวเลขนี้มีไว้กันการยกระดับตัวเอง: แอดมินตั้งใครเป็น
+     * เจ้าของร้านหรือผู้ดูแลระบบไม่ได้ ไม่งั้นสิทธิ์ "จัดการผู้ใช้" กลายเป็นสิทธิ์
+     * "เป็นอะไรก็ได้" ในสองคลิก
      *
-     * พนักงานขายกับพนักงานคลังอยู่ระดับเดียวกัน — คนละงาน ไม่ใช่คนละชั้น
+     * ขาย ฝึกหัด และคลังอยู่ระดับเดียวกัน — คนละงาน ไม่ใช่คนละชั้น
      */
     private const RANK = [
         self::SUPERUSER => 4,
         self::OWNER     => 3,
         self::ADMIN     => 2,
         self::SALES     => 1,
+        self::TRAINEE   => 1,
         self::STOCK     => 1,
     ];
+
+    /* ─────────────────────────────────────────────────────────── สิทธิ์ */
+
+    /**
+     * สิทธิ์ทั้งหมดที่ระบบรู้จัก → [กลุ่ม, สิ่งที่ทำได้, เหตุผลที่กันไว้]
+     *
+     * ลำดับในนี้คือลำดับที่ตารางสิทธิ์บนหน้าจอแสดง และกลุ่มถูกอ่านจากช่องแรก
+     * ไม่ได้ประกาศแยก — ตารางสองชุดที่ต้องเรียงให้ตรงกันเองคือตารางที่วันหนึ่ง
+     * จะไม่ตรงกัน
+     */
+    private const PERMS = [
+        'frontdesk.use' => ['การเข้าถึงระบบ', 'ระบบหน้าร้าน — รับลูกค้า วัดสายตา ขาย ชำระเงิน นัดรับ',
+            'พนักงานคลังไม่มีสิทธิ์นี้ จึงถูกปฏิเสธทั้ง /api ที่ประตู ไม่ใช่แค่ซ่อนเมนู'],
+        'case.view_all' => ['การเข้าถึงระบบ', 'ดู Case ลูกค้าทั้งหมดในระบบ',
+            'ทุกคนที่ทำงานหน้าร้านต้องรับเคสต่อจากกันได้ จึงเห็นทั้งหมด ไม่ใช่เฉพาะของตัวเอง'],
+        'stock.use'     => ['การเข้าถึงระบบ', 'ระบบคลังและต้นทุน', null],
+        'admin.zone'    => ['การเข้าถึงระบบ', 'การเงินร้าน · ข้อมูลระบบ · รายงาน · บันทึกการใช้งาน', null],
+        'users.manage'  => ['การเข้าถึงระบบ', 'จัดการผู้ใช้ · ตั้งรหัสผ่าน',
+            'ตั้งบทบาทได้ไม่เกินบทบาทสูงสุดของตัวเอง — แอดมินตั้งเจ้าของร้านไม่ได้'],
+        'system.manage' => ['การเข้าถึงระบบ', 'งานระบบ · migration · ตั้งค่าที่กระทบทั้งระบบ',
+            'แยกจากสิทธิ์จัดการผู้ใช้ เจ้าของร้านจึงจัดการคนได้โดยไม่ต้องถือสิทธิ์ที่ทำระบบล่มได้'],
+
+        'cost.view'     => ['การมองเห็นข้อมูล', 'ต้นทุน/ชิ้น · มูลค่าคลัง · ต้นทุนขาย',
+            'ตัดออกจากคำตอบของ API ไม่ใช่แค่ซ่อนในหน้าเว็บ'],
+        'branch.money'  => ['การมองเห็นข้อมูล', 'ยอดและกำไรจากสาขา · หน้าค้างรับ',
+            'ทั้งหน้าเป็นตัวเลขเงิน จึงปิดทั้งหน้า ไม่ใช่ปิดเป็นคอลัมน์'],
+
+        'stock.move'    => ['การบันทึกสต็อก', 'เบิก · ตัดของเสีย · คืนของ · รับของเข้า', null],
+        'scrap.blame'   => ['การบันทึกสต็อก', 'ระบุว่าคนอื่นเป็นคนทำของเสีย',
+            'ตัดของเสียที่ตัวเองทำ ทำได้ทุกบทบาท — ที่กันไว้คือการลงชื่อคนอื่น'],
+        'cost.edit'     => ['การบันทึกสต็อก', 'กรอก/แก้ต้นทุน (ตอนรับของ · ล็อต · RX)',
+            'ตัวเลขที่กำไรทั้งร้านคำนวณจากมัน จึงเป็นของเจ้าของร้าน ไม่ใช่ของคนที่บังเอิญคีย์'],
+
+        'product.add'   => ['แคตตาล็อกและเงิน', 'เพิ่มสินค้าใหม่ · เปิดรุ่นเลนส์ใหม่',
+            'ของใหม่ถูกค้นพบตอนทำงาน หน้าร้านจึงเพิ่มได้ — แต่ยังกรอกต้นทุนไม่ได้'],
+        'catalog.edit'  => ['แคตตาล็อกและเงิน', 'แก้ · ลบสินค้า · ลบล็อต',
+            'แก้ SKU หรือลบสินค้าที่ขายมาทั้งปี กระทบประวัติของคนอื่นย้อนหลัง'],
+        'branch.settle' => ['แคตตาล็อกและเงิน', 'บันทึกรับเงินจากสาขา · ตัดหนี้สูญ', null],
+        'branch.manage' => ['แคตตาล็อกและเงิน', 'เพิ่ม · แก้สาขา', null],
+    ];
+
+    /** งานหน้าร้านล้วน — ประกาศแยกไว้เพราะสองบทบาทใช้ชุดนี้ร่วมกันทั้งชุด */
+    private const FLOOR = ['frontdesk.use', 'case.view_all', 'stock.move', 'product.add'];
+
+    /** งานคลังล้วน */
+    private const WAREHOUSE = ['stock.use', 'stock.move', 'product.add'];
+
+    /**
+     * บทบาท → ชุดสิทธิ์ · สิทธิ์จริงของคนหนึ่งคนคือยูเนียนของทุกบทบาทที่ถือ
+     *
+     * เขียนซ้อนกันด้วย `...` ไม่ใช่คัดลอกรายการ — วันที่แอดมินได้สิทธิ์ใหม่หนึ่งข้อ
+     * เจ้าของร้านต้องได้ตามโดยไม่ต้องมีใครจำได้ · และ trainee อ้าง `FLOOR` ตัวเดียว
+     * กับ sales จริง ๆ จึงไม่มีวันที่สองบทบาทนี้หลุดจากกันโดยไม่ตั้งใจ
+     */
+    private const GRANTS = [
+        self::SALES   => self::FLOOR,
+        self::TRAINEE => self::FLOOR,
+        self::STOCK   => self::WAREHOUSE,
+        self::ADMIN   => [
+            ...self::FLOOR, ...self::WAREHOUSE,
+            'admin.zone', 'users.manage', 'cost.view', 'branch.money',
+            'catalog.edit', 'branch.settle',
+        ],
+        self::OWNER => [
+            ...self::FLOOR, ...self::WAREHOUSE,
+            'admin.zone', 'users.manage', 'cost.view', 'branch.money',
+            'catalog.edit', 'branch.settle',
+            'cost.edit', 'scrap.blame', 'branch.manage',
+        ],
+        self::SUPERUSER => [
+            ...self::FLOOR, ...self::WAREHOUSE,
+            'admin.zone', 'users.manage', 'cost.view', 'branch.money',
+            'catalog.edit', 'branch.settle',
+            'cost.edit', 'scrap.blame', 'branch.manage',
+            'system.manage',
+        ],
+    ];
+
+    /* ───────────────────────────────────────────────── ถามเรื่องบทบาท */
 
     public static function isRole(mixed $v): bool
     {
         return is_string($v) && in_array($v, self::ALL, true);
     }
 
-    public static function rank(string $role): int
+    /**
+     * เก็บเฉพาะบทบาทที่ระบบรู้จัก แล้วเรียงจากสิทธิ์มากไปน้อย
+     *
+     * ทุกทางเข้าของไฟล์นี้ผ่านตรงนี้ก่อน — ค่าที่หลุดมาจากฐานรุ่นเก่า จาก session
+     * ที่ค้าง หรือจาก body ที่ใครส่งมา จึงกลายเป็น "ไม่มีบทบาท" แทนที่จะกลายเป็น
+     * บทบาทที่ไม่มีใครนิยามไว้แล้ววิ่งต่อไปเงียบ ๆ
+     *
+     * @param list<string> $roles @return list<string>
+     */
+    public static function clean(array $roles): array
     {
-        return self::RANK[$role] ?? 0;
+        $out = array_values(array_unique(array_filter($roles, self::isRole(...))));
+        usort($out, static fn(string $a, string $b) => self::RANK[$b] <=> self::RANK[$a]
+            ?: array_search($a, self::ALL, true) <=> array_search($b, self::ALL, true));
+        return $out;
+    }
+
+    /** ยศของคนหนึ่งคน = ยศสูงสุดของบทบาทที่ถือ · ไม่ถืออะไรเลย = 0 */
+    public static function rank(array $roles): int
+    {
+        $best = 0;
+        foreach ($roles as $r) {
+            $best = max($best, self::RANK[$r] ?? 0);
+        }
+        return $best;
     }
 
     /**
-     * ผู้ที่มีบทบาท `$actor` ตั้งบัญชีให้เป็นบทบาท `$target` ได้หรือไม่
+     * ผู้ที่ถือ `$actorRoles` ตั้งบทบาท `$target` ให้คนอื่นได้หรือไม่
      *
-     * ตั้งได้เฉพาะบทบาทที่ต่ำกว่าตัวเอง หรือเท่ากับตัวเอง — เจ้าของร้านตั้ง
-     * เจ้าของร้านคนที่สองได้ (ร้านต้องมีคนสำรอง) แต่แอดมินตั้งเจ้าของร้านไม่ได้
+     * ตั้งได้เฉพาะบทบาทที่ยศไม่เกินยศสูงสุดของตัวเอง — เจ้าของร้านตั้งเจ้าของร้าน
+     * คนที่สองได้ (ร้านต้องมีคนสำรอง) แต่แอดมินตั้งเจ้าของร้านไม่ได้
+     *
+     * @param list<string> $actorRoles
      */
-    public static function canGrant(string $actorRole, string $targetRole): bool
+    public static function canGrant(array $actorRoles, string $target): bool
     {
-        return self::isRole($targetRole) && self::rank($targetRole) <= self::rank($actorRole);
+        return self::isRole($target) && self::RANK[$target] <= self::rank($actorRoles);
+    }
+
+    /** @param list<string> $roles @return list<string> */
+    public static function namesOf(array $roles): array
+    {
+        return array_map(static fn(string $r): string => self::NAME[$r] ?? $r, $roles);
+    }
+
+    /** "Owner + Admin" — คอลัมน์ Role ในตาราง และ actor_role ในบันทึกการใช้งาน */
+    public static function text(array $roles): string
+    {
+        return $roles === [] ? '' : implode(' + ', self::namesOf($roles));
+    }
+
+    /* ───────────────────────────────────────────────── ถามเรื่องสิทธิ์ */
+
+    /** @param list<string> $roles */
+    public static function has(array $roles, string $perm): bool
+    {
+        foreach ($roles as $r) {
+            if (in_array($perm, self::GRANTS[$r] ?? [], true)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
-     * งานของระบบ ไม่ใช่งานของร้าน — migration, การตั้งค่าที่พังทั้งระบบได้
+     * ยูเนียนของทุกบทบาทที่ถือ เรียงตามลำดับใน `PERMS`
      *
-     * แยกจาก manageAdmins เพราะเจ้าของร้านควรจัดการคนของตัวเองได้เต็มที่
-     * โดยไม่ต้องถือสิทธิ์ที่ทำให้ระบบล่มได้ด้วยการกดผิด
+     * หน้าเว็บใช้ตัวนี้ตัดสินว่าจะวาดเมนูไหน แทนที่จะถือสำเนาของกฎไว้อีกชุดแล้ว
+     * ลืมแก้ตอนเพิ่มบทบาท · เป็นมารยาท ไม่ใช่ด่าน — ด่านจริงคือฟังก์ชันข้างล่าง
+     * ที่ API เรียกทุกคำขอ
+     *
+     * @param list<string> $roles @return list<string>
      */
-    public static function manageSystem(string $role): bool
+    public static function permsOf(array $roles): array
     {
-        return $role === self::SUPERUSER;
+        return array_values(array_filter(
+            array_keys(self::PERMS),
+            static fn(string $p): bool => self::has($roles, $p),
+        ));
     }
 
-    public static function manageAdmins(string $role): bool
-    {
-        return $role === self::SUPERUSER || $role === self::OWNER || $role === self::ADMIN;
-    }
+    /* ─────────────────────────────────── ความสามารถ — ชื่อที่ call site ใช้
+       เปลือกบาง ๆ ของ has() ทั้งหมด · เก็บไว้เพราะ `Roles::seeCost($roles)` ที่
+       จุดเรียกอ่านออกว่ากันอะไรอยู่ ส่วน `has($roles, 'cost.view')` อ่านออกว่า
+       ไปดูที่ไหนต่อ — ทั้งสองอย่างมีค่า จึงมีทั้งสองอย่าง */
 
-    /** Anything that touches money: RX_ORDER unit_cost and a lot's cost_per_unit. */
-    public static function enterRxCost(string $role): bool
-    {
-        return self::rank($role) >= self::RANK[self::ADMIN];
-    }
+    /** @param list<string> $roles */
+    public static function useFrontdesk(array $roles): bool { return self::has($roles, 'frontdesk.use'); }
+    /** @param list<string> $roles */
+    public static function viewAllCases(array $roles): bool { return self::has($roles, 'case.view_all'); }
+    /** @param list<string> $roles */
+    public static function useStock(array $roles): bool { return self::has($roles, 'stock.use'); }
+    /** งานของแอดมิน — เงินของร้าน ข้อมูลระบบ รายงาน ล็อก @param list<string> $roles */
+    public static function adminZone(array $roles): bool { return self::has($roles, 'admin.zone'); }
+    /** @param list<string> $roles */
+    public static function manageAdmins(array $roles): bool { return self::has($roles, 'users.manage'); }
+    /** งานของระบบ ไม่ใช่งานของร้าน @param list<string> $roles */
+    public static function manageSystem(array $roles): bool { return self::has($roles, 'system.manage'); }
+
+    /**
+     * Anything that touches money: RX_ORDER unit_cost and a lot's cost_per_unit.
+     *
+     * เจ้าของร้านเท่านั้น · แอดมินเห็นตัวเลขได้ (`seeCost`) แต่เป็นคนตั้งมันไม่ได้ —
+     * กำไรทั้งร้านคำนวณจากช่องนี้ คนที่รับผิดชอบตัวเลขกับคนที่บังเอิญเป็นคนคีย์
+     * ของเข้าคลัง ไม่จำเป็นต้องเป็นคนเดียวกัน
+     *
+     * @param list<string> $roles
+     */
+    public static function enterRxCost(array $roles): bool { return self::has($roles, 'cost.edit'); }
 
     /**
      * Seeing what things cost us — as opposed to what they sell for.
@@ -105,28 +303,23 @@ final class Roles
      *
      * The selling price is a different thing and stays visible to everyone —
      * quoting it is the job.
+     *
+     * @param list<string> $roles
      */
-    public static function seeCost(string $role): bool
-    {
-        return self::rank($role) >= self::RANK[self::ADMIN];
-    }
+    public static function seeCost(array $roles): bool { return self::has($roles, 'cost.view'); }
 
     /**
      * Money owed by other branches, and the profit on it.
      *
      * Narrower than seeCost only in intent; kept as its own question so that
      * loosening one does not silently loosen the other.
+     *
+     * @param list<string> $roles
      */
-    public static function seeBranchMoney(string $role): bool
-    {
-        return self::rank($role) >= self::RANK[self::ADMIN];
-    }
+    public static function seeBranchMoney(array $roles): bool { return self::has($roles, 'branch.money'); }
 
-    /** Product master data — SKU, price, category, lens spec. */
-    public static function editCatalog(string $role): bool
-    {
-        return self::rank($role) >= self::RANK[self::ADMIN];
-    }
+    /** Product master data — SKU, price, category, lens spec. @param list<string> $roles */
+    public static function editCatalog(array $roles): bool { return self::has($roles, 'catalog.edit'); }
 
     /**
      * เพิ่มสินค้าที่ยังไม่มีในแคตตาล็อก — คนละคำถามกับการแก้ของที่มีอยู่
@@ -136,30 +329,15 @@ final class Roles
      * ถ้าเพิ่มไม่ได้ ทางออกของพนักงานคือเลือกของผิดตัวที่ใกล้เคียงที่สุด หรือไม่
      * บันทึกอะไรเลย — ทั้งสองทางทำให้ตัวเลขในระบบผิดกว่าการมี SKU เกินมาหนึ่งตัว
      *
-     * แยกจาก `editCatalog` เพราะการ *แก้* กับ *ลบ* ของที่มีอยู่แล้วเป็นคนละเรื่อง:
-     * แก้ SKU หรือลบสินค้าที่ขายมาทั้งปี กระทบประวัติของคนอื่นย้อนหลัง ส่วนของ
-     * ที่เพิ่งเพิ่มยังไม่มีประวัติให้กระทบ · ต้นทุนก็ยังเป็นสิทธิ์ของตัวเอง
-     * (`enterRxCost`) พนักงานขายจึงเพิ่มสินค้าได้โดยไม่เห็นและไม่กรอกต้นทุน
+     * @param list<string> $roles
      */
-    public static function addProduct(string $role): bool
-    {
-        return self::isRole($role);
-    }
+    public static function addProduct(array $roles): bool { return self::has($roles, 'product.add'); }
 
-    /**
-     * Recording stock movements. Every valid role may do this today; the check
-     * stays so the call sites read the same as the others when it tightens.
-     */
-    public static function moveStock(string $role): bool
-    {
-        return self::isRole($role);
-    }
+    /** Recording stock movements. @param list<string> $roles */
+    public static function moveStock(array $roles): bool { return self::has($roles, 'stock.move'); }
 
-    /** The list of branches stock may be lent to. Only an owner decides that. */
-    public static function manageBranches(string $role): bool
-    {
-        return $role === self::SUPERUSER || $role === self::OWNER;
-    }
+    /** The list of branches stock may be lent to. Only an owner decides that. @param list<string> $roles */
+    public static function manageBranches(array $roles): bool { return self::has($roles, 'branch.manage'); }
 
     /**
      * Writing down that the ruined material was someone else's doing.
@@ -171,166 +349,81 @@ final class Roles
      * for the shop. Left open to everyone it would be worth nothing as
      * evidence, because the cheapest way to keep your own tally clean would be
      * to type somebody else's name.
+     *
+     * @param list<string> $roles
      */
-    public static function blameScrap(string $role): bool
-    {
-        return $role === self::SUPERUSER || $role === self::OWNER;
-    }
-
-    /**
-     * หน้าแรกหลังล็อกอินของแต่ละบทบาท
-     *
-     * พนักงานขายมีงานเดียวและมีฝั่งเดียว จึงส่งเข้าไปให้ถึงที่ทำงานเลย — คนที่
-     * เปิดระบบวันละสามสิบครั้งไม่ควรต้องเลือกเมนูเดิมทุกครั้ง
-     *
-     * ที่เหลือเข้าแดชบอร์ดของฝั่งคลัง · เดิมพนักงานคลังลงที่หน้าเบิก และคนที่ทำงาน
-     * ทั้งสองฝั่งลงที่หน้าเลือกระบบ — หน้าเลือกระบบเป็นหน้าที่ทุกคนกดผ่านไปเฉย ๆ
-     * ทุกครั้ง ส่วนหน้าเบิกตอบว่า "จะทำอะไรต่อ" ทั้งที่คำถามแรกของวันคือ "เมื่อคืน
-     * เกิดอะไรขึ้นบ้าง" ซึ่งเป็นคำถามของแดชบอร์ด
-     *
-     * หน้าเลือกระบบยังอยู่ที่ /hub/ และยังมีปุ่มในเมนู สำหรับตอนที่จะข้ามฝั่งจริง ๆ
-     *
-     * เป็นเส้นทางของหน้าเว็บ ไม่ใช่ของ API — อยู่ที่นี่เพราะเป็นคำตอบของ
-     * "บทบาทนี้ทำงานฝั่งไหน" ซึ่งเป็นคำถามเดียวกับที่ทั้งไฟล์นี้ตอบ
-     */
-    public static function home(string $role): string
-    {
-        return match ($role) {
-            self::SALES => '/',
-            default     => '/stock/dashboard/',
-        };
-    }
+    public static function blameScrap(array $roles): bool { return self::has($roles, 'scrap.blame'); }
 
     /**
      * Writing down the money a branch sent back.
      *
-     * Same permission as entering a cost, and for the same reason: the amount
-     * keyed here is what the profit is computed from, so it belongs to whoever
-     * is answerable for the books rather than to whoever handed over the goods.
+     * @param list<string> $roles
      */
-    public static function settleBranch(string $role): bool
-    {
-        return self::rank($role) >= self::RANK[self::ADMIN];
-    }
+    public static function settleBranch(array $roles): bool { return self::has($roles, 'branch.settle'); }
 
     /**
-     * The whole permission table, answered by the same functions that enforce it.
+     * หน้าแรกหลังล็อกอิน
      *
-     * Every cell below is produced by calling the real capability check, not by
-     * writing the answer down a second time. A hand-kept copy of this table would
-     * be right the day it was written and quietly wrong after the first change —
-     * and a permissions screen that lies is worse than no permissions screen,
-     * because someone will trust it.
+     * คนที่ทำงานฝั่งเดียวถูกส่งเข้าไปให้ถึงที่ทำงานเลย — คนที่เปิดระบบวันละสามสิบ
+     * ครั้งไม่ควรต้องเลือกเมนูเดิมทุกครั้ง · คนที่ทำได้ทั้งสองฝั่งลงที่แดชบอร์ด
+     * ของฝั่งคลัง ซึ่งตอบคำถามแรกของวันว่า "เมื่อคืนเกิดอะไรขึ้นบ้าง" · หน้าเลือก
+     * ระบบยังอยู่ที่ /hub/ และยังมีปุ่มในเมนู สำหรับตอนที่จะข้ามฝั่งจริง ๆ
      *
-     * `always` marks the things every signed-in role can do. They have no check
-     * of their own precisely because there is nothing to decide; saying so out
-     * loud is more useful than leaving them off the table.
+     * เป็นเส้นทางของหน้าเว็บ ไม่ใช่ของ API — อยู่ที่นี่เพราะเป็นคำตอบของ
+     * "คนนี้ทำงานฝั่งไหน" ซึ่งเป็นคำถามเดียวกับที่ทั้งไฟล์นี้ตอบ
+     *
+     * @param list<string> $roles
+     */
+    public static function home(array $roles): string
+    {
+        return self::useStock($roles) ? '/stock/dashboard/' : '/';
+    }
+
+    /* ─────────────────────────────────────────────────────── ตารางสิทธิ์ */
+
+    /**
+     * The whole permission table, built from the same map that enforces it.
+     *
+     * ทุกช่องมาจาก `GRANTS` ตัวเดียวกับที่ `has()` ใช้ตอบทุกคำขอ · ตารางที่พิมพ์
+     * คำตอบไว้ซ้ำจะถูกวันแรกแล้วผิดเงียบ ๆ หลังการแก้ครั้งแรก — และหน้าจอสิทธิ์
+     * ที่โกหกแย่กว่าไม่มีหน้าจอสิทธิ์ เพราะจะมีคนเชื่อมัน
      *
      * @return array<string,mixed>
      */
     public static function policy(): array
     {
-        /** @var array<string,array{title:string,rows:list<array{label:string,cap:?string,note?:string}>}> $groups */
-        $groups = [
-            [
-                'title' => 'การมองเห็นข้อมูล',
-                'rows' => [
-                    [
-                        'label' => 'สินค้า · ยอดคงเหลือ · ราคาขาย',
-                        'cap' => null,
-                        'note' => 'พนักงานต้องใช้ราคาขายในการขาย จึงเห็นได้ทุกบทบาท',
-                    ],
-                    [
-                        'label' => 'ล็อต · ความเคลื่อนไหว · ใครเบิก',
-                        'cap' => null,
-                        'note' => 'สมุดสต็อกเปิดให้ทุกคนอ่าน เพื่อให้ตรวจสอบกันเองได้',
-                    ],
-                    [
-                        'label' => 'ต้นทุน/ชิ้น · มูลค่าคลัง · ต้นทุนขาย',
-                        'cap' => 'seeCost',
-                        'note' => 'ตัดออกจากคำตอบของ API ไม่ใช่แค่ซ่อนในหน้าเว็บ',
-                    ],
-                    [
-                        'label' => 'ยอดและกำไรจากสาขา · หน้าค้างรับ',
-                        'cap' => 'seeBranchMoney',
-                        'note' => 'ทั้งหน้าเป็นตัวเลขเงิน จึงปิดทั้งหน้า ไม่ใช่ปิดเป็นคอลัมน์',
-                    ],
-                    [
-                        'label' => 'รายชื่อผู้ใช้และสิทธิ์',
-                        'cap' => 'manageAdmins',
-                    ],
-                ],
-            ],
-            [
-                'title' => 'การบันทึกสต็อก',
-                'rows' => [
-                    ['label' => 'เบิก · ตัดของเสีย · คืนของ', 'cap' => 'moveStock'],
-                    [
-                        'label' => 'ระบุว่าคนอื่นเป็นคนทำของเสีย',
-                        'cap' => 'blameScrap',
-                        'note' => 'ตัดของเสียที่ตัวเองทำ ทำได้ทุกบทบาท — ที่กันไว้คือการลงชื่อคนอื่น',
-                    ],
-                    ['label' => 'รับของเข้าคลัง · ปรับยอดล็อต', 'cap' => 'moveStock'],
-                    ['label' => 'เปิดใบสั่งตัด RX', 'cap' => 'moveStock'],
-                    [
-                        'label' => 'กรอกต้นทุน (ตอนรับของ · ล็อต · RX)',
-                        'cap' => 'enterRxCost',
-                        'note' => 'แยกจากการขยับสต็อก — ตัวเลขที่เป็นเงินคนละสิทธิ์กัน',
-                    ],
-                ],
-            ],
-            [
-                'title' => 'แคตตาล็อกและเงิน',
-                'rows' => [
-                    [
-                        'label' => 'เพิ่มสินค้าใหม่ · เปิดรุ่นเลนส์ใหม่',
-                        'cap' => 'addProduct',
-                        'note' => 'ของใหม่ถูกค้นพบตอนทำงาน หน้าร้านจึงเพิ่มได้ — แต่ยังกรอกต้นทุนไม่ได้',
-                    ],
-                    ['label' => 'แก้ · ลบสินค้า · ลบล็อต', 'cap' => 'editCatalog'],
-                    ['label' => 'บันทึกรับเงินจากสาขา · ตัดหนี้สูญ', 'cap' => 'settleBranch'],
-                    ['label' => 'เพิ่ม · แก้สาขา', 'cap' => 'manageBranches'],
-                    [
-                        'label' => 'จัดการผู้ใช้ · ตั้งรหัสผ่าน',
-                        'cap' => 'manageAdmins',
-                        'note' => 'ตั้งบทบาทได้ไม่เกินบทบาทของตัวเอง — แอดมินตั้งเจ้าของร้านไม่ได้',
-                    ],
-                    [
-                        'label' => 'งานระบบ · migration · ตั้งค่าที่กระทบทั้งระบบ',
-                        'cap' => 'manageSystem',
-                        'note' => 'แยกจากสิทธิ์จัดการผู้ใช้ เจ้าของร้านจึงจัดการคนได้โดยไม่ต้องถือสิทธิ์ที่ทำระบบล่มได้',
-                    ],
-                ],
-            ],
-        ];
-
-        $out = [];
-        foreach ($groups as $group) {
-            $rows = [];
-            foreach ($group['rows'] as $row) {
-                $allow = [];
-                foreach (self::ALL as $role) {
-                    // The table is the enforcement, called once per cell.
-                    $allow[$role] = $row['cap'] === null
-                        ? true
-                        : (bool) self::{$row['cap']}($role);
-                }
-                $rows[] = [
-                    'label'  => $row['label'],
-                    'note'   => $row['note'] ?? null,
-                    'always' => $row['cap'] === null,
-                    'allow'  => $allow,
-                ];
+        $groups = [];
+        foreach (self::PERMS as $perm => [$group, $label, $note]) {
+            $allow = [];
+            foreach (self::ALL as $role) {
+                $allow[$role] = self::has([$role], $perm);
             }
-            $out[] = ['title' => $group['title'], 'rows' => $rows];
+            $groups[$group][] = [
+                'perm'   => $perm,
+                'label'  => $label,
+                'note'   => $note,
+                /* จริงกับทุกบทบาท = ไม่มีอะไรให้ตัดสิน · หน้าจอวาดต่างออกไป
+                   แทนที่จะวาดแถวเครื่องหมายถูกหกอันที่ไม่ได้บอกอะไร */
+                'always' => !in_array(false, $allow, true),
+                'allow'  => $allow,
+            ];
         }
 
         return [
             'roles' => array_map(
-                static fn(string $r): array => ['key' => $r, 'label' => self::LABEL[$r]],
+                static fn(string $r): array => [
+                    'key'   => $r,
+                    'name'  => self::NAME[$r],
+                    'label' => self::LABEL[$r],
+                    'note'  => self::NOTE[$r],
+                    'rank'  => self::RANK[$r],
+                ],
                 self::ALL,
             ),
-            'groups' => $out,
+            'groups' => array_map(
+                static fn(string $title): array => ['title' => $title, 'rows' => $groups[$title]],
+                array_keys($groups),
+            ),
         ];
     }
 

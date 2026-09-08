@@ -43,7 +43,7 @@ function aStockedProduct(int $qty, int $minStock = 0): array
         'base_selling_price' => '1200.00',
         'min_stock'          => $minStock,
         'is_custom_made'     => false,
-    ], Roles::OWNER);
+    ], [Roles::OWNER]);
 
     if ($qty > 0) {
         Receiving::receive([
@@ -51,7 +51,7 @@ function aStockedProduct(int $qty, int $minStock = 0): array
             'quantity'      => $qty,
             'cost_per_unit' => '400.00',
             'received_date' => date('Y-m-d'),
-        ], Roles::OWNER, 1);
+        ], [Roles::OWNER], 1);
     }
 
     return ['sku' => $sku, 'id' => (int) Db::value('SELECT id FROM products WHERE sku = ?', [$sku])];
@@ -122,7 +122,7 @@ test('รับของเข้าแล้วแถวหายจากร�
             'quantity'      => 3,
             'cost_per_unit' => '100.00',
             'received_date' => date('Y-m-d'),
-        ], Roles::OWNER, 1);
+        ], [Roles::OWNER], 1);
 
         eq(Stock::availability($p['sku'])['on_hand'], 0, 'หักกลบหมดพอดี');
         /* ล็อตค้างส่งยังอยู่ ยอดเป็นศูนย์ — ตัวกรองที่ดูชื่อล็อตจะยังเห็นแถวนี้ */
@@ -168,7 +168,7 @@ test('ของที่ขายไปก่อนของมาถึง ไ�
             'quantity'      => 5,
             'cost_per_unit' => '77.00',
             'received_date' => date('Y-m-d'),
-        ], Roles::OWNER, 1);
+        ], [Roles::OWNER], 1);
 
         $lot = Db::one('SELECT cost_per_unit FROM stock_lots WHERE id = ?', [(int) $short['id']]);
         eq(round((float) $lot['cost_per_unit'], 2), 77.0, 'ล็อตค้างส่งต้องได้ต้นทุนของกล่องที่มาจ่ายหนี้');
@@ -197,7 +197,7 @@ test('ของมาถึงโดยยังไม่รู้ต้นท�
             'quantity'      => 3,
             'cost_per_unit' => null,
             'received_date' => date('Y-m-d'),
-        ], Roles::OWNER, 1);
+        ], [Roles::OWNER], 1);
 
         $lot = Db::one('SELECT cost_per_unit FROM stock_lots WHERE id = ?', [(int) $short['id']]);
         eq($lot['cost_per_unit'], null, 'ไม่รู้ต้นทุนก็ยังไม่รู้ ไม่ใช่ศูนย์บาท');
