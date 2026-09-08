@@ -108,6 +108,75 @@ final class Users
         );
     }
 
+    /**
+     * แถวใน `admins` ของพนักงานคนนี้ — สร้างให้ถ้ายังไม่มี
+     *
+     * เรียกซ้ำได้โดยไม่เปลี่ยนอะไร เพราะมันตอบคำถาม "คนนี้มีตัวตนในระบบบัญชีหรือยัง"
+     * ไม่ใช่ "เอาค่าพวกนี้ไปเขียนทับ" — การเขียนทับเป็นงานของ syncFromEmployee()
+     *
+     * ไม่ตรวจสิทธิ์ เพราะแถวที่มันสร้างเข้าระบบไม่ได้ (ไม่มี username ไม่มีรหัสผ่าน)
+     * การเพิ่มพนักงานจึงไม่ใช่การให้สิทธิ์ · ด่านสิทธิ์อยู่ที่เส้นทางที่เรียกมัน
+     */
+    public static function ensureFor(int $employeeId, string $displayName, ?string $jobTitle, bool $active): int
+    {
+        $existing = Db::value('SELECT id FROM admins WHERE employee_id = ?', [$employeeId]);
+        if ($existing !== null) {
+            return (int) $existing;
+        }
+
+        if (Db::value('SELECT id FROM employees WHERE id = ?', [$employeeId]) === null) {
+            throw ApiError::notFound('ไม่พบพนักงานที่จะผูกบัญชี');
+        }
+
+        Db::run(
+            'INSERT INTO admins (employee_id, display_name, job_title, role, is_active)
+             VALUES (?, ?, ?, ?, ?)',
+            [
+                $employeeId,
+                mb_substr(trim($displayName), 0, 255),
+                self::jobTitleOf($jobTitle),
+                Roles::SALES,
+                $active ? 1 : 0,
+            ],
+        );
+
+        return (int) Db::value('SELECT LAST_INSERT_ID()');
+    }
+
+    /**
+     * พนักงานถูกแก้ที่หน้าพนักงาน — บัญชีของเขาตามไปด้วย
+     *
+     * ทางเดียว: ปิดพนักงานปิดบัญชีตาม แต่เปิดพนักงานกลับไม่เปิดบัญชีคืน · กลับมา
+     * ทำงานไม่ได้แปลว่าได้สิทธิ์เดิมคืนเงียบ ๆ — คนที่เคยเป็นแอดมินแล้วออกไป
+     * กลับมาเป็นพนักงานชั่วคราวได้ และวันนั้นสิทธิ์แอดมินต้องไม่คืนมาเอง
+     */
+    public static function syncFromEmployee(
+        int $employeeId,
+        string $displayName,
+        ?string $jobTitle,
+        bool $active,
+        int $actorId,
+    ): void {
+        $id = self::ensureFor($employeeId, $displayName, $jobTitle, $active);
+        $row = Db::one('SELECT id, role, is_active FROM admins WHERE id = ?', [$id]);
+
+        $wasActive = (bool) $row['is_active'];
+        if (!$active && $wasActive) {
+            self::requireNotSelf($id, $actorId, 'ปิดใช้งานพนักงานที่เป็นบัญชีของตัวเองไม่ได้');
+            self::requireOwnerRemains($id, (string) $row['role']);
+        }
+
+        Db::run(
+            'UPDATE admins SET display_name = ?, job_title = ?, is_active = ? WHERE id = ?',
+            [
+                mb_substr(trim($displayName), 0, 255),
+                self::jobTitleOf($jobTitle),
+                $active ? ($wasActive ? 1 : 0) : 0,
+                $id,
+            ],
+        );
+    }
+
     /** @param array<string,mixed> $req @return array<string,mixed> */
     public static function create(array $req, string $role): array
     {
@@ -287,6 +356,49 @@ final class Users
     private static function requireReach(string $actorRole, string $targetRole, string $what): void
     {
         Roles::require(Roles::rank($targetRole) <= Roles::rank($actorRole), $what);
+    }
+
+    /** หน้าที่ที่คัดลอกมาจาก `employees.roles` — ช่องปลายทางแคบกว่า 80 ตัว */
+    private static function jobTitleOf(?string $v): ?string
+    {
+        $v = $v === null ? '' : trim($v);
+        return $v === '' ? null : mb_substr($v, 0, 120);
+    }
+
+    /** ล็อกตัวเองออกจากระบบเป็นความผิดพลาดเดียวที่แก้จากในแอปไม่ได้ */
+    private static function requireNotSelf(int $id, int $actorId, string $why): void
+    {
+        if ($id === $actorId) {
+            throw ApiError::conflict('self_lockout', $why);
+        }
+    }
+
+    /**
+     * ร้านต้องเหลือเจ้าของร้านอย่างน้อยหนึ่งคนเสมอ
+     *
+     * `$signInOnly` แยกสองคำถามที่ไม่เหมือนกันจริง ๆ: การปิดบัญชีถามว่า "ยังเหลือ
+     * เจ้าของที่ใช้งานอยู่ไหม" ส่วนการยกเลิกบัญชีถามว่า "ยังเหลือเจ้าของที่ล็อกอิน
+     * เข้ามาได้ไหม" — แถวที่ is_active = 1 แต่ไม่มีรหัสผ่านนับเป็นข้อแรกแต่ไม่นับ
+     * เป็นข้อหลัง และการนับผิดข้อคือการล็อกทุกคนออกจากร้านโดยที่ระบบบอกว่าผ่าน
+     */
+    private static function requireOwnerRemains(int $id, string $role, bool $signInOnly = false): void
+    {
+        if ($role !== Roles::OWNER) {
+            return;
+        }
+        $extra = $signInOnly ? ' AND username IS NOT NULL AND password_hash IS NOT NULL' : '';
+        $others = (int) Db::value(
+            "SELECT COUNT(*) FROM admins WHERE role = 'owner' AND is_active = 1{$extra} AND id <> ?",
+            [$id],
+        );
+        if ($others === 0) {
+            throw ApiError::conflict(
+                'last_owner',
+                $signInOnly
+                    ? 'ต้องเหลือเจ้าของร้านที่เข้าระบบได้อย่างน้อยหนึ่งคน'
+                    : 'ต้องเหลือเจ้าของร้านที่ใช้งานได้อย่างน้อยหนึ่งคน',
+            );
+        }
     }
 
     /** @param array<string,mixed> $req */

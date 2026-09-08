@@ -423,3 +423,133 @@ test('ลบคนที่ไม่มีอยู่จริง ตอบว�
         throwsReason('not_found', fn() => Users::delete(999999, Roles::OWNER, 1), 'ลบ id ที่ไม่มี');
     });
 });
+
+/**
+ * พนักงานหนึ่งคนสำหรับเคสที่ต้องมีตัวตนรองรับบัญชี
+ *
+ * สร้างใหม่ทุกครั้งแทนการหยิบแถวแรกจากฐาน — เคสที่แก้พนักงานที่มีอยู่จริงจะ
+ * ทำให้เคสอื่นที่หยิบแถวเดียวกันล้มแบบสลับไปมา และ withRollback() ย้อนคืนให้อยู่แล้ว
+ */
+function anEmployee(string $name, bool $active = true, ?string $roles = null): int
+{
+    Db::run(
+        'INSERT INTO employees (employee_name, roles, active) VALUES (?, ?, ?)',
+        [$name, $roles, $active ? 1 : 0],
+    );
+    return (int) Db::value('SELECT LAST_INSERT_ID()');
+}
+
+group('พนักงานคือข้อมูลหลัก');
+
+test('เพิ่มพนักงานแล้วได้แถวบัญชีที่ยังเข้าระบบไม่ได้', function () {
+    withRollback(function () {
+        $emp = anEmployee('ช่างใหม่', true, 'technician');
+        $id = Users::ensureFor($emp, 'ช่างใหม่', 'technician', true);
+
+        $row = Db::one('SELECT * FROM admins WHERE id = ?', [$id]);
+        eq((int) $row['employee_id'], $emp, 'ผูกกับพนักงานคนที่สร้าง');
+        eq($row['username'], null, 'ยังไม่มีชื่อผู้ใช้');
+        eq($row['password_hash'], null, 'ยังไม่มีรหัสผ่าน');
+        eq($row['display_name'], 'ช่างใหม่', 'ชื่อที่แสดงคัดลอกมาจากพนักงาน');
+        eq($row['job_title'], 'technician', 'หน้าที่คัดลอกมาจากพนักงาน');
+        eq((int) $row['is_active'], 1, 'เปิดใช้งานตามพนักงาน');
+    });
+});
+
+test('เรียกซ้ำไม่สร้างแถวที่สอง', function () {
+    withRollback(function () {
+        $emp = anEmployee('เรียกซ้ำ');
+        $first = Users::ensureFor($emp, 'เรียกซ้ำ', null, true);
+        $again = Users::ensureFor($emp, 'ชื่ออื่น', 'x', false);
+
+        eq($again, $first, 'คืน id เดิม');
+        eq((int) Db::value('SELECT COUNT(*) FROM admins WHERE employee_id = ?', [$emp]), 1, 'มีแถวเดียว');
+        eq(
+            Db::value('SELECT display_name FROM admins WHERE id = ?', [$first]),
+            'เรียกซ้ำ',
+            'ไม่แก้ของเดิม — การแก้เป็นงานของ syncFromEmployee',
+        );
+    });
+});
+
+test('สร้างบัญชีให้พนักงานที่ไม่มีอยู่ไม่ได้', function () {
+    withRollback(function () {
+        throwsReason(
+            'not_found',
+            fn() => Users::ensureFor(999999999, 'ผี', null, true),
+            'ผูกกับพนักงานที่ไม่มีอยู่',
+        );
+    });
+});
+
+test('ปิดพนักงานแล้วบัญชีถูกปิดตาม และล็อกอินไม่ได้ทันที', function () {
+    withRollback(function () {
+        $u = uname();
+        $emp = anEmployee('จะลาออก');
+        $id = Users::ensureFor($emp, 'จะลาออก', null, true);
+        Db::run(
+            'UPDATE admins SET username = ?, password_hash = ? WHERE id = ?',
+            [$u, Auth::hashPassword('a-strong-password'), $id],
+        );
+        Auth::login($u, 'a-strong-password');
+
+        Users::syncFromEmployee($emp, 'จะลาออก', null, false, 1);
+
+        eq((int) Db::value('SELECT is_active FROM admins WHERE id = ?', [$id]), 0, 'บัญชีถูกปิด');
+        throwsReason('bad_credentials', fn() => Auth::login($u, 'a-strong-password'), 'ล็อกอินหลังพนักงานลาออก');
+    });
+});
+
+test('รับพนักงานกลับ บัญชียังปิดอยู่ — ต้องเปิดเองที่หน้าผู้ใช้', function () {
+    withRollback(function () {
+        $emp = anEmployee('กลับมาทำงาน');
+        $id = Users::ensureFor($emp, 'กลับมาทำงาน', null, true);
+
+        Users::syncFromEmployee($emp, 'กลับมาทำงาน', null, false, 1);
+        Users::syncFromEmployee($emp, 'กลับมาทำงาน', null, true, 1);
+
+        eq((int) Db::value('SELECT is_active FROM admins WHERE id = ?', [$id]), 0, 'บัญชียังปิดอยู่');
+    });
+});
+
+test('แก้ชื่อพนักงานแล้วชื่อในบัญชีตามไปด้วย', function () {
+    withRollback(function () {
+        $emp = anEmployee('ชื่อเก่า');
+        $id = Users::ensureFor($emp, 'ชื่อเก่า', null, true);
+
+        Users::syncFromEmployee($emp, 'ชื่อใหม่', 'reception', true, 1);
+
+        $row = Db::one('SELECT display_name, job_title FROM admins WHERE id = ?', [$id]);
+        eq($row['display_name'], 'ชื่อใหม่', 'ชื่อที่แสดง');
+        eq($row['job_title'], 'reception', 'หน้าที่');
+    });
+});
+
+test('ปิดพนักงานที่เป็นบัญชีของตัวเองไม่ได้', function () {
+    withRollback(function () {
+        $emp = anEmployee('ตัวเอง');
+        $id = Users::ensureFor($emp, 'ตัวเอง', null, true);
+
+        throwsReason(
+            'self_lockout',
+            fn() => Users::syncFromEmployee($emp, 'ตัวเอง', null, false, $id),
+            'ปิดพนักงานที่เป็นบัญชีที่กำลังใช้อยู่',
+        );
+        eq((int) Db::value('SELECT is_active FROM admins WHERE id = ?', [$id]), 1, 'บัญชีต้องไม่ถูกปิด');
+    });
+});
+
+test('ปิดพนักงานที่เป็นเจ้าของร้านคนสุดท้ายไม่ได้', function () {
+    withRollback(function () {
+        Db::run("UPDATE admins SET is_active = 0 WHERE role = 'owner' AND id <> 1");
+        $emp = anEmployee('เจ้าของร้าน');
+        Db::run('UPDATE admins SET employee_id = ? WHERE id = 1', [$emp]);
+
+        throwsReason(
+            'last_owner',
+            fn() => Users::syncFromEmployee($emp, 'เจ้าของร้าน', null, false, 2),
+            'ปิดเจ้าของร้านคนสุดท้าย',
+        );
+        eq((int) Db::value('SELECT is_active FROM admins WHERE id = 1'), 1, 'บัญชีต้องไม่ถูกปิด');
+    });
+});
