@@ -553,3 +553,176 @@ test('ปิดพนักงานที่เป็นเจ้าของ�
         eq((int) Db::value('SELECT is_active FROM admins WHERE id = 1'), 1, 'บัญชีต้องไม่ถูกปิด');
     });
 });
+
+group('สร้างและยกเลิกบัญชีเข้าใช้งาน');
+
+test('สร้างบัญชีให้พนักงานแล้วเข้าระบบได้จริง', function () {
+    withRollback(function () {
+        $u = uname();
+        $emp = anEmployee('พนักงานใหม่', true, 'reception,sales');
+
+        $out = Users::grantAccount(
+            $emp,
+            ['username' => $u, 'password' => 'a-strong-password', 'role' => Roles::SALES],
+            Roles::OWNER,
+        );
+
+        eq($out['employeeId'], $emp, 'คืน employeeId ของคนที่ได้บัญชี');
+        eq($out['username'], $u, 'คืนชื่อผู้ใช้');
+
+        $actor = Auth::login($u, 'a-strong-password');
+        eq($actor['id'], $out['id'], 'ล็อกอินได้ด้วยบัญชีที่เพิ่งสร้าง');
+        eq($actor['role'], Roles::SALES, 'สิทธิ์ที่ได้');
+    });
+});
+
+test('สร้างบัญชีให้พนักงานที่ไม่มีอยู่ไม่ได้', function () {
+    withRollback(function () {
+        throwsReason(
+            'not_found',
+            fn() => Users::grantAccount(
+                999999999,
+                ['username' => uname(), 'password' => 'a-strong-password', 'role' => Roles::SALES],
+                Roles::OWNER,
+            ),
+            'สร้างบัญชีให้พนักงานที่ไม่มีอยู่',
+        );
+    });
+});
+
+test('สร้างบัญชีให้พนักงานที่ลาออกแล้วไม่ได้', function () {
+    withRollback(function () {
+        $emp = anEmployee('ลาออกไปแล้ว', false);
+        throwsReason(
+            'employee_inactive',
+            fn() => Users::grantAccount(
+                $emp,
+                ['username' => uname(), 'password' => 'a-strong-password', 'role' => Roles::SALES],
+                Roles::OWNER,
+            ),
+            'สร้างบัญชีให้คนที่ลาออกแล้ว',
+        );
+    });
+});
+
+test('พนักงานคนเดียวมีสองบัญชีไม่ได้', function () {
+    withRollback(function () {
+        $emp = anEmployee('มีบัญชีแล้ว');
+        Users::grantAccount(
+            $emp,
+            ['username' => uname(), 'password' => 'a-strong-password', 'role' => Roles::SALES],
+            Roles::OWNER,
+        );
+
+        throwsReason(
+            'account_exists',
+            fn() => Users::grantAccount(
+                $emp,
+                ['username' => uname(), 'password' => 'a-strong-password', 'role' => Roles::SALES],
+                Roles::OWNER,
+            ),
+            'สร้างบัญชีใบที่สองให้คนเดิม',
+        );
+    });
+});
+
+test('สร้างบัญชีต้องมีทั้งชื่อผู้ใช้และรหัสผ่าน', function () {
+    withRollback(function () {
+        $emp = anEmployee('ขาดของ');
+        throwsReason(
+            'missing_field',
+            fn() => Users::grantAccount($emp, ['password' => 'a-strong-password', 'role' => Roles::SALES], Roles::OWNER),
+            'ไม่มีชื่อผู้ใช้',
+        );
+        throwsReason(
+            'missing_field',
+            fn() => Users::grantAccount($emp, ['username' => uname(), 'role' => Roles::SALES], Roles::OWNER),
+            'ไม่มีรหัสผ่าน',
+        );
+    });
+});
+
+test('ตั้งบทบาทสูงกว่าตัวเองตอนสร้างบัญชีไม่ได้', function () {
+    withRollback(function () {
+        $emp = anEmployee('อยากเป็นเจ้าของ');
+        throwsReason(
+            'forbidden',
+            fn() => Users::grantAccount(
+                $emp,
+                ['username' => uname(), 'password' => 'a-strong-password', 'role' => Roles::OWNER],
+                Roles::ADMIN,
+            ),
+            'แอดมินสร้างบัญชีเจ้าของร้าน',
+        );
+    });
+});
+
+test('ยกเลิกบัญชีแล้วเข้าระบบไม่ได้ แต่แถวยังอยู่ให้ประวัติอ่านชื่อ', function () {
+    withRollback(function () {
+        $u = uname();
+        $emp = anEmployee('จะถูกยกเลิกบัญชี');
+        $out = Users::grantAccount(
+            $emp,
+            ['username' => $u, 'password' => 'a-strong-password', 'role' => Roles::STOCK],
+            Roles::OWNER,
+        );
+        $product = aProduct();
+        Db::run(
+            'INSERT INTO inventory_logs (product_id, action_type, quantity, created_by, created_by_kind)
+             VALUES (?, ?, ?, ?, ?)',
+            [$product, 'ADJUST', 1, $out['id'], 'admin'],
+        );
+
+        Users::revokeAccount($out['id'], Roles::OWNER, 1);
+
+        throwsReason('bad_credentials', fn() => Auth::login($u, 'a-strong-password'), 'ล็อกอินหลังถูกยกเลิกบัญชี');
+
+        $row = Db::one('SELECT username, password_hash, display_name FROM admins WHERE id = ?', [$out['id']]);
+        ok($row !== null, 'แถวยังอยู่');
+        eq($row['username'], null, 'ชื่อผู้ใช้ถูกล้าง');
+        eq($row['password_hash'], null, 'รหัสผ่านถูกล้าง');
+        eq($row['display_name'], 'จะถูกยกเลิกบัญชี', 'ชื่อยังอ่านได้');
+    });
+});
+
+test('ยกเลิกบัญชีที่ยังไม่มีบัญชีไม่ได้', function () {
+    withRollback(function () {
+        $emp = anEmployee('ยังไม่มีบัญชี');
+        $id = Users::ensureFor($emp, 'ยังไม่มีบัญชี', null, true);
+
+        throwsReason(
+            'no_account',
+            fn() => Users::revokeAccount($id, Roles::OWNER, 1),
+            'ยกเลิกบัญชีที่ไม่มีอยู่',
+        );
+    });
+});
+
+test('ยกเลิกบัญชีตัวเองไม่ได้', function () {
+    withRollback(function () {
+        $emp = anEmployee('ยกเลิกตัวเอง');
+        $out = Users::grantAccount(
+            $emp,
+            ['username' => uname(), 'password' => 'a-strong-password', 'role' => Roles::SALES],
+            Roles::OWNER,
+        );
+
+        throwsReason(
+            'self_lockout',
+            fn() => Users::revokeAccount($out['id'], Roles::OWNER, $out['id']),
+            'ยกเลิกบัญชีที่กำลังใช้อยู่',
+        );
+    });
+});
+
+test('ยกเลิกบัญชีเจ้าของร้านที่เข้าระบบได้คนสุดท้ายไม่ได้', function () {
+    withRollback(function () {
+        Db::run("UPDATE admins SET is_active = 0 WHERE role = 'owner' AND id <> 1");
+
+        throwsReason(
+            'last_owner',
+            fn() => Users::revokeAccount(1, Roles::OWNER, 2),
+            'ยกเลิกบัญชีเจ้าของร้านคนสุดท้าย',
+        );
+    });
+});

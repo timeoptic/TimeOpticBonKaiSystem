@@ -177,6 +177,99 @@ final class Users
         );
     }
 
+    /**
+     * ให้พนักงานที่มีอยู่แล้วเข้าใช้งานระบบได้
+     *
+     * ไม่ได้สร้างคน — คนถูกสร้างที่หน้าพนักงานไปแล้ว ที่นี่คือการเติมชื่อผู้ใช้กับ
+     * รหัสผ่านลงในแถวที่รออยู่ · แยกจากการเพิ่มพนักงานโดยตั้งใจ เพราะ "รับคนเข้า
+     * ทำงาน" กับ "ให้คนนั้นเปิดคอมพิวเตอร์ของร้านได้" เป็นคนละการตัดสินใจ
+     *
+     * @param array<string,mixed> $req @return array<string,mixed>
+     */
+    public static function grantAccount(int $employeeId, array $req, string $actorRole): array
+    {
+        Roles::require(Roles::manageAdmins($actorRole), 'สร้างบัญชีเข้าใช้งาน');
+
+        $employee = Db::one('SELECT id, employee_name, roles, active FROM employees WHERE id = ?', [$employeeId]);
+        if ($employee === null) {
+            throw ApiError::notFound('ไม่พบพนักงานคนนี้');
+        }
+        if (!(bool) $employee['active']) {
+            throw ApiError::conflict(
+                'employee_inactive',
+                'พนักงานคนนี้ถูกปิดใช้งานอยู่ — เปิดใช้งานที่หน้าพนักงานก่อนจึงจะสร้างบัญชีได้',
+            );
+        }
+
+        $id = self::ensureFor(
+            $employeeId,
+            (string) $employee['employee_name'],
+            $employee['roles'] === null ? null : (string) $employee['roles'],
+            true,
+        );
+
+        if (Db::value('SELECT username FROM admins WHERE id = ?', [$id]) !== null) {
+            throw ApiError::conflict(
+                'account_exists',
+                'พนักงานคนนี้มีบัญชีเข้าใช้งานอยู่แล้ว — แก้ที่บัญชีเดิมแทน',
+            );
+        }
+
+        $username = self::username($req);
+        if ($username === null) {
+            throw ApiError::badRequest('ต้องระบุชื่อผู้ใช้', 'missing_field');
+        }
+        $password = (string) self::password($req, required: true);
+        $newRole = self::role($req, $actorRole);
+
+        if (Db::value('SELECT id FROM admins WHERE username = ?', [$username]) !== null) {
+            throw ApiError::conflict('duplicate_username', "มีชื่อผู้ใช้ “{$username}” อยู่แล้ว", ['username' => $username]);
+        }
+
+        Db::run(
+            'UPDATE admins SET username = ?, password_hash = ?, role = ?, is_active = 1 WHERE id = ?',
+            [$username, Auth::hashPassword($password), $newRole, $id],
+        );
+
+        return [
+            'id'          => $id,
+            'employeeId'  => $employeeId,
+            'username'    => $username,
+            'displayName' => (string) $employee['employee_name'],
+        ];
+    }
+
+    /**
+     * เอาสิทธิ์เข้าใช้งานคืน โดยที่คนยังอยู่ในระบบ
+     *
+     * แทนที่ `delete()` เดิมทั้งหมด — แถวใน admins ไม่ใช่ "บัญชี" อีกต่อไปแล้ว
+     * มันคือตัวตนของพนักงานคนหนึ่ง ซึ่งลบไม่ได้เพราะ ledger เขียนชื่อจากมัน
+     * สิ่งที่ยกเลิกได้คือชื่อผู้ใช้กับรหัสผ่าน และพรุ่งนี้เปิดใหม่ให้คนเดิมได้เลย
+     *
+     * @return array<string,mixed>
+     */
+    public static function revokeAccount(int $id, string $actorRole, int $actorId): array
+    {
+        Roles::require(Roles::manageAdmins($actorRole), 'ยกเลิกบัญชีเข้าใช้งาน');
+
+        $target = Db::one('SELECT id, username, display_name, role FROM admins WHERE id = ?', [$id]);
+        if ($target === null) {
+            throw ApiError::notFound('ไม่พบผู้ใช้');
+        }
+        self::requireReach($actorRole, (string) $target['role'], 'ยกเลิกบัญชีนี้');
+
+        if ($target['username'] === null) {
+            throw ApiError::conflict('no_account', 'คนนี้ยังไม่มีบัญชีเข้าใช้งานอยู่แล้ว');
+        }
+
+        self::requireNotSelf($id, $actorId, 'ยกเลิกบัญชีที่กำลังใช้อยู่ไม่ได้');
+        self::requireOwnerRemains($id, (string) $target['role'], signInOnly: true);
+
+        Db::run('UPDATE admins SET username = NULL, password_hash = NULL WHERE id = ?', [$id]);
+
+        return ['id' => $id, 'displayName' => $target['display_name']];
+    }
+
     /** @param array<string,mixed> $req @return array<string,mixed> */
     public static function create(array $req, string $role): array
     {
@@ -358,7 +451,7 @@ final class Users
         Roles::require(Roles::rank($targetRole) <= Roles::rank($actorRole), $what);
     }
 
-    /** หน้าที่ที่คัดลอกมาจาก `employees.roles` — ช่องปลายทางแคบกว่า 80 ตัว */
+    /** หน้าที่ที่คัดลอกมาจาก `employees.roles` — ช่องปลายทางแคบกว่า 120 ตัว */
     private static function jobTitleOf(?string $v): ?string
     {
         $v = $v === null ? '' : trim($v);
