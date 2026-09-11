@@ -33,6 +33,23 @@ function assertProcess(string $p): string
 }
 
 /**
+ * ออเดอร์นี้มีเลนส์หรือยัง — ชื่อเลนส์รวม หรือชื่อแยกข้างขวา/ซ้ายช่องใดช่องหนึ่ง
+ *
+ * เลนส์สั่งตัด RX ถูกเก็บที่ชื่อแยกข้าง (lens_r_name / lens_l_name) และ lens_name
+ * อาจว่าง · เดิมอ่านแค่ lens_name เคสที่สั่งเลนส์ RX ครบสองข้างจึงขึ้น "ยังขาด: เลนส์"
+ * (เคส 10460, 11 ก.ย. 2026) · เกณฑ์เดียวกันต้องตรงกับ SQL ใน caseStageMap()
+ */
+function orderHasLens(array $order): bool
+{
+    foreach (['lens_name', 'lens_r_name', 'lens_l_name'] as $k) {
+        if (!empty($order[$k])) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
  * What each process still needs before it can be marked "เสร็จแล้ว".
  * Returns process => string[] (empty array = ready to complete).
  */
@@ -64,7 +81,7 @@ function processMissing(array $c): array
     $m['sales'] = array_values(array_filter([
         !$order ? 'ออเดอร์' : null,
         $order && empty($order['frame_name']) ? 'กรอบแว่น' : null,
-        $order && empty($order['lens_name']) ? 'เลนส์' : null,
+        $order && !orderHasLens($order) ? 'เลนส์' : null,
         $order && (float) ($order['total_price'] ?? 0) <= 0 ? 'ราคารวม' : null,
     ]));
 
@@ -447,8 +464,11 @@ function caseStageMap(array $caseIds): array
     ));
     $orders = $flat(Db::all(
         "SELECT o.case_id,
+                -- เลนส์: เกณฑ์เดียวกับ orderHasLens() — ชื่อรวม หรือชื่อข้างขวา/ซ้าย (เลนส์ RX)
                 MAX(o.frame_name IS NOT NULL AND o.frame_name <> ''
-                    AND o.lens_name IS NOT NULL AND o.lens_name <> ''
+                    AND (COALESCE(o.lens_name, '') <> ''
+                         OR COALESCE(o.lens_r_name, '') <> ''
+                         OR COALESCE(o.lens_l_name, '') <> '')
                     AND o.total_price > 0) AS filled,
                 SUM(o.total_price - o.discount) AS net,
                 MAX(o.appointment_date IS NOT NULL) AS has_appt,
