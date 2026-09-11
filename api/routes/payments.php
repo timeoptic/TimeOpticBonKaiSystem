@@ -166,6 +166,141 @@ POST('/api/payments', function (array $req) {
     return Db::get('SELECT * FROM payments WHERE id = ?', $id);
 });
 
+/** ป้ายประเภทการรับเงิน สำหรับข้อความในไทม์ไลน์ — ตรงกับ KIND_LABEL ของ PaymentPanel */
+const PAYMENT_KIND_TH = ['deposit' => 'มัดจำ', 'partial' => 'จ่ายบางส่วน', 'full' => 'ชำระเต็ม', 'final' => 'ชำระส่วนที่เหลือ'];
+
+/**
+ * แก้ไขรายการรับเงิน — แอดมิน เจ้าของร้าน ผู้ดูแลระบบ เท่านั้น (ร้านขอ 11 ก.ย. 2026)
+ *
+ * เกณฑ์สิทธิ์เดียวกับยกเลิกใบขาย POS (`system.zone`) · หน้าเว็บซ่อนปุ่มก็จริง แต่ด่าน
+ * อยู่ที่นี่ · กติกา: บังคับเหตุผล · รายการที่ยกเลิกแล้วแก้ไม่ได้ · แก้จนเกินยอดคงเหลือ
+ * ไม่ได้ (ไม่นับตัวเอง) · มัดจำในออเดอร์ขยับตาม · ค่าเก่า → ค่าใหม่ลงไทม์ไลน์ของเคส
+ * ไม่มีด่านรายการซ้ำ — การแก้ไม่ได้สร้างเงินก้อนใหม่
+ */
+PUT('/api/payments/:id', function (array $req) {
+    $id    = int_or($req['params']['id']);
+    $body  = $req['body'];
+    $actor = StockModule::actor();
+    if (!$actor || !\Optic\Roles::systemZone($actor['roles'] ?? [])) {
+        throw new HttpError(403, 'แก้ไขรายการรับเงินได้เฉพาะแอดมินหรือเจ้าของร้าน', ['reason' => 'forbidden']);
+    }
+
+    $row = Db::tx(function (Tx $q) use ($id, $body, $actor) {
+        $p = $q->get('SELECT * FROM payments WHERE id = ? FOR UPDATE', $id);
+        if (!$p) {
+            missing();
+        }
+        if ($p['cancelled_at']) {
+            bad('รายการนี้ถูกยกเลิกไปแล้ว แก้ไขไม่ได้');
+        }
+        $reason = trim((string) ($body['reason'] ?? ''));
+        if ($reason === '') {
+            bad('กรุณาใส่เหตุผลที่แก้ไข');
+        }
+        $amount = num($body['amount'] ?? null);
+        if (!($amount > 0)) {
+            bad('จำนวนเงินต้องมากกว่า 0');
+        }
+        $receivedBy = int_or($body['received_by'] ?? null);
+        $receiver   = $receivedBy ? $q->get('SELECT employee_name FROM employees WHERE id = ?', $receivedBy) : null;
+        if (!$receiver) {
+            bad('กรุณาเลือกผู้รับเงิน');
+        }
+        $kind   = array_key_exists((string) ($body['kind'] ?? ''), PAYMENT_KIND_TH) ? (string) $body['kind'] : $p['kind'];
+        $method = str_or($body['method'] ?? null) ?: $p['method'];
+        $paidAt = str_or($body['paid_at'] ?? null) ?: (string) $p['paid_at'];
+        if (!preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})?$/', $paidAt)) {
+            bad('วันเวลาที่รับเงินไม่ถูกต้อง');
+        }
+        if (strlen($paidAt) === 16) {
+            $paidAt .= ':00';
+        }
+
+        $before = [
+            'amount'      => round2((float) $p['amount']),
+            'kind'        => $p['kind'],
+            'method'      => $p['method'],
+            'reference'   => nul($p['reference']),
+            'received_by' => (int) $p['received_by'],
+            'paid_at'     => (string) $p['paid_at'],
+        ];
+        $after = [
+            'amount'      => round2($amount),
+            'kind'        => $kind,
+            'method'      => $method,
+            'reference'   => nul($body['reference'] ?? null),
+            'received_by' => $receivedBy,
+            'paid_at'     => $paidAt,
+        ];
+        $changed = array_keys(array_filter($before, fn($v, $k) => (string) $v !== (string) $after[$k], ARRAY_FILTER_USE_BOTH));
+        if (!$changed) {
+            bad('ไม่มีอะไรเปลี่ยน');
+        }
+
+        if ($p['order_id']) {
+            /* ล็อกออเดอร์ก่อนอ่านยอด เหตุผลเดียวกับตอนรับเงิน · ยอดคงเหลือไม่นับตัวเอง
+               แก้ 300 เป็น 400 บนออเดอร์ที่เหลือ 100 คือขยับได้อีก 100 ไม่ใช่ 400 */
+            $order = $q->get('SELECT total_price, discount FROM custom_orders WHERE id = ? FOR UPDATE', $p['order_id']);
+            if ($order) {
+                $net     = round2((float) $order['total_price'] - (float) $order['discount']);
+                $others  = round2($q->get(
+                    'SELECT COALESCE(SUM(amount), 0) s FROM payments WHERE order_id = ? AND cancelled_at IS NULL AND id <> ?',
+                    $p['order_id'], $id
+                )['s']);
+                $balance = round2(max(0, $net - $others));
+                if ($net > 0 && $amount > $balance + 0.001) {
+                    throw new HttpError(
+                        400,
+                        'แก้เกินยอดคงเหลือไม่ได้ — รายการนี้แก้ได้ไม่เกิน ' . number_format($balance, 2) . ' บาท',
+                        ['reason' => 'over_balance', 'balance' => $balance]
+                    );
+                }
+            }
+            $delta = ($kind === 'deposit' ? $amount : 0) - ($p['kind'] === 'deposit' ? (float) $p['amount'] : 0);
+            if (abs($delta) > 0.001) {
+                $q->run('UPDATE custom_orders SET deposit = GREATEST(deposit + ?, 0) WHERE id = ?', $delta, $p['order_id']);
+            }
+        }
+
+        $q->run(
+            'UPDATE payments SET amount = ?, kind = ?, method = ?, reference = ?, received_by = ?, paid_at = ? WHERE id = ?',
+            $amount, $kind, $method, $after['reference'], $receivedBy, $paidAt, $id
+        );
+
+        $oldReceiver = $q->get('SELECT employee_name FROM employees WHERE id = ?', $before['received_by'])['employee_name'] ?? '—';
+        $show = [
+            'amount'      => ['จำนวน', fn($v) => number_format((float) $v, 2)],
+            'kind'        => ['ประเภท', fn($v) => PAYMENT_KIND_TH[$v] ?? (string) $v],
+            'method'      => ['วิธีชำระ', fn($v) => (string) $v],
+            'reference'   => ['อ้างอิง', fn($v) => $v ?? '—'],
+            'received_by' => ['ผู้รับเงิน', fn($v) => $v === $before['received_by'] ? $oldReceiver : $receiver['employee_name']],
+            'paid_at'     => ['รับเมื่อ', fn($v) => substr((string) $v, 0, 16)],
+        ];
+        $parts = array_map(
+            fn($k) => $show[$k][0] . ' ' . $show[$k][1]($before[$k]) . ' → ' . $show[$k][1]($after[$k]),
+            $changed
+        );
+        $by = (string) ($actor['displayName'] ?? $actor['username'] ?? '');
+        logEvent($q, int_or($p['case_id']), [
+            'action'      => 'payment_edited',
+            'entity'      => 'payment',
+            'entity_id'   => $id,
+            'employee_id' => $actor['employeeId'] ?? null,
+            'note'        => implode(' · ', $parts) . " — เหตุผล: $reason" . ($by !== '' ? " (แก้โดย $by)" : ''),
+            'payload'     => ['before' => $before, 'after' => $after, 'reason' => $reason, 'by' => $by],
+        ]);
+
+        return $id;
+    });
+
+    return Db::get(
+        'SELECT p.*, e.employee_name AS received_by_name
+           FROM payments p LEFT JOIN employees e ON e.id = p.received_by
+          WHERE p.id = ?',
+        $row
+    );
+});
+
 DELETE('/api/payments/:id', function (array $req) {
     $id   = int_or($req['params']['id']);
     $body = $req['body'];

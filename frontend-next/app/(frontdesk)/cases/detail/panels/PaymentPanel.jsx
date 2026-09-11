@@ -21,6 +21,8 @@ import { Badge, Card, Field, FormGrid, Row, Split } from '../../../../../compone
 import { EmployeeSelect } from '../../../../../components/Selects.jsx';
 import { Icon } from '../../../../../components/Icon.jsx';
 import { useMeta } from '../../../../../contexts/MetaContext.jsx';
+import { useAuth } from '../../../../../contexts/AuthContext.jsx';
+import { inSystemZone } from '../../../../../lib/roles.js';
 import {
   custName, dateOnly, fmtDate, fmtDateTime, money, todayISO, toStamp,
 } from '../../../../../lib/format.js';
@@ -257,11 +259,218 @@ function SlipDropCard({ files, onChange }) {
   );
 }
 
+/** เวลาจาก DateTimeField ('YYYY-MM-DDTHH:MM') หรือจาก API ('YYYY-MM-DD HH:MM:SS') ให้เป็นรูปเดียวกัน */
+const stampOf = (v) => {
+  const s = toStamp(v || '');
+  return s.length === 16 ? `${s}:00` : s;
+};
+
+const CHANGE_TH = { textAlign: 'left', fontWeight: 400, color: 'var(--ink-faint)', padding: '5px 12px 5px 0', whiteSpace: 'nowrap' };
+
+/**
+ * แก้ไขรายการรับเงิน — แอดมิน/เจ้าของร้านเท่านั้น (ร้านขอ 11 ก.ย. 2026)
+ *
+ * ช่องชุดเดียวกับ "รับเงินเข้ามาใหม่" เติมค่าเดิมไว้ให้ · บังคับใส่เหตุผล · เวลารับแก้ได้
+ * (ต่างจากตอนรับใหม่ที่ระบบประทับให้) เพราะนี่คือการแก้ของที่บันทึกผิดไปแล้ว ·
+ * แก้จนเกินยอดคงเหลือไม่ได้ ยอดคงเหลือคิดโดยไม่นับรายการนี้ · ก่อนส่งสรุปว่าเปลี่ยนอะไร
+ * · ด่านจริงทุกข้ออยู่ที่ PUT /api/payments/:id ที่นี่แค่บอกคนแก้ก่อนกด
+ */
+function PaymentEditDialog({ p, c, onClose, onSaved }) {
+  const { ok, err } = useToast();
+  const confirm = useConfirm();
+  const { meta } = useMeta();
+
+  const [amount, setAmount] = useState(String(Number(p.amount)));
+  const [kind, setKind] = useState(p.kind);
+  const [method, setMethod] = useState(p.method || 'Cash');
+  const [reference, setReference] = useState(p.reference || '');
+  const [receivedBy, setReceivedBy] = useState(p.received_by ? String(p.received_by) : '');
+  const [paidAt, setPaidAt] = useState(p.paid_at || '');
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const methodLabel = meta.lists?.pay_type_labels || {};
+  /* วิธีชำระของแถวเดิมต้องเลือกค้างไว้ได้ แม้จะถูกเอาออกจากรายการไปแล้ว */
+  const methods = [...new Set([...(meta.lists?.pay_type || ['Cash']), p.method].filter(Boolean))];
+  const kinds = KINDS.some(([v]) => v === p.kind) ? KINDS : [...KINDS, [p.kind, KIND_LABEL[p.kind] || p.kind]];
+  const empName = (id) => (meta.employees || []).find((e) => String(e.id) === String(id))?.employee_name
+    || (String(id) === String(p.received_by) ? p.received_by_name : '') || '—';
+
+  const net = c.order ? Number(c.order.total_price) - Number(c.order.discount) : 0;
+  const others = Math.max(0, (Number(c.paid) || 0) - Number(p.amount));
+  const max = Math.max(0, net - others);
+  const entered = Number(amount) || 0;
+  const over = net > 0 && entered > max + 0.001;
+
+  /* [ป้าย, ค่าเดิม, ค่าใหม่, เปลี่ยนไหม] — ใช้ทั้งตัดสินว่ามีอะไรให้บันทึก และสรุปก่อนยืนยัน */
+  const rows = [
+    ['จำนวนเงิน', money(p.amount), money(entered), Number(p.amount) !== entered],
+    ['ประเภท', KIND_LABEL[p.kind] || p.kind, KIND_LABEL[kind] || kind, p.kind !== kind],
+    ['วิธีชำระ', methodLabel[p.method] || p.method, methodLabel[method] || method, p.method !== method],
+    ['อ้างอิง', p.reference || '—', reference.trim() || '—', (p.reference || '') !== reference.trim()],
+    ['ผู้รับเงิน', empName(p.received_by), empName(receivedBy), String(p.received_by || '') !== receivedBy],
+    ['รับเมื่อ', fmtDateTime(p.paid_at), fmtDateTime(stampOf(paidAt)), stampOf(p.paid_at) !== stampOf(paidAt)],
+  ];
+  const changes = rows.filter((r) => r[3]);
+  const blocked = entered <= 0
+    ? 'จำนวนเงินต้องมากกว่า 0'
+    : over
+      ? `แก้เกินยอดคงเหลือไม่ได้ — รายการนี้แก้ได้ไม่เกิน ${money(max)}`
+      : !receivedBy ? 'เลือกผู้รับเงิน' : null;
+  const canSave = !busy && !blocked && changes.length > 0 && reason.trim() !== '';
+
+  const save = async () => {
+    if (!canSave) return;
+    const sure = await confirm('ยืนยันแก้ไขรายการรับเงิน', (
+      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <tbody>
+          {changes.map(([label, from, to]) => (
+            <tr key={label}>
+              <th style={CHANGE_TH}>{label}</th>
+              <td style={{ textAlign: 'right', padding: '5px 0' }}>
+                <span className="muted">{from}</span> → <b>{to}</b>
+              </td>
+            </tr>
+          ))}
+          <tr>
+            <th style={CHANGE_TH}>เหตุผล</th>
+            <td style={{ textAlign: 'right', padding: '5px 0' }}>{reason.trim()}</td>
+          </tr>
+        </tbody>
+      </table>
+    ), { confirmText: 'ยืนยันแก้ไข' });
+    if (!sure) return;
+
+    setBusy(true);
+    try {
+      await api.put('/api/payments/' + p.id, {
+        amount,
+        kind,
+        method,
+        reference: reference.trim(),
+        received_by: receivedBy,
+        paid_at: stampOf(paidAt),
+        reason: reason.trim(),
+      });
+      ok('แก้ไขรายการรับเงินแล้ว');
+      onSaved();
+    } catch (ex) {
+      err(ex);
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="modal-back" onClick={(e) => { if (e.target === e.currentTarget && !busy) onClose(); }}>
+      <div className="modal wide" role="dialog" aria-modal="true" aria-label="แก้ไขรายการรับเงิน">
+        <h3>แก้ไขรายการรับเงิน</h3>
+        <div className="m-body">
+          <div className="pay-form">
+            <div className="pay-amount">
+              <label htmlFor="pe-amount">จำนวนเงินที่รับ</label>
+              <div className="pay-amount-input">
+                <span>฿</span>
+                <input
+                  id="pe-amount"
+                  type="number"
+                  step="1"
+                  min="1"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                />
+              </div>
+              <div className={`pay-after ${over ? 'over' : ''}`}>
+                {over
+                  ? <b>{`เกินยอดคงเหลือ — รายการนี้แก้ได้ไม่เกิน ${money(max)}`}</b>
+                  : net > 0
+                    ? <>แก้ได้ไม่เกิน <b>{money(max)}</b></>
+                    : <>ออเดอร์ยังไม่มีราคา</>}
+              </div>
+            </div>
+
+            <div className="pay-choices">
+              <div>
+                <label>ประเภท</label>
+                <Row style={{ gap: 6 }}>
+                  {kinds.map(([v, label]) => (
+                    <button
+                      type="button"
+                      key={v}
+                      className={`chip-btn ${kind === v ? 'active' : ''}`}
+                      onClick={() => setKind(v)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </Row>
+              </div>
+              <div>
+                <label>วิธีชำระ</label>
+                <Row style={{ gap: 6 }}>
+                  {methods.map((v) => (
+                    <button
+                      type="button"
+                      key={v}
+                      className={`chip-btn ${method === v ? 'active' : ''}`}
+                      onClick={() => setMethod(v)}
+                    >
+                      <Icon name={METHOD_ICON[v] || 'coins'} /> {methodLabel[v] || v}
+                    </button>
+                  ))}
+                </Row>
+              </div>
+            </div>
+          </div>
+
+          <FormGrid>
+            <Field label="อ้างอิง (เลขที่โอน / เลขอนุมัติ)">
+              <input id="pe-reference" value={reference} onChange={(e) => setReference(e.target.value)} />
+            </Field>
+            <Field label="ผู้รับเงิน *">
+              <EmployeeSelect value={receivedBy} onChange={(e) => setReceivedBy(e.target.value)} />
+            </Field>
+          </FormGrid>
+
+          {/* แถวของตัวเอง — ในกล่องนี้ช่องของ FormGrid แคบ 150px วันที่ถูกตัดเหลือ "1:" */}
+          <Field label="รับเมื่อ">
+            <div style={{ maxWidth: 380 }}>
+              <DateTimeField value={paidAt} onChange={setPaidAt} />
+            </div>
+          </Field>
+
+          <Field label="เหตุผลที่แก้ไข *">
+            <input
+              id="pe-reason"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="เช่น กดวิธีชำระผิด — ลูกค้าโอนมา"
+              autoComplete="off"
+            />
+          </Field>
+        </div>
+        <div className="m-foot">
+          {blocked ? <span className="process-blockers" style={{ marginRight: 'auto' }}>{blocked}</span> : null}
+          <button type="button" className="btn btn-light" onClick={onClose} disabled={busy}>ยกเลิก</button>
+          <button type="button" className="btn" onClick={save} disabled={!canSave}>
+            <Icon name="check" />
+            {busy ? ' กำลังบันทึก…' : ' บันทึกการแก้ไข'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function PaymentPanel({ c, reload }) {
   const { ok, err } = useToast();
   const confirm = useConfirm();
   const { meta } = useMeta();
   const rowSlipRef = useRef(null);
+  const { actor } = useAuth();
+  /* แก้รายการรับเงินได้เฉพาะแอดมินขึ้นไป (เกณฑ์เดียวกับยกเลิกใบขาย POS) — ซ่อนปุ่ม
+     เป็นแค่มารยาท PUT /api/payments/:id ตรวจสิทธิ์เอง */
+  const mayEdit = inSystemZone(actor);
+  const [editing, setEditing] = useState(null);
 
   const [slips, setSlips] = useState([]);          // files chosen for the payment being written
   /* สลิปของรายการรับเงินไหน กำลังดูใบที่เท่าไร · ปุ่ม < > วนเฉพาะสลิปของรายการนั้น
@@ -638,6 +847,11 @@ export function PaymentPanel({ c, reload }) {
                         onClose={() => setSlipView(null)}
                       />
                     ) : null}
+                    {mayEdit && !p.cancelled_at ? (
+                      <button type="button" className="btn btn-sm btn-light" onClick={() => setEditing(p)}>
+                        <Icon name="pencil" /> แก้ไข
+                      </button>
+                    ) : null}
                     <button type="button" className="btn btn-sm btn-light" onClick={() => attachToRow(p)}>
                       <Icon name="camera" /> แนบสลิป
                     </button>
@@ -695,6 +909,15 @@ export function PaymentPanel({ c, reload }) {
         </Card>
       </div>
       </Split>
+
+      {editing ? (
+        <PaymentEditDialog
+          p={editing}
+          c={c}
+          onClose={() => setEditing(null)}
+          onSaved={() => { setEditing(null); reload(); }}
+        />
+      ) : null}
     </>
   );
 }

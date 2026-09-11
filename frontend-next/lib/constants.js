@@ -33,6 +33,7 @@ export const ACTION_LABEL = {
   customer_notified: 'ติดต่อลูกค้า',
   delivered: 'ส่งมอบสินค้า',
   payment_cancelled: 'ยกเลิกรายการรับเงิน',
+  payment_edited: 'แก้ไขรายการรับเงิน',
   photo_uploaded: 'แนบรูป/ไฟล์',
   process_started: 'เริ่มขั้นตอน',
   process_completed: 'ยืนยันขั้นตอนเสร็จ',
