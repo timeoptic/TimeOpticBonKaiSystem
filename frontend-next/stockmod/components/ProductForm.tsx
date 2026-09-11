@@ -114,6 +114,16 @@ const MODEL: Spec = {
   help: "เว้นว่างได้ — ชื่อที่ตั้งให้จะข้ามไปเฉย ๆ",
 };
 
+/**
+ * ชนิดที่ถาม "รุ่น" ในหน้าแรกข้างแบรนด์ แล้วตั้งชื่อให้จาก แบรนด์ + รุ่น
+ *
+ * กรอบกับแว่นกันแดดไม่มีขั้นรายละเอียดสินค้า (ดู `wantSpec`) แต่ร้านอยากได้รุ่นติด
+ * สินค้าไว้ — ออเดอร์หน้าร้านเติมช่องรุ่นให้เองจาก `attributes.model` ของกรอบที่เลือก
+ * · ไม่บังคับกรอก และตั้งชื่อให้เฉพาะตอนมีรุ่น ชื่อที่เหลือแค่แบรนด์คือชื่อที่กรอบ
+ * แบรนด์เดียวกันทุกตัวจะซ้ำกัน
+ */
+const NAMED_BY_MODEL = new Set(["Frame", "Sunglass"]);
+
 const SPECS: Record<string, { title: string; fields: Spec[] }> = {
   Lens: {
     title: "สเปกเลนส์",
@@ -451,8 +461,13 @@ export default function ProductForm({
    * lens makers, and the overlap between them is one name. Offering all ten
    * everywhere would put Rodenstock on the frame shelf and Hitop on a job
    * sheet — which is how a brand column stops being worth reading.
+   *
+   * กรอบกับแว่นกันแดดไม่มีแบรนด์ตั้งต้น (ร้านขอ 11 ก.ย. 2026) — สามชื่อใน
+   * STOCK_BRANDS เป็นแบรนด์เลนส์ทั้งหมด ขึ้นมาในช่องแบรนด์ของกรอบก็มีแต่ทางเลือกผิด
+   * รายการจึงเหลือแบรนด์ที่ชนิดนั้นในคลังเคยใช้ (`hints` แยกตามชนิดอยู่แล้ว)
    */
-  const BRAND_SEED = custom ? RX_BRANDS : STOCK_BRANDS;
+  const namedByModel = NAMED_BY_MODEL.has(type);
+  const BRAND_SEED = custom ? RX_BRANDS : namedByModel ? [] : STOCK_BRANDS;
 
   useEffect(() => {
     if (autoSku && issued.status === "ready") setSku(issued.data.sku);
@@ -552,11 +567,18 @@ export default function ProductForm({
         })}`,
   );
 
-  /* ตั้งชื่อให้เองเฉพาะเลนส์ — ชนิดอื่นไม่ได้ถามสเปกแล้ว ชื่อที่ประกอบจากช่อง
-     ว่างจะเหลือแค่แบรนด์ ซึ่งแย่กว่าปล่อยให้คนพิมพ์เอง */
+  /* ตั้งชื่อให้เองเฉพาะเลนส์ กับกรอบ/แว่นกันแดดที่กรอกรุ่นแล้ว — ชนิดอื่นไม่ได้ถาม
+     สเปก ชื่อที่ประกอบจากช่องว่างจะเหลือแค่แบรนด์ ซึ่งแย่กว่าปล่อยให้คนพิมพ์เอง ·
+     ลบรุ่นทิ้งแล้วชื่อที่ตั้งให้ต้องหายตาม ไม่ค้างเป็นชื่อของรุ่นที่ไม่มีแล้ว */
+  const hasModel = (values.model ?? "").trim() !== "";
   useEffect(() => {
-    if (type === "Lens" && autoName && composed.status === "ready") setName(composed.data.name);
-  }, [type, autoName, composed.status, composed.data]);
+    if (!autoName) return;
+    if (namedByModel && !hasModel) {
+      setName("");
+      return;
+    }
+    if ((type === "Lens" || namedByModel) && composed.status === "ready") setName(composed.data.name);
+  }, [type, namedByModel, hasModel, autoName, composed.status, composed.data]);
 
   /* ------------------------------------------------------------ first lot */
 
@@ -1053,10 +1075,25 @@ export default function ProductForm({
               placeholder={
                 type === "Lens" && autoName
                   ? "ตั้งให้เองจากสเปกด้านล่าง"
-                  : "เช่น Hitop AC5028 ดำด้าน 54-16-145"
+                  : namedByModel && autoName
+                    ? "ใส่รุ่นแล้วระบบตั้งชื่อให้ — หรือพิมพ์ชื่อเอง"
+                    : "เช่น Hitop AC5028 ดำด้าน 54-16-145"
               }
             />
-            {type !== "Lens" ? (
+            {namedByModel && hasModel && autoName ? (
+              <span className="field__help">
+                ตั้งให้เองจาก แบรนด์ · รุ่น — เติมสี ขนาด ต่อท้าย หรือพิมพ์ทับได้
+              </span>
+            ) : namedByModel && hasModel ? (
+              <button
+                type="button"
+                className="btn btn--quiet btn--small"
+                onClick={() => setAutoName(true)}
+                disabled={locked}
+              >
+                กลับไปใช้ชื่อที่ตั้งให้เอง
+              </button>
+            ) : type !== "Lens" ? (
               /* ชนิดอื่นไม่ได้ถามสเปกแล้ว ชื่อจึงเป็นสิ่งเดียวที่แยกสินค้าออกจาก
                  กันในรายการ — บอกไปตรง ๆ ว่าเขียนให้ครบพอที่จะจำได้ */
               <span className="field__help">
@@ -1098,6 +1135,8 @@ export default function ProductForm({
               )}
             />
           </div>
+          {/* รุ่นของกรอบ/แว่นกันแดดอยู่ข้างแบรนด์ — ชื่อสินค้าตั้งจากสองช่องนี้ */}
+          {namedByModel ? field({ ...MODEL, placeholder: "BJ5028 · AC5028" }) : null}
           <div className="field">
             <label className="field__label" htmlFor="pf-price">ราคาขาย (฿)</label>
             <input
