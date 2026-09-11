@@ -57,11 +57,15 @@ function CustomerListInner() {
           <DataTable
             columns={[
               { label: 'ID', key: 'id', cls: 'mono', mobile: 'meta' },
-              { label: 'ชื่อ', key: 'first_name', mobile: 'title' },
+              /* ชื่อสามช่องห้ามตัดบรรทัด — iPad (820px) ตารางบีบคอลัมน์ที่ตัดได้ก่อน และ
+                 ภาษาไทยตัดได้ทุกคำ ชื่อจึงเหลือบรรทัดละพยางค์ ("อารี / รัตน์ / (พี่ / หงษ์)")
+                 ตารางกว้างกว่าจอก็เลื่อนซ้าย-ขวาแทน · บนการ์ดมือถือหัวการ์ดยังขึ้นบรรทัด
+                 ใหม่ระหว่างชื่อกับนามสกุลได้ (.dtc-title เป็น flex-wrap) */
+              { label: 'ชื่อ', key: 'first_name', cls: 'nowrap', mobile: 'title' },
               /* ตารางนี้แยกคอลัมน์อยู่แล้ว ชื่อกลางจึงเป็นคอลัมน์ของตัวเอง
                  ไม่ใช่เอา custName มายัดรวม — คนกวาดตาหาสกุลจะได้อยู่ตำแหน่งเดิม */
-              { label: 'ชื่อกลาง', key: 'mid_name', mobile: 'title' },
-              { label: 'นามสกุล', key: 'last_name', mobile: 'title' },
+              { label: 'ชื่อกลาง', key: 'mid_name', cls: 'nowrap', mobile: 'title' },
+              { label: 'นามสกุล', key: 'last_name', cls: 'nowrap', mobile: 'title' },
               { label: 'เพศ', key: 'sex', mobile: 'meta' },
               { label: 'สัญชาติ', key: 'nationality', mobile: 'meta' },
               { label: 'เบอร์โทร', key: 'phone', cls: 'nowrap', mobile: 'subtitle' },
