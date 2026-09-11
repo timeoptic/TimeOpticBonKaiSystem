@@ -28,13 +28,14 @@ import { Picker } from '../../../components/Picker.jsx';
 import { StockPicker, stockLabel } from '../../../components/StockPicker.jsx';
 import { RxSets } from '../../../components/RxSets.jsx';
 import { EyewearHistory } from '../../../components/EyewearHistory.jsx';
-import { EmployeeSelect } from '../../../components/Selects.jsx';
+import { EmployeeSelect, ListSelect } from '../../../components/Selects.jsx';
 import { StockEmbedModal } from '../../../components/StockEmbedModal.jsx';
 import { RX_KIND_LABEL } from '../../../lib/constants.js';
 import {
   custName, cylPower, fmtDateTime, money, rxNum, sphPower,
 } from '../../../lib/format.js';
 import { Icon } from '../../../components/Icon.jsx';
+import { pairDisplay, pairPrice, splitPairPrice } from '../../../lib/pricing.js';
 
 const n = (v) => Number(v || 0);
 
@@ -52,12 +53,83 @@ const n = (v) => Number(v || 0);
  * ที่อ่านทีเดียวก็พอ แต่ราคาขายคือสิ่งที่คนขายต้องแตะทุกใบ ซ่อนไว้แปลว่าต้องกดเปิดก่อน
  * ทุกครั้ง หรือแย่กว่านั้นคือไม่รู้ว่ามีให้แก้แล้วปล่อยราคาตั้งต้นไป
  */
-function SellingPrice({ label, value, onChange }) {
+function SellingPrice({ label, value, onChange, hint, variant }) {
   return (
-    <div className="sell-price">
+    <div className={variant ? `sell-price ${variant}` : 'sell-price'}>
       <label>{label}</label>
-      <input type="number" step="1" min="0" value={value} onChange={onChange} />
-      <small>ราคาของออเดอร์นี้ ไม่กระทบราคาสินค้าในคลัง</small>
+      {/* step any ไม่ใช่ 1 — ราคารายข้างที่มาจากการแบ่งราคาคู่เลขคี่ได้ .50 (4,001 → 2,000.50)
+          step="1" ทำให้เบราว์เซอร์ถือว่าค่านั้นผิด แล้วไม่ยอมให้กดบันทึกออเดอร์เลย */}
+      <input type="number" step="any" min="0" value={value} onChange={onChange} />
+      {/* hint="" คือสั่งว่าไม่ต้องมีบรรทัดอธิบาย — ช่องที่อธิบายตัวเองได้อยู่แล้ว
+          ไม่ต้องเสียพื้นที่ให้ตัวหนังสือเทาอีกบรรทัด */}
+      {hint === '' ? null : <small>{hint ?? 'ราคาของออเดอร์นี้ ไม่กระทบราคาสินค้าในคลัง'}</small>}
+    </div>
+  );
+}
+
+/**
+ * ราคาขายเลนส์ทั้งคู่ — ช่องที่คนขายหน้าร้านใช้จริง
+ *
+ * ลูกค้าถามราคาเป็น "คู่" ไม่มีใครถามราคาเลนส์ข้างเดียว ช่องนี้จึงอยู่บนสุดของ
+ * การ์ดเลนส์และตัวโตกว่าช่องรายข้าง · แต่ตัวเลขที่บันทึกยังเป็น lens_od_price /
+ * lens_os_price เหมือนเดิมทุกอย่าง ช่องนี้ไม่ได้ถูกเก็บลงฐาน: ค่าที่โชว์คือผลบวก
+ * ของสองข้างเสมอ กรอกลงไปเมื่อไหร่ก็แค่สั่งแบ่งครึ่งลงสองข้างให้ครั้งหนึ่ง
+ * หลังจากนั้นยังลงไปแก้รายข้างทับได้ตามปกติ แล้วยอดคู่ตรงนี้จะขยับตามเอง
+ *
+ * ── ช่องนี้จำข้อความที่กำลังพิมพ์เอง ────────────────────────────────────────
+ * ค่าที่โชว์คำนวณจากสองข้างใหม่ทุกครั้งที่วาด · เดิมผูก value ไว้กับตัวเลขนั้นตรง ๆ
+ * ผลคือลบจนว่างไม่ได้: ค่าว่างถูกแบ่งเป็น 0/0 แล้ววาดกลับมาเป็น "0" ทันที ต้องพิมพ์
+ * ต่อจากเลข 0 ที่ค้างอยู่ และทศนิยมกลางทางอย่าง "15." ก็โดนทับ · ตอนนี้ระหว่างพิมพ์
+ * ช่องแสดงสิ่งที่พิมพ์จริง (ยังแบ่งลงสองข้างทุกตัวอักษรเหมือนเดิม) ออกจากช่องแล้วค่อย
+ * กลับไปแสดงผลบวกของสองข้าง · ราคา 0 เป็นช่องว่าง ให้ placeholder บอกแทน
+ *
+ * export ไว้ให้ทดสอบคอมโพเนนต์ตัวจริงได้โดยไม่ต้องล็อกอินเข้าหน้าออเดอร์
+ */
+export function PairSellingPrice({ od, os, onSplit }) {
+  const pair = pairPrice(od, os);
+  const uneven = n(od) !== n(os);
+  /* null = ไม่ได้พิมพ์อยู่ แสดงผลบวกของสองข้าง · ข้อความ = กำลังพิมพ์ แสดงตามที่พิมพ์ */
+  const [draft, setDraft] = useState(null);
+  return (
+    <div className="pair-bar">
+      <div className="pair-bar-main">
+        <div className="pair-bar-text">
+          <label htmlFor="pair-price">ราคาขายเลนส์คู่ / Selling Price (Pair)</label>
+          <small>ราคาเลนส์ทั้งคู่ (R+L) — กรอกที่นี่ ระบบแบ่งลงสองข้างข้างละครึ่งให้เอง</small>
+        </div>
+        <input
+          id="pair-price"
+          type="number"
+          inputMode="decimal"
+          /* any ไม่ใช่ 1 — ราคาคู่ที่แบ่งลงสองข้างได้ .50 หรือกรอกทศนิยมเองเป็นเรื่องปกติ
+             step="1" ทำให้เบราว์เซอร์ถือว่าค่าพวกนั้นผิด แล้วไม่ยอมส่งฟอร์ม */
+          step="any"
+          min="0"
+          placeholder="0"
+          value={draft ?? pairDisplay(pair)}
+          onFocus={() => setDraft(pairDisplay(pair))}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            onSplit(splitPairPrice(e.target.value));
+          }}
+          onBlur={() => setDraft(null)}
+        />
+      </div>
+      {/* สองข้างไม่เท่ากันไม่ใช่ความผิดพลาด — เลนส์คนละรุ่นซ้ายขวาก็ราคาต่างกันได้
+          แต่ต้องบอกให้รู้ ไม่งั้นยอดคู่ข้างบนจะดูเหมือนหารครึ่งมาแล้วทั้งที่ไม่ใช่
+          ปุ่มข้าง ๆ คือทางกลับ สำหรับคนที่แก้รายข้างไปแล้วอยากได้เท่ากันเหมือนเดิม */}
+      {uneven ? (
+        <div className="pair-bar-split">
+          <span>ราคาสองข้างไม่เท่ากัน — R {money(od)} + L {money(os)}</span>
+          <button
+            type="button"
+            className="btn btn-sm btn-light"
+            onClick={() => onSplit(splitPairPrice(pair))}
+          >
+            <Icon name="circleHalf" /> หารครึ่งให้เท่ากัน
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -449,6 +521,18 @@ export function OrderFormView({
 
         <Card title="กรอบแว่น — Frame">
           <p className="hint">เลือกกรอบจากสต็อก แล้วใส่ราคาขายของออเดอร์นี้</p>
+          {/* ประเภทกรอบ — อยู่บนสุดของการ์ด เหนือตัวติ๊กกรอบเก่า (เจ้าของร้านขอ 2026-09-10)
+              ถามทั้งกรอบจากสต็อกและกรอบเก่าของลูกค้า ช่างต้องรู้ว่าเจาะหรือเซาะร่อง
+              ไม่ว่ากรอบมาจากไหน · ต้องอยู่ในฟอร์มเสมอ เพราะ PUT เขียนทับทุกคอลัมน์
+              รายการมาจาก Lookups::FRAME_TYPES ตัวเดียวกับที่ API ใช้ตรวจ */}
+          <Field label="ประเภทกรอบ / Frame Type">
+            <ListSelect
+              name="frame_type"
+              kind="frame_type"
+              defaultValue={o.frame_type || ''}
+              blank="— เลือกประเภทกรอบ —"
+            />
+          </Field>
 
           {/* ลูกค้าเอากรอบเดิมมาเปลี่ยนเลนส์ — งานที่ร้านทำทุกวัน แต่ไม่มีของ
               ออกจากคลังสักชิ้น · ติ๊กแล้วออเดอร์บันทึกว่าใช้กรอบเดิม ชื่อกรอบ
@@ -510,10 +594,11 @@ export function OrderFormView({
 
         <Card title="เลนส์ — Lens">
           <p className="hint">
-            ถ้ายังต้องสั่งเลนส์จากซัพพลายเออร์ ให้ข้ามการเลือกสต็อกไปก่อน —
-            ราคาขายสองข้างตั้งแยกกันได้ ไม่บังคับให้เท่ากัน
+            ถ้ายังต้องสั่งเลนส์จากซัพพลายเออร์ ให้ข้ามการเลือกสต็อกไปก่อน
           </p>
-          <Split>
+          {/* mirror: ขวา/ซ้ายต้องกว้างเท่ากัน — ค่าเริ่มต้นของ .split ให้ฝั่งขวากว้าง
+              กว่า 15% ซึ่งทำให้เลนส์รุ่นเดียวกันสองข้างขึ้นกล่องสูงไม่เท่ากัน */}
+          <Split className="mirror">
             {[
               ['lensOd', 'r', 'เลนส์ขวา (R)', 'lens_od_price', 'lens_r_name', 'lens_r_sku', o.lens_r_name, o.lens_r_sku],
               ['lensOs', 'l', 'เลนส์ซ้าย (L)', 'lens_os_price', 'lens_l_name', 'lens_l_sku', o.lens_l_name, o.lens_l_sku],
@@ -542,10 +627,15 @@ export function OrderFormView({
                       <Icon name="glasses" /> สั่งตัดเลนส์ RX ({side.toUpperCase()})
                     </button>
                   ) : null}
+                  {/* ราคารายข้างเป็นของรองจากราคาคู่ — เงียบลงทั้งสีและขนาด ไม่ให้
+                      แย่งสายตากับแถบสรุปราคาคู่ท้ายการ์ด แต่ยังกรอกทับได้ทุกเมื่อ
+                      ป้ายสั้นลงเหลือแค่ข้าง เพราะคำว่า "ราคาขาย" เต็ม ๆ เป็นของแถบคู่ */}
                   <SellingPrice
-                    label={`ราคาขาย${legend.replace(/ \(.\)$/, '')} / Selling Price (${side.toUpperCase()})`}
+                    variant="sell-price-side"
+                    label={`ราคาเฉพาะข้างนี้ (${side.toUpperCase()})`}
                     value={p[priceKey]}
                     onChange={(e) => setP({ [priceKey]: e.target.value })}
+                    hint=""
                   />
                   <ItemDetails
                     picked={item}
@@ -591,6 +681,13 @@ export function OrderFormView({
               );
             })}
           </Split>
+          {/* ราคาคู่ปิดท้ายการ์ด — อ่านเป็นบรรทัดสรุปของสองข้างที่เพิ่งเลือกไป
+              เหมือนยอดรวมที่อยู่ใต้รายการเสมอ ไม่ใช่ช่องที่ต้องกรอกก่อนรู้ว่าขายอะไร */}
+          <PairSellingPrice
+            od={p.lens_od_price}
+            os={p.lens_os_price}
+            onSplit={({ od, os }) => setP({ lens_od_price: od, lens_os_price: os })}
+          />
         </Card>
 
         {/* กล่องเปิดใบสั่งตัดตัวจริงของฝั่งคลัง ฝังมาเป็น iframe — เลขใบสั่ง
@@ -635,7 +732,7 @@ export function OrderFormView({
                     ? `ส่วนลดเดิม ${money(n(p.discount))} มากกว่าราคารวม ${money(total)}`
                     : n(p.discount)
                       ? `ราคารวม ${money(total)} − ส่วนลด ${money(n(p.discount))}`
-                      : 'กรอบ + เลนส์ขวา + เลนส์ซ้าย'
+                      : 'กรอบ + เลนส์คู่ (R+L)'
                 }
               />
             </Kpis>

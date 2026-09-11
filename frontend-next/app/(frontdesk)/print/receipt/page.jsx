@@ -28,7 +28,9 @@ import { useSearchParams } from 'next/navigation';
 import { api } from '../../../../lib/apiClient.js';
 import { useAsync } from '../../../../lib/hooks.js';
 import { Card, Loading } from '../../../../components/ui.jsx';
+import { Picker } from '../../../../components/Picker.jsx';
 import { QueryParamPage } from '../../../../components/QueryParamPage.jsx';
+import { PaperView } from '../../../../components/PaperView.jsx';
 import { Icon } from '../../../../components/Icon.jsx';
 import { useConfirm } from '../../../../components/Confirm.jsx';
 import { fmtDate } from '../../../../lib/format.js';
@@ -91,6 +93,14 @@ const TEXT = {
 /** ช่องลูกค้าบนใบตอนยังไม่ได้ดึงอะไรมา — รูปร่างเดียวกับ state ของแผงกรอกข้อมูล */
 const EMPTY_CUST = { name: '', taxId: '', address: '', phone: '' };
 
+/** แถวใน `bill_parties` → ค่าสี่ช่องบนแผง */
+const custOfParty = (p) => ({
+  name: p?.name || '',
+  taxId: p?.tax_id || '',
+  address: p?.address || '',
+  phone: p?.phone || '',
+});
+
 /** ช่องราคาในตาราง — ตัวเลขจัดรูปเงิน 2 ตำแหน่ง ขีดกลางพิมพ์ตามตัว ค่าว่างเว้นไว้ */
 const cell = (v) => {
   if (v === null || v === undefined) return '';
@@ -107,8 +117,8 @@ const qtyCell = (v) => {
    ไม่งั้นบล็อกสรุป VAT ลอยขึ้นลงคนละที่ในแต่ละใบ เส้นฉีกกลางแผ่นจะดูเบี้ยว
    ครึ่งแผ่นสูง 210mm รับได้ราว 24 แถวก่อนชนช่องเซ็น
 
-   11 มาจากการนับของจริง: ใบแว่นหนึ่งคู่ที่ยาวที่สุดใช้ 8 บรรทัด (Glasses · Frame ·
-   Lens R · Lens L · Prescription · R · L · Add) เหลือเผื่อส่วนลดกับบรรทัดอื่น ๆ อีก 3
+   11 มาจากการนับของจริง: ใบแว่นหนึ่งคู่ที่ยาวที่สุดใช้ 9 บรรทัด (Glasses · Frame ·
+   Lens · Lens R · Lens L · Prescription · R · L · Add) เหลือเผื่อส่วนลดกับบรรทัดอื่น ๆ อีก 2
    แถวเปล่าที่เกินจากนี้ไม่ได้ช่วยอะไร นอกจากทำให้ใบดูโหว่
 
    แถวเปล่าที่ตัดออกกลายเป็นที่ว่างเหนือลายเซ็น ซึ่งเป็นตัวรับแรงตอนคอลัมน์รายการ
@@ -198,7 +208,9 @@ function Copy({ r, cust, t, lang, vat, kind }) {
             <tr key={i}>
               {/* ข้อความอยู่ใน span ไม่ใช่ใน td ตรง ๆ เพราะการจำกัดจำนวนบรรทัดต้องใช้
                   display:-webkit-box ซึ่งใส่บน td ไม่ได้ — มันจะพังการวางตารางทั้งใบ */}
-              <td className={l?.indent ? 'rc-sub' : ''}><span className="rc-desc">{l?.desc || ''}</span></td>
+              <td className={l?.indent ? `rc-sub${l.indent === 2 ? ' rc-sub2' : ''}` : ''}>
+                <span className="rc-desc">{l?.desc || ''}</span>
+              </td>
               <td className="rc-n">{qtyCell(l?.qty)}</td>
               <td className="rc-n">{cell(l?.unit)}</td>
               <td className="rc-n">{cell(l?.amount)}</td>
@@ -239,6 +251,12 @@ function ReceiptSheet() {
   const [lang, setLang] = useState('th');
   const [editing, setEditing] = useState(false);
   const [cust, setCust] = useState(EMPTY_CUST);
+  /* นามในรายชื่อที่ค่าสี่ช่องนี้มาจาก — null คือพิมพ์เองสด ๆ ยังไม่เคยจำไว้
+     ใช้สองที่: ผูกกับใบตอนกดพิมพ์ และไฮไลต์บรรทัดที่เลือกอยู่ในกล่องค้น */
+  const [partyId, setPartyId] = useState(null);
+  /* ผลของปุ่ม "จำไว้ใช้ครั้งหน้า" — { ok, text } · การบันทึกรายชื่อไม่ได้ขวางการพิมพ์
+     จึงบอกผลตรงแผง ไม่ใช่เด้งกล่องมาขวางคนที่กำลังจะกดพิมพ์ */
+  const [remembered, setRemembered] = useState(null);
   /* ค่าสายตาขึ้นบนใบไหม — ตั้งต้นเป็น "โชว์" เพราะเป็นสิ่งที่ลูกค้าส่วนใหญ่อยากได้ติดใบไว้
      ที่ต้องเลือกได้เพราะใบเดียวกันถูกเอาไปใช้สองแบบ: เก็บไว้เองกับยื่นเบิก/ยื่นภาษี
      แบบหลังเป็นเอกสารที่ผ่านมือคนอื่น ค่าสายตาเป็นข้อมูลสุขภาพ ไม่ใช่รายการที่ต้องมี */
@@ -257,41 +275,133 @@ function ReceiptSheet() {
         api.get(`/api/orders/${orderId}`),
         api.post('/api/receipts', { order_id: Number(orderId) }),
       ]);
-      return orderReceipt(o, rc.receipt_no);
+      return { sheet: orderReceipt(o, rc.receipt_no), receipt: rc };
     }
     if (saleId) {
       const [s, rc] = await Promise.all([
         api.get(`/api/pos/sales/${saleId}`),
         api.post('/api/receipts', { sale_id: Number(saleId) }),
       ]);
-      return saleReceipt(s, rc.receipt_no);
+      return { sheet: saleReceipt(s, rc.receipt_no), receipt: rc };
     }
     throw new Error('ไม่ได้ระบุว่าจะออกใบเสร็จของออเดอร์หรือใบขาย POS');
   }, [orderId, saleId]);
 
-  /* ชื่อกับเบอร์เติมจากระบบให้ครั้งเดียวตอนโหลดเสร็จ หลังจากนั้นเป็นของฟอร์ม —
-     ถ้าซิงก์ทุกครั้งที่ re-render สิ่งที่พนักงานพิมพ์ทับไว้จะโดนเขียนกลับทิ้ง
-     เลขผู้เสียภาษีกับที่อยู่ไม่มีในตาราง customers จึงเริ่มจากว่างเสมอ */
+  /** เอานามหนึ่งรายมาลงช่องทั้งสี่ พร้อมจำไว้ว่ามาจากแถวไหน */
+  const applyParty = (p) => {
+    setCust(custOfParty(p));
+    setPartyId(p?.id ?? null);
+    setRemembered(null);
+  };
+
+  /**
+   * เติมช่องให้ครั้งเดียวตอนโหลดเสร็จ หลังจากนั้นเป็นของฟอร์ม — ถ้าซิงก์ทุกครั้ง
+   * ที่ re-render สิ่งที่พนักงานพิมพ์ทับไว้จะโดนเขียนกลับทิ้ง
+   *
+   * ไล่ลงมาจาก "จริงที่สุด" ไปหา "เดาให้":
+   *   1  bill_* บนแถวใบเสร็จ — สิ่งที่ใบนี้พิมพ์ออกไปจริง ลูกค้าทำใบหายมาขอใหม่
+   *      ต้องได้ใบเดิมเป๊ะ ไม่ใช่ใบที่มีเลขเดิมแต่บล็อกลูกค้าว่าง
+   *   2  นามล่าสุดที่เคยออกให้ลูกค้าคนนี้ — เคสของพ่อแต่ใบชื่อลูก ครั้งที่สอง
+   *      ไม่ต้องพิมพ์ที่อยู่กับเลขผู้เสียภาษีใหม่ทั้งชุด
+   *   3  ชื่อ+เบอร์จากระบบ — พฤติกรรมเดิมก่อนมีรายชื่อ
+   *
+   * ขั้น 2 ยิงสองครั้งโดยตั้งใจ: รายการคืนเลขผู้เสียภาษีแบบปิดกลาง ค่าเต็มออก
+   * ทีละรายที่ /api/bill-parties/:id เท่านั้น
+   */
   useEffect(() => {
-    if (!data) return;
-    setCust({
-      ...EMPTY_CUST,
-      name: data.customerName || '',
-      phone: data.customerPhone || '',
-    });
+    if (!data) return undefined;
+    const { sheet: s, receipt: rc } = data;
+
+    if (rc?.bill_name) {
+      setCust({
+        name: rc.bill_name || '',
+        taxId: rc.bill_tax_id || '',
+        address: rc.bill_address || '',
+        phone: rc.bill_phone || '',
+      });
+      setPartyId(rc.bill_party_id ?? null);
+      return undefined;
+    }
+
+    setCust({ ...EMPTY_CUST, name: s.customerName || '', phone: s.customerPhone || '' });
+    setPartyId(null);
+    if (!s.customerId) return undefined;
+
+    let alive = true;
+    api.get('/api/bill-parties', { customer_id: s.customerId, limit: 1 })
+      .then(([recent]) => (recent && alive ? api.get(`/api/bill-parties/${recent.id}`) : null))
+      .then((party) => { if (party && alive) applyParty(party); })
+      /* หานามที่เคยใช้ไม่สำเร็จ = ไม่มีอะไรเกิดขึ้น ช่องยังเป็นชื่อ+เบอร์จากระบบ
+         ความสะดวกที่พลาดไปไม่ควรขวางการออกใบให้ลูกค้าที่ยืนรออยู่ */
+      .catch(() => {});
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data]);
 
   if (loading) return <Loading text="กำลังเตรียมใบเสร็จ…" />;
   if (error) return <Card><p className="muted">{error.message}</p></Card>;
 
   const t = TEXT[lang];
-  const setField = (key) => (e) => setCust((c) => ({ ...c, [key]: e.target.value }));
+  const { sheet: full, receipt } = data;
+  /* แก้ช่องเองแล้วถือว่าหลุดจากนามในรายชื่อ — ไม่งั้นใบจะผูกกับแถวที่หน้าตาไม่ตรง
+     กับสิ่งที่พิมพ์ออกมา และปุ่ม "จำไว้" จะเดาผิดว่ากำลังแก้แถวไหน */
+  const setField = (key) => (e) => {
+    const v = e.target.value;
+    setCust((c) => ({ ...c, [key]: v }));
+    setPartyId(null);
+    setRemembered(null);
+  };
   /* คืนเฉพาะสองช่องที่ระบบรู้จัก — เลขผู้เสียภาษีกับที่อยู่ที่พิมพ์ไว้ต้องไม่โดนล้าง */
   const pullFromSystem = () => setCust((c) => ({
     ...c,
-    name: data.customerName || '',
-    phone: data.customerPhone || '',
+    name: full.customerName || '',
+    phone: full.customerPhone || '',
   }));
+
+  /**
+   * "จำไว้ใช้ครั้งหน้า" — เข้ารายชื่อ ไม่ใช่ผูกกับใบนี้ (นั่นเกิดตอนกดพิมพ์)
+   *
+   * เก็บเมื่อคนกด ไม่ใช่เก็บทุกใบอัตโนมัติ — นามที่พิมพ์ผิดหรือใช้ครั้งเดียวไม่ควร
+   * ไปรกกล่องค้นของครั้งหน้า · ผูก customer_id ของเคสไปด้วย ครั้งหน้าที่เปิดใบของ
+   * ลูกค้าคนนี้ นามนี้จะลอยขึ้นมาให้เองโดยไม่ต้องค้น
+   */
+  const rememberParty = async () => {
+    try {
+      const row = await api.post('/api/bill-parties', {
+        name: cust.name,
+        tax_id: cust.taxId,
+        address: cust.address,
+        phone: cust.phone,
+        customer_id: full.customerId,
+      });
+      setPartyId(row.id);
+      setRemembered({ ok: true, text: 'จำไว้แล้ว ครั้งหน้าค้นชื่อนี้เจอ' });
+    } catch (e) {
+      setRemembered({ ok: false, text: e.message });
+    }
+  };
+
+  /**
+   * กดพิมพ์ = ตกลงว่าจะเอาชื่อชุดนี้ลงกระดาษ จึงเป็นจังหวะที่เก็บลงแถวใบเสร็จ
+   * (เปิดหน้าเฉย ๆ ได้เลขแต่ยังไม่มีบล็อกลูกค้า ซึ่งตรงกับสิ่งที่เกิดขึ้นจริง)
+   *
+   * เก็บไม่สำเร็จก็ยังพิมพ์ต่อ — กระดาษที่ลูกค้ายืนรออยู่สำคัญกว่าร่องรอย และเลข
+   * ใบเสร็จผูกกับใบไปแล้วตั้งแต่ตอนเปิดหน้า ไม่ได้ขึ้นกับขั้นนี้
+   *
+   * ไม่ await ก่อน window.print() โดยตั้งใจ: กล่องพิมพ์ต้องเปิดในจังหวะที่คนกดปุ่ม
+   * จริง ๆ เบราว์เซอร์ถึงจะยอมเปิดให้ · สิ่งที่จะถูกพิมพ์คือใบที่วาดจาก state อยู่แล้ว
+   * ไม่ได้รอคำตอบจากเซิร์ฟเวอร์
+   */
+  const printSheet = () => {
+    api.put(`/api/receipts/${receipt.id}/bill`, {
+      bill_name: cust.name,
+      bill_tax_id: cust.taxId,
+      bill_address: cust.address,
+      bill_phone: cust.phone,
+      bill_party_id: partyId,
+    }).catch(() => {});
+    window.print();
+  };
   /* ล้างทั้งสี่ช่อง — ใบจะพิมพ์ออกมาเป็นเส้นประเปล่าให้เขียนมือ ซึ่งเป็นวิธีที่
      ฟอร์ม Excel เดิมของร้านใช้ กดผิดก็กด "ดึงชื่อ+เบอร์จากระบบ" เอาคืนได้ */
   /* ถามก่อนล้าง — ชื่อกับเบอร์ที่พิมพ์ไว้หายทั้งคู่ และปุ่มอยู่ติดกับ "ดึงชื่อ+เบอร์
@@ -300,15 +410,17 @@ function ReceiptSheet() {
     const filled = Boolean(String(cust.name || '').trim() || String(cust.phone || '').trim());
     if (filled && !await confirm('ล้างข้อมูลลูกค้า', 'ล้างชื่อกับเบอร์ที่กรอกไว้ในใบเสร็จ?', { confirmText: 'ล้าง', danger: true })) return;
     setCust(EMPTY_CUST);
+    setPartyId(null);
+    setRemembered(null);
   };
 
   /* ตัดบรรทัดค่าสายตาที่ lib/receipt.js ไม่ใช่ตอนวาด — <Copy> ยังรับ "ใบหนึ่งใบ" เหมือนเดิม
      และเติมแถวเปล่าให้ครบความสูงเองอยู่แล้ว ซ่อนแล้วใบจึงไม่เตี้ยลง */
-  const sheet = showRx ? data : withoutRx(data);
-  const rxAvailable = hasRx(data);
+  const sheet = showRx ? full : withoutRx(full);
+  const rxAvailable = hasRx(full);
 
-  /* ยอดคิดจาก data ไม่ใช่ sheet — ค่าสายตาไม่มีราคา ซ่อนแล้วยอดต้องเท่าเดิมเป๊ะ */
-  const vat = vatBreakdown(data.total);
+  /* ยอดคิดจากใบเต็ม ไม่ใช่ sheet — ค่าสายตาไม่มีราคา ซ่อนแล้วยอดต้องเท่าเดิมเป๊ะ */
+  const vat = vatBreakdown(full.total);
   const back = orderId
     ? { href: `/orders/detail?id=${orderId}`, icon: 'glasses', label: 'เปิดออเดอร์' }
     : { href: `/pos/detail/?id=${saleId}`, icon: 'receipt', label: 'เปิดใบขาย' };
@@ -318,7 +430,7 @@ function ReceiptSheet() {
       <style>{sheetCss}</style>
 
       <div className="rc-actions no-print">
-        <button type="button" className="btn" onClick={() => window.print()}>
+        <button type="button" className="btn" onClick={printSheet}>
           <Icon name="printer" /> พิมพ์ใบเสร็จ (A4 แนวนอน — ต้นฉบับ + สำเนา)
         </button>
 
@@ -385,11 +497,31 @@ function ReceiptSheet() {
           ที่ต้องตรงกัน และกรอบ/ความสูงของ input จะไปพังเลย์เอาต์ที่คิดมาเป็นมิลลิเมตร */}
       {editing ? (
         <div className="rc-form no-print">
-          <b>กรอกข้อมูลลูกค้า</b>
-          <p>
-            พิมพ์แล้วขึ้นบนใบทั้งต้นฉบับและสำเนาทันที ใช้เฉพาะตอนพิมพ์ใบนี้
-            <b> ไม่ได้บันทึกลงระบบ</b> — ปิดหน้าแล้วหาย ช่องที่เว้นว่างไว้จะพิมพ์เป็นเส้นประให้เขียนมือ
-          </p>
+          <div className="rc-form-head">
+            <b>กรอกข้อมูลลูกค้า</b>
+            <p>ชื่อบนใบไม่ต้องเป็นชื่อลูกค้าในเคส ออกในนามคนที่จ่ายเงินหรือบริษัทได้</p>
+          </div>
+
+          {/* ช่องค้นอยู่ตรงนี้เสมอ ไม่ใช่ปุ่มกดกางก่อน — ปุ่มที่ทำได้อย่างเดียวคือ
+              เปิดช่องค้นคือคลิกที่ไม่ได้พาไปไหน และเวลาปิดอยู่ก็เป็นปุ่มลอยเดี่ยว ๆ
+              หนึ่งแถวเต็มที่ไม่ได้บอกอะไร
+
+              autoLoad={false} จึงเงียบสนิทจนกว่าจะพิมพ์ — ไม่งั้นจะได้กล่อง
+              "ไม่พบข้อมูล" เต็มความกว้างค้างไว้ตั้งแต่เปิดแผง */}
+          <div className="rc-find">
+            <Picker
+              placeholder="ค้นชื่อที่เคยออกใบไว้ (ชื่อ / เบอร์ / เลขผู้เสียภาษี)"
+              autoLoad={false}
+              fetcher={(q) => api.get('/api/bill-parties', {
+                q, customer_id: full.customerId, limit: 40,
+              })}
+              label={(r) => r.name}
+              sub={(r) => [r.tax_id_masked, r.phone, r.address].filter(Boolean).join(' · ')}
+              selectedId={partyId}
+              onPick={async (r) => applyParty(await api.get(`/api/bill-parties/${r.id}`))}
+            />
+          </div>
+
           <div className="rc-form-grid">
             <label>
               {t.custName}
@@ -408,14 +540,44 @@ function ReceiptSheet() {
               <input value={cust.phone} onChange={setField('phone')} inputMode="tel" />
             </label>
           </div>
+          {/* สองฝั่งเพราะเป็นคนละเรื่อง: ซ้ายคือแก้ช่องที่กรอกอยู่ ขวาคือเก็บไว้ใช้กับ
+              ใบอื่นในอนาคต · เรียงติดกันสี่ปุ่มน้ำหนักเท่ากันแล้วอ่านไม่ออกว่าอันไหนทำอะไร */}
           <div className="rc-form-foot">
             <button type="button" className="btn btn-ghost" onClick={() => void clearAll()}>
               <Icon name="x" /> ล้างข้อมูล
             </button>
-            <button type="button" className="btn btn-light" onClick={pullFromSystem}>
+            <button type="button" className="btn btn-ghost" onClick={pullFromSystem}>
               <Icon name="refresh" /> ดึงชื่อ+เบอร์จากระบบ
             </button>
+
+            <div className="rc-form-save">
+              {remembered ? (
+                <span className={remembered.ok ? 'rc-form-note' : 'rc-form-note is-bad'}>
+                  {remembered.text}
+                </span>
+              ) : null}
+              {/* บอกว่าไม่ต้องกดก็ได้ สำคัญกว่าโชว์เลข id ของแถว ซึ่งคนหน้าร้านเอาไปทำอะไรไม่ได้ */}
+              {!remembered && partyId ? (
+                <span className="rc-form-note is-quiet">
+                  <Icon name="check" /> อยู่ในรายชื่อแล้ว
+                </span>
+              ) : null}
+              {/* ไม่มีชื่อก็ไม่มีอะไรให้จำ — ปิดปุ่มไว้ตรง ๆ ดีกว่าปล่อยให้กดแล้วได้ข้อความว่าอย่ากด */}
+              <button
+                type="button"
+                className="btn btn-light"
+                disabled={!cust.name.trim()}
+                onClick={() => void rememberParty()}
+              >
+                <Icon name="save" /> จำไว้ใช้ครั้งหน้า
+              </button>
+            </div>
           </div>
+
+          <p className="rc-form-fine">
+            สิ่งที่กรอกไว้จะติดกับใบนี้เมื่อกดพิมพ์ เปิดใบเดิมวันหลังได้ของเดิมกลับมา
+            ส่วน “จำไว้ใช้ครั้งหน้า” เก็บเข้ารายชื่อไว้ค้นตอนออกใบอื่น
+          </p>
         </div>
       ) : null}
 
@@ -436,11 +598,15 @@ function ReceiptSheet() {
         </p>
       </div>
 
-      <div className="rc-sheet">
-        <Copy r={sheet} cust={cust} t={t} lang={lang} vat={vat} kind={t.original} />
-        <div className="rc-cut" />
-        <Copy r={sheet} cust={cust} t={t} lang={lang} vat={vat} kind={t.dup} />
-      </div>
+      {/* A4 แนวนอน = 297mm กว้างกว่าจอโทรศัพท์เกือบสามเท่า — PaperView คืนทางดู
+          ให้ (ย่อพอดีจอ / ไถซ้าย-ขวา) และไม่มีผลอะไรเลยตอนพิมพ์หรือบนเดสก์ท็อป */}
+      <PaperView>
+        <div className="rc-sheet">
+          <Copy r={sheet} cust={cust} t={t} lang={lang} vat={vat} kind={t.original} />
+          <div className="rc-cut" />
+          <Copy r={sheet} cust={cust} t={t} lang={lang} vat={vat} kind={t.dup} />
+        </div>
+      </PaperView>
     </>
   );
 }
@@ -542,8 +708,11 @@ const sheetCss = `
   overflow:hidden;overflow-wrap:anywhere}
 .rc-items .rc-n{text-align:right}
 .rc-items th.rc-n{text-align:center}
-/* บรรทัดบรรยาย (Frame / Lens / Prescription) — ย่อหน้าเข้าไป ให้อ่านเป็นลูกของบรรทัดราคาข้างบน */
+/* บรรทัดบรรยาย (Frame / Lens / Prescription) — ย่อหน้าเข้าไป ให้อ่านเป็นลูกของบรรทัดราคาข้างบน
+   ชั้นที่สอง (Lens R / Lens L ใต้บรรทัด Lens) ย่อหน้าอีกขั้น เพราะเป็นรายละเอียดของ
+   บรรทัดที่ย่อหน้าอยู่แล้ว ถ้าเสมอกันจะอ่านเหมือนเป็นสินค้าคนละชิ้นที่ลืมใส่ราคา */
 .rc-items .rc-sub{padding-left:5mm;color:var(--data)}
+.rc-items .rc-sub2{padding-left:9mm}
 
 /* ---- ท้ายใบ: คำอ่านเงินซ้าย บล็อก VAT ขวา ---- */
 .rc-foot{display:flex;align-items:stretch;gap:0;margin-top:-0.3mm}
@@ -620,7 +789,6 @@ const sheetCss = `
    ไม่ใช่คำเตือน · ช่องเรียงตัวเองตามความกว้างจอ (auto-fit) ไม่ตายตัวเป็นสี่คอลัมน์ */
 .rc-form{max-width:297mm;margin:0 auto 12px;padding:12px 14px;font-size:13px;
   line-height:1.6;background:var(--card);border:1px solid var(--line);border-radius:8px}
-.rc-form > p{margin:4px 0 10px;color:var(--ink-soft)}
 .rc-form-grid{display:grid;gap:10px 14px;
   grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
 .rc-form label{display:flex;flex-direction:column;gap:4px;
@@ -629,7 +797,36 @@ const sheetCss = `
   background:var(--card);color:var(--ink);
   border:1px solid var(--line);border-radius:6px}
 .rc-form input:focus-visible{outline:2px solid var(--green-ink);outline-offset:1px}
-.rc-form-foot{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}
+
+/* ความกว้างของ .rc-form เท่ากับกระดาษ (297mm) เพื่อให้ขอบตรงกับใบข้างล่าง แต่
+   ตัวหนังสือที่ยาวเต็มนั้นคือบรรทัดละเกือบสองร้อยตัวอักษร ตาไล่กลับมาต้นบรรทัด
+   ไม่ถูก — ทุกก้อนที่เป็นประโยคจึงถูกคุมความกว้างไว้ต่างหาก ไม่ใช่ปล่อยตามกรอบ */
+.rc-form-head{max-width:64ch;margin-bottom:14px}
+.rc-form-head > b{font-size:14.5px}
+.rc-form-head > p{margin:3px 0 0;color:var(--ink-soft)}
+
+/* ช่องค้นกว้างพอกับชื่อคนหนึ่งคน ไม่ใช่เต็มแผง — ช่องกรอกที่ยาวเกินสิ่งที่ใส่ลงไป
+   อ่านเหมือนแถบว่างที่ยังโหลดไม่เสร็จ */
+.rc-find{max-width:560px;margin-bottom:18px}
+/* ยังไม่ได้พิมพ์ = ยังไม่มีแถวไหนอยู่ในกล่อง ซึ่งเหลือแต่กรอบสูงสองพิกเซลคาไว้ */
+.rc-find .picker:empty{display:none}
+/* แว่นขยายในช่อง — ช่องนี้อยู่เหนือช่องกรอกอีกสี่ช่องที่หน้าตาเหมือนกันเป๊ะ
+   ถ้าไม่มีอะไรบอกว่ามันคือ "ค้นหา" มันก็เป็นแค่ช่องที่ห้าที่ยังไม่ได้กรอก
+   ฝังเป็น data URI ไม่ใช่ <Icon> เพราะช่องค้นเป็นของ Picker ที่ใช้ร่วมทั้งแอป */
+.rc-find input[type="search"]{
+  padding-left:34px;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2364748B' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='M20 20l-3.5-3.5'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:10px 50%;background-size:16px 16px}
+
+/* เส้นคั่นเหนือแถวปุ่ม — ช่องกรอกจบตรงนี้ ที่เหลือเป็นการกระทำ */
+.rc-form-foot{display:flex;flex-wrap:wrap;align-items:center;gap:8px;
+  margin-top:16px;padding-top:12px;border-top:1px solid var(--line-soft)}
+/* ปุ่มหลักของแผงอยู่ขวาสุดตัวเดียว มีน้ำหนักกว่าสองปุ่มซ้ายที่เป็นแค่การแก้ช่อง */
+.rc-form-save{margin-left:auto;display:flex;align-items:center;gap:12px}
+.rc-form-note{display:inline-flex;align-items:center;gap:6px;font-weight:600;color:var(--green-ink)}
+.rc-form-note.is-bad{color:var(--danger)}
+.rc-form-note.is-quiet{font-weight:500;color:var(--ink-soft)}
+.rc-form-fine{margin:10px 0 0;max-width:64ch;font-size:12.5px;color:var(--ink-soft)}
 
 @media screen{
   .rc-sheet{border:1px solid #c9d6d5;box-shadow:0 2px 14px rgba(0,0,0,.1);border-radius:4px}

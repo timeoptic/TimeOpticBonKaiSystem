@@ -113,6 +113,10 @@ final class Receiving
                 "รับเข้าคลัง {$lotNumber}", $actorId,
             ]);
 
+            /* ของเข้าก็ต้องจด ไม่ใช่เฉพาะของออก — นี่คือจังหวะที่ธง "เตือนไปแล้ว"
+               ถูกล้าง ถ้าไม่ล้าง รอบหน้าที่ของตกลงมาอีกจะเงียบตลอดไป */
+            LowStock::watch((int) $p['id']);
+
             self::settleShortfall($pdo, (int) $p['id'], $id, $lotNumber, $qty, $cost, $actorId);
 
             return $id;

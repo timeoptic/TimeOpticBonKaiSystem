@@ -98,6 +98,8 @@ final class Rx
                  VALUES (?, NULL, \'RX_ORDER\', -1, ?, ?, ?, ?, ?, \'user\', NOW())'
             )->execute([$p['id'], $cost, $spec['sale_price'], $doc, $note, $actorId]);
 
+            LowStock::watch((int) $p['id']);
+
             $logId = (int) $pdo->lastInsertId();
 
             // The prescription belongs to this job, not to the lens model it was
@@ -447,6 +449,8 @@ final class Rx
                 'ยกเลิกใบสั่งตัด RX ' . ($log['reference_doc'] ?? '') . ' — ' . $note,
                 $actorId,
             ]);
+
+            LowStock::watch((int) $log['product_id']);
         });
 
         return [

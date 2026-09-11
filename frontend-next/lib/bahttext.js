@@ -88,8 +88,12 @@ export function englishInteger(int) {
 }
 
 /**
- * ยอดเงิน → "… baht only" / "… baht … satang"
+ * ยอดเงิน → "… baht" / "… baht … satang"
  * บรรทัด Total ของฟอร์มเดิมเป็นภาษาอังกฤษ จึงต้องมีคู่กับ bahtText
+ *
+ * ไม่มี "only" ปิดท้ายจำนวนเต็ม (ร้านขอตัดออก) — ต่างจากฝั่งไทยที่ยังลงท้ายว่า "ถ้วน"
+ * เพราะ "ถ้วน" เป็นคำที่ใบเสร็จไทยต้องมีจริง ๆ ไว้กันคนเติมเลขต่อท้าย ส่วน only เป็น
+ * แค่ธรรมเนียมการเขียนเช็ค ไม่ได้ทำหน้าที่นั้นบนใบที่พิมพ์ด้วยเครื่อง
  */
 export function bahtTextEn(v) {
   const amount = Math.round((Number(v) || 0) * 100) / 100;
@@ -98,7 +102,7 @@ export function bahtTextEn(v) {
   const int = Math.floor(abs);
   const satang = Math.round((abs - int) * 100);
   const head = satang === 0
-    ? `${englishInteger(int)} baht only`
+    ? `${englishInteger(int)} baht`
     : `${englishInteger(int)} baht ${englishInteger(satang)} satang`;
   const cased = head.charAt(0).toUpperCase() + head.slice(1);
   return neg ? `Minus ${head}` : cased;

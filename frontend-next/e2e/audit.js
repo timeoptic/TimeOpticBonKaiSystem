@@ -83,11 +83,18 @@ export const findTinyInputs = () => {
  *
  * ปุ่มที่ยกเว้นให้: ปุ่มในแถบเลขหน้า (.pg) ที่เป็นตัวเลขเรียงกันเป็นแถบ และปุ่ม
  * ในตารางฝั่งเดสก์ท็อป (.table-wrap) ซึ่งบนมือถือไม่ได้แสดงอยู่แล้ว
+ *
+ * ส่งเป็นตัวเลข = วัดทั้งหน้า (แบบเดิม) · ส่ง `{ min, root }` = วัดเฉพาะใน root
+ * สำหรับเทสต์ของหน้าเดียวที่ไม่ควรตกเพราะปุ่มของกรอบร่วม (แถบบน แถบข้าง)
+ * ซึ่ง mobile.spec.js วัดทั้งหน้าอยู่แล้ว
  */
-export const findSmallTargets = (min) => {
+export const findSmallTargets = (arg) => {
+  const { min, root } = typeof arg === 'object' && arg !== null ? arg : { min: arg, root: null };
+  const scope = root ? document.querySelector(root) : document;
   const out = [];
+  if (!scope) return out;
   const sel = 'button, a.btn, [role="button"], input[type="checkbox"], input[type="radio"]';
-  for (const el of document.querySelectorAll(sel)) {
+  for (const el of scope.querySelectorAll(sel)) {
     if (el.offsetParent === null) continue;
     if (el.closest('.table-wrap')) continue;
     const r = el.getBoundingClientRect();

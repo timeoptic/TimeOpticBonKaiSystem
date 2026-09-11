@@ -120,8 +120,14 @@ export const withCurrent = (ladder: readonly string[], current: string) => {
  * Shared because two screens now ask for one — the catalogue form and the RX
  * order — and a coating spelled "MultiCoat" on one screen and "Multi Coat" on
  * the other is two products where the shop has one.
+ *
+ * ชื่อที่หน้าร้านเรียกจริง ไม่ใช่ชื่อที่ผู้ผลิตพิมพ์บนซอง — "MC" คือชื่อที่
+ * พนักงานเรียก MultiCoat และ "Auto" คือเลนส์เปลี่ยนสี ที่เดิมลิสต์ไว้ว่า
+ * Transition ซึ่งเป็นยี่ห้อหนึ่ง ไม่ใช่ชนิดเคลือบ · ลิสต์เก่าถูกยกออกทั้งชุด
+ * ไม่ใช่เติมชื่อใหม่ต่อท้าย เพราะสองชื่อสำหรับของอย่างเดียวกันคือของสองตัว
+ * ในรายงาน
  */
-export const COATING_SEED = ["Hard", "MultiCoat", "Blue", "Transition", "Transition-Blue"];
+export const COATING_SEED = ["Hard", "MC", "Auto", "Blue", "Auto-Blue"];
 
 /**
  * ชนิดของเลนส์ตามการออกแบบกำลัง — คนละเรื่องกับ coating และคนละเรื่องกับ index

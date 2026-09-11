@@ -28,9 +28,15 @@ $_SERVER['REQUEST_URI'] = '/api/health';
 
 $config = require "$root/api/config.php";
 
+/* สองรายการข้างล่างนี้ต้องเหมือน `api/index.php` เป๊ะ — ไม่ใช่ "เท่าที่จำเป็น"
+   ขาดไฟล์ไหนไปจะไม่พังตอนโหลด แต่ไปพังตอน handler เรียกคลาสนั้น แล้วรายงาน
+   ออกมาเป็น `Class "X" not found` ซึ่งอ่านเหมือนบั๊กของแอป ทั้งที่เป็นของสคริปต์นี้
+   (เคยขาด CaseSource กับ DeliveryDigest แล้วเส้น POST /api/cases กับ
+   PUT /api/settings ขึ้นเป็นสีแดงทั้งที่เปิดใช้งานจริงผ่านปกติ) */
 require "$root/api/core/Http.php";
 require "$root/api/core/Db.php";
 require "$root/api/core/Helpers.php";
+require "$root/api/core/StockSearch.php";
 require "$root/api/core/Router.php";
 require "$root/api/core/Sql.php";
 require "$root/api/core/Lookups.php";
@@ -41,6 +47,12 @@ require "$root/api/services/StockClient.php";
 require "$root/api/services/CaseStock.php";
 require "$root/api/services/Migrate.php";
 require "$root/api/services/Scheduler.php";
+require "$root/api/services/DeliveryDigest.php";
+require "$root/api/services/SalesReport.php";
+require "$root/api/services/Xlsx.php";
+require "$root/api/services/SalesExport.php";
+require "$root/api/services/CaseSource.php";
+require "$root/api/services/ActivityLog.php";
 
 Db::configure($config['db']);
 StockModule::boot();
@@ -49,7 +61,9 @@ StockClient::configure($config['stock_api']);
 foreach ([
     'auth', 'meta', 'dashboard', 'cases', 'customers', 'employees', 'prescriptions',
     'stock', 'locations', 'suppliers', 'orders', 'payments',
-    'workflow', 'processes', 'uploads', 'sales', 'cashflow', 'reports', 'bookings', 'settings',
+    'workflow', 'processes', 'uploads', 'sales', 'pos', 'receipts', 'bill-parties',
+    'cashflow', 'reports', 'analytics',
+    'bookings', 'settings', 'logs',
 ] as $group) {
     require "$root/api/routes/$group.php";
 }

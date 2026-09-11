@@ -49,16 +49,20 @@ final class Inventory
      * show. Every use joins nothing, so it fits the paging `COUNT(*)` as well
      * as the page itself.
      *
-     * `min_stock = 0` is not a minimum, it is silence; made-to-order products
-     * hold no stock by design and would otherwise all report as short.
+     * คงเหลือ **≤** ขั้นต่ำ ไม่ใช่ < · และ `min_stock = 0` แปลว่า "เตือนเมื่อหมด"
+     * ไม่ใช่เงียบ — เจ้าของร้านกำหนด 2026-09-10 เพราะช่องขั้นต่ำเปิดมาเป็น 0 และคน
+     * ชอบลืมกรอก · เดิม 0 คือเงียบ สินค้าที่ไม่มีใครตั้งขั้นต่ำหมดจนติดลบจึงไม่มี
+     * อะไรบอกใคร · ของสั่งตัดยังไม่นับเหมือนเดิม เพราะมันไม่มีสต็อกให้หมด
      *
      * `SUM(remaining_qty)` rather than a count of lots that still have some:
      * on-hand is allowed to go below zero here, and a shortfall is exactly the
      * state this is meant to catch.
      */
-    private const LOW_STOCK = "p.is_custom_made = 0 AND p.min_stock > 0
+    /* public เพราะ `Service\LowStock` ถามคำถามเดียวกันตอนปิดคำขอ — สำเนาที่สาม
+       ของเงื่อนไขนี้คือโอกาสที่สามที่ข้อความเตือนจะไม่ตรงกับชิปบนหน้าจอ */
+    public const LOW_STOCK = "p.is_custom_made = 0
         AND (SELECT COALESCE(SUM(l2.remaining_qty), 0)
-             FROM stock_lots l2 WHERE l2.product_id = p.id) < p.min_stock";
+             FROM stock_lots l2 WHERE l2.product_id = p.id) <= p.min_stock";
 
     /**
      * ของที่ต้องสั่ง — ยอดติดลบ หรือ เหลือน้อยกว่าขั้นต่ำ
@@ -75,8 +79,8 @@ final class Inventory
      *
      * **ต่ำกว่าขั้นต่ำ** — `LOW_STOCK` ทั้งดุ้น ไม่ได้เขียนเงื่อนไขใหม่ให้คล้าย
      * กัน สองชุดที่แปลว่า "ต่ำกว่าขั้นต่ำ" เหมือนกันคือสองชุดที่เพี้ยนจากกันได้
-     * ในวันที่มีใครแก้ข้างเดียว · ที่นั่นอธิบายไว้แล้วว่าทำไม `min_stock = 0`
-     * ถึงแปลว่าเงียบ ไม่ใช่ขั้นต่ำที่เป็นศูนย์
+     * ในวันที่มีใครแก้ข้างเดียว · ที่นั่นอธิบายไว้แล้วว่าทำไมเส้นคือ ≤ และทำไม
+     * `min_stock = 0` แปลว่าเตือนเมื่อหมด (ซึ่งครอบยอดติดลบไปด้วยในตัว)
      *
      * วงเล็บครอบทั้งก้อนเพราะข้างในมี OR และตัวเรียกเอาไปต่อด้วย AND — เงื่อนไข
      * อื่นทุกข้อในไฟล์นี้เป็น AND ล้วน จึงไม่เคยต้องมีวงเล็บมาก่อน

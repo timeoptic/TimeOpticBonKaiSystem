@@ -58,7 +58,10 @@ test('sliceOf ไม่มีแถวเลย ก็ไม่พัง', () =>
    หายไปพร้อมช่องเลือก กลับมาเป็น 10 ไม่ได้จนกว่าจะรีโหลดหน้า */
 test('fitsOnePage จริงเมื่อทุกตัวเลือกให้ผลเหมือนกันหมด', () => {
   assert.equal(fitsOnePage(0), true);
-  assert.equal(fitsOnePage(9), true);
+  /* อ้างจาก PAGE_SIZES[0] ไม่ใช่เลขดิบ — ตอนเขียนครั้งแรกค่าเริ่มต้นคือ 10 จึงเขียน
+     ไว้ว่า 9 แถวต้องซ่อนแถบ พอร้านขอให้เหลือหน้าละ 5 เทสต์ก็ฟ้องทั้งที่แอปถูก
+     (9 แถวหน้าละ 5 คือสองหน้า แถบต้องโผล่) */
+  assert.equal(fitsOnePage(PAGE_SIZES[0] - 1), true);
   assert.equal(fitsOnePage(PAGE_SIZES[0]), true);
 });
 

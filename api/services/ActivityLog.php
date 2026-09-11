@@ -154,8 +154,15 @@ final class ActivityLog
         'dashboard'     => 'เปิดดูหน้าหลัก',
     ];
 
-    /** ช่องที่ต้องปิดก่อนเก็บเสมอ — เทียบแบบ "ชื่อช่องมีคำนี้อยู่" */
-    private const SECRET_HINTS = ['password', 'passwd', 'secret', 'token', 'hash'];
+    /**
+     * ช่องที่ต้องปิดก่อนเก็บเสมอ — เทียบแบบ "ชื่อช่องมีคำนี้อยู่"
+     *
+     * `tax_id` ไม่ใช่ความลับแบบรหัสผ่าน แต่เลขผู้เสียภาษี 13 หลักของบุคคลธรรมดา
+     * คือเลขบัตรประชาชน และเส้นทางที่พาเลขนั้นเข้ามา (`/api/bill-parties`,
+     * `/api/receipts/:id/bill`) ไม่ได้อยู่ใน ENTITIES จึงไม่มี diff ให้เทียบ —
+     * ตัวบันทึกเก็บ body ทั้งก้อนลง payload แทน · คำนี้กิน `bill_tax_id` ด้วย
+     */
+    private const SECRET_HINTS = ['password', 'passwd', 'secret', 'token', 'hash', 'tax_id'];
 
     /**
      * ช่องที่ชื่อไปโดน SECRET_HINTS เข้าโดยบังเอิญ แต่ไม่ได้เป็นความลับ

@@ -14,5 +14,5 @@ function ExpensePageInner() {
 /* งานของแอดมิน — พนักงานขายที่พิมพ์ URL เข้ามาตรง ๆ จะเห็นคำอธิบาย
    ไม่ใช่หน้าเปล่าหรือถูกเด้งกลับเงียบ ๆ */
 export default function ExpensePage() {
-  return <AdminOnly><ExpensePageInner /></AdminOnly>;
+  return <AdminOnly zone="money"><ExpensePageInner /></AdminOnly>;
 }

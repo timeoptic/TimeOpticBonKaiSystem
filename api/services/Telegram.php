@@ -9,16 +9,90 @@ declare(strict_types=1);
 
 final class Telegram
 {
+    /**
+     * เพดานความยาวของข้อความสรุป
+     *
+     * ลิมิตจริงของ Telegram คือ 4,096 ตัวอักษร และเป็นลิมิตที่ "ปฏิเสธทั้งก้อน"
+     * ไม่ใช่ตัดท้ายให้ — ยาวเกินแล้วจะไม่ได้รับอะไรเลย เผื่อไว้ห้าร้อยตัวอักษร
+     * เพราะเราวัดด้วย mb_strlen (จำนวนตัวอักษร) ส่วน entity ของ HTML tag
+     * ที่ปนอยู่ในข้อความก็นับรวมในลิมิตของฝั่งนู้นด้วย
+     */
+    public const DIGEST_LIMIT = 3500;
+
     private static ?array $cache = null;
     private static float $cacheAt = 0;
     private static array $envOverride = [];
 
+    /**
+     * ปลายทางที่ส่งได้ — คนละบอท คนละกลุ่ม
+     *
+     * ร้านแยกกลุ่มกันจริงตามชนิดของเรื่อง: "TimeOptic คิวลูกค้า" คือเรื่องที่ต้อง
+     * ขยับตอนนี้ ส่วน "TimeOptic รายงานการส่งมอบ" คือสรุปที่อ่านวันละครั้ง
+     * ปนกันแล้วเรื่องด่วนจะจมอยู่ใต้รายงานห้าสิบบรรทัด
+     *
+     * `env` คือชื่อตัวแปรใน .env ที่ทับค่าในฐานข้อมูล — หน้าตั้งค่าอ่านไปแสดงว่า
+     * ช่องไหนถูกล็อกอยู่เพราะอะไร แทนที่จะขึ้นช่องแก้ไม่ได้โดยไม่บอกเหตุผล
+     */
+    public const TARGETS = [
+        'main' => [
+            'label' => 'คิวลูกค้า',
+            'token' => 'telegram_bot_token',
+            'chat'  => 'telegram_chat_id',
+            'env'   => ['token' => 'TELEGRAM_BOT_TOKEN', 'chat' => 'TELEGRAM_CHAT_ID'],
+        ],
+        'digest' => [
+            'label' => 'รายงานการส่งมอบ',
+            'token' => 'digest_telegram_bot_token',
+            'chat'  => 'digest_telegram_chat_id',
+            'env'   => ['token' => 'DIGEST_TELEGRAM_BOT_TOKEN', 'chat' => 'DIGEST_TELEGRAM_CHAT_ID'],
+        ],
+    ];
+
+    /** ปลายทางที่ใช้เมื่อไม่ได้ระบุ — ของเดิมทั้งหมดเป็นตัวนี้ */
+    public const MAIN = 'main';
+
     public static function configure(array $tg): void
     {
         self::$envOverride = array_filter([
-            'telegram_bot_token' => $tg['bot_token'] ?? null,
-            'telegram_chat_id'   => $tg['chat_id'] ?? null,
+            'telegram_bot_token'        => $tg['bot_token'] ?? null,
+            'telegram_chat_id'          => $tg['chat_id'] ?? null,
+            'digest_telegram_bot_token' => $tg['digest_bot_token'] ?? null,
+            'digest_telegram_chat_id'   => $tg['digest_chat_id'] ?? null,
         ], fn($v) => $v !== null && $v !== '');
+    }
+
+    /** ชื่อปลายทางที่รู้จัก — อย่างอื่นถือเป็น main */
+    public static function target(?string $t): string
+    {
+        return isset(self::TARGETS[(string) $t]) ? (string) $t : self::MAIN;
+    }
+
+    /**
+     * token กับ chat ของปลายทางหนึ่ง
+     *
+     * ตั้งไม่ครบคู่ = ใช้ไม่ได้ทั้งคู่ แล้วตกกลับไปที่ main — ห้ามเอา token ใหม่
+     * ไปคู่กับ chat เก่า เพราะบอทที่ยังไม่ได้ถูกเชิญเข้ากลุ่มนั้นจะส่งไม่ออก
+     * และตกกลับดีกว่าเงียบ: การแจ้งเตือนที่หายไปเฉย ๆ ไม่มีใครมาบ่นให้รู้
+     *
+     * @return array{token:string, chat:string, target:string, fell_back:bool}
+     */
+    public static function credentials(?string $target = null): array
+    {
+        $s    = self::settings();
+        $name = self::target($target);
+        $read = static function (string $t) use ($s): array {
+            $k = self::TARGETS[$t];
+            return [trim((string) ($s[$k['token']] ?? '')), trim((string) ($s[$k['chat']] ?? ''))];
+        };
+
+        [$token, $chat] = $read($name);
+        $fellBack = false;
+
+        if (($token === '' || $chat === '') && $name !== self::MAIN) {
+            [$token, $chat] = $read(self::MAIN);
+            $fellBack = true;
+        }
+        return ['token' => $token, 'chat' => $chat, 'target' => $name, 'fell_back' => $fellBack];
     }
 
     public static function settings(bool $force = false): array
@@ -57,11 +131,11 @@ final class Telegram
         return self::settings(true);
     }
 
-    /** true when a token and chat id are present */
-    public static function isConfigured(): bool
+    /** true when a token and chat id are present (ตกกลับไป main ได้ก็นับว่าใช้ได้) */
+    public static function isConfigured(?string $target = null): bool
     {
-        $s = self::settings();
-        return !empty($s['telegram_bot_token']) && !empty($s['telegram_chat_id']);
+        $c = self::credentials($target);
+        return $c['token'] !== '' && $c['chat'] !== '';
     }
 
     /** …and the toggle is on */
@@ -79,10 +153,18 @@ final class Telegram
         $kind      = $opt['kind'] ?? 'manual';
         $bookingId = $opt['booking_id'] ?? null;
         $force     = (bool) ($opt['force'] ?? false);
+        $target    = self::target($opt['target'] ?? null);
 
         $s      = self::settings();
-        $token  = $s['telegram_bot_token'] ?? '';
-        $chatId = $s['telegram_chat_id'] ?? '';
+        $cred   = self::credentials($target);
+        $token  = $cred['token'];
+        $chatId = $cred['chat'];
+
+        /* ตกกลับไป main แล้ว การส่งครั้งนี้เป็นของ main จริง ๆ — ถ้าย้ายกลุ่ม
+           ทีหลังต้องเขียนทับคีย์ของ main ไม่ใช่ของปลายทางที่ตั้งไม่ครบ */
+        if ($cred['fell_back']) {
+            $target = self::MAIN;
+        }
 
         if (!$token || !$chatId) {
             return self::logged($kind, $bookingId, $chatId, $text, 0,
@@ -93,6 +175,42 @@ final class Telegram
                 'ปิดการแจ้งเตือน Telegram อยู่');
         }
 
+        $r = self::dispatch($token, (string) $chatId, $text);
+
+        /*
+         * กลุ่มธรรมดาที่ถูกอัปเกรดเป็นซูเปอร์กรุ๊ปจะได้ chat id ใหม่ ของเดิมใช้ไม่ได้อีก
+         * ("group chat was upgraded to a supergroup chat") — Telegram ส่ง id ใหม่มาให้
+         * ใน parameters.migrate_to_chat_id จึงย้ายตามแล้วส่งซ้ำอีกครั้งเดียว
+         * ไม่งั้นการแจ้งเตือนจะเงียบไปทั้งหมดจนกว่าจะมีคนไปแก้ค่าเอง
+         */
+        if ($r['migrate_to'] !== null) {
+            $newChat = $r['migrate_to'];
+            $chatKey = self::TARGETS[$target]['chat'];
+            $envName = self::TARGETS[$target]['env']['chat'];
+            $pinned  = isset(self::$envOverride[$chatKey]);
+            self::saveSettings([$chatKey => $newChat]);
+            if ($pinned) {
+                // env ทับค่าที่เพิ่งบันทึกเสมอ จำใส่ override ไว้ให้โปรเซสนี้ใช้ต่อได้
+                self::$envOverride[$chatKey] = $newChat;
+                self::invalidate();
+                self::logged('telegram_migrate', null, $newChat, '', 0,
+                    "กลุ่มถูกอัปเกรดเป็นซูเปอร์กรุ๊ป — แก้ {$envName} ใน .env เป็น {$newChat} "
+                    . 'ไม่งั้นค่าเก่าจะกลับมาทับทุกครั้งที่รีสตาร์ท');
+            }
+            $chatId = $newChat;
+            $r      = self::dispatch($token, $newChat, $text);
+        }
+
+        return self::logged($kind, $bookingId, $chatId, $text, $r['ok'] ? 1 : 0, $r['error']);
+    }
+
+    /**
+     * ยิง sendMessage หนึ่งครั้ง — ไม่แตะ notification_log
+     *
+     * @return array{ok: bool, error: ?string, migrate_to: ?string}
+     */
+    private static function dispatch(string $token, string $chatId, string $text): array
+    {
         $payload = json_encode([
             'chat_id'                  => $chatId,
             'text'                     => $text,
@@ -106,25 +224,33 @@ final class Telegram
         );
 
         if ($curlErr !== null) {
-            return self::logged($kind, $bookingId, $chatId, $text, 0, mb_substr($curlErr, 0, 250));
+            return ['ok' => false, 'error' => mb_substr($curlErr, 0, 250), 'migrate_to' => null];
         }
         $data = json_decode((string) $body, true);
         if ($httpCode >= 400 || (is_array($data) && ($data['ok'] ?? null) === false)) {
-            $err = $data['description'] ?? "HTTP $httpCode";
-            return self::logged($kind, $bookingId, $chatId, $text, 0, mb_substr((string) $err, 0, 250));
+            $err       = $data['description'] ?? "HTTP $httpCode";
+            $migrateTo = $data['parameters']['migrate_to_chat_id'] ?? null;
+            return [
+                'ok'         => false,
+                'error'      => mb_substr((string) $err, 0, 250),
+                'migrate_to' => is_int($migrateTo) || (is_string($migrateTo) && $migrateTo !== '')
+                    ? (string) $migrateTo
+                    : null,
+            ];
         }
-        return self::logged($kind, $bookingId, $chatId, $text, 1, null);
+        return ['ok' => true, 'error' => null, 'migrate_to' => null];
     }
 
-    /** ask Telegram who the bot is — used by the "ทดสอบ" button */
-    public static function verifyBot(): array
+    /** ask Telegram who the bot is — used by the "ทดสอบ" button, ปลายทางละตัว */
+    public static function verifyBot(?string $target = null): array
     {
-        $s = self::settings(true);
-        if (empty($s['telegram_bot_token'])) {
+        self::settings(true);
+        $token = self::credentials($target)['token'];
+        if ($token === '') {
             throw new RuntimeException('ยังไม่ได้ใส่ bot token');
         }
         [$body, $httpCode, $curlErr] = self::post(
-            "https://api.telegram.org/bot{$s['telegram_bot_token']}/getMe",
+            "https://api.telegram.org/bot{$token}/getMe",
             null
         );
         if ($curlErr !== null) {
@@ -284,5 +410,151 @@ final class Telegram
         }
         $parts[] = "\nรหัสจอง " . self::esc($b['booking_code'] ?? '');
         return implode("\n", array_filter($parts, fn($p) => $p !== ''));
+    }
+
+    /* ------------------------------------------------------------------ *
+     * สรุปคิวส่งมอบรอบหนึ่งทุ่ม (ดู api/services/DeliveryDigest.php)
+     * ------------------------------------------------------------------ */
+
+    private const TH_MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
+        'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+
+    private const TH_DAYS = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'];
+
+    /** 2026-09-10 → "10 ก.ย. 2569" (พ.ศ. เพราะพนักงานอ่านปีนี้ ไม่ใช่ ค.ศ.) */
+    private static function thaiDate(?string $ymd, bool $withDayName = false): string
+    {
+        $ts = $ymd ? strtotime(substr($ymd, 0, 10)) : false;
+        if ($ts === false) {
+            return 'ไม่ระบุวัน';
+        }
+        $out = (int) date('j', $ts) . ' ' . self::TH_MONTHS[(int) date('n', $ts) - 1]
+             . ' ' . ((int) date('Y', $ts) + 543);
+
+        return $withDayName ? self::TH_DAYS[(int) date('w', $ts)] . 'ที่ ' . $out : $out;
+    }
+
+    private static function custName(array $r): string
+    {
+        $name = trim(implode(' ', array_filter([
+            $r['first_name'] ?? null, $r['mid_name'] ?? null, $r['last_name'] ?? null,
+        ])));
+        return $name !== '' ? $name : 'ลูกค้า (ไม่ระบุชื่อ)';
+    }
+
+    /**
+     * ต่อหัวข้อความเข้ากับรายการ แล้วแบ่งเป็นหลายข้อความเมื่อยาวเกินลิมิต
+     *
+     * ของเดิมตัดทิ้งแล้วเขียนว่า "…และอีก 21 ราย" ซึ่งแปลว่ายี่สิบเอ็ดคนที่ของ
+     * ค้างอยู่ไม่มีใครเห็นชื่อ — คนที่ต้องโทรตามอ่านไม่ครบก็ตามไม่ครบ
+     * **ไม่ตัดอะไรทิ้งอีกแล้ว** ยาวแค่ไหนก็แบ่งไปจนหมด
+     *
+     * ทุกก้อนติดเลข (2/3) ไว้ที่หัว เพราะข้อความที่จบกลางคันโดยไม่บอกว่ามีต่อ
+     * ดูเหมือนรายการที่จบแล้วเป๊ะ ๆ
+     *
+     * เรื่องจำนวนข้อความไปคุมที่จังหวะการส่งแทน (ดู DeliveryDigest::sendAll)
+     * ไม่ใช่ด้วยการตัดข้อมูลออก
+     *
+     * @param  list<string> $items บล็อกละหนึ่งรายการ ประกอบเลขลำดับมาแล้ว
+     * @return list<string>
+     */
+    private static function paginate(string $head, array $items): array
+    {
+        $total = count($items);
+        $pages = [];
+        $i     = 0;
+
+        /* กันที่ไว้ให้ "(n/n)" ที่ยังไม่รู้ค่า — จำนวนก้อนรู้แน่ก็ต่อเมื่อแบ่งเสร็จแล้ว */
+        $room = self::DIGEST_LIMIT - mb_strlen($head) - 12;
+
+        while ($i < $total) {
+            $body = '';
+            while ($i < $total && mb_strlen($body . "\n\n" . $items[$i]) <= $room) {
+                $body .= "\n\n" . $items[$i];
+                $i++;
+            }
+            /* รายการเดียวยาวเกินหนึ่งข้อความ — ไม่น่าเกิดกับข้อมูลจริง แต่ถ้าเกิด
+               แล้วปล่อยไว้จะวนไม่จบ ยัดใส่ไปแล้วให้ Telegram เป็นคนบ่น */
+            if ($body === '') {
+                $body = "\n\n" . $items[$i];
+                $i++;
+            }
+            $pages[] = $body;
+        }
+
+        $n = count($pages);
+        foreach ($pages as $k => $body) {
+            $pages[$k] = ($n > 1 ? $head . ' (' . ($k + 1) . '/' . $n . ')' : $head) . $body;
+        }
+        return $pages;
+    }
+
+    /** บรรทัดเวลานัด — ตอนนี้ร้านบันทึกแค่วัน เวลาจึงต่อท้ายเฉพาะตอนที่มีจริง */
+    private static function apptWhen(array $r): string
+    {
+        $when = self::thaiDate($r['appointment_date'] ?? null);
+        $time = substr((string) ($r['appointment_time'] ?? ''), 0, 5);
+        return $time !== '' ? $when . ' ' . $time . ' น.' : $when;
+    }
+
+    /**
+     * ① คิวส่งมอบของวันที่กำหนด
+     *
+     * ว่างก็ยังส่ง — ข้อความที่มาตรงเวลาทุกวันคือหลักฐานว่าตัวแจ้งเตือนยังไม่ตาย
+     * ถ้าเงียบเพราะไม่มีคิว กับเงียบเพราะเครื่องดับ จะแยกกันไม่ออก
+     */
+    /** @return list<string> หนึ่งใบเสมอเมื่อคิวว่าง มากกว่านั้นเมื่อรายการยาว */
+    public static function deliveryQueueMessages(array $rows, string $date): array
+    {
+        $label = match ($date) {
+            date('Y-m-d', strtotime(today() . ' +1 day')) => 'พรุ่งนี้',
+            today() => 'วันนี้',
+            default => '',
+        };
+        $title = trim('📦 <b>คิวส่งมอบ' . $label . '</b>');
+        $head  = $title . "\n" . self::thaiDate($date, true);
+
+        if ($rows === []) {
+            return [$head . "\n\nไม่มีคิวส่งมอบ"];
+        }
+        $head .= ' · ' . count($rows) . ' ราย';
+
+        $items = [];
+        foreach ($rows as $i => $r) {
+            $rush = !empty($r['is_rush']) ? '⚡ ' : '';
+            $items[] = ($i + 1) . '. ' . $rush . '<b>' . self::esc($r['invoice_code'] ?? '—') . '</b>'
+                . ' · ' . self::esc(self::custName($r))
+                . "\n    🗓 " . self::esc(self::apptWhen($r))
+                . ' · ' . self::esc($r['status_label_th'] ?? '');
+        }
+        return self::paginate($head, $items);
+    }
+
+    /**
+     * ② ของที่เลยวันนัดแล้วยังอยู่ที่ร้าน
+     *
+     * คืนลิสต์ว่างเมื่อไม่มีของค้าง — ผู้เรียกจะได้ไม่ต้องส่งข้อความเปล่ามารบกวน
+     * ใส่เบอร์โทรมาด้วยเพราะรายการนี้จบด้วยการหยิบโทรศัพท์ ไม่ใช่แค่รับรู้
+     *
+     * @return list<string>
+     */
+    public static function deliveryOverdueMessages(array $rows, int $days): array
+    {
+        if ($rows === []) {
+            return [];
+        }
+        $head = '⚠️ <b>เลยกำหนดส่งมอบ</b>' . "\n"
+              . count($rows) . ' ราย (นับย้อน ' . $days . ' วัน)';
+
+        $items = [];
+        foreach ($rows as $i => $r) {
+            $phone = trim((string) ($r['phone'] ?? ''));
+            $items[] = ($i + 1) . '. <b>' . self::esc($r['invoice_code'] ?? '—') . '</b>'
+                . ' · ' . self::esc(self::custName($r))
+                . "\n    🗓 นัด " . self::esc(self::apptWhen($r))
+                . ' · เลยมา ' . (int) ($r['days_late'] ?? 0) . ' วัน'
+                . ($phone !== '' ? ' · ☎ ' . self::esc($phone) : '');
+        }
+        return self::paginate($head, $items);
     }
 }

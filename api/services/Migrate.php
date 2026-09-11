@@ -328,6 +328,37 @@ final class Migrate
                 CONSTRAINT fk_receipt_order FOREIGN KEY (order_id) REFERENCES custom_orders (id) ON DELETE CASCADE,
                 CONSTRAINT fk_receipt_sale  FOREIGN KEY (sale_id)  REFERENCES pos_sales (id)     ON DELETE CASCADE
               ) $c",
+
+            /* ชื่อที่พิมพ์ลงบล็อกลูกค้าของใบเสร็จ — คนละคนกับลูกค้าในเคสได้
+               เคสเป็นของพ่อ แต่ลูกเป็นคนออกบิล วันหลังพ่อมาตัดแว่นอีก คนหน้าร้าน
+               ค้นชื่อลูกแล้วดึงมาเติมได้ ไม่ต้องพิมพ์ที่อยู่กับเลขภาษีใหม่ทั้งชุด
+
+               ทำไมไม่เพิ่มคอลัมน์ใน customers: ชื่อบนใบไม่ใช่ชื่อคนที่มาตัดแว่น
+               ลูกค้าคนเดียวออกใบได้หลายนาม (ตัวเอง / บริษัท / คนที่จ่ายให้) และนาม
+               หนึ่งก็ใช้กับลูกค้าหลายคนได้ ยัดลงตารางลูกค้าคือตอบสองคำถามด้วยช่องเดียว
+
+               `customer_id` เป็นแค่ "เคยออกใบให้ใคร" ไว้ดันขึ้นบนสุดตอนค้น ไม่ใช่
+               เจ้าของ — ลูกออกใบให้แม่ด้วยก็ยังค้นชื่อเจอตามปกติ
+
+               ไม่มี UNIQUE บนชื่อหรือเลขภาษี: ชื่อพ้องกันมีจริง และนามที่ยังไม่รู้
+               เลขภาษีก็ต้องบันทึกได้ การรวมแถวซ้ำทำที่ POST /api/bill-parties
+               ซึ่งเทียบชื่อกับเลขแบบปรับรูปแบบให้เหมือนกันก่อน */
+            'bill_parties' => "CREATE TABLE IF NOT EXISTS bill_parties (
+                id           int(10) unsigned NOT NULL AUTO_INCREMENT,
+                name         varchar(200) NOT NULL COMMENT 'ชื่อที่พิมพ์ลงใบ — บุคคลหรือนิติบุคคล',
+                tax_id       varchar(30)  DEFAULT NULL COMMENT 'เลขผู้เสียภาษี · บุคคลธรรมดาคือเลขบัตรประชาชน',
+                address      varchar(255) DEFAULT NULL,
+                phone        varchar(40)  DEFAULT NULL,
+                customer_id  int(10) unsigned DEFAULT NULL COMMENT 'เคยออกใบให้ลูกค้าคนไหน — ไว้เดาให้ ไม่ใช่เจ้าของ',
+                created_at   datetime NOT NULL DEFAULT current_timestamp(),
+                last_used_at datetime DEFAULT NULL COMMENT 'ครั้งล่าสุดที่ถูกพิมพ์ลงใบจริง',
+                PRIMARY KEY (id),
+                KEY idx_bill_party_name (name(64)),
+                KEY idx_bill_party_tax (tax_id),
+                KEY idx_bill_party_customer (customer_id),
+                CONSTRAINT fk_bill_party_customer FOREIGN KEY (customer_id)
+                  REFERENCES customers (id) ON DELETE SET NULL
+              ) $c",
         ];
     }
 
@@ -525,6 +556,8 @@ final class Migrate
                 'lens_r_sku'     => 'varchar(80) DEFAULT NULL',
                 'lens_l_name'    => 'varchar(200) DEFAULT NULL',
                 'lens_l_sku'     => 'varchar(80) DEFAULT NULL',
+                /* ประเภทกรอบ — คำไทยจาก Lookups::FRAME_TYPES ออเดอร์เก่าเป็น NULL */
+                'frame_type'     => 'varchar(40) DEFAULT NULL',
             ]),
             self::addColumns('frame_fittings', [
                 'frame_box_a' => 'decimal(6,2) DEFAULT NULL',
@@ -579,6 +612,10 @@ final class Migrate
             ]),
             self::addColumns('centerings', [
                 'measured_at' => 'datetime DEFAULT NULL',
+                /* Cor. — ความยาว corridor ของเลนส์โปรเกรสซีฟ (mm) ค่าเดียวใช้ทั้งสองข้าง
+                   varchar เหมือนค่าการวัดตัวอื่นในตารางนี้ (PD, FH, CVD) ที่เก็บตามที่พิมพ์
+                   บน Hostinger ไม่มีอะไรเรียก run() ต้องสั่งเพิ่มเอง — ดู deploy/README.md */
+                'corridor'    => 'varchar(20) DEFAULT NULL',
             ]),
             /* แว่นเดิมบนใบกระดาษมีแค่ SPH/ADD/VA/PD มาแต่เดิม ของจริงต้องอ่าน
                CYL/AXIS จากเลนส์เก่าด้วย และใบจากภายนอกต้องรู้ว่ามาจากที่ไหนเมื่อไร */
@@ -595,6 +632,22 @@ final class Migrate
                 /* ตาหลัก / ตารอง — 'r' | 'l' | 'both' | NULL (ยังไม่ได้ระบุ)
                    'both' คือสองข้างเด่นเท่ากัน ไม่ใช่ "ติ๊กไว้ทั้งคู่" คนละความหมายกับว่าง */
                 'dominant_eye'         => "varchar(10) DEFAULT NULL COMMENT 'r | l | both'",
+            ]),
+            /* บล็อกลูกค้าที่พิมพ์ลงใบนั้นจริง — สำเนา ไม่ใช่ JOIN กลับไปที่ bill_parties
+               ใบเสร็จเป็นเอกสารภาษี ลูกค้าย้ายบ้านแล้วมาแก้ที่อยู่ในรายชื่อ ใบที่ออก
+               ไปแล้วต้องยังพิมพ์ที่อยู่ ณ วันที่ออกออกมาได้เหมือนเดิม
+
+               แถวเก่าเป็น null แปลว่า "ไม่รู้ว่าตอนนั้นพิมพ์อะไรลงไป" ซึ่งเป็นความจริง
+               ก่อนหน้านี้ช่องสี่ช่องอยู่ใน useState ของหน้าเว็บ ไม่เคยถูกเก็บที่ไหนเลย
+
+               bill_party_id ไม่ผูก FK โดยตั้งใจ ด้วยเหตุผลเดียวกับ activity_log.actor_id:
+               ลบนามทิ้งจากรายชื่อแล้ว ใบที่เคยออกต้องอ่านออกเหมือนเดิม */
+            self::addColumns('receipts', [
+                'bill_name'     => "varchar(200) DEFAULT NULL COMMENT 'ชื่อบนใบ ณ วันที่ออก'",
+                'bill_tax_id'   => 'varchar(30)  DEFAULT NULL',
+                'bill_address'  => 'varchar(255) DEFAULT NULL',
+                'bill_phone'    => 'varchar(40)  DEFAULT NULL',
+                'bill_party_id' => "int(10) unsigned DEFAULT NULL COMMENT 'bill_parties.id — ไม่ผูก FK โดยตั้งใจ'",
             ])
         );
         /* Views come after addColumns, not before: v_case_board selects columns that

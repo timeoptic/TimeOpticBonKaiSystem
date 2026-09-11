@@ -14,7 +14,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { api } from '../../../../../lib/apiClient.js';
-import { useAsync, readForm, useNowLocal } from '../../../../../lib/hooks.js';
+import { useAsync, readForm, useNowLocal, useObjectUrls } from '../../../../../lib/hooks.js';
 import { useToast } from '../../../../../components/Toast.jsx';
 import { useConfirm } from '../../../../../components/Confirm.jsx';
 import { Badge, Card, Field, FormGrid, Row, Split } from '../../../../../components/ui.jsx';
@@ -26,6 +26,8 @@ import {
 } from '../../../../../lib/format.js';
 import { DateField } from '../../../../../components/DateField.jsx';
 import { DateTimeField } from '../../../../../components/DateTimeField.jsx';
+import { Lightbox } from '../../../../../components/Lightbox.jsx';
+import { isPreviewable } from '../../../../../lib/lightbox.js';
 
 /* "จ่ายบางส่วน" ออกแล้ว — มันกับ "มัดจำ" ตอบคำถามเดียวกัน (จ่ายมาไม่ครบ) ต่างกันแค่
    ว่าเป็นก้อนแรกหรือไม่ ซึ่งระบบดูจากประวัติเองได้ ตัวเลือกที่ต้องหยุดคิดว่าจะเลือก
@@ -141,24 +143,24 @@ function PickupDateCard({ c, reload }) {
 }
 
 /* พรีวิวไฟล์ที่เลือกไว้แต่ยังไม่ได้อัปโหลด
-   URL ของรูปต้องคืนเมื่อไฟล์หลุดจากรายการ — เรียก createObjectURL ตอน render
-   จะสร้างใหม่ทุกรอบแล้วรั่วทิ้งไว้ทั้งหมด */
-function SlipThumb({ file, onRemove }) {
-  const pdf = file.type === 'application/pdf';
-  const [url, setUrl] = useState(null);
-
-  useEffect(() => {
-    if (pdf) return undefined;
-    const made = URL.createObjectURL(file);
-    setUrl(made);
-    return () => URL.revokeObjectURL(made);
-  }, [file, pdf]);
-
+   URL มาจาก `useObjectUrls` ของการ์ดแม่ ไม่ได้สร้างเองในนี้แล้ว — การ์ดแม่ต้องใช้
+   URL ตัวเดียวกันส่งให้หน้าดูรูปใหญ่ ถ้าต่างคนต่างสร้างจะได้คนละ blob ของไฟล์เดียวกัน */
+function SlipThumb({ file, url, onOpen, onRemove }) {
+  const image = isPreviewable(file.type) && url;
   return (
     <span className="slip-pick" title={file.name}>
-      {pdf || !url
-        ? <span className="slip-file"><Icon name="file" /></span>
-        : <img src={url} alt={file.name} />}
+      {image
+        ? (
+          <button
+            type="button"
+            className="slip-pick-open"
+            onClick={(e) => { e.stopPropagation(); onOpen(); }}
+            aria-label={`ดูรูปใหญ่ ${file.name}`}
+          >
+            <img src={url} alt={file.name} />
+          </button>
+        )
+        : <span className="slip-file"><Icon name="file" /></span>}
       <button
         type="button"
         className="slip-pick-x"
@@ -178,6 +180,11 @@ function SlipDropCard({ files, onChange }) {
   const inputRef = useRef(null);
   const [over, setOver] = useState(false);
   const [skipped, setSkipped] = useState(0);
+  const urlOf = useObjectUrls(files);
+  const [viewing, setViewing] = useState(null);
+  const images = files
+    .filter((f) => isPreviewable(f.type) && urlOf(f))
+    .map((f) => ({ key: `${f.name}-${f.size}`, file: f, src: urlOf(f), alt: f.name, name: f.name }));
 
   /* ไฟล์ที่ลากมาวางไม่ผ่าน accept ของ <input> — ต้องกรองชนิดเองตรงนี้ และกัน
      ไฟล์เดิมซ้ำ (ชื่อ+ขนาดตรงกัน) เพราะเลือกสองรอบคือแนบสลิปใบเดียวกันสองใบ */
@@ -220,6 +227,8 @@ function SlipDropCard({ files, onChange }) {
             <SlipThumb
               key={`${f.name}-${f.size}`}
               file={f}
+              url={urlOf(f)}
+              onOpen={() => setViewing(images.findIndex((x) => x.file === f))}
               onRemove={() => { setSkipped(0); onChange(files.filter((x) => x !== f)); }}
             />
           ))}
@@ -234,6 +243,10 @@ function SlipDropCard({ files, onChange }) {
       ) : (
         <p className="slip-drop-note muted">ยังไม่ได้แนบไฟล์ — บันทึกได้โดยไม่มีสลิป</p>
       )}
+
+      {viewing !== null && images.length > 0 ? (
+        <Lightbox items={images} index={viewing} onIndex={setViewing} onClose={() => setViewing(null)} />
+      ) : null}
 
       {skipped > 0 ? (
         <p className="slip-drop-note skip">
@@ -251,6 +264,9 @@ export function PaymentPanel({ c, reload }) {
   const rowSlipRef = useRef(null);
 
   const [slips, setSlips] = useState([]);          // files chosen for the payment being written
+  /* สลิปของรายการรับเงินไหน กำลังดูใบที่เท่าไร · ปุ่ม < > วนเฉพาะสลิปของรายการนั้น
+     ไม่ข้ามไปสลิปของรายการอื่น ซึ่งเป็นเงินคนละก้อน */
+  const [slipView, setSlipView] = useState(null);
   const [attachTo, setAttachTo] = useState(null);  // payment a slip is being added to
   const [method, setMethod] = useState('Cash');
   const [kind, setKind] = useState(Number(c.paid) > 0 ? 'final' : 'deposit');
@@ -290,7 +306,13 @@ export function PaymentPanel({ c, reload }) {
      the types that mean "all of it" fill the amount in themselves. */
   const enteredAmount = Number(amount) || 0;
   const afterThis = Math.max(0, left - enteredAmount);
-  const overpay = enteredAmount > left && left > 0;
+  /* รับเกินยอดไม่ได้เลย (ร้านตัดสินไว้ · API กันซ้ำอีกชั้น) — เงื่อนไขเดิมเตือนเฉพาะตอน
+     ยังมียอดค้าง พอยอดครบแล้วคำเตือนหายไป กดบันทึกซ้ำจึงผ่านไปเงียบ ๆ สามครั้ง
+     ออเดอร์ยอด 0 = ยังไม่ใส่ราคา ไม่มียอดให้เทียบ จึงรับมัดจำได้ */
+  const priced = net > 0;
+  const fullyPaid = priced && left <= 0;
+  const overpay = priced && enteredAmount > left;
+  const [saving, setSaving] = useState(false);
 
   /* สองอย่างที่ต้องมีก่อนเงินจะลงระบบ — วันนัดรับ (อยู่การ์ดบนสุด บันทึกแยก) และ
      ผู้รับเงิน ปุ่มบันทึกจึงปิดไว้พร้อมบอกว่าขาดอะไร ดีกว่าให้กดแล้วค่อยเด้ง error */
@@ -298,6 +320,9 @@ export function PaymentPanel({ c, reload }) {
     c.order?.appointment_date ? null : 'วันนัดรับ',
     receivedBy ? null : 'ผู้รับเงิน',
   ].filter(Boolean);
+  const blockedReason = fullyPaid
+    ? 'ออเดอร์นี้ชำระครบแล้ว'
+    : overpay ? `รับเกินยอดคงเหลือไม่ได้ — คงเหลือ ${money(left)}` : null;
 
   const chooseKind = (v) => {
     setKind(v);
@@ -305,28 +330,85 @@ export function PaymentPanel({ c, reload }) {
     if (v === 'deposit' && (!enteredAmount || enteredAmount === left)) setAmount('');
   };
 
+  /**
+   * บันทึกรับเงิน — กันผิดสามชั้น (เหตุการณ์ 11 ก.ย. 2026: ฿2,900 ถูกบันทึกสามครั้ง)
+   *
+   *   1. กล่องสรุปทุกครั้งก่อนส่ง — อ่านจากค่าที่จะส่งจริง ไม่ใช่ข้อความลอย ๆ
+   *   2. ระหว่างส่ง ปุ่มล็อก และบันทึกเสร็จแล้วล้างจำนวนเงิน อ้างอิง สลิป — ปุ่มที่ยัง
+   *      เขียนว่า "บันทึก ฿2,900" หลังบันทึกไปแล้ว คือปุ่มที่ชวนให้กดซ้ำ
+   *   3. API ตอบว่า "อาจซ้ำ" (ยอดเท่ากันภายใน 10 นาที) → ถามอีกครั้ง ยืนยันแล้วค่อยส่งใหม่
+   *      ส่วนรับเกินยอด API ปฏิเสธเสมอ ไม่มีทางยืนยันข้าม
+   */
   const add = async (e) => {
     e.preventDefault();
+    if (saving) return;
     if (missingBeforeSave.length) {
       return err(new Error(`กรอกให้ครบก่อนบันทึก — ขาด: ${missingBeforeSave.join(', ')}`));
     }
-    const body = readForm(e.currentTarget);
+    if (blockedReason) return err(new Error(blockedReason));
+
+    const form = e.currentTarget;
+    const body = readForm(form);
+    const employeeName = (meta.employees || [])
+      .find((x) => String(x.id) === String(receivedBy))?.employee_name || '—';
+    const rows = [
+      ['จำนวนเงิน', money(enteredAmount)],
+      ['ประเภท', KIND_LABEL[kind] || kind],
+      ['วิธีชำระ', methodLabel[method] || method],
+      ['ผู้รับเงิน', employeeName],
+      ['คงเหลือหลังรับ', priced ? money(afterThis) : 'ออเดอร์ยังไม่มีราคา'],
+    ];
+    if (body.reference) rows.push(['อ้างอิง', body.reference]);
+    if (slips.length) rows.push(['สลิป', `${slips.length} ไฟล์`]);
+
+    const confirmed = await confirm('ยืนยันบันทึกการรับเงิน', (
+      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <tbody>
+          {rows.map(([k, v]) => (
+            <tr key={k}>
+              <th style={{ textAlign: 'left', fontWeight: 400, color: 'var(--ink-faint)', padding: '5px 12px 5px 0', whiteSpace: 'nowrap' }}>{k}</th>
+              <td style={{ textAlign: 'right', fontWeight: 600, padding: '5px 0' }}>{v}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    ), { confirmText: `ยืนยันบันทึก ${money(enteredAmount)}` });
+    if (!confirmed) return;
+
+    const payload = {
+      ...body,
+      kind,
+      method,
+      amount,
+      paid_at: toStamp(body.paid_at),
+      case_id: c.id,
+      order_id: c.order?.id,
+    };
+    setSaving(true);
     try {
-      const saved = await api.post('/api/payments', {
-        ...body,
-        kind,
-        method,
-        amount,
-        paid_at: toStamp(body.paid_at),
-        case_id: c.id,
-        order_id: c.order?.id,
-      });
+      let saved;
+      try {
+        saved = await api.post('/api/payments', payload);
+      } catch (ex) {
+        if (ex.reason !== 'possible_duplicate') throw ex;
+        const again = await confirm('อาจเป็นรายการซ้ำ', ex.message, {
+          confirmText: 'ไม่ซ้ำ — บันทึกอีกรายการ', danger: true,
+        });
+        if (!again) return;
+        saved = await api.post('/api/payments', { ...payload, confirm_duplicate: true });
+      }
       for (const file of slips) await sendSlip(file, saved.id);
-      setSlips([]);
       ok(slips.length ? `บันทึกการรับเงินและแนบสลิป ${slips.length} ไฟล์แล้ว` : 'บันทึกการรับเงินแล้ว');
+      setSlips([]);
+      setAmount('');
+      form.reset();
       reload();
       reloadFiles();
-    } catch (ex) { err(ex); }
+    } catch (ex) {
+      err(ex);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const attachToRow = (p) => { setAttachTo(p.id); rowSlipRef.current?.click(); };
@@ -340,6 +422,11 @@ export function PaymentPanel({ c, reload }) {
       reloadFiles();
     } catch (ex) { err(ex); } finally { setAttachTo(null); }
   };
+
+  /* รูปสลิปของรายการรับเงินหนึ่งรายการ ใช้ URL เดียวกับรูปย่อเป๊ะ · PDF ไม่อยู่ในชุดนี้ */
+  const slipImages = (paymentId) => slipsOf(paymentId)
+    .filter((f) => isPreviewable(f.mime_type))
+    .map((f) => ({ key: f.id, src: api.url('/api/uploads/' + f.id), alt: f.original_name || 'สลิป', name: f.original_name || '' }));
 
   const removeSlip = async (f) => {
     if (!await confirm('ลบสลิป', f.original_name || '', { confirmText: 'ลบ', danger: true })) return;
@@ -397,9 +484,13 @@ export function PaymentPanel({ c, reload }) {
                 </Row>
               )}
               <div className={`pay-after ${overpay ? 'over' : afterThis === 0 && enteredAmount > 0 ? 'clear' : ''}`}>
-                {enteredAmount > 0 ? (
+                {fullyPaid ? (
+                  <><b>ชำระครบแล้ว</b> — ไม่มียอดคงเหลือให้รับเพิ่ม</>
+                ) : !priced ? (
+                  <>ออเดอร์ยังไม่มีราคา — รับเป็น <b>มัดจำ</b> ได้</>
+                ) : enteredAmount > 0 ? (
                   overpay
-                    ? <>รับ {money(enteredAmount)} — <b>เกินยอดคงเหลือ {money(enteredAmount - left)}</b></>
+                    ? <>รับ {money(enteredAmount)} — <b>เกินยอดคงเหลือ {money(enteredAmount - left)} รับไม่ได้</b></>
                     : afterThis === 0
                       ? <>รับ {money(enteredAmount)} — <b>ครบยอดพอดี</b></>
                       : <>รับ {money(enteredAmount)} — เหลืออีก <b>{money(afterThis)}</b></>
@@ -463,16 +554,22 @@ export function PaymentPanel({ c, reload }) {
           <SlipDropCard files={slips} onChange={setSlips} />
 
           <div className="pay-actions">
-            {missingBeforeSave.length ? (
+            {blockedReason ? (
+              <span className="process-blockers">{blockedReason}</span>
+            ) : missingBeforeSave.length ? (
               <span className="process-blockers">{`ยังบันทึกไม่ได้ — ขาด: ${missingBeforeSave.join(', ')}`}</span>
             ) : null}
             <button
               className="btn btn-lg"
               type="submit"
-              disabled={missingBeforeSave.length > 0}
-              title={missingBeforeSave.length ? `ยังบันทึกไม่ได้ — ขาด: ${missingBeforeSave.join(', ')}` : undefined}
+              disabled={saving || !!blockedReason || missingBeforeSave.length > 0}
+              title={blockedReason
+                || (missingBeforeSave.length ? `ยังบันทึกไม่ได้ — ขาด: ${missingBeforeSave.join(', ')}` : undefined)}
             >
-              <Icon name="check" /> บันทึกการรับเงิน {amount ? money(amount) : ''}
+              <Icon name="check" />
+              {saving
+                ? ' กำลังบันทึก…'
+                : fullyPaid ? ' ชำระครบแล้ว' : ` บันทึกการรับเงิน ${amount ? money(amount) : ''}`}
             </button>
           </div>
         </form>
@@ -509,14 +606,38 @@ export function PaymentPanel({ c, reload }) {
                   <div className="pay-row-slips">
                     {slipsOf(p.id).map((f) => (
                       <span className="slip-chip lg" key={f.id}>
-                        <a href={api.url('/api/uploads/' + f.id)} target="_blank" rel="noreferrer">
-                          {f.mime_type === 'application/pdf'
-                            ? <span className="slip-file"><Icon name="file" /></span>
-                            : <img src={api.url('/api/uploads/' + f.id)} alt={f.original_name || 'สลิป'} />}
-                        </a>
+                        {isPreviewable(f.mime_type)
+                          ? (
+                            <button
+                              type="button"
+                              className="slip-open"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const index = slipImages(p.id).findIndex((x) => x.key === f.id);
+                                if (index >= 0) setSlipView({ paymentId: p.id, index });
+                              }}
+                              aria-label={`ดูสลิป ${f.original_name || ''}`.trim()}
+                              title="กดเพื่อดูรูปใหญ่"
+                            >
+                              <img src={api.url('/api/uploads/' + f.id)} alt={f.original_name || 'สลิป'} />
+                            </button>
+                          )
+                          : (
+                            <a href={api.url('/api/uploads/' + f.id)} target="_blank" rel="noreferrer">
+                              <span className="slip-file"><Icon name="file" /></span>
+                            </a>
+                          )}
                         <button type="button" onClick={() => removeSlip(f)} title="ลบสลิป"><Icon name="x" /></button>
                       </span>
                     ))}
+                    {slipView?.paymentId === p.id ? (
+                      <Lightbox
+                        items={slipImages(p.id)}
+                        index={slipView.index}
+                        onIndex={(index) => setSlipView({ paymentId: p.id, index })}
+                        onClose={() => setSlipView(null)}
+                      />
+                    ) : null}
                     <button type="button" className="btn btn-sm btn-light" onClick={() => attachToRow(p)}>
                       <Icon name="camera" /> แนบสลิป
                     </button>

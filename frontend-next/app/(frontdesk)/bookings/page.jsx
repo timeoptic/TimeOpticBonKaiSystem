@@ -14,7 +14,7 @@ import { MonthPicker } from '../../../components/MonthPicker.jsx';
 import { daysInMonth, leadOffset, shiftMonth } from '../../../lib/calendar.js';
 import { TH_DOW } from '../../../lib/constants.js';
 import { bookingName, dateOnly, fmtDate, hhmm, todayISO } from '../../../lib/format.js';
-import { isAdminUp } from '../../../lib/roles.js';
+import { inSystemZone } from '../../../lib/roles.js';
 import { Icon } from '../../../components/Icon.jsx';
 
 // Port of public/js/views/bookings.js's STATUS_CLASS — colors a booking pill
@@ -111,7 +111,7 @@ function BookingCalendarInner() {
             <Link className="btn btn-ghost" href="/bookings/new">+ จองคิวใหม่</Link>
             {/* /settings เป็นหน้าของแอดมิน (ดู ADMIN_PATHS) — พนักงานขายกดแล้วเจอแต่หน้า
                 "เมนูนี้สำหรับผู้ดูแลระบบ" จึงไม่วาดปุ่มให้ตั้งแต่แรก · ด่านจริงอยู่ที่ API */}
-            {isAdminUp(actor)
+            {inSystemZone(actor)
               ? <Link className="btn btn-ghost" href="/settings"><Icon name="gear" /> ตั้งค่าแจ้งเตือน</Link>
               : null}
           </>

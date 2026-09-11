@@ -267,28 +267,21 @@ const WIPE = [
     'booking_notes', 'bookings',
     'pos_payments', 'pos_sale_items', 'pos_sales',
     'payments', 'sales', 'custom_orders', 'prescriptions', 'cases',
-    'branch_issues', 'stock_requests', 'rx_orders', 'inventory_logs',
-    'stock_lots', 'products', 'categories', 'suppliers', 'product_locations',
+    'legacy_stock', 'product_locations',
     'expenses', 'incomes', 'customers', 'employees',
     'list_sex', 'list_marketing', 'list_pay_type', 'list_product_type',
 ];
 
 /**
- * ล้างแค่บางแถวของตารางนี้ — คีย์คือชื่อตาราง ค่าคือ WHERE ที่ต่อท้าย DELETE
+ * ตารางของระบบคลังไม่อยู่ในรายการล้างแล้ว (`products` `stock_lots` `categories`
+ * `suppliers` `inventory_logs` `rx_orders` `stock_requests` `branch_issues`)
  *
- * `categories`/`products` เป็นแคตตาล็อกกลางที่สองโมดูลใช้ร่วมกัน ไม่ใช่ของ Access
- * ฝ่ายเดียว: หมวด `Pos*` กับสินค้าในหมวดนั้นเป็นรายการที่เจ้าของร้านสั่งลงมาเอง
- * (บริการ อะไหล่ น้ำยา คอนแทคเลนส์) Access ไม่เคยรู้จัก ไม่มีอะไรมาสร้างคืนให้
- * การล้างทั้งตารางจึงเท่ากับลบแคตตาล็อกของ POS ทิ้งทุกครั้งที่นำเข้า — เกิดมาแล้ว
- * หนึ่งครั้ง ต้องกู้ด้วย migration 026
- *
- * ของฝั่งคลัง (เลนส์ กรอบ ล็อต) ยังถูกล้างแล้วสร้างใหม่ทั้งหมดเหมือนเดิม เพราะ
- * ที่นั่น Access เป็นเจ้าของข้อมูลจริง
+ * ตั้งแต่ migration 032 ของใน tblStock ลง `legacy_stock` ไม่ได้ลงคลังจริง Access จึง
+ * ไม่ได้เป็นเจ้าของข้อมูลคลังอีกต่อไป · การล้างตารางพวกนั้นตอนนำเข้าคือการลบของที่ร้าน
+ * รับเข้าคลังจริงทิ้ง (เดิมต้องมี WHERE กันแคตตาล็อก POS ไว้ และเคยพลาดจนต้องกู้ด้วย
+ * migration 026 มาแล้ว)
  */
-const WIPE_WHERE = [
-    'products'   => "category_id IN (SELECT id FROM categories WHERE code NOT LIKE 'Pos%')",
-    'categories' => "code NOT LIKE 'Pos%'",
-];
+const WIPE_WHERE = [];
 
 // ------------------------------------------------------------------ เริ่ม
 
@@ -314,7 +307,7 @@ try {
         $pdo->exec("DELETE FROM `$t`" . ($only !== null ? " WHERE $only" : ''));
     }
     $note('ล้างข้อมูลเดิมแล้ว (' . count(WIPE) . ' ตาราง · ไม่แตะ ' . implode(', ', KEEP)
-        . ' · เก็บแคตตาล็อก POS ไว้ใน ' . implode(', ', array_keys(WIPE_WHERE)) . ')');
+        . ' และตารางของระบบคลังทั้งหมด)');
 
     // ------------------------------------------------------------ ลุกอัป
     $SEX_TH = ['Male' => 'ชาย', 'Female' => 'หญิง'];
@@ -373,88 +366,12 @@ try {
     insertBatch($pdo, 'list_product_type', ['code', 'label_th', 'sort_order'], $rows);
     $note('  ลุกอัป: เพศ · ช่องทางรู้จัก · ช่องทางชำระ · ประเภทสินค้า');
 
-    // -------------------------------------------------------- หมวดสินค้า
-    /* products.category_id เป็น NOT NULL — สคีมานี้บังคับให้ทุกสินค้ามีหมวด
-       ส่วน Access ไม่มีคอนเซ็ปต์หมวด มีแต่ ProductType · หมวดจึงถูกสร้างจาก
-       ProductType หนึ่งต่อหนึ่ง ซึ่งตรงกับที่หน้าคลังใช้กรองอยู่แล้ว */
-    $catId = [];
-    $rows = [];
-    foreach ($TYPE_TH as $code => $th) {
-        $rows[] = [$th, $code];
-    }
-    insertBatch($pdo, 'categories', ['name', 'code'], $rows);
-    foreach ($pdo->query('SELECT id, code FROM categories') as $r) {
-        $catId[$r['code']] = (int) $r['id'];
-    }
-
-    // ------------------------------------------------------------ ผู้ขาย
-    $seen = [];
-    foreach ($src['tblStock'] as $r) {
-        $v = fit($r['VendorName'] ?? null, 120);
-        if ($v !== null && !isset($seen[ukey($v)])) {
-            $seen[ukey($v)] = $v;
-        }
-    }
-    $rows = [];
-    foreach ($seen as $v) {
-        $rows[] = [$v];
-    }
-    insertBatch($pdo, 'suppliers', ['name'], $rows);
-    /* คีย์ของแมปเป็น ukey ไม่ใช่ชื่อจริง — ตอนหาตอนใส่ล็อตก็ต้องหาด้วย ukey
-       เหมือนกัน ไม่งั้นล็อตของ 'Old frame' จะหาผู้ขายไม่เจอเพราะที่เก็บไว้คือ
-       'Old Frame' */
-    $vendorId = [];
-    foreach ($pdo->query('SELECT id, name FROM suppliers') as $r) {
-        $vendorId[ukey($r['name'])] = (int) $r['id'];
-    }
-    $note(sprintf('  ผู้ขาย %d ราย', count($vendorId)));
-
-    // ----------------------------------------------------------- สินค้า
-    /* หนึ่งสินค้า = หนึ่งคู่ (ProductType, ProductName) ที่ไม่ซ้ำ · ราคาขายตั้งต้น
-       ใช้ราคาของชิ้นที่รับเข้าล่าสุด เพราะราคาที่ขายจริงถูกบันทึกไว้บนใบออเดอร์
-       อยู่แล้ว ค่านี้เป็นแค่ค่าตั้งต้นตอนเปิดบิลใหม่ */
-    $prod = [];
-    foreach ($src['tblStock'] as $r) {
-        $type = s($r['ProductType'] ?? null) ?? 'Accessory';
-        $name = s($r['ProductName'] ?? null) ?? '(ไม่มีชื่อ)';
-        /* คีย์ไม่สนตัวพิมพ์ — 'Hoya Nulux 1.60' กับ 'hoya nulux 1.60' คือสินค้า
-           ตัวเดียวกันที่พนักงานพิมพ์ต่างกัน · แยกเป็นสองรายการแล้วแคตตาล็อกจะมี
-           ฝาแฝดเต็มไปหมด และรายงานยอดขายตามสินค้าจะซอยยอดของตัวเดียวกันเป็นสองก้อน
-           ชื่อกับราคาที่เก็บเอาของชิ้นที่รับเข้าล่าสุด = การสะกดที่ใช้อยู่ปัจจุบัน */
-        $key = ukey($type) . "\x00" . ukey($name);
-        $date = dt($r['StockDate'] ?? null) ?? '';
-        if (!isset($prod[$key]) || $date > $prod[$key]['date']) {
-            $prod[$key] = ['type' => $type, 'name' => $name, 'price' => f($r['ProductPrice'] ?? null), 'date' => $date];
-        }
-    }
-    $rows = [];
-    $sku = 0;
-    $skuOf = [];
-    foreach ($prod as $key => $p) {
-        $sku++;
-        $code = sprintf('OLD-%06d', $sku);
-        $skuOf[$key] = $code;
-        $rows[] = [
-            $code,
-            $catId[$p['type']] ?? $catId['Accessory'],
-            fit($p['type'], 30),
-            fit($p['name'], 255),
-            $p['price'],
-        ];
-    }
-    insertBatch($pdo, 'products', ['sku', 'category_id', 'product_type', 'name', 'base_selling_price'], $rows);
-    $prodId = [];
-    foreach ($pdo->query('SELECT id, sku FROM products') as $r) {
-        $prodId[$r['sku']] = (int) $r['id'];
-    }
-    /* นับจาก $rows ไม่ใช่ $prodId — แมปนั้นอ่านทั้งตารางจึงรวมแคตตาล็อก POS ที่
-       รอดจากการล้างมาด้วย ตัวเลขที่รายงานต้องเป็นของที่นำเข้ามาจริงเท่านั้น */
-    $note(sprintf('  สินค้า %d รายการ', count($rows)));
-
-    // ------------------------------------------------------------- ล็อต
-    /* หนึ่งแถวของ tblStock = ของหนึ่งชิ้น จึงเป็นล็อตจำนวน 1 · `Sold` บอกว่าชิ้นนั้น
-       ออกไปแล้วหรือยัง ซึ่งกลายเป็น remaining_qty 0 หรือ 1 · **id ต้องเท่าของเดิม**
-       เพราะออเดอร์และการขายชี้มาที่เลขนี้ */
+    // ------------------------------------------------------ สต็อกระบบเดิม
+    /* tblStock ลง `legacy_stock` ไม่ใช่ products/stock_lots (migration 032) — ของสามปี
+       ของ Access ไม่ใช่ของบนชั้นของคลังจริง ปนกันแล้วระบบคลังนับของที่ไม่มีอยู่จริงเป็น
+       หลักหมื่นชิ้น · หน้าบ้านยังอ่านประวัติได้ผ่าน v_stock_lot_all
+       หนึ่งแถว = ของหนึ่งชิ้น · **id ต้องเท่าของเดิม** เพราะออเดอร์และการขายชี้มาที่เลขนี้
+       ราคา/ต้นทุนเป็นของชิ้นนั้นเอง ไม่ต้องยุบรวมเป็นแคตตาล็อกเหมือนตอนลง products */
     $rows = [];
     $lotIds = [];
     foreach ($src['tblStock'] as $r) {
@@ -462,31 +379,22 @@ try {
         if ($id === null) {
             continue;
         }
-        $type = s($r['ProductType'] ?? null) ?? 'Accessory';
-        $name = s($r['ProductName'] ?? null) ?? '(ไม่มีชื่อ)';
-        $pid = $prodId[$skuOf[ukey($type) . "\x00" . ukey($name)] ?? ''] ?? null;
-        if ($pid === null) {
-            $skip('ล็อตที่หาสินค้าไม่เจอ');
-            continue;
-        }
-        $vendor = s($r['VendorName'] ?? null);
-        $sold = (int) f($r['Sold'] ?? null) !== 0;
         $rows[] = [
             $id,
-            (string) $id,
-            $pid,
-            $vendor === null ? null : ($vendorId[ukey(mb_substr($vendor, 0, 120))] ?? null),
+            fit(s($r['ProductType'] ?? null) ?? 'Accessory', 30),
+            fit(s($r['ProductName'] ?? null) ?? '(ไม่มีชื่อ)', 255),
+            fit($r['VendorName'] ?? null, 120),
+            f($r['ProductPrice'] ?? null),
             f($r['ProductExpense'] ?? null),
-            1,
-            $sold ? 0 : 1,
-            d($r['StockDate'] ?? null) ?? '2023-01-01',
+            d($r['StockDate'] ?? null),
+            (int) f($r['Sold'] ?? null) !== 0 ? 1 : 0,
             s($r['Notes'] ?? null),
         ];
         $lotIds[$id] = true;
     }
-    $n = insertBatch($pdo, 'stock_lots', ['id', 'lot_number', 'product_id', 'supplier_id',
-        'cost_per_unit', 'initial_qty', 'remaining_qty', 'received_date', 'notes'], $rows);
-    $note(sprintf('  ล็อตสต็อก %d แถว', $n));
+    $n = insertBatch($pdo, 'legacy_stock', ['id', 'product_type', 'product_name', 'vendor_name',
+        'product_price', 'product_expense', 'stock_date', 'sold', 'notes'], $rows);
+    $note(sprintf('  สต็อกระบบเดิม %d ชิ้น (legacy_stock)', $n));
 
     // ----------------------------------------------------------- ลูกค้า
     $rows = [];

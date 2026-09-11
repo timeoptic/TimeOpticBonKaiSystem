@@ -474,15 +474,17 @@ export default function ProductForm({
     product && product.basePrice > 0 ? String(product.basePrice) : "",
   );
   /**
-   * How few of it the shop is willing to be down to. Blank, not "0".
+   * How few of it the shop is willing to be down to. Opens at "0".
    *
-   * Blank is the honest reading of a product nobody has set a level for, and it
-   * is also what has to be typed to switch the alert back off — a field that
-   * opens showing 0 invites the owner to think one is set and reads as a
-   * minimum that is permanently met.
+   * กฎของเจ้าของร้าน (2026-09-10): เหลือ ≤ ขั้นต่ำเมื่อไรต้องเตือน และช่องนี้เปิด
+   * มาเป็น 0 เพราะคนชอบลืมกรอก — 0 จึงแปลว่า "เตือนเมื่อของหมด" ไม่ใช่เงียบ ·
+   * เงื่อนไขจริงอยู่ที่ `Inventory::LOW_STOCK` ที่เดียว หน้านี้แค่บอกคนกรอก
+   *
+   * เดิมช่องนี้เปิดมาว่าง และ 0 แปลว่าไม่เตือน ผลคือสินค้าที่ไม่มีใครตั้งขั้นต่ำ
+   * หมดจนติดลบก็ไม่มีอะไรบอกใคร · ข้อความใต้ช่องคือตัวบอกความหมายของ 0 ห้ามตัดทิ้ง
    */
   const [minStock, setMinStock] = useState(
-    product && product.minStock > 0 ? String(product.minStock) : "",
+    product ? String(product.minStock) : "0",
   );
 
   /**
@@ -652,7 +654,7 @@ export default function ProductForm({
       return "ราคาขายต้องเป็นตัวเลขไม่ติดลบ ทศนิยมไม่เกินสองตำแหน่ง — หรือเว้นว่างไว้ก่อนก็ได้";
     }
     if (minStock.trim() !== "" && !/^\d{1,5}$/.test(minStock.trim())) {
-      return "จำนวนขั้นต่ำต้องเป็นจำนวนเต็มไม่ติดลบ หรือเว้นว่างไว้ถ้าไม่ต้องการให้เตือน";
+      return "จำนวนขั้นต่ำต้องเป็นจำนวนเต็มไม่ติดลบ — ใส่ 0 ถ้าจะให้เตือนเมื่อของหมด";
     }
     return null;
   }
@@ -856,7 +858,7 @@ export default function ProductForm({
     setAutoName(true);
     setBrand(d.brand ?? "");
     setPrice(d.basePrice > 0 ? String(d.basePrice) : "");
-    setMinStock(d.minStock > 0 ? String(d.minStock) : "");
+    setMinStock(String(d.minStock));
     if (make === undefined) setCustom(d.isCustomMade);
     setCarried(d.attributes);
     setValues(specValues(d.attributes, true));
@@ -1122,10 +1124,10 @@ export default function ProductForm({
                 value={minStock}
                 onChange={(e) => clearing(setMinStock)(e.target.value)}
                 disabled={locked}
-                placeholder="ไม่เตือน"
+                placeholder="0"
               />
               <p className="field__help">
-                เหลือน้อยกว่านี้เมื่อไร หน้าสินค้าจะขึ้นเตือนให้สั่งล็อตใหม่ — เว้นว่างไว้คือไม่เตือน
+                เหลือเท่านี้หรือน้อยกว่าเมื่อไร หน้าสินค้าจะขึ้นเตือนให้สั่งล็อตใหม่ — <strong>0 คือเตือนเมื่อของหมด</strong>
               </p>
             </div>
           )}

@@ -60,6 +60,10 @@ $failed = count(Harness::$failures);
 echo "\n" . str_repeat('─', 56) . "\n";
 echo sprintf("ผ่าน %d / %d   ใช้เวลา %d ms\n", Harness::$passed, $total, $ms);
 
+/* กันไม่ให้ shutdown ของโปรเซสยิงแจ้งเตือนของใกล้หมดเข้ากลุ่มจริง — เคสที่ไม่ได้
+   ห่อด้วย withRollback() ก็ยังจดสินค้าไว้ได้ · เข็มขัดเส้นที่สอง เส้นแรกอยู่ที่นั่น */
+\Optic\Service\LowStock::reset();
+
 if ($failed > 0) {
     echo "\nที่ไม่ผ่าน:\n";
     foreach (Harness::$failures as $f) {

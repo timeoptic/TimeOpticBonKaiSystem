@@ -318,6 +318,8 @@ final class Catalog
                         : sprintf('แก้คงเหลือจาก %d เป็น %d', (int) $lot['remaining_qty'], $newRemaining),
                     $actorId,
                 ]);
+
+                LowStock::watch((int) $lot['product_id']);
             }
         });
 

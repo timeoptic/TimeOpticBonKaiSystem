@@ -12,12 +12,16 @@ import { sendToParent } from "@/stockmod/lib/embed";
  *
  * `mayCost` ยังตัดสินจากคนที่ล็อกอินอยู่เหมือนเดิม — พนักงานขายเปิดใบสั่งได้
  * แต่ไม่เห็นช่องต้นทุนจากผู้ขาย เท่ากับที่เห็นเมื่อเปิดจากหน้าคลัง
+ *
+ * `lensOnly` — ในหน้าเคสถามแค่เลนส์ที่สั่ง (แบรนด์ รุ่น ชนิดเลนส์) แล้วเปิดใบเลย
+ * ไม่มีขั้นค่าสายตาและขั้นใบสั่งและราคา · หน้าคลังยังถามครบสามขั้นเหมือนเดิม
  */
 export default function EmbeddedRxOrder() {
   const actor = useActor();
 
   return (
     <NewOrderDialog
+      lensOnly
       mayCost={can.enterCost(actor)}
       onClose={() => sendToParent({ kind: "cancel" })}
       onSaved={(referenceDoc, awaitingCost) =>

@@ -68,7 +68,8 @@ export function Picker({ placeholder, fetcher, label, sub, onPick, autoLoad = tr
               <b>{label(r)}</b>
               {sub ? <span className="muted">{'  ' + sub(r)}</span> : null}
             </span>
-            <span className="p-id">#{r.id}</span>
+            {/* สินค้าที่ยังไม่มีล็อตไม่มีเลขให้โชว์ — ไม่ขึ้น "#null" */}
+            {r.id != null ? <span className="p-id">#{r.id}</span> : null}
           </div>
         ))}
       </div>

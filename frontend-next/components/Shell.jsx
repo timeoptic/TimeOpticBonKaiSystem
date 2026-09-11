@@ -10,7 +10,7 @@ import { usePathname } from 'next/navigation';
 import { crumbFor } from '../lib/crumb.js';
 import { Icon } from './Icon.jsx';
 import { useAuth } from '../contexts/AuthContext.jsx';
-import { isAdminPath, isAdminUp, worksBothSides } from '../lib/roles.js';
+import { inMoneyZone, inSystemZone, isAdminPath, isAdminUp, worksBothSides } from '../lib/roles.js';
 
 /**
  * ระบบคลังและต้นทุนเป็นอีกหน้าเว็บหนึ่ง คนละเมนู คนละหน้าตา
@@ -66,10 +66,23 @@ const NAV = [
     ['bag', 'ขายสินค้า', '/pos'],
     ['pin', 'ตำแหน่งสินค้า', '/locations'],
   ]],
+  /* ท้ายเมนูหน้าร้าน — ที่ที่คนมาเปิดตอนสงสัย ไม่ใช่งานประจำวัน · เนื้อหาอยู่ที่
+     lib/manual.js ไม่ใช่ในหน้าเอง */
+  ['ช่วยเหลือ', [
+    ['book', 'คู่มือการใช้งาน', '/manual'],
+  ]],
+  /* ธงใบที่สามคือโซนของกลุ่ม ไม่ใช่แค่ "เป็นของแอดมินไหม" อีกแล้ว — ตั้งแต่มี
+     บทบาทบัญชี คนที่ยืนอยู่ในโซนแอดมินไม่ได้แปลว่าเปิดได้ทุกกลุ่มในนั้น
+
+     ซัพพลายเออร์กับรายงานย้ายจาก "ข้อมูลระบบ" มาอยู่ "การเงิน" — ไม่ได้ย้ายเพื่อ
+     ความสวย แต่เพราะสองหน้านั้นอยู่กลุ่มการเงินฝั่ง API (MONEY_PREFIXES) และกลุ่ม
+     เมนูที่ปนสองโซนคือกลุ่มที่บัญชีเปิดมาแล้วเจอลิงก์ที่กดไปเจอ 403 ครึ่งหนึ่ง */
   ['การเงิน', [
     ['coins', 'รายรับ', '/income'],
     ['banknote', 'รายจ่าย', '/expense'],
-  ], true],
+    ['factory', 'ซัพพลายเออร์', '/suppliers'],
+    ['chart', 'รายงาน', '/reports'],
+  ], 'money'],
   ['ข้อมูลระบบ', [
     ['🧑‍💼', 'พนักงาน', '/employees'],
     /* พนักงาน กับ ผู้ใช้ เป็นคนละเรื่องและคนละหน้า: ข้างบนคือทะเบียนชื่อเล่น
@@ -80,13 +93,11 @@ const NAV = [
        คลังไม่มีปุ่มนี้แล้ว · ตอนนี้หน้านั้นเขียนด้วยของหน้าร้านแล้ว จึงเป็น
        <Link> เหมือนเมนูอื่น ไม่ใช่การโหลดหน้าใหม่ */
     ['lock', 'ผู้ใช้และสิทธิ์', '/users'],
-    ['factory', 'ซัพพลายเออร์', '/suppliers'],
-    ['chart', 'รายงาน', '/reports'],
     /* บันทึกการใช้งาน — อยู่ท้ายกลุ่มเพราะเป็นที่ที่คนมาเปิดตอนมีเรื่องให้ตรวจ
-       ไม่ใช่ทุกวัน · ด่านจริงเป็นตัวเดียวกับเมนูอื่นในกลุ่ม (ADMIN_PREFIXES) */
+       ไม่ใช่ทุกวัน · ด่านจริงเป็นตัวเดียวกับเมนูอื่นในกลุ่ม (SYSTEM_PREFIXES) */
     ['clock', 'บันทึกการใช้งาน', '/logs'],
     ['gear', 'ตั้งค่า/แจ้งเตือน', '/settings'],
-  ], true],
+  ], 'system'],
 ];
 
 /** ทุก href ในเมนู — ใช้ตัดสินว่าหน้านี้มีเมนูตรง ๆ หรือควรไฮไลต์เมนูของกลุ่ม */
@@ -177,7 +188,10 @@ export function Shell({ children }) {
    * ซึ่งอ่านได้ว่าระบบพัง
    */
   const inAdminZone = isAdminUp(actor) && isAdminPath(here);
-  const navGroups = NAV.filter(([, , adminOnly]) => (inAdminZone ? !!adminOnly : !adminOnly));
+  /* อยู่ในโซนแอดมิน → เห็นเฉพาะกลุ่มที่ตัวเองมีสิทธิ์ · บัญชีจึงเห็นกลุ่มการเงิน
+     กลุ่มเดียว ไม่ใช่เห็นครบแล้วกดไปเจอการ์ด "ไม่มีสิทธิ์" ทีละหน้า */
+  const mayOpen = (zone) => (zone === 'money' ? inMoneyZone(actor) : inSystemZone(actor));
+  const navGroups = NAV.filter(([, , zone]) => (inAdminZone ? !!zone && mayOpen(zone) : !zone));
 
   return (
     <div className="app" id="app">

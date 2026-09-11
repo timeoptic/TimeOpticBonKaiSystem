@@ -19,6 +19,7 @@ $config = require __DIR__ . '/config.php';
 require __DIR__ . '/core/Http.php';
 require __DIR__ . '/core/Db.php';
 require __DIR__ . '/core/Helpers.php';
+require __DIR__ . '/core/StockSearch.php';
 require __DIR__ . '/core/Router.php';
 require __DIR__ . '/core/Sql.php';
 require __DIR__ . '/core/Lookups.php';
@@ -30,6 +31,7 @@ require __DIR__ . '/services/StockClient.php';
 require __DIR__ . '/services/CaseStock.php';
 require __DIR__ . '/services/Migrate.php';
 require __DIR__ . '/services/Scheduler.php';
+require __DIR__ . '/services/DeliveryDigest.php';
 require __DIR__ . '/services/SalesReport.php';
 require __DIR__ . '/services/Xlsx.php';
 require __DIR__ . '/services/SalesExport.php';
@@ -48,7 +50,8 @@ StockClient::configure($config['stock_api']);
 foreach ([
     'auth', 'meta', 'dashboard', 'cases', 'customers', 'employees', 'prescriptions',
     'stock', 'locations', 'suppliers', 'orders', 'payments',
-    'workflow', 'processes', 'uploads', 'sales', 'pos', 'receipts', 'cashflow', 'reports', 'analytics',
+    'workflow', 'processes', 'uploads', 'sales', 'pos', 'receipts', 'bill-parties',
+    'cashflow', 'reports', 'analytics',
     'bookings', 'settings', 'logs',
 ] as $group) {
     require __DIR__ . "/routes/$group.php";
@@ -79,6 +82,14 @@ if ($base !== '' && $base !== '/' && str_starts_with($path, $base)) {
 }
 if ($path === '' || $path[0] !== '/') {
     $path = '/' . $path;
+}
+/* ตัด / ท้ายทิ้ง — ตารางเส้นทางไม่มีเส้นไหนลงท้ายด้วย / เลยสักเส้น
+   วันที่มีคนอัปรูปใบแรก โฟลเดอร์ api/uploads/ ถูกสร้างขึ้นมาจริงบนดิสก์ แล้ว
+   mod_dir ก็ตอบ 301 เติม / ให้ทุกคำขอที่ยิงมาที่ /api/uploads ทันที — 301 เป็น
+   คำตอบที่เบราว์เซอร์แคชยาว ต่อให้แก้ .htaccess แล้วเครื่องที่เคยโดนก็ยังส่ง
+   แบบมี / ต่อไปอีกนาน · ที่นี่จึงต้องรับทั้งสองแบบ ไม่ใช่พึ่ง .htaccess อย่างเดียว */
+if ($path !== '/' && str_ends_with($path, '/')) {
+    $path = rtrim($path, '/');
 }
 /* ระบบคลังและต้นทุน — ตารางเส้นทางของมันเอง ต่อท้ายพอร์ตเดียวกันนี้
    ทั้งสองฝั่งอยากใช้ /api เหมือนกัน ฝั่งคลังจึงหลบมาอยู่ใต้ /stock-api
@@ -154,6 +165,37 @@ $actor = $open ? null : StockModule::actor();
 
 requirePasswordChange($path, '/api');
 
+/* สองกลุ่มของโซนแอดมิน — ประกาศไว้ก่อนเพราะด่านที่สองต้องรู้จักกลุ่มการเงินด้วย
+ *
+ * เคยเป็นก้อนเดียวชื่อ ADMIN_PREFIXES · แยกตอนเพิ่มบทบาท "บัญชี" ซึ่งต้องอ่านเงิน
+ * ของร้านได้โดยไม่ได้สิทธิ์ตั้งค่าระบบและจัดการคนติดมาด้วย
+ *
+ * ซัพพลายเออร์อยู่กลุ่มการเงิน ไม่ใช่กลุ่มข้อมูลระบบ — คนที่เปิดหน้านี้จริง ๆ คือ
+ * คนที่กำลังดูว่าร้านต้องจ่ายใครเท่าไร ไม่ใช่คนที่กำลังจัดระเบียบข้อมูลหลัก
+ */
+const MONEY_PREFIXES = [
+    '/api/income', '/api/expense',          // เงินเข้า เงินออก
+    '/api/reports',                         // รายงานของร้าน
+    '/api/suppliers',                       // เจ้าหนี้การค้า
+];
+const SYSTEM_PREFIXES = [
+    '/api/employees',                       // ข้อมูลคน
+    '/api/notifications', '/api/reminders',
+    '/api/delivery-digest',                 // ปุ่มนี้ยิงข้อความเข้ากลุ่มจริง
+    '/api/logs',                            // บันทึกการใช้งาน — ใครทำอะไร
+];
+
+$prefixed = static fn(string $p): bool => $path === $p || str_starts_with($path, $p . '/');
+/** @param list<string> $group */
+$inGroup = static function (array $group) use ($prefixed): bool {
+    foreach ($group as $p) {
+        if ($prefixed($p)) {
+            return true;
+        }
+    }
+    return false;
+};
+
 /* ประตูที่สอง — ฝั่งที่ใช่
  *
  * คนที่ไม่มีสิทธิ์ `frontdesk.use` (พนักงานคลังล้วน) ไม่มีอะไรให้ทำใน /api เลย —
@@ -163,13 +205,26 @@ requirePasswordChange($path, '/api');
  *
  * หน้าจอฝั่งคลังคุยกับ `/stock-api` อย่างเดียว (`frontend-next/stockmod/lib/api.ts`)
  * ด่านนี้จึงไม่ตัดงานของพนักงานคลังสักอย่าง
+ *
+ * **ข้อยกเว้นเดียวคือบัญชี** — ไม่มี `frontdesk.use` เหมือนกัน แต่หน้ารายรับ
+ * รายจ่าย และรายงาน อยู่ใต้ `/api` ทั้งหมด · ปล่อยผ่านเฉพาะกลุ่มการเงิน ไม่ใช่
+ * ปล่อยทั้ง `/api` แล้วไปหวังว่าด่านที่สามจะกันที่เหลือ — ด่านที่สามกันเฉพาะ
+ * เส้นทางที่มันรู้จัก เคสกับ POS ไม่ได้อยู่ในนั้น
  */
 if ($actor !== null && !\Optic\Roles::useFrontdesk($actor['roles'])) {
-    Http::json(403, [
-        'error'  => 'บัญชีนี้เป็นของฝั่งคลัง ใช้งานระบบหน้าร้านไม่ได้',
-        'reason' => 'frontdesk_only',
-    ]);
-    exit;
+    $moneyOnly = \Optic\Roles::moneyZone($actor['roles']) && $inGroup(MONEY_PREFIXES);
+    if (!$moneyOnly) {
+        Http::json(403, \Optic\Roles::moneyZone($actor['roles'])
+            ? [
+                'error'  => 'บทบาทบัญชีเข้าได้เฉพาะกลุ่มการเงิน — รายรับ รายจ่าย รายงาน ซัพพลายเออร์',
+                'reason' => 'money_only',
+            ]
+            : [
+                'error'  => 'บัญชีนี้เป็นของฝั่งคลัง ใช้งานระบบหน้าร้านไม่ได้',
+                'reason' => 'frontdesk_only',
+            ]);
+        exit;
+    }
 }
 
 /* ประตูที่สาม — งานของแอดมิน
@@ -183,29 +238,21 @@ if ($actor !== null && !\Optic\Roles::useFrontdesk($actor['roles'])) {
  * จากที่นั่น (print/order/page.jsx) ซึ่งพนักงานขายเป็นคนกดพิมพ์ · เวลาเปิดร้าน
  * ไม่ใช่ความลับ แต่การแก้มันเป็นเรื่องของคนดูแลระบบ
  */
-const ADMIN_PREFIXES = [
-    '/api/income', '/api/expense',          // การเงิน
-    '/api/employees', '/api/suppliers',     // ข้อมูลระบบ
-    '/api/reports', '/api/notifications', '/api/reminders',
-    '/api/logs',                            // บันทึกการใช้งาน — ใครทำอะไร
-];
 if ($actor !== null) {
-    $isAdmin  = \Optic\Roles::adminZone($actor['roles']);
-    $prefixed = static fn(string $p): bool => $path === $p || str_starts_with($path, $p . '/');
+    /* ต้องการโซนไหน — null คือเส้นทางที่ไม่ได้อยู่ในโซนแอดมินเลย
+       การตั้งค่า: อ่านได้ทุกคน เขียนเป็นงานของคนดูแลระบบ */
+    $needs = match (true) {
+        $inGroup(MONEY_PREFIXES)                            => 'money',
+        $inGroup(SYSTEM_PREFIXES)                           => 'system',
+        $prefixed('/api/settings') && $method !== 'GET'      => 'system',
+        default                                             => null,
+    };
 
-    $needsAdmin = false;
-    foreach (ADMIN_PREFIXES as $p) {
-        if ($prefixed($p)) {
-            $needsAdmin = true;
-            break;
-        }
-    }
-    // การตั้งค่า: อ่านได้ทุกคน เขียนเฉพาะแอดมิน
-    if (!$needsAdmin && $prefixed('/api/settings') && $method !== 'GET') {
-        $needsAdmin = true;
-    }
+    $allowed = $needs === null || ($needs === 'money'
+        ? \Optic\Roles::moneyZone($actor['roles'])
+        : \Optic\Roles::systemZone($actor['roles']));
 
-    if ($needsAdmin && !$isAdmin) {
+    if (!$allowed) {
         Http::json(403, [
             'error'  => 'เมนูนี้สำหรับผู้ดูแลระบบเท่านั้น',
             'reason' => 'forbidden',
@@ -229,7 +276,7 @@ try {
        พังก็ทำอะไรกับคำตอบที่ส่งไปแล้วไม่ได้ ซึ่งเป็นผลที่ตั้งใจ */
     ActivityLog::finish(200, $body, $result);
 } catch (HttpError $e) {
-    Http::json($e->status, ['error' => $e->getMessage()]);
+    Http::json($e->status, ['error' => $e->getMessage()] + $e->payload);
     ActivityLog::finish($e->status, $body, null, $e->getMessage());
 } catch (\Optic\ApiError $e) {
     /* ฝั่งคลังตอบเป็น reason ที่โค้ดแตกเงื่อนไขได้ ส่งต่อทั้งคู่ ไม่ยุบเหลือข้อความ */

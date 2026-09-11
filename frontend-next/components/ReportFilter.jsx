@@ -18,7 +18,7 @@ import { Icon } from './Icon.jsx';
 import { api } from '../lib/apiClient.js';
 import { useAsync } from '../lib/hooks.js';
 import {
-  CHANNELS, PERIODS, STATUSES, filterQuery, periodOf, rangeFor, rangeLabel, readFilter,
+  CHANNELS, GROUPS, PERIODS, STATUSES, filterQuery, periodOf, rangeFor, rangeLabel, readFilter,
 } from '../lib/reportRange.js';
 import { DateField } from './DateField.jsx';
 import { FilterBar } from './FilterBar.jsx';
@@ -40,7 +40,7 @@ export function useReport(name) {
   const f = useReportFilter();
   const state = useAsync(
     () => api.get(`/api/reports/${name}`, f),
-    [name, f.from, f.to, f.channel, f.status],
+    [name, f.from, f.to, f.channel, f.status, f.group],
   );
   return { filter: f, ...state };
 }
@@ -67,7 +67,8 @@ export function ReportFilter({ actions = null, statusNote = '' }) {
      ค่าตั้งต้น (เดือนนี้ · ทุกช่องทาง · ทุกสถานะ) ไม่ใช่จำนวนช่องที่มีอยู่ */
   const activeFilters = (active === 'custom' ? 1 : 0)
     + (f.channel && f.channel !== 'all' ? 1 : 0)
-    + (f.status && f.status !== 'all' ? 1 : 0);
+    + (f.status && f.status !== 'all' ? 1 : 0)
+    + (f.group && f.group !== 'all' ? 1 : 0);
 
   return (
     <FilterBar
@@ -133,6 +134,13 @@ export function ReportFilter({ actions = null, statusNote = '' }) {
           onChange={(e) => go({ status: e.target.value })}
           options={STATUSES}
         />
+      </label>
+
+      {/* แบ่งด้วยกติกาเดียวกับกระดานงาน — ขายหน้าร้าน (POS) ไม่มีประเภทลูกค้า
+          จึงนับเป็นลูกค้าร้าน และหายไปเมื่อเลือก SightFirst */}
+      <label className="rf-date" title="ขายหน้าร้าน (POS) นับเป็นลูกค้าร้าน">
+        <span>ประเภทลูกค้า</span>
+        <Select value={f.group} onChange={(e) => go({ group: e.target.value })} options={GROUPS} />
       </label>
 
     </FilterBar>

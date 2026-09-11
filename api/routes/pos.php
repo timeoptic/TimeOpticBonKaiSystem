@@ -34,10 +34,17 @@ function posActor(): array
     return $a;
 }
 
-/** งานของแอดมิน — แก้วันที่ย้อนหลัง และยกเลิกใบ */
+/**
+ * งานของแอดมิน — แก้วันที่ย้อนหลัง และยกเลิกใบ
+ *
+ * ผูกกับ `system.zone` ไม่ใช่ `money.zone` ทั้งที่เป็นเรื่องเงิน — สองอย่างนี้คือ
+ * การกลับสิ่งที่บันทึกไปแล้ว ซึ่งเป็นอำนาจของคนที่ดูแลร้าน ไม่ใช่ของคนที่ตรวจ
+ * ตัวเลข · วันที่มีใครให้บทบาทบัญชีบวกหน้าร้านกับใครสักคน เขาไม่ควรได้ปุ่มยกเลิก
+ * ใบเสร็จติดมาด้วยโดยไม่มีใครตั้งใจ
+ */
 function posIsAdminUp(array $actor): bool
 {
-    return \Optic\Roles::adminZone($actor['roles']);
+    return \Optic\Roles::systemZone($actor['roles']);
 }
 
 /**
@@ -136,63 +143,57 @@ function posSaleFull(int $id): ?array
 
 
 /* ---------------------------------------------------------------------------
-   แคตตาล็อกสำหรับ POS
+   รายการสินค้าหน้าร้าน
    --------------------------------------------------------------------------- */
 
-/** หมวดของ POS — โค้ดหมวดขึ้นต้นด้วยคำนี้ทุกตัวตั้งแต่ migration 018 */
-const POS_CATEGORY_PREFIX = 'Pos';
+/** นิยามช่องกรอกเพิ่มของรายการหนึ่ง (ค่าสายตา / สี / รหัสแว่น) — เก็บเป็น JSON */
+function posFieldsOf(array $item): array
+{
+    $f = json_decode((string) ($item['pos_fields'] ?? ''), true);
+    return is_array($f) ? $f : [];
+}
 
 /**
- * สินค้าทั้งหมดที่ POS ขายได้ จัดกลุ่มตามหมวด
+ * สินค้าทั้งหมดที่หน้าร้านขายได้ เรียงตามใบที่ร้านให้มา
  *
- * อ่านจาก products/categories ที่เป็นแคตตาล็อกกลางของทั้งระบบ — หน้าเว็บไม่มี
- * รายการสินค้าฝังอยู่ในโค้ดแม้แต่ตัวเดียว เพิ่มสินค้าที่ฐานแล้วขึ้นเองทันที
+ * อ่านจาก `pos_items` (migration 033) ซึ่งเป็นของหน้าร้านล้วน ไม่ใช่ `products`
+ * ของคลัง · เดิมรายการนี้อยู่ในหมวด `Pos*` ของ products แล้วการล้างข้อมูลคลัง
+ * ลบทิ้งไปด้วยทั้ง 41 ตัว ขณะที่คลังก็นับของหน้าร้านเป็นของต่ำกว่าขั้นต่ำ ทั้งที่
+ * ค่าประกอบแว่นไม่ใช่ของที่ต้องสั่ง — สองระบบจึงแยกตารางกัน
  *
- * **คืนเฉพาะหมวด `Pos*`** — ของหน้าร้านที่ขายเป็นของเบ็ดเตล็ด (บริการ อะไหล่
- * น้ำยา คอนแทคเลนส์ กล่องแว่น) คนละชุดกับของในคลัง · ตาราง products ใช้ร่วมกับ
- * โมดูลคลัง ถ้าไม่กรอง เลนส์ตัดแว่นทุกชิ้นกับล็อตของคลังจะไหลมาโผล่ในช่องเลือก
- * สินค้าของ POS ทั้งที่ POS ไม่หัก remaining_qty ให้ — ขายไปก็เป็นของที่หายจาก
- * คลังโดยไม่มีใครรู้ · การกรองที่ API ไม่ใช่ที่หน้าเว็บ เพราะหน้าเว็บที่ซ่อนของ
- * แต่ API ยังคืนให้ คือ API ที่ไม่ได้กันอะไรเลย
- *
- * ส่ง attributes.pos_fields ติดไปด้วย = นิยามช่องกรอกเพิ่มของสินค้าตัวนั้น
- * (ค่าสายตา / สี / รหัสแว่น) หน้าเว็บวาดตามนี้ ไม่มีตารางแมปฝั่งหน้าเว็บ
+ * คืนคีย์ชุดเดิมที่หน้าเว็บใช้ (ProductPicker / cart.js) หน้าเว็บจึงไม่ต้องแก้ ·
+ * `category_*` คือกลุ่มของหน้าร้าน · `brand` / `product_type` ไม่มีในรายการนี้
  */
 GET('/api/pos/products', function (array $req) {
     posRequireSeller(posActor());
 
-    $where = ['c.code LIKE ?'];
-    $args  = [POS_CATEGORY_PREFIX . '%'];
+    $where = ['is_active = 1'];
+    $args  = [];
     if ($term = str_or($req['query']['q'] ?? null)) {
         $p = like($term);
-        $where[] = '(p.name LIKE ? OR p.sku LIKE ? OR p.brand LIKE ?)';
-        array_push($args, $p, $p, $p);
+        $where[] = '(name LIKE ? OR sku LIKE ?)';
+        array_push($args, $p, $p);
     }
-    /* เรียงด้วย SKU ไม่ใช่ชื่อ — SKU ในหมวดเรียงตามลำดับที่เจ้าของร้านสั่งลงมา
-       (SRV-0001 คือ "ค่าประกอบแว่น" ตัวแรกในใบที่ให้มา) ส่วนการเรียงตามชื่อไทย
-       สลับลำดับนั้นทิ้งโดยไม่ได้อะไรกลับมา คนหน้าร้านกวาดตาหาตามใบที่จำได้ */
-    $sql = 'SELECT p.id, p.sku, p.name, p.brand, p.product_type, p.base_selling_price,
-                   p.attributes, c.id AS category_id, c.code AS category_code,
-                   c.name AS category_name
-              FROM products p
-              JOIN categories c ON c.id = p.category_id
-             WHERE ' . implode(' AND ', $where)
-         . ' ORDER BY c.id, p.sku';
+    $rows = Db::all(
+        'SELECT id, sku, name, base_price, group_code, group_name, pos_fields, is_custom
+           FROM pos_items
+          WHERE ' . implode(' AND ', $where) . '
+          ORDER BY sort_order, sku',
+        ...$args
+    );
 
-    $rows = Db::all($sql, ...$args);
-
-    /* แตก pos_fields ออกมาให้แล้วที่นี่ หน้าเว็บจะได้ไม่ต้อง JSON.parse เอง
-       และไม่ต้องรู้ว่ามันซ่อนอยู่ในคอลัมน์ attributes ที่ใช้ร่วมกับฝั่งคลัง */
-    $out = [];
-    foreach ($rows as $r) {
-        $attr = json_decode((string) ($r['attributes'] ?? ''), true);
-        $attr = is_array($attr) ? $attr : [];
-        unset($r['attributes']);
-        $r['pos_fields'] = $attr['pos_fields'] ?? [];
-        $r['pos_custom'] = !empty($attr['pos_custom']);
-        $out[] = $r;
-    }
-    return $out;
+    return array_map(static fn(array $r): array => [
+        'id'                 => (int) $r['id'],
+        'sku'                => $r['sku'],
+        'name'               => $r['name'],
+        'brand'              => null,
+        'product_type'       => null,
+        'base_selling_price' => $r['base_price'],
+        'category_code'      => $r['group_code'],
+        'category_name'      => $r['group_name'],
+        'pos_fields'         => posFieldsOf($r),
+        'pos_custom'         => (bool) $r['is_custom'],
+    ], $rows);
 });
 
 
@@ -309,36 +310,31 @@ POST('/api/pos/sales', function (array $req) {
         $qty  = int_or($it['quantity'] ?? null, 0) ?? 0;
         $price = num($it['unit_price'] ?? null);
 
-        $product = null;
+        $item = null;
         if ($pid !== null) {
-            /* ต้องอยู่ในหมวด Pos* — เงื่อนไขเดียวกับที่ /api/pos/products คืนให้
-               ไคลเอนต์เก่าที่จำ id ของเลนส์ในคลังไว้แล้วยิงเข้ามา ต้องไม่ผ่าน
-               ไม่ใช่ผ่านได้เพราะหน้าจอใหม่แค่ไม่แสดงให้เลือกแล้ว */
-            $product = Db::get(
-                'SELECT p.id, p.sku, p.name, p.attributes
-                   FROM products p
-                   JOIN categories c ON c.id = p.category_id
-                  WHERE p.id = ? AND c.code LIKE ?',
-                $pid,
-                POS_CATEGORY_PREFIX . '%'
+            /* `product_id` ในคำขอคือ id ของ pos_items ตั้งแต่ migration 033 — คงชื่อคีย์
+               เดิมไว้ หน้าเว็บ (cart.js) จึงไม่ต้องแก้ · id ของสินค้าในคลังที่ไคลเอนต์เก่า
+               จำไว้ต้องไม่ผ่าน และรายการที่เลิกขายแล้วก็ไม่ผ่าน */
+            $item = Db::get(
+                'SELECT id, sku, name, pos_fields, is_custom
+                   FROM pos_items WHERE id = ? AND is_active = 1',
+                $pid
             );
-            if (!$product) {
-                bad("รายการที่ $n: ไม่พบสินค้ารหัส $pid ในแคตตาล็อกของ POS");
+            if (!$item) {
+                bad("รายการที่ $n: ไม่พบสินค้ารหัส $pid ในรายการของหน้าร้าน");
             }
         }
 
-        /* สินค้า Custom ("อื่นๆ") ต้องมีชื่อที่พิมพ์เอง — ชื่อในแคตตาล็อกคือ
+        /* สินค้า Custom ("อื่นๆ") ต้องมีชื่อที่พิมพ์เอง — ชื่อในรายการคือ
            "อื่นๆ (พิมพ์เอง)" ซึ่งพิมพ์ลงใบเสร็จแล้วลูกค้าอ่านไม่รู้เรื่อง */
-        $attr = $product ? json_decode((string) ($product['attributes'] ?? ''), true) : null;
-        $isCustom = is_array($attr) && !empty($attr['pos_custom']);
-        if ($isCustom || $product === null) {
+        if ($item === null || $item['is_custom']) {
             $typed = str_or($it['custom_name'] ?? null) ?: $name;
             if ($typed === '') {
                 bad("รายการที่ $n: สินค้าพิมพ์เองต้องระบุชื่อสินค้า");
             }
             $name = $typed;
         } elseif ($name === '') {
-            $name = (string) $product['name'];
+            $name = (string) $item['name'];
         }
 
         if ($qty < 1) {
@@ -350,7 +346,7 @@ POST('/api/pos/sales', function (array $req) {
 
         /* ช่องกรอกเพิ่มที่สินค้าตัวนั้นบังคับ ต้องมีค่ามาจริง */
         $meta = is_array($it['item_meta'] ?? null) ? $it['item_meta'] : [];
-        foreach (($attr['pos_fields'] ?? []) as $f) {
+        foreach ($item ? posFieldsOf($item) : [] as $f) {
             $key = str_or($f['key'] ?? null);
             if ($key !== '' && !empty($f['required']) && str_or($meta[$key] ?? null) === '') {
                 bad("รายการที่ $n ($name): ต้องระบุ" . str_or($f['label'] ?? null, $key));
@@ -358,9 +354,9 @@ POST('/api/pos/sales', function (array $req) {
         }
 
         $clean[] = [
-            'product_id' => $product ? (int) $product['id'] : null,
+            'pos_item_id' => $item ? (int) $item['id'] : null,
             'name'       => $name,
-            'sku'        => $product ? (string) $product['sku'] : null,
+            'sku'        => $item ? (string) $item['sku'] : null,
             'qty'        => $qty,
             'price'      => round2($price),
             'line'       => round2($qty * $price),
@@ -442,10 +438,10 @@ POST('/api/pos/sales', function (array $req) {
 
         foreach ($clean as $n => $c) {
             $q->run(
-                'INSERT INTO pos_sale_items (sale_id, product_id, product_name_snapshot,
+                'INSERT INTO pos_sale_items (sale_id, pos_item_id, product_name_snapshot,
                    sku_snapshot, quantity, unit_price, line_total, item_meta, sort_order)
                  VALUES (?,?,?,?,?,?,?,?,?)',
-                $saleId, $c['product_id'], $c['name'], $c['sku'],
+                $saleId, $c['pos_item_id'], $c['name'], $c['sku'],
                 $c['qty'], $c['price'], $c['line'], $c['meta'], $n
             );
         }

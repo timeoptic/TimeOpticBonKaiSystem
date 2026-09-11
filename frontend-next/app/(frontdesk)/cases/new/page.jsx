@@ -31,8 +31,7 @@ import {
 } from '../../../../components/ui.jsx';
 import { QueryParamPage } from '../../../../components/QueryParamPage.jsx';
 import { Picker } from '../../../../components/Picker.jsx';
-import { EmployeeSelect, ListSelect } from '../../../../components/Selects.jsx';
-import { NATIONALITIES } from '../../../../lib/constants.js';
+import { EmployeeSelect, ListSelect, NationalitySelect } from '../../../../components/Selects.jsx';
 import { custName, fmtDate } from '../../../../lib/format.js';
 import { Icon } from '../../../../components/Icon.jsx';
 import { DateField } from '../../../../components/DateField.jsx';
@@ -141,12 +140,9 @@ function NewCustomerForm({ onCreated }) {
         </Field>
         <Field label="เพศ / Sex"><ListSelect name="sex" kind="sex" defaultValue="" blank="—" /></Field>
         <Field label="วันเกิด / Birth date"><DateField name="birth_date" /></Field>
-        <Field label="สัญชาติ / Nationality"><input name="nationality" list="nat-list" /></Field>
+        <Field label="สัญชาติ / Nationality"><NationalitySelect name="nationality" /></Field>
         <Field label="อีเมล / Email"><input name="email" type="email" /></Field>
       </FormGrid>
-      <datalist id="nat-list">
-        {NATIONALITIES.map((n) => <option key={n} value={n} />)}
-      </datalist>
       <FormActions>
         <button className="btn" type="submit" disabled={busy}><Icon name="check" /> บันทึกลูกค้าใหม่</button>
       </FormActions>

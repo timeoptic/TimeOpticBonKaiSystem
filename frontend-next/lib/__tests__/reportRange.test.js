@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   iso, rangeFor, periodOf, readFilter, filterQuery, rangeLabel,
-  bucketLabel, bucketFull,
+  bucketLabel, bucketFull, GROUPS,
 } from '../reportRange.js';
 
 /** วันพุธที่ 2 ก.ย. 2026 — วันเดียวกับที่หน้ารายงานถูกเขียนขึ้น */
@@ -74,11 +74,27 @@ test('periodOf จับคู่ช่วงกลับเป็นปุ่�
   assert.equal(periodOf('2026-01-01', '2026-03-31', WED), 'custom');
 });
 
-test('readFilter ไม่มีอะไรใน URL = เดือนนี้ ทุกช่องทาง ทุกสถานะ', () => {
+test('readFilter ไม่มีอะไรใน URL = เดือนนี้ ทุกช่องทาง ทุกสถานะ ทุกประเภทลูกค้า', () => {
   const f = readFilter(new URLSearchParams(''), WED);
   assert.deepEqual(f, {
-    from: '2026-09-01', to: '2026-09-02', channel: 'all', status: 'all',
+    from: '2026-09-01', to: '2026-09-02', channel: 'all', status: 'all', group: 'all',
   });
+});
+
+test('readFilter ประเภทลูกค้าที่ไม่รู้จัก ตกกลับเป็น all', () => {
+  assert.equal(readFilter(new URLSearchParams('group=ลูกค้าVIP'), WED).group, 'all');
+  assert.equal(readFilter(new URLSearchParams('group=sightfirst'), WED).group, 'sightfirst');
+  assert.equal(readFilter(new URLSearchParams('group=shop'), WED).group, 'shop');
+});
+
+test('GROUPS มีสามตัวเลือก ใช้คีย์ชุดเดียวกับกระดานงาน', () => {
+  assert.deepEqual(GROUPS.map(([k]) => k), ['all', 'shop', 'sightfirst']);
+});
+
+test('filterQuery ใส่ group ลง URL เฉพาะเมื่อไม่ใช่ all', () => {
+  const base = { from: '2026-09-01', to: '2026-09-02', channel: 'all', status: 'all' };
+  assert.equal(filterQuery({ ...base, group: 'all' }), 'from=2026-09-01&to=2026-09-02');
+  assert.equal(filterQuery({ ...base, group: 'sightfirst' }), 'from=2026-09-01&to=2026-09-02&group=sightfirst');
 });
 
 test('readFilter ช่วงกลับหัวกลับหาง ถูกยืดให้ครอบคลุม ไม่ใช่คืนช่วงว่าง', () => {
@@ -116,7 +132,7 @@ test('filterQuery ไม่ใส่ค่า all ลง URL ทั้ง channe
 test('ตัวกรองเดินทางไป-กลับ URL ได้ครบทุกช่อง', () => {
   /* แท็บทุกอันส่งตัวกรองต่อกันด้วย filterQuery แล้วอ่านกลับด้วย readFilter —
      ช่องที่หล่นหายระหว่างทางแปลว่ากดสลับแท็บแล้วตัวกรองรีเซ็ตเอง */
-  const f = { from: '2026-01-01', to: '2026-12-31', channel: 'main', status: 'closed' };
+  const f = { from: '2026-01-01', to: '2026-12-31', channel: 'main', status: 'closed', group: 'sightfirst' };
   assert.deepEqual(readFilter(new URLSearchParams(filterQuery(f)), WED), f);
 });
 

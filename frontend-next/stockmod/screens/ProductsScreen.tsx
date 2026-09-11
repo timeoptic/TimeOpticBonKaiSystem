@@ -256,7 +256,7 @@ function ProductRowCard({
    */
   const [lots, setLots] = useState(false);
   const rx = row.isCustomMade;
-  const low = !rx && row.minStock > 0 && row.onHand < row.minStock;
+  const low = !rx && row.onHand <= row.minStock;
   const pending = row.lotsMissingCost > 0;
 
   const spec = [row.lensIndex, row.lensDesign, row.coating].filter(Boolean).join(" · ");
@@ -299,7 +299,7 @@ function ProductRowCard({
             <span className={low ? "grid__num--signal" : undefined}>{count(row.onHand)}</span>
           ),
         },
-        rx || row.minStock <= 0
+        rx
           ? null
           : { label: "ขั้นต่ำ", value: count(row.minStock) },
         showCost
@@ -686,8 +686,8 @@ function Row({
   const rx = row.isCustomMade;
   const pending = row.lotsMissingCost > 0;
   const tint = pending ? " grid__row--pending" : rx ? " grid__row--rx" : "";
-  /** Below the level its owner set — 0 is silence, not a minimum that is met. */
-  const low = !rx && row.minStock > 0 && row.onHand < row.minStock;
+  /** At or below the level its owner set — 0 means "tell me when it runs out" (owner's rule, 2026-09-10). */
+  const low = !rx && row.onHand <= row.minStock;
 
   /**
    * A figure on this row, corrected where it is read.
@@ -760,9 +760,9 @@ function Row({
                 to open a five-step form for one number is asking them not to. */}
             <InlineEdit
               label={`จำนวนขั้นต่ำของ ${row.name}`}
-              // "" rather than "0" so the cell offers to be set instead of
-              // claiming a minimum of zero, which is not a thing a shop wants.
-              value={row.minStock > 0 ? String(row.minStock) : ""}
+              // "0" is a real setting now — it means "tell me when it runs out" —
+              // so the cell shows it rather than offering an empty box.
+              value={String(row.minStock)}
               display={count(row.minStock)}
               // A dash, because that is what every other column says for a
               // figure nobody has entered. The pencil beside it is the offer.

@@ -49,7 +49,19 @@ export default function BranchesPage() {
   const actor = useActor();
   const mayEdit = can.manageBranches(actor);
   const money$ = can.seeCost(actor);
-  const list = useApi<{ branches: BranchRow[] }>("/branches");
+
+  /**
+   * ทั้งหน้าเป็นของแอดมินและเจ้าของร้าน เหมือนหน้าการเบิกจากสาขาที่มันคู่กัน
+   *
+   * รายชื่อสาขาเองไม่ใช่ความลับ — พนักงานคลังเลือกสาขาตอนบันทึกเบิกอยู่แล้ว และ
+   * `/api/branches` จึงยังตอบทุกคน · ที่กันคือ **หน้านี้** ซึ่งไม่ใช่รายชื่อ
+   * เฉย ๆ แต่เป็นสมุดสาขา: จำนวนใบเบิกค้างรายสาขา ทางเข้าไปหน้าต้นทุน และปุ่ม
+   * เพิ่ม/แก้/ปิดสาขา · เมนูซ้ายซ่อนกลุ่ม "เงินและสาขา" ให้อยู่แล้ว แต่การซ่อน
+   * ปุ่มไม่ได้ปิดหน้า — พิมพ์ /stock/branches ตรง ๆ ก็เข้าได้ ซึ่งเป็นช่องที่
+   * ปิดตรงนี้
+   */
+  const allowed = can.seeBranchMoney(actor);
+  const list = useApi<{ branches: BranchRow[] }>(allowed ? "/branches" : null);
   const [adding, setAdding] = useState(false);
   const { sort, dir, sortBy } = useSort<SortKey>("added", NATURAL_ASC);
 
@@ -59,6 +71,25 @@ export default function BranchesPage() {
     const all = list.status === "ready" ? list.data.branches : [];
     return sortRows(all, (b) => PICK[sort](b), dir);
   }, [list, sort, dir]);
+
+  if (!allowed) {
+    return (
+      <main className="work-main">
+        <WorkHead title="จัดการสาขา" />
+        <div className="empty">
+          <p className="empty__title">หน้านี้เป็นของแอดมินและเจ้าของร้าน</p>
+          <p className="empty__body">
+            สมุดสาขาผูกกับต้นทุนของที่สาขาเบิกไป ซึ่งสิทธิ์ของคุณดูไม่ได้ — แต่เบิกของ
+            ให้สาขาได้ตามปกติที่{" "}
+            <Link href="/stock" className="grid__link">
+              หน้าเบิก/ตัดสต็อก
+            </Link>{" "}
+            ซึ่งมีรายชื่อสาขาให้เลือกอยู่แล้ว
+          </p>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="work-main">

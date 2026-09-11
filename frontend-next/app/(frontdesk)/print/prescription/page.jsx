@@ -9,7 +9,7 @@
  * กันพื้นที่มุมนั้นว่างไว้ (--logo x --logo-h) ชื่อลูกค้าที่ยาวจะไม่วิ่งไปทับ
  *
  * ทำไมกว้าง 180 สูง 55: ใบนี้ต้องมีตารางค่าสายตาอยู่ซ้ายและบล็อก CASE / วันที่ /
- * Lens / Frame อยู่ขวา "ระดับเดียวกัน" ห้ามตกลงไปใต้ตาราง — 6 คอลัมน์ตัวเลข
+ * Lens / Frame / Test for อยู่ขวา "ระดับเดียวกัน" ห้ามตกลงไปใต้ตาราง — 6 คอลัมน์ตัวเลข
  * บวกบล็อกขวาใส่ในความกว้าง 55mm ไม่ได้ ด้านยาวจึงเป็นความกว้างของกระดาษ
  *
  * ที่มาของค่าแต่ละช่อง — คนละแหล่งกันโดยตั้งใจ ห้ามรวมเป็นแหล่งเดียว:
@@ -27,9 +27,10 @@ import { api } from '../../../../lib/apiClient.js';
 import { useAsync } from '../../../../lib/hooks.js';
 import { Card, Loading } from '../../../../components/ui.jsx';
 import { QueryParamPage } from '../../../../components/QueryParamPage.jsx';
+import { PaperView } from '../../../../components/PaperView.jsx';
 import { Icon } from '../../../../components/Icon.jsx';
 import {
-  addPower, custName, cylPower, fmtDateTime, rxNum, sphPower,
+  addPower, custName, cylPower, fmtDateTime, glassesUseOf, rxNum, sphPower,
 } from '../../../../lib/format.js';
 
 const DASH = '—';
@@ -142,53 +143,58 @@ function SlipInner() {
         </p>
       </div>
 
-      <div className="slip">
-        {/* แถบบนสูงเท่าโซนโลโก้ — ชื่อกินได้แค่ครึ่งซ้าย ที่เหลือคือโลโก้บนกระดาษ */}
-        <div className="slip-head">
-          <div className="slip-name">
-            <span className="k">NAME:</span>
-            <span className="v">{c ? custName(c) : DASH}</span>
+      {/* สลิปกว้าง 180mm กว้างกว่าจอโทรศัพท์เกือบสองเท่า — PaperView คืนทางดูให้
+          (ย่อพอดีจอ / ไถซ้าย-ขวา) ไม่มีผลอะไรตอนพิมพ์หรือบนเดสก์ท็อป */}
+      <PaperView>
+        <div className="slip">
+          {/* แถบบนสูงเท่าโซนโลโก้ — ชื่อกินได้แค่ครึ่งซ้าย ที่เหลือคือโลโก้บนกระดาษ */}
+          <div className="slip-head">
+            <div className="slip-name">
+              <span className="k">NAME:</span>
+              <span className="v">{c ? custName(c) : DASH}</span>
+            </div>
+            <div className="slip-logo no-print" aria-hidden="true">โลโก้บนกระดาษ</div>
           </div>
-          <div className="slip-logo no-print" aria-hidden="true">โลโก้บนกระดาษ</div>
-        </div>
 
-        {/* ตัวกลางกินที่ว่างที่เหลือทั้งหมด แล้วดันสองบล็อกไปอยู่กึ่งกลาง — ขอบบน/ล่าง
-            จึงเท่ากันเสมอ ไม่ว่า Lens จะเป็นหนึ่งบรรทัดหรือสอง */}
-        <div className="slip-mid">
-        <div className="slip-body">
-          {/* ตารางความกว้างคงที่ ไม่ใช่ช่องว่าง/แท็บ — ตัวเลขจะได้ไม่เลื่อนตอนพิมพ์ */}
-          <table className="slip-rx">
-            <colgroup>
-              <col className="c-eye" />
-              {RX_COLS.map(([label]) => <col key={label} className="c-num" />)}
-            </colgroup>
-            <thead>
-              <tr>
-                <th />
-                {RX_COLS.map(([label]) => <th key={label}>{label}</th>)}
-              </tr>
-            </thead>
-            <tbody>
-              {EYES.map(([k, label]) => (
-                <tr key={k}>
-                  <th scope="row">{label}</th>
-                  {RX_COLS.map(([col, read]) => <td key={col}>{read(rx, k, ctr)}</td>)}
+          {/* ตัวกลางกินที่ว่างที่เหลือทั้งหมด แล้วดันสองบล็อกลงไปชิดขอบล่าง (ดูเหตุผลใต้ slipCss) */}
+          <div className="slip-mid">
+          <div className="slip-body">
+            {/* ตารางความกว้างคงที่ ไม่ใช่ช่องว่าง/แท็บ — ตัวเลขจะได้ไม่เลื่อนตอนพิมพ์ */}
+            <table className="slip-rx">
+              <colgroup>
+                <col className="c-eye" />
+                {RX_COLS.map(([label]) => <col key={label} className="c-num" />)}
+              </colgroup>
+              {/* หัวคอลัมน์อยู่ใน tbody เดียวกับแถวค่า ไม่แยก thead — Chrome แจกความสูงที่ยืด
+                  เพิ่มให้เฉพาะแถวใน tbody หัวใน thead เลยเตี้ยกว่าแถว Right/Left เกือบครึ่ง */}
+              <tbody>
+                <tr className="rx-head">
+                  <th />
+                  {RX_COLS.map(([label]) => <th key={label} scope="col">{label}</th>)}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+                {EYES.map(([k, label]) => (
+                  <tr key={k}>
+                    <th scope="row">{label}</th>
+                    {RX_COLS.map(([col, read]) => <td key={col}>{read(rx, k, ctr)}</td>)}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
 
-          <div className={`slip-meta${lensRows(order).length > 1 ? ' dense' : ''}`}>
-            <div className="m-row m-solo">{c?.case_code || DASH}</div>
-            <div className="m-row m-solo">{fmtDateTime(rx?.test_date) || DASH}</div>
-            {lensRows(order).map(([k, v]) => (
-              <div className="m-row" key={k}><span className="m-k">{k}</span><span className="m-v">{v}</span></div>
-            ))}
-            <div className="m-row"><span className="m-k">Frame</span><span className="m-v">{frameLabel(order)}</span></div>
+            <div className={`slip-meta${lensRows(order).length > 1 ? ' dense' : ''}`}>
+              <div className="m-row m-solo">{c?.case_code || DASH}</div>
+              <div className="m-row m-solo">{fmtDateTime(rx?.test_date) || DASH}</div>
+              {lensRows(order).map(([k, v]) => (
+                <div className="m-row" key={k}><span className="m-k">{k}</span><span className="m-v">{v}</span></div>
+              ))}
+              <div className="m-row"><span className="m-k">Frame</span><span className="m-v">{frameLabel(order)}</span></div>
+              {/* บรรทัดสุดท้ายใต้ Frame — ว่างก็พิมพ์ขีด ใบจะได้สูงเท่ากันทุกใบ */}
+              <div className="m-row"><span className="m-k">Test for</span><span className="m-v">{glassesUseOf(rx) || DASH}</span></div>
+            </div>
+          </div>
           </div>
         </div>
-        </div>
-      </div>
+      </PaperView>
     </>
   );
 }
@@ -199,16 +205,18 @@ export default function PrintPrescriptionPage() {
 
 /* สมมาตรทั้งสองแกน บนกระดาษ 5.5 x 18 ซม.
    แนวนอน: 5 (ขอบ) + 12 (ป้าย) + 6*15 (ตัวเลข) + 6 (ร่อง) + 62 (บล็อกขวา) + 5 = 180
-            ป้ายซ้าย (Right/Left) กับป้ายขวา (Lens/Frame) กว้าง 12mm เท่ากัน
+            ป้ายขวา (Lens/Frame/Test for) กว้าง 16mm ไม่ใช่ 12 เท่าป้ายซ้าย — "Test for"
+            8 ตัวอักษร monospace 9pt ยาว ~15mm ใส่ 12mm ไม่พอ
    แนวตั้ง: ตารางซ้ายยืดสูงเท่าบล็อกขวาพอดี — เส้นล่างสุดของตารางจึงอยู่ระดับเดียว
-            กับบรรทัด Frame แถวในตารางแบ่งความสูงนั้นเท่า ๆ กันเอง (3 แถว เทียบ 4 บรรทัด)
-            แล้ว .slip-mid จัดคู่นี้ไว้กึ่งกลางที่ว่างที่เหลือ ขอบบน = ขอบล่าง
-   ทุกแถวขวาเป็นบรรทัดเดียวเสมอ (ยาวเกินตัดด้วย …) ไม่งั้นความสูงสองฝั่งจะไม่ตรงกัน
+            กับบรรทัด Test for แถวในตารางแบ่งความสูงนั้นเท่า ๆ กันเอง (3 แถว เทียบ 5 บรรทัด)
+            แล้ว .slip-mid ดันคู่นี้ลงไปชิดขอบล่าง ตัวเลขบนสุดอยู่ที่เดิมกับตอนที่มี 4 บรรทัด
+            (17 + 33 - 5*5.5 = 22.5mm) บรรทัดที่เพิ่มจึงยืดกรอบลงข้างล่าง ไม่ดันขึ้นไปหาชื่อ
+            safe = ถ้าชื่อเลนส์/กรอบขึ้นสองบรรทัดจนสูงเกิน ให้ล้นลงขอบล่าง ไม่ล้นขึ้นไปทับชื่อ
    ตัวเลขชิดขวาเท่ากันทั้งหัวตารางและค่า สองแถวจึงตรงแนวกันเสมอ
    padding ซ้าย 2mm คือช่องไฟ — ค่าที่ยาวเต็มช่อง เช่น -12.50 จะได้ไม่ไปติดคอลัมน์ข้าง ๆ */
 const slipCss = (portrait) => `
 .slip{
-  --pad:5mm; --lbl:12mm; --num:15mm; --gap:6mm; --row:5.5mm;
+  --pad:5mm; --lbl:12mm; --mlbl:16mm; --num:15mm; --gap:6mm; --row:5.5mm;
   --rule:0.25mm solid #000;   /* เส้นตาราง — บางพอสำหรับเครื่องพิมพ์สลิป */
   --name:14pt;    /* ชื่อลูกค้าใหญ่กว่าตัวอื่นบนใบ — คนหยิบใบต้องอ่านชื่อออกจากระยะไกล */
   --logo:38mm;    /* โซนโลโก้ TIMEOPTIC ที่พิมพ์มากับกระดาษ — ห้ามพิมพ์อะไรทับ */
@@ -221,7 +229,7 @@ const slipCss = (portrait) => `
   font-size:9pt; line-height:var(--row); font-variant-numeric:tabular-nums;
 }
 .slip-head{flex:0 0 var(--logo-h);display:flex;align-items:flex-start}
-.slip-mid{flex:1 1 auto;display:flex;align-items:center;min-height:0}
+.slip-mid{flex:1 1 auto;display:flex;align-items:safe flex-end;min-height:0}
 .slip-name{display:flex;gap:4mm;align-items:baseline;
   width:calc(100% - var(--logo));min-width:0}
 .slip-name .k{font-weight:700;letter-spacing:.4px;flex:0 0 auto}
@@ -242,7 +250,7 @@ const slipCss = (portrait) => `
 /* ค่ากับหัวคอลัมน์อยู่กึ่งกลางช่องทั้งคู่ — คนละช่องกว้างเท่ากัน แกนกลางจึงตรงเป็นแนว */
 .slip-rx th,.slip-rx td{border:var(--rule);padding:0 1.5mm;text-align:center;
   vertical-align:middle;font-weight:400;white-space:nowrap}
-.slip-rx thead th{font-weight:700;letter-spacing:.3px}
+.slip-rx .rx-head th{font-weight:700;letter-spacing:.3px}
 .slip-rx tbody th[scope=row]{text-align:left;font-weight:700}
 
 /* บรรทัดแรกของทุกแถวอยู่ระดับเดียวกับแถวตาราง ชื่อเลนส์/กรอบที่ยาวขึ้นบรรทัดสองได้
@@ -250,7 +258,7 @@ const slipCss = (portrait) => `
 .slip-meta{min-width:0}
 .slip-meta .m-row{min-height:var(--row);display:flex;gap:2mm;min-width:0}
 .slip-meta .m-solo{font-weight:700;white-space:nowrap}
-.slip-meta .m-k{flex:0 0 var(--lbl);font-weight:700;white-space:nowrap}
+.slip-meta .m-k{flex:0 0 var(--mlbl);font-weight:700;white-space:nowrap}
 /* ยาวได้ 2 บรรทัด เกินนั้นค่อยตัด — 2 บรรทัดพอสำหรับชื่อรุ่นเต็ม ๆ ที่ร้านใช้จริง
    และเป็นเพดานที่กันไม่ให้ใบล้นออกนอกกระดาษ 55mm */
 .slip-meta .m-v{flex:1 1 auto;min-width:0;overflow-wrap:anywhere;line-height:4.6mm;

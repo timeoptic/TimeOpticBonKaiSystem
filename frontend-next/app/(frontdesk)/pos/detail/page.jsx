@@ -16,7 +16,7 @@ import { Icon } from '../../../../components/Icon.jsx';
 import { useAsync } from '../../../../lib/hooks.js';
 import { fmtDateTime, money } from '../../../../lib/format.js';
 import { useAuth } from '../../../../contexts/AuthContext.jsx';
-import { isAdminUp } from '../../../../lib/roles.js';
+import { inSystemZone } from '../../../../lib/roles.js';
 import {
   Card, Field, Kv, Loading,
 } from '../../../../components/ui.jsx';
@@ -216,7 +216,7 @@ function PosDetail() {
             </button>
             {/* ยกเลิกใบขายคือการลบเงินออกจากยอดของวัน — แอดมินขึ้นไปเท่านั้น
                 และ API ตรวจซ้ำอีกชั้น การซ่อนปุ่มเป็นแค่มารยาท */}
-            {isAdminUp(actor) && (
+            {inSystemZone(actor) && (
               <button type="button" className="pos-btn back" style={{ width: 'auto', margin: 0, color: '#c0392b', borderColor: '#e6b0aa' }} disabled={busy} onClick={voidSale}>
                 ยกเลิกใบขาย
               </button>

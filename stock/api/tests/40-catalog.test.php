@@ -328,7 +328,7 @@ test('คงเหลือมากกว่าที่รับเข้า�
             1,
         );
 
-        eq(lotRemaining((string) $lot['lot_number']), $over, 'คงเหลือหลังปรับ');
+        eq(lotRemaining((int) $lot['id']), $over, 'คงเหลือหลังปรับ');
 
         $adj = Db::one(
             "SELECT notes, quantity FROM inventory_logs
@@ -373,7 +373,7 @@ test('ปรับยอดปกติ (ไม่เกินที่รับ
         $lower = (int) $lot['remaining_qty'] - 1;
 
         Catalog::updateLot((int) $lot['id'], ['remaining_qty' => $lower], [Roles::OWNER], 1);
-        eq(lotRemaining((string) $lot['lot_number']), $lower, 'ลดยอดได้โดยไม่ต้องมีเหตุผล');
+        eq(lotRemaining((int) $lot['id']), $lower, 'ลดยอดได้โดยไม่ต้องมีเหตุผล');
     });
 });
 

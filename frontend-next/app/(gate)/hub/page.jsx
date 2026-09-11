@@ -10,7 +10,10 @@
  */
 import { useEffect, useState } from 'react';
 import { api } from '../../../lib/apiClient.js';
-import { homeFor, isSuperuser, worksBothSides } from '../../../lib/roles.js';
+import {
+  homeFor, inMoneyZone, inSystemZone, isSuperuser,
+  mayUseFrontdesk, mayUseStock, worksBothSides,
+} from '../../../lib/roles.js';
 import { Loading } from '../../../components/ui.jsx';
 import { Icon } from '../../../components/Icon.jsx';
 
@@ -62,16 +65,19 @@ export default function HubPage() {
         </p>
       </div>
 
+      {/* วาดเฉพาะใบที่เปิดได้จริง — การ์ดที่กดแล้วเจอ 403 แย่กว่าการ์ดที่ไม่มี */}
       <div className="hub-grid">
-        <a className="card hub-card" href="/">
-          <div className="card-body">
-            <div className="hub-tile-icon"><Icon name="bag" /></div>
-            <h2 style={{ margin: '8px 0 4px', fontSize: 18 }}>หน้าร้าน</h2>
-            <p className="muted" style={{ margin: 0 }}>
-              เคส ลูกค้า วัดสายตา ขาย ชำระเงิน ส่งมอบ
-            </p>
-          </div>
-        </a>
+        {mayUseFrontdesk(actor) ? (
+          <a className="card hub-card" href="/">
+            <div className="card-body">
+              <div className="hub-tile-icon"><Icon name="bag" /></div>
+              <h2 style={{ margin: '8px 0 4px', fontSize: 18 }}>หน้าร้าน</h2>
+              <p className="muted" style={{ margin: 0 }}>
+                เคส ลูกค้า วัดสายตา ขาย ชำระเงิน ส่งมอบ
+              </p>
+            </div>
+          </a>
+        ) : null}
 
         <a className="card hub-card" href="/stock/">
           <div className="card-body">
@@ -84,22 +90,28 @@ export default function HubPage() {
         </a>
 
         {/* งานของผู้ดูแล — เงินของร้านและข้อมูลระบบ
-            ไม่ต้องเช็คบทบาทตรงนี้: หน้า /hub เด้งคนที่ทำงานฝั่งเดียวออกไปแล้ว
-            ตั้งแต่ตอนโหลด (worksBothSides) ซึ่งเป็นเงื่อนไขเดียวกับ isAdminUp
-            ทุกคนที่มองเห็นหน้านี้อยู่จึงเป็นแอดมินขึ้นไปเสมอ
+            เคยไม่ต้องเช็คบทบาทตรงนี้ เพราะ worksBothSides เท่ากับ "เป็นแอดมิน"
+            พอดี · ตั้งแต่มีบทบาทบัญชี สองอย่างนั้นไม่ใช่สิ่งเดียวกันอีกแล้ว —
+            บัญชีมองเห็นหน้านี้ แต่เห็นแค่ครึ่งการเงินของการ์ดใบนี้
 
-            พาไปที่ "รายรับ" ซึ่งเป็นหน้าแรกของกลุ่มการเงิน — ไม่ได้ทำหน้ารวม
-            ขึ้นมาใหม่ เพราะงานหกอย่างนี้อยู่ในเมนูซ้ายของหน้าร้านครบอยู่แล้ว
-            การ์ดใบนี้มีไว้ให้เห็นตั้งแต่ล็อกอินว่าส่วนนี้มีอยู่ ไม่ใช่ที่อยู่ใหม่ของมัน */}
-        <a className="card hub-card" href="/income/">
-          <div className="card-body">
-            <div style={{ fontSize: 28 }}>🔐</div>
-            <h2 style={{ margin: '8px 0 4px', fontSize: 18 }}>ผู้ดูแลระบบ</h2>
-            <p className="muted" style={{ margin: 0 }}>
-              รายรับ รายจ่าย พนักงาน ซัพพลายเออร์ รายงาน ตั้งค่า
-            </p>
-          </div>
-        </a>
+            พาไปที่หน้าแรกของโซนที่เขามีสิทธิ์ — ไม่ได้ทำหน้ารวมขึ้นมาใหม่ เพราะงาน
+            พวกนี้อยู่ในเมนูซ้ายของหน้าร้านครบอยู่แล้ว การ์ดใบนี้มีไว้ให้เห็นตั้งแต่
+            ล็อกอินว่าส่วนนี้มีอยู่ ไม่ใช่ที่อยู่ใหม่ของมัน */}
+        {inMoneyZone(actor) || inSystemZone(actor) ? (
+          <a className="card hub-card" href={inMoneyZone(actor) ? '/income/' : '/employees/'}>
+            <div className="card-body">
+              <div style={{ fontSize: 28 }}>🔐</div>
+              <h2 style={{ margin: '8px 0 4px', fontSize: 18 }}>
+                {inSystemZone(actor) ? 'ผู้ดูแลระบบ' : 'การเงินและรายงาน'}
+              </h2>
+              <p className="muted" style={{ margin: 0 }}>
+                {inSystemZone(actor)
+                  ? 'รายรับ รายจ่าย พนักงาน ซัพพลายเออร์ รายงาน ตั้งค่า'
+                  : 'รายรับ รายจ่าย รายงาน ซัพพลายเออร์'}
+              </p>
+            </div>
+          </a>
+        ) : null}
       </div>
 
       <p className="muted" style={{ textAlign: 'center', fontSize: 12, marginTop: 16 }}>

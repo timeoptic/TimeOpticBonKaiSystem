@@ -76,6 +76,22 @@ export default function Select({
    * one at the last keystroke.
    */
   const [at, setAt] = useState(-1);
+  /**
+   * เปิดรายการด้วยนิ้ว — แป้นพิมพ์ต้องไม่ขึ้นมาด้วย
+   *
+   * หน้าของดรอปดาวน์ตัวนี้เป็น `<input>` จริง ๆ (ดูหัวไฟล์) บนเมาส์ไม่มีใครรู้สึก
+   * เพราะคลิกแล้วได้ทั้งรายการและเคอร์เซอร์ฟรี ๆ · บนมือถือการแตะช่องคือการโฟกัส
+   * ช่อง และการโฟกัสช่องกรอกคือการเรียกแป้นพิมพ์ขึ้นมาครึ่งจอ ทั้งที่คนแตะกำลัง
+   * ขอ "รายการให้เลือก" ไม่ได้ขอ "ที่ให้พิมพ์" — รายการที่เหลือครึ่งจอบน Android
+   * (innerHeight หดตามแป้นพิมพ์) และไปโผล่ใต้แป้นพิมพ์บน iOS (innerHeight ไม่หด)
+   *
+   * นิ้วจึงปิดปากช่องไว้ก่อน แล้วปุ่ม ⌕ ที่ขึ้นมาแทนลูกศรคือทางกลับไปพิมพ์ค้นหา
+   * สำหรับรายการยาว ๆ · โหมด `free` ไม่เกี่ยว — ช่องนั้นเป็นช่องพิมพ์มาแต่ต้น
+   */
+  const [mute, setMute] = useState(false);
+  /* ออกจากช่องแล้วกลับเข้าทันทีเพื่อเรียกแป้นพิมพ์ ไม่ใช่การละจากช่องจริง ๆ —
+     ถ้าไม่กันไว้ onBlur ของกรอบนอกจะปิดรายการทิ้งกลางทาง */
+  const jump = useRef(false);
   const box = useDropBox(open, face);
 
   const chosen = options.find((o) => o.value === value);
@@ -160,9 +176,30 @@ export default function Select({
     setOpen(true);
   }
 
+  /**
+   * ปิด/เปิดปากช่อง
+   *
+   * เขียนลง DOM ตรง ๆ ไม่รอ React เรนเดอร์ เพราะเบราว์เซอร์ตัดสินใจว่าจะเรียก
+   * แป้นพิมพ์ไหมตอน "โฟกัส" ซึ่งเกิดต่อจาก pointerdown ในจังหวะเดียวกัน — รอ
+   * เรนเดอร์รอบใหม่คือช้าไปหนึ่งจังหวะ แป้นพิมพ์ขึ้นไปเรียบร้อยแล้ว · state
+   * ตามไปด้วยเพื่อให้เรนเดอร์รอบถัดไปไม่เขียนทับกลับ
+   *
+   * `readOnly` กับ `inputMode` ทำงานคู่กันโดยตั้งใจ: inputMode="none" คือคำสั่ง
+   * ที่ตรงความหมายที่สุด ส่วน readOnly คือกฎเก่าที่ทุกเบราว์เซอร์เชื่อฟังแน่นอน
+   */
+  function quiet(on: boolean) {
+    const el = face.current;
+    if (el) {
+      el.readOnly = on;
+      el.inputMode = on ? "none" : "text";
+    }
+    setMute(on);
+  }
+
   function hide() {
     setOpen(false);
     setQuery("");
+    quiet(false);
   }
 
   function pick(o: Choice) {
@@ -214,6 +251,7 @@ export default function Select({
       className={free ? "combo combo--free" : "combo"}
       ref={wrap}
       onBlur={(e) => {
+        if (jump.current) return;
         if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
         hide();
       }}
@@ -228,10 +266,13 @@ export default function Select({
         aria-controls={id ? `${id}-list` : undefined}
         autoComplete="off"
         disabled={disabled}
-        value={free ? value : open ? query : label}
+        readOnly={mute}
+        inputMode={mute ? "none" : "text"}
+        // ปากช่องถูกปิดอยู่ = ไม่มีคำค้น ช่องจึงยังแสดงค่าที่เลือกไว้ตามเดิม
+        value={free ? value : open && !mute ? query : label}
         // While a picker is open the field is empty and waiting to be typed in,
         // so it says so — the current choice is marked in the list underneath.
-        placeholder={open && !free ? "พิมพ์เพื่อค้นหา…" : placeholder}
+        placeholder={open && !free && !mute ? "พิมพ์เพื่อค้นหา…" : placeholder}
         onChange={(e) => {
           if (free) {
             onChange(e.target.value);
@@ -242,11 +283,36 @@ export default function Select({
           }
           if (!open) setOpen(true);
         }}
+        /* pointerdown มาก่อน focus หนึ่งจังหวะเสมอ ซึ่งเป็นจังหวะเดียวที่ยัง
+           ปิดปากช่องทันก่อนแป้นพิมพ์จะขึ้น · ถามที่ตัวเหตุการณ์ว่ามาจากนิ้วหรือ
+           เมาส์ แทนที่จะถามจอว่ากว้างเท่าไร — แท็บเล็ตที่เสียบเมาส์ก็ยังพิมพ์ได้ */
+        onPointerDown={(e) => {
+          if (!free) quiet(e.pointerType !== "mouse");
+        }}
         onMouseDown={show}
         onFocus={show}
         onKeyDown={keys}
       />
-      {open || !free ? (
+      {open && mute ? (
+        <button
+          type="button"
+          className="combo__caret combo__caret--type"
+          aria-label="พิมพ์เพื่อค้นหา"
+          /* กันโฟกัสไม่ให้ย้ายออกจากช่อง — ไม่งั้น onBlur ของกรอบนอกปิดรายการทิ้ง */
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => {
+            quiet(false);
+            /* เบราว์เซอร์ตัดสินเรื่องแป้นพิมพ์ตอนโฟกัส ช่องที่โฟกัสค้างอยู่แล้ว
+               จึงต้องออกแล้วเข้าใหม่ ไม่งั้นแป้นพิมพ์ไม่ขึ้นจนกว่าจะแตะอีกที */
+            jump.current = true;
+            face.current?.blur();
+            face.current?.focus();
+            jump.current = false;
+          }}
+        >
+          ⌕
+        </button>
+      ) : open || !free ? (
         <span className="combo__caret" aria-hidden="true">
           {open ? "⌕" : "▾"}
         </span>

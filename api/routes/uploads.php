@@ -20,6 +20,29 @@ function uploadDir(int $caseId): string
     return $dir;
 }
 
+/** กล่อง "รูปภาพการวัด" ของขั้นวัด Center รับได้ 10 ใบต่อเคส */
+const CENTERING_PHOTO_MAX = 10;
+
+/*
+ * โควตานับ "ต่อเคส + kind = centering" ให้ตรงกับสิ่งที่พนักงานเห็นในกล่องนั้นจริง ๆ
+ * กล่องดึงรูปด้วย case_id + kind ไม่ได้กรองด้วย centering_id (ดูเหตุผลที่ GET
+ * ข้างล่าง: รูปที่อัปโหลดตอนยังไม่มีแถว centerings จะมี centering_id เป็น NULL)
+ * ถ้านับด้วย centering_id ตัวเลขบนจอกับตัวเลขที่ระบบบังคับจะไม่ตรงกัน
+ *
+ * ลิมิตแยกตาม kind เพราะสลิปโอนเงินกับไฟล์ส่งมอบยิงเข้าเส้นทางเดียวกันนี้
+ * และไม่ควรถูกจำกัดตามไปด้วย
+ */
+function centeringPhotoRoom(int $caseId): int
+{
+    $row = Db::get(
+        "SELECT COUNT(*) AS n FROM case_photos WHERE case_id = ? AND kind = 'centering'",
+        $caseId
+    );
+
+    /* max(0, …) — เคสเก่าที่มีรูปเกิน 10 ใบมาก่อนวันบังคับลิมิตต้องได้ 0 ไม่ใช่เลขติดลบ */
+    return max(0, CENTERING_PHOTO_MAX - (int) ($row['n'] ?? 0));
+}
+
 /*
  * ตัวกรองทั้งสามตัวเป็นทางเลือก ไม่ใส่ = ได้ทุกไฟล์ของเคสเหมือนเดิม
  * (หน้าชำระเงินกับหน้าส่งมอบดึงทั้งเคสแล้วไปจับคู่ payment_id เองฝั่งหน้าเว็บ
@@ -92,6 +115,12 @@ POST('/api/uploads', function (array $req) {
     if (!Db::get('SELECT id FROM cases WHERE id = ?', $caseId)) {
         bad('ไม่พบเคส');
     }
+    $kind = str_or($body['kind'] ?? null, 'other') ?: 'other';
+
+    /* ด่านนี้ต้องอยู่ก่อน move_uploaded_file() ไม่งั้นไฟล์ที่ถูกปฏิเสธจะตกค้างบนดิสก์ */
+    if ($kind === 'centering' && centeringPhotoRoom($caseId) < 1) {
+        bad('แนบรูปการวัดได้ไม่เกิน ' . CENTERING_PHOTO_MAX . ' รูปต่อเคส — ลบรูปเก่าก่อนถ้าจะเพิ่ม');
+    }
     $centeringId = int_or($body['centering_id'] ?? null);
     if ($centeringId && !Db::get('SELECT id FROM centerings WHERE id = ?', $centeringId)) {
         bad('ไม่พบข้อมูลศูนย์เลนส์');
@@ -123,7 +152,7 @@ POST('/api/uploads', function (array $req) {
         bad('บันทึกไฟล์ไม่สำเร็จ');
     }
 
-    $id = Db::tx(function (Tx $q) use ($body, $caseId, $centeringId, $paymentId, $takenBy, $fileName, $file, $mime) {
+    $id = Db::tx(function (Tx $q) use ($body, $caseId, $centeringId, $paymentId, $kind, $takenBy, $fileName, $file, $mime) {
         $r = $q->run(
             'INSERT INTO case_photos (case_id, centering_id, payment_id, kind, file_name,
                original_name, mime_type, file_size, caption, taken_by)
@@ -131,7 +160,7 @@ POST('/api/uploads', function (array $req) {
             $caseId,
             $centeringId,
             $paymentId,
-            str_or($body['kind'] ?? null, 'other') ?: 'other',
+            $kind,
             $fileName,
             str_or($file['name'] ?? null),
             $mime,

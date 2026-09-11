@@ -105,11 +105,11 @@ $day = static fn(int $ago): string => $today->modify("-{$ago} days")->format('Y-
  * ในไฟล์ Excel มีค่าเดียวทั้งคอลัมน์ ซึ่งตรวจไม่ได้ว่ามันทำงานถูกไหม
  */
 $catalogue = [
-    ['Lens',       'Hoya',        1290, ['model' => 'HiVision', 'coating' => 'MultiCoat', 'lens_index' => '1.56', 'lens_design' => 'Single']],
+    ['Lens',       'Hoya',        1290, ['model' => 'HiVision', 'coating' => 'MC', 'lens_index' => '1.56', 'lens_design' => 'Single']],
     ['Lens',       'Hoya',        3450, ['model' => 'HiVision', 'coating' => 'Blue',      'lens_index' => '1.60', 'lens_design' => 'Progressive']],
     ['Lens',       'Zeiss',       2890, ['model' => 'SmartLife', 'coating' => 'Hard',     'lens_index' => '1.60', 'lens_design' => 'Bifocal']],
-    ['Lens',       'Essilor',     5600, ['model' => 'Varilux X', 'coating' => 'Transition', 'lens_index' => '1.67', 'lens_design' => 'Progressive']],
-    ['Lens',       'Tokai',       1990, ['model' => 'Lutina',   'coating' => 'MultiCoat', 'lens_index' => '1.50', 'lens_design' => 'Sport']],
+    ['Lens',       'Essilor',     5600, ['model' => 'Varilux X', 'coating' => 'Auto', 'lens_index' => '1.67', 'lens_design' => 'Progressive']],
+    ['Lens',       'Tokai',       1990, ['model' => 'Lutina',   'coating' => 'MC', 'lens_index' => '1.50', 'lens_design' => 'Sport']],
     ['Frame',      'Ray-Ban',     4200, ['model' => 'RB5154',   'color' => 'Black',  'size' => '51-21-145', 'material' => 'Acetate']],
     ['Frame',      'Owndays',     1890, ['model' => 'OR1052',   'color' => 'Gold',   'size' => '49-20-140', 'material' => 'Titanium']],
     ['Sunglass',   'Ray-Ban',     6900, ['model' => 'RB3025',   'color' => 'Green',  'size' => '58-14-135', 'tint' => 'G-15']],
@@ -121,7 +121,7 @@ $catalogue = [
 $custom = [
     ['Lens', 'Hoya',    ['model' => 'Nulux',    'coating' => 'Blue',       'lens_index' => '1.67', 'lens_design' => 'Progressive']],
     ['Lens', 'Zeiss',   ['model' => 'DriveSafe','coating' => 'Hard',       'lens_index' => '1.60', 'lens_design' => 'Degressive/Digital/Office']],
-    ['Lens', 'Shamir',  ['model' => 'Autograph','coating' => 'Transition', 'lens_index' => '1.74', 'lens_design' => 'Myopia']],
+    ['Lens', 'Shamir',  ['model' => 'Autograph','coating' => 'Auto', 'lens_index' => '1.74', 'lens_design' => 'Myopia']],
 ];
 
 $catId = [];

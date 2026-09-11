@@ -73,6 +73,17 @@ final class StockGate
     }
 
     /**
+     * เปิดล็อตค้างส่งยอดศูนย์ให้สินค้าที่ยังไม่เคยรับของเข้า — หน้าขายเลือกได้
+     * ไม่มีของเคลื่อน แต่เป็นการสร้างแถวในคลัง จึงต้องเป็นคนที่ตัดสต็อกได้
+     */
+    public static function backorderLot(string $sku): array
+    {
+        $actor = Auth::require();
+        Roles::require(Roles::moveStock($actor['roles']), 'บันทึกความเคลื่อนไหวสต็อก');
+        return Stock::backorderLot($sku);
+    }
+
+    /**
      * The signed-in actor, stamped onto the request, replacing anything the
      * caller put there.
      *

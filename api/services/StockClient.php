@@ -99,6 +99,7 @@ final class StockClient
                    ห้ามเรียก Stock:: ตรง ๆ ข้ามมัน — actor_id ที่ผู้เรียกใส่มาเองจะผ่าน */
                 '/stock/issue'  => \Optic\Service\StockGate::issue($body),
                 '/stock/return' => \Optic\Service\StockGate::returnStock($body),
+                '/stock/backorder-lot' => \Optic\Service\StockGate::backorderLot((string) ($body['sku'] ?? '')),
                 '/rx'           => self::rx($body),
                 default         => throw new StockApiError('unknown_path', "ไม่รู้จักเส้นทาง $path"),
             };

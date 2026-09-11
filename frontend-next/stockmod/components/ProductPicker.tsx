@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Paginator from "./Paginator";
 import SortHead, { SortBar, useSort } from "./SortHead";
@@ -194,6 +194,30 @@ export default function ProductPicker({
   const [page, setPage] = useState(1);
   const { sort, dir, sortBy } = useSort<SortKey>(defaultSort, NATURAL_ASC);
 
+  /**
+   * เคอร์เซอร์รออยู่ในช่องค้นหาให้เลย — เฉพาะจอกว้าง
+   *
+   * บนคอมพิวเตอร์ คนที่เปิดหน้าเบิกมาคือคนที่กำลังจะพิมพ์ SKU ต่อทันที การรอ
+   * ให้เขาคลิกช่องก่อนทุกใบคือคลิกที่ไม่ได้ให้อะไร
+   *
+   * บนมือถือมันแพงกว่านั้นมาก · โฟกัสเรียกแป้นพิมพ์ขึ้นมาเองตั้งแต่หน้าโหลด
+   * เสร็จ กินครึ่งจอโดยไม่มีใครขอ และแถบเมนูล่างจอซ่อนตัวเองระหว่างที่มีช่อง
+   * ไหนถูกโฟกัสอยู่ (`body:has(input:focus)` ใน globals.css — กติกาที่ถูกต้อง
+   * สำหรับ "กำลังพิมพ์") · สองอย่างรวมกันแปลว่าคนที่แค่เปิดหน้าเบิกผ่านมา
+   * เห็นแถบล่างหายไปทั้งแถบทันที และไม่มีทางไปหน้าอื่นจนกว่าจะรู้ว่าต้องกดปิด
+   * แป้นพิมพ์ก่อน — ซึ่งไม่มีอะไรบนจอบอก
+   *
+   * ใช้ effect ไม่ใช่ prop `autoFocus` เพราะคำถามคือ "จอกว้างแค่ไหน" ซึ่งตอบได้
+   * หลัง mount เท่านั้น · ถามครั้งเดียวตอนเปิดหน้า ไม่ตามการหมุนจอ — คนที่หมุน
+   * จอกลางคันไม่ได้กำลังขอให้เคอร์เซอร์กระโดด
+   */
+  const searchRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (!autoFocus) return;
+    if (window.matchMedia("(max-width: 40rem)").matches) return;
+    searchRef.current?.focus();
+  }, [autoFocus]);
+
   /* กล่องปลายทางของแถบเรียงลำดับ — หาเจอได้หลัง mount เท่านั้น จึงเก็บเป็น state
      ให้เรนเดอร์รอบถัดไปพาแถบไปวาง · ไม่มี id ส่งมา หรือหาไม่เจอ ก็อยู่ที่เดิม */
   const [sortSlot, setSortSlot] = useState<HTMLElement | null>(null);
@@ -309,7 +333,7 @@ export default function ProductPicker({
             onChange={(e) => setQ(e.target.value)}
             placeholder="พิมพ์ SKU ชื่อสินค้า หรือแบรนด์"
             autoComplete="off"
-            autoFocus={autoFocus}
+            ref={searchRef}
           />
           <button type="submit" className="btn btn--primary">
             ค้นหา

@@ -175,11 +175,11 @@ $plan = [];
 /** Stocked lenses — the drawers, one row per power. */
 foreach ([
     ['Lens G', 'Clear', '1.56', 'Hard', 'Single Vision', ['-1.00', '-2.00', '-3.00'], '1200.00', 6],
-    ['Lens G', 'Clear', '1.60', 'MultiCoat', 'Single Vision', ['-2.25', '-4.00'], '1800.00', 4],
+    ['Lens G', 'Clear', '1.60', 'MC', 'Single Vision', ['-2.25', '-4.00'], '1800.00', 4],
     ['Hitop', 'Aspheric', '1.56', 'Blue', 'Single Vision', ['-1.50', '-2.50'], '1500.00', 4],
-    ['Hitop', 'Aspheric', '1.60', 'Transition', 'Single Vision', ['-3.00'], '2600.00', 3],
-    ['Hoya', 'HiVision', '1.60', 'MultiCoat', 'Single Vision', ['-2.25', '-4.00'], '3200.00', 4],
-    ['Hoya', 'HiVision', '1.67', 'Transition-Blue', 'Single Vision', ['-5.00'], '5400.00', 2],
+    ['Hitop', 'Aspheric', '1.60', 'Auto', 'Single Vision', ['-3.00'], '2600.00', 3],
+    ['Hoya', 'HiVision', '1.60', 'MC', 'Single Vision', ['-2.25', '-4.00'], '3200.00', 4],
+    ['Hoya', 'HiVision', '1.67', 'Auto-Blue', 'Single Vision', ['-5.00'], '5400.00', 2],
 ] as [$brand, $model, $index, $coating, $design, $powers, $price, $min]) {
     foreach ($powers as $sph) {
         $plan[] = [
@@ -207,12 +207,12 @@ foreach (['+2.00', '+2.50'] as $add) {
 
 /** Made to order — a model, never a power. The power belongs to the job. */
 foreach ([
-    ['Hoya', 'Lifestyle 4', '1.60', 'MultiCoat', 'Progressive', '8900.00'],
-    ['Zeiss', 'SmartLife', '1.67', 'Transition-Blue', 'Progressive', '12500.00'],
-    ['Essilor', 'Varilux X', '1.67', 'MultiCoat', 'Progressive', '13800.00'],
+    ['Hoya', 'Lifestyle 4', '1.60', 'MC', 'Progressive', '8900.00'],
+    ['Zeiss', 'SmartLife', '1.67', 'Auto-Blue', 'Progressive', '12500.00'],
+    ['Essilor', 'Varilux X', '1.67', 'MC', 'Progressive', '13800.00'],
     ['TOG', 'Office', '1.60', 'Blue', 'Progressive', '6900.00'],
-    ['Rodenstock', 'Impression', '1.60', 'MultiCoat', 'Progressive', '11500.00'],
-    ['Shamir', 'Autograph', '1.67', 'Transition', 'Progressive', '10900.00'],
+    ['Rodenstock', 'Impression', '1.60', 'MC', 'Progressive', '11500.00'],
+    ['Shamir', 'Autograph', '1.67', 'Auto', 'Progressive', '10900.00'],
     ['Tokai', 'Lutina', '1.60', 'Blue', 'Single Vision', '7200.00'],
 ] as [$brand, $model, $index, $coating, $design, $price]) {
     $plan[] = [

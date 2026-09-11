@@ -1,0 +1,133 @@
+# ---------------------------------------------------------------------------
+# TimeOptic — .htaccess ของ public_html
+# deploy/build.ps1 คัดลอกไฟล์นี้ไปเป็น dist/public_html/.htaccess ตอนประกอบ
+# แก้ที่ deploy/htaccess-root เท่านั้น แก้ที่ dist/ จะหายตอน build รอบถัดไป
+#
+# LiteSpeed ของ Hostinger อ่าน .htaccess เหมือน Apache ทุกอย่างที่ใช้ในไฟล์นี้
+# ---------------------------------------------------------------------------
+
+Options -Indexes
+DirectoryIndex index.html index.php
+
+# ---------------------------------------------------------------------------
+# เส้นทาง
+# ---------------------------------------------------------------------------
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # --- บังคับ https -------------------------------------------------------
+    # ล็อกอินทั้งระบบฝากไว้กับคุกกี้ optic_session ซึ่งตั้ง Secure ไว้ (SESSION_SECURE=1
+    # ใน .env) เบราว์เซอร์จะไม่ส่งคุกกี้ที่ Secure ไปกับคำขอ http เลย อาการที่ได้คือ
+    # ล็อกอินผ่าน แล้วเด้งกลับหน้า login ทันที โดยไม่มี error ให้เห็นสักบรรทัด
+    RewriteCond %{HTTPS} !=on
+    RewriteCond %{HTTP:X-Forwarded-Proto} !https
+    RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
+
+    # --- ไฟล์ prefetch ของ Next 16 -------------------------------------------
+    # Next 16 ให้เบราว์เซอร์ดึง RSC payload ของหน้าปลายทางล่วงหน้าเวลาเมาส์ผ่าน
+    # <Link> · ตัว `output: export` เขียนไฟล์พวกนี้เป็น **โฟลเดอร์ซ้อน**
+    #     bookings/detail/__next.!KGZyb250ZGVzayk/bookings/detail/__PAGE__.txt
+    # แต่ฝั่งเบราว์เซอร์ขอเป็น **ชื่อไฟล์แบน** ที่ต่อกันด้วยจุด
+    #     bookings/detail/__next.!KGZyb250ZGVzayk.bookings.detail.__PAGE__.txt
+    #
+    # ไม่ตรงกันเลย 404 ทุกครั้ง — หน้ายังเปิดได้ตามปกติเพราะ Next ถอยไปโหลดเต็มหน้า
+    # แทน แต่ได้ error แดงใน console ทุกหน้า และเสียประโยชน์ของ prefetch ไปทั้งหมด
+    # (ไปกดที่ iPad ในร้านแล้วรู้สึกหน่วงกว่าที่ควร มาจากข้อนี้)
+    #
+    # กฎข้างล่างแปลงจุดหลัง `__next.` กลับเป็น / ตามจำนวนชั้นที่มีจริง — เขียนแยก
+    # เป็นชั้น ๆ ไม่ใช้ [N] วนซ้ำ เพราะ LiteSpeed กับ Apache นับรอบ [N] ไม่เหมือนกัน
+    # ลึกสุดที่ build ออกมาตอนนี้คือ 3 จุด เผื่อไว้ถึง 5
+    RewriteRule ^(.*)__next\.([^./]+)\.__PAGE__\.txt$ $1__next.$2/__PAGE__.txt [L]
+    RewriteRule ^(.*)__next\.([^./]+)\.([^./]+)\.__PAGE__\.txt$ $1__next.$2/$3/__PAGE__.txt [L]
+    RewriteRule ^(.*)__next\.([^./]+)\.([^./]+)\.([^./]+)\.__PAGE__\.txt$ $1__next.$2/$3/$4/__PAGE__.txt [L]
+    RewriteRule ^(.*)__next\.([^./]+)\.([^./]+)\.([^./]+)\.([^./]+)\.__PAGE__\.txt$ $1__next.$2/$3/$4/$5/__PAGE__.txt [L]
+    RewriteRule ^(.*)__next\.([^./]+)\.([^./]+)\.([^./]+)\.([^./]+)\.([^./]+)\.__PAGE__\.txt$ $1__next.$2/$3/$4/$5/$6/__PAGE__.txt [L]
+
+    # --- ระบบคลังและต้นทุน --------------------------------------------------
+    # /stock-api/* ไม่มีโฟลเดอร์จริงรองรับ จึงต้องส่งเข้า front controller ที่นี่
+    # (/api/* ไม่ต้องมีบรรทัดในไฟล์นี้ — public_html/api/ มีอยู่จริง Apache เลย
+    #  ลงไปอ่าน api/.htaccess ซึ่งจัดการต่อให้เองอยู่แล้ว)
+    #
+    # ปลายทางเป็น api/index.php ไม่ใช่ stock/api/public/index.php โดยตั้งใจ:
+    # ฝั่งคลังต้องให้หน้าร้าน boot ให้ก่อน (PDO ตัวเดียวกัน + session ใบเดียวกัน
+    # ดู api/core/StockModule.php) แล้ว api/index.php บรรทัด 121 จะจับ /stock-api
+    # ส่งต่อเอง · ที่มันยังอ่าน path ถูกทั้งที่ถูก rewrite มา เพราะ SCRIPT_NAME
+    # กลายเป็น /api/index.php ทำให้ $base = "/api" ซึ่งไม่ตรงกับต้น path /stock-api
+    # เลยไม่ถูกตัดทิ้ง — และด่านนี้อยู่ก่อนบรรทัดที่เติม /api ให้อัตโนมัติ
+    RewriteRule ^stock-api(/.*)?$ api/index.php [QSA,L]
+
+</IfModule>
+
+# หน้าไม่พบ — static export วางไฟล์นี้ไว้ให้แล้ว
+ErrorDocument 404 /404.html
+
+# ---------------------------------------------------------------------------
+# ไฟล์ที่ห้ามเสิร์ฟ
+# ---------------------------------------------------------------------------
+# .env ตัวจริงอยู่เหนือ public_html ขึ้นไปหนึ่งชั้น เข้าถึงทางเว็บไม่ได้ตั้งแต่ต้น
+# บรรทัดพวกนี้กันไฟล์ที่ *เผลอ* หลุดเข้ามาในนี้ กับกันซอร์สฝั่งเซิร์ฟเวอร์ที่ต้อง
+# ถูกเรียกทาง CLI เท่านั้น
+<FilesMatch "^\.">
+    Require all denied
+</FilesMatch>
+
+<FilesMatch "\.(env|sql|md|ps1|bat|vbs|log|jsonl|accdb|csv)$">
+    Require all denied
+</FilesMatch>
+
+# ทุกอย่างข้างล่างนี้ใช้ RedirectMatch (mod_alias) ไม่ใช่ RewriteRule โดยตั้งใจ
+#
+# กฎ RewriteRule ในไฟล์นี้ **ไม่มีผลกับอะไรก็ตามที่อยู่ใต้ /api/** เพราะ
+# public_html/api/.htaccess ประกาศ RewriteEngine On ของตัวเอง แล้ว mod_rewrite
+# จะทิ้งกฎของโฟลเดอร์แม่ทั้งชุด (ต้องสั่ง RewriteOptions Inherit ถึงจะสืบทอด)
+# เคยเขียนด่านกันรูปหลุดเป็น RewriteRule ไว้ตรงนี้ ทดสอบกับ Apache จริงแล้วพบว่า
+# ไฟล์ยังโหลดได้ปกติ — mod_alias ไม่มีปัญหานี้
+
+# ซอร์สฝั่งคลังทั้งก้อน · หน้าเว็บคุยกับมันทาง /stock-api/ ซึ่งวิ่งเข้า api/index.php
+# ไม่มีคำขอที่ถูกต้องคำไหนต้องเปิดไฟล์ใต้ /stock/api/ ตรง ๆ เลย
+RedirectMatch 404 ^/stock/api/
+
+# สคริปต์ที่ต้องเรียกทาง CLI เท่านั้น (Cron เรียกจาก path ในเครื่อง ไม่ผ่าน HTTP)
+RedirectMatch 404 ^/api/(cli|tests)/
+
+# รูปและไฟล์แนบของเคส — ไฟล์จริงอยู่ที่ api/uploads/<case_id>/<ชื่อไฟล์> ซึ่ง
+# Apache เสิร์ฟตรง ๆ ได้โดยไม่ผ่านการตรวจสิทธิ์ · ใครเดา URL ถูกก็เห็นสลิปโอนเงิน
+# ของลูกค้า ให้เดินผ่าน api/routes/uploads.php ที่ตรวจสิทธิ์ก่อน readfile เท่านั้น
+#
+# `[0-9]+/` ต่อท้ายสำคัญ ห้ามตัด — `/api/uploads/:id` เป็น endpoint จริง (GET เอารูป,
+# DELETE ลบรูป) ปิดทั้งก้อนเมื่อไรหน้าเว็บจะเปิดดูรูปไม่ได้สักใบ · ที่แยกกันได้คือ
+# ไฟล์จริงลึกสองชั้นเสมอ (<เลขเคส>/<ชื่อไฟล์>) ส่วน endpoint ลึกชั้นเดียว
+RedirectMatch 404 ^/api/uploads/[0-9]+/
+
+# ---------------------------------------------------------------------------
+# แคช
+# ---------------------------------------------------------------------------
+<IfModule mod_expires.c>
+    ExpiresActive On
+
+    # เฉพาะของใน /_next/static/ เท่านั้นที่มีลายนิ้วมืออยู่ในชื่อไฟล์ (build ใหม่
+    # = ชื่อใหม่) จึงกันไว้หนึ่งปีได้โดยไม่มีวันได้ของเก่าค้าง
+    #
+    # ต้องแยกด้วย "ที่อยู่" ไม่ใช่ "นามสกุล" — FilesMatch \.js$ เฉย ๆ จะไปคลุม
+    # ไฟล์ที่วางไว้ใน frontend-next/public/ ด้วย ซึ่งชื่อคงที่ตลอด แก้แล้วเบราว์เซอร์
+    # ของคนที่เคยเปิดจะยังใช้ของเก่าไปอีกหนึ่งปีโดยล้างแคชให้ไม่ได้
+    <IfModule mod_headers.c>
+        SetEnvIf Request_URI "^/_next/static/" TO_FINGERPRINTED
+        Header set Cache-Control "public, max-age=31536000, immutable" env=TO_FINGERPRINTED
+    </IfModule>
+
+    ExpiresByType image/png  "access plus 7 days"
+    ExpiresByType image/webp "access plus 7 days"
+    ExpiresByType image/jpeg "access plus 7 days"
+
+    # ตัว .html ห้ามแคชนาน — มันคือตัวที่ชี้ไปหาบันเดิลชุดใหม่หลัง deploy
+    ExpiresByType text/html "access plus 0 seconds"
+</IfModule>
+
+# การ์ดต้องเป็น mod_filter ไม่ใช่ mod_deflate — ตัวบีบอัดมาจาก deflate ก็จริง แต่
+# คำสั่ง AddOutputFilterByType เป็นของ mod_filter · ครอบผิดตัวแล้วเซิร์ฟเวอร์ที่มี
+# deflate แต่ไม่มี filter จะตอบ 500 **ทุกหน้า** ด้วย "Invalid command" ใน error log
+# (เจอมาแล้วตอนทดสอบก้อนนี้กับ Apache จริง)
+<IfModule mod_filter.c>
+    AddOutputFilterByType DEFLATE text/html text/css text/plain application/javascript application/json image/svg+xml
+</IfModule>

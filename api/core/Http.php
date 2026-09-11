@@ -8,10 +8,17 @@ class HttpError extends RuntimeException
 {
     public int $status;
 
-    public function __construct(int $status, string $message)
+    /**
+     * ข้อมูลที่ส่งกลับไปพร้อมข้อความ — เช่น `reason` ที่หน้าเว็บใช้แตกเงื่อนไข
+     * (ข้อความภาษาไทยเปลี่ยนได้ รหัสเหตุผลคือสิ่งที่โค้ดตัดสินใจด้วย)
+     */
+    public array $payload;
+
+    public function __construct(int $status, string $message, array $payload = [])
     {
         parent::__construct($message);
-        $this->status = $status;
+        $this->status  = $status;
+        $this->payload = $payload;
     }
 }
 

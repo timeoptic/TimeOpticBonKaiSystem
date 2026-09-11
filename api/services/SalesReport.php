@@ -64,7 +64,19 @@ final class SalesReport
     public const STATUSES = ['all', 'closed', 'open'];
 
     /**
-     * ช่วงวันที่ + ช่องทาง + สถานะงาน จาก query string
+     * ประเภทลูกค้า — คีย์ชุดเดียวกับกระดานงาน (routes/cases.php)
+     *
+     *   sightfirst = งานของเคสที่ `customer_category = 'sight_first'`
+     *   shop       = ที่เหลือทั้งหมด: เคสลูกค้าร้าน ออเดอร์ที่ไม่ผูกเคส และขายหน้าร้าน
+     *                (POS / ระบบเดิม) ซึ่งไม่มีประเภทลูกค้าให้แยก
+     *
+     * สองกลุ่มรวมกันต้องเท่ากับทั้งหมดเสมอ — กติกา "ไม่ใช่ sight_first = ลูกค้าร้าน"
+     * รวม NULL ไว้ด้วย ไม่งั้นเงินของออเดอร์ที่ไม่มีเคสจะหล่นหายระหว่างสองกลุ่ม
+     */
+    public const GROUPS = ['all', 'shop', 'sightfirst'];
+
+    /**
+     * ช่วงวันที่ + ช่องทาง + สถานะงาน + ประเภทลูกค้า จาก query string
      *
      * ไม่มีอะไรส่งมา = วันนี้วันเดียว · ส่ง from มาอย่างเดียว = วันนั้นวันเดียว
      * ส่งกลับหัวกลับหาง (to < from) ก็สลับให้ ไม่ใช่คืนช่วงว่างที่อ่านว่าไม่มียอดขาย
@@ -84,7 +96,33 @@ final class SalesReport
         if (!in_array($status, self::STATUSES, true)) {
             $status = 'all';
         }
-        return ['from' => $from, 'to' => $to, 'channel' => $channel, 'status' => $status];
+        $group = str_or($query['group'] ?? null, 'all');
+        if (!in_array($group, self::GROUPS, true)) {
+            $group = 'all';
+        }
+        return ['from' => $from, 'to' => $to, 'channel' => $channel, 'status' => $status, 'group' => $group];
+    }
+
+    /**
+     * ท่อน SQL ที่กรองประเภทลูกค้า — คืนค่าว่างเมื่อเอาทั้งหมด
+     *
+     * `$category` คือคอลัมน์ customer_category ของเคสที่ JOIN มาแบบ LEFT แล้ว ·
+     * แถวที่ไม่มีเคสได้ NULL และตกไปฝั่งลูกค้าร้าน · สตริงต่อตรง ๆ ได้เพราะค่าที่เข้า
+     * มาถูกจำกัดด้วย GROUPS ตั้งแต่ range()
+     */
+    public static function groupSql(string $group, string $category): string
+    {
+        return match ($group) {
+            'sightfirst' => " AND $category = 'sight_first'",
+            'shop'       => " AND ($category IS NULL OR $category <> 'sight_first')",
+            default      => '',
+        };
+    }
+
+    /** ขายหน้าร้านไม่มีประเภทลูกค้า — นับเป็นลูกค้าร้าน จึงไม่มีอะไรเมื่อเลือก SightFirst */
+    public static function groupHasPos(string $group): bool
+    {
+        return $group !== 'sightfirst';
     }
 
     public static function wantsMain(string $channel): bool
@@ -124,9 +162,10 @@ final class SalesReport
      * กับกระดานจึงพูดสถานะชุดเดียวกัน · ออเดอร์ที่ไม่มีเคส (เปิดจากหน้าออเดอร์
      * ตรง ๆ) จะได้ค่าว่างและตกไปเป็น "ไม่ผูกเคส" ที่หน้าเว็บ
      */
-    public static function mainBills(string $from, string $to, string $status = 'all'): array
+    public static function mainBills(string $from, string $to, string $status = 'all', string $group = 'all'): array
     {
-        $onlyStatus = self::statusSql($status, 'o.order_closed = 1', 'o.order_closed = 0');
+        $onlyStatus = self::statusSql($status, 'o.order_closed = 1', 'o.order_closed = 0')
+            . self::groupSql($group, 'cs.customer_category');
         return Db::all(
             "SELECT o.id, o.invoice_code, o.order_date, o.lens_type,
                     o.order_closed, o.case_id,
@@ -152,9 +191,10 @@ final class SalesReport
                LEFT JOIN (SELECT order_id, SUM(amount) paid FROM payments
                            WHERE order_id IS NOT NULL AND cancelled_at IS NULL
                            GROUP BY order_id) pay ON pay.order_id = o.id
-               LEFT JOIN v_stock_lot fl ON fl.id = o.frame_product_id
-               LEFT JOIN v_stock_lot ll ON ll.id = o.lens_product_id
-               LEFT JOIN v_stock_lot lr ON lr.id = o.right_lens_product_id
+               /* _all ไม่ใช่ v_stock_lot — ออเดอร์จากระบบเดิมเอาต้นทุนจาก legacy_stock (migration 032) */
+               LEFT JOIN v_stock_lot_all fl ON fl.id = o.frame_product_id
+               LEFT JOIN v_stock_lot_all ll ON ll.id = o.lens_product_id
+               LEFT JOIN v_stock_lot_all lr ON lr.id = o.right_lens_product_id
               WHERE DATE(o.order_date) BETWEEN ? AND ? $onlyStatus
               ORDER BY o.order_date DESC, o.id DESC",
             $from,
@@ -168,8 +208,11 @@ final class SalesReport
      * ใบที่ถูกยกเลิก (status='void') ไม่นับเป็นยอดขาย แต่ไม่ได้หายไปจากฐาน —
      * ถ้าวันหนึ่งอยากได้รายงาน "ใบที่ถูกยกเลิก" ข้อมูลยังอยู่ครบ
      */
-    public static function posBills(string $from, string $to, string $status = 'all'): array
+    public static function posBills(string $from, string $to, string $status = 'all', string $group = 'all'): array
     {
+        if (!self::groupHasPos($group)) {
+            return [];
+        }
         $onlyStatus = self::statusSql(
             $status,
             "s.fulfillment_status = 'delivered'",
@@ -220,7 +263,7 @@ final class SalesReport
                FROM sales sa
                LEFT JOIN customers c     ON c.id = sa.customer_id
                LEFT JOIN employees e     ON e.id = sa.employee_id
-               LEFT JOIN v_stock_lot st  ON st.id = sa.product_stock_id
+               LEFT JOIN v_stock_lot_all st ON st.id = sa.product_stock_id
                LEFT JOIN (SELECT sale_id, SUM(amount) paid FROM payments
                            WHERE sale_id IS NOT NULL AND cancelled_at IS NULL
                            GROUP BY sale_id) pay ON pay.sale_id = sa.id
@@ -277,19 +320,26 @@ final class SalesReport
      * คืนแถวหน้าตาเดียวกันจากสองตารางที่หน้าตาไม่เหมือนกัน ให้ผู้เรียกไม่ต้องรู้ว่า
      * เงินก้อนไหนมาจากตารางไหน
      */
-    public static function receipts(string $from, string $to, string $channel): array
+    public static function receipts(string $from, string $to, string $channel, string $group = 'all'): array
     {
         $rows = [];
 
         if (self::wantsMain($channel) || self::wantsPos($channel)) {
             /* `payments` มีทั้งเงินของออเดอร์ (order_id) และเงินของการขายสินค้า
                ระบบเดิม (sale_id) ปนกันอยู่ตารางเดียว — แยกช่องทางด้วยว่าแถวนั้น
-               ผูกกับอะไร ไม่ใช่ด้วยชื่อตาราง */
+               ผูกกับอะไร ไม่ใช่ด้วยชื่อตาราง
+
+               ประเภทลูกค้ามาจากเคสของออเดอร์ก่อน แล้วค่อยตกไปที่เคสที่เงินผูกตรง ๆ ·
+               เงินที่ไม่มีเคสเลยได้ NULL และนับเป็นลูกค้าร้าน กติกาเดียวกับ groupSql() */
             foreach (Db::all(
                 "SELECT p.id, p.method, p.kind, p.amount, p.paid_at,
-                        p.order_id, p.sale_id, e.employee_name
+                        p.order_id, p.sale_id, e.employee_name,
+                        COALESCE(ko.customer_category, kp.customer_category) AS category
                    FROM payments p
-                   LEFT JOIN employees e ON e.id = p.received_by
+                   LEFT JOIN employees e     ON e.id  = p.received_by
+                   LEFT JOIN custom_orders o ON o.id  = p.order_id
+                   LEFT JOIN cases ko        ON ko.id = o.case_id
+                   LEFT JOIN cases kp        ON kp.id = p.case_id
                   WHERE p.cancelled_at IS NULL AND DATE(p.paid_at) BETWEEN ? AND ?",
                 $from,
                 $to
@@ -299,6 +349,10 @@ final class SalesReport
                     continue;
                 }
                 if ($ch === 'pos' && !self::wantsPos($channel)) {
+                    continue;
+                }
+                $isSightFirst = $ch === 'main' && $p['category'] === 'sight_first';
+                if (($group === 'sightfirst' && !$isSightFirst) || ($group === 'shop' && $isSightFirst)) {
                     continue;
                 }
                 $rows[] = [
@@ -312,7 +366,7 @@ final class SalesReport
             }
         }
 
-        if (self::wantsPos($channel)) {
+        if (self::wantsPos($channel) && self::groupHasPos($group)) {
             foreach (Db::all(
                 "SELECT pp.id, pp.payment_method, pp.amount, pp.paid_at,
                         e.employee_name
@@ -370,12 +424,14 @@ final class SalesReport
     public static function posCategories(string $from, string $to): array
     {
         return Db::all(
-            "SELECT COALESCE(cat.name, 'Custom')      AS category,
+            /* กลุ่มมาจาก pos_items (migration 033) · ใบที่ขายก่อนหน้านั้นชี้ products */
+            "SELECT COALESCE(pi.group_name, cat.name, 'Custom') AS category,
                     SUM(i.quantity)                   AS qty,
                     ROUND(SUM(i.line_total), 2)       AS revenue,
                     COUNT(DISTINCT i.sale_id)         AS bills
                FROM pos_sale_items i
                JOIN pos_sales s        ON s.id = i.sale_id AND s.status = 'active'
+               LEFT JOIN pos_items pi  ON pi.id = i.pos_item_id
                LEFT JOIN products p    ON p.id = i.product_id
                LEFT JOIN categories cat ON cat.id = p.category_id
               WHERE DATE(s.sale_date) BETWEEN ? AND ?
@@ -394,7 +450,7 @@ final class SalesReport
      * แล้วยังไม่ได้ขายอะไรก็ยังเป็นคนที่ช่องทางนั้นพามา จึงต้องนับด้วย
      * (ยอดขายของเคสนั้นเป็น 0 ซึ่งเป็นข้อมูลจริงที่บอกว่าช่องทางนั้นปิดการขายไม่ได้)
      */
-    public static function referralCases(string $from, string $to): array
+    public static function referralCases(string $from, string $to, string $group = 'all'): array
     {
         return Db::all(
             'SELECT c.id, c.opened_at, c.referral_source, c.customer_category,
@@ -405,7 +461,7 @@ final class SalesReport
                LEFT JOIN (SELECT case_id, SUM(total_price - discount) revenue, COUNT(*) n
                             FROM custom_orders WHERE case_id IS NOT NULL
                             GROUP BY case_id) o ON o.case_id = c.id
-              WHERE DATE(c.opened_at) BETWEEN ? AND ?',
+              WHERE DATE(c.opened_at) BETWEEN ? AND ?' . self::groupSql($group, 'c.customer_category'),
             $from,
             $to
         );
@@ -434,6 +490,7 @@ final class SalesReport
         'walk_in'  => 'Walk In',
         'friend'   => 'Friend / ลูกค้าแนะนำ',
         'referral' => 'Friend / ลูกค้าแนะนำ',
+        'janko'    => 'Janko',
         'other'    => 'อื่นๆ',
     ];
 
@@ -498,7 +555,7 @@ final class SalesReport
     }
 
     /** ยอดค้างชำระสะสมทั้งร้าน — ไม่ขึ้นกับช่วงวันที่ที่กรองอยู่ */
-    public static function outstandingAllTime(string $channel): float
+    public static function outstandingAllTime(string $channel, string $group = 'all'): float
     {
         $sum = 0.0;
         if (self::wantsMain($channel)) {
@@ -506,13 +563,15 @@ final class SalesReport
                 'SELECT COALESCE(SUM(GREATEST(o.total_price - o.discount
                           - COALESCE(pay.paid, 0), 0)), 0) v
                    FROM custom_orders o
+                   LEFT JOIN cases cs ON cs.id = o.case_id
                    LEFT JOIN (SELECT order_id, SUM(amount) paid FROM payments
                                WHERE order_id IS NOT NULL AND cancelled_at IS NULL
-                               GROUP BY order_id) pay ON pay.order_id = o.id'
+                               GROUP BY order_id) pay ON pay.order_id = o.id
+                  WHERE 1 = 1' . self::groupSql($group, 'cs.customer_category')
             );
             $sum += (float) ($r['v'] ?? 0);
         }
-        if (self::wantsPos($channel)) {
+        if (self::wantsPos($channel) && self::groupHasPos($group)) {
             $r = Db::get(
                 "SELECT COALESCE(SUM(balance_amount), 0) v FROM pos_sales WHERE status = 'active'"
             );

@@ -16,6 +16,16 @@ final class Lookups
         'len_type'     => 'list_len_type',
     ];
 
+    /**
+     * ประเภทกรอบ — ช่องในการ์ดกรอบแว่นของขั้นขาย (custom_orders.frame_type)
+     *
+     * เก็บคำไทยตามนี้ลงฐานตรง ๆ แบบเดียวกับ case_type · ลำดับคือลำดับในช่องเลือก
+     * หน้าเว็บอ่านผ่าน lists() และ orderVals() ใช้ตรวจค่าที่ส่งเข้ามา — ช่องเลือกกับ
+     * ด่านตรวจของ API จึงอ่านรายการเดียวกัน เพิ่มประเภทใหม่แก้ที่นี่ที่เดียว
+     */
+    public const FRAME_TYPES = ['กรอบเต็มโลหะ', 'กรอบเต็มพลาสติก', 'กรอบเซาะร่องเอ็น',
+        'กรอบเซาะร่องเหล็ก', 'กรอบเซาะร่องพลาสติก', 'กรอบเจาะ'];
+
     public static function lists(): array
     {
         $out = [];
@@ -77,6 +87,8 @@ final class Lookups
          */
         $out['case_type'] = ['ตัดแว่นใหม่', 'เปลี่ยนเลนส์', 'ซ่อม/ปรับแว่น', 'ตรวจสายตา'];
 
+        $out['frame_type'] = self::FRAME_TYPES;
+
         $out['customer_category'] = [
             ['sight_first', 'Sight First'],
             ['customer', 'ลูกค้า'],
@@ -89,6 +101,7 @@ final class Lookups
             ['google', 'Google'],
             ['walk_in', 'Walk In'],
             ['friend', 'Friend'],
+            ['janko', 'Janko'],
             ['other', 'อื่นๆ'],
         ];
 

@@ -1,10 +1,13 @@
 <?php
 /**
- * Booking reminder sweep.
+ * รอบกวาดแจ้งเตือน — เตือนคิวจองรายคน + สรุปคิวส่งมอบวันละครั้ง
  *
  * PHP has no long-lived process to hold a setInterval, so instead of a timer
  * this runs once per invocation. Drive it from Windows Task Scheduler via
  * api/cli/reminder.php, or from the UI via POST /api/reminders/run.
+ *
+ * งานตามเวลาทุกอย่างเกาะรอบนี้รอบเดียว มีงานใน Task Scheduler ให้ดูแลใบเดียว
+ * ตัวสรุปคิวส่งมอบจึงไม่ตั้งเวลาเอง แต่ถูกเรียกทุกนาทีแล้วตัดสินเองว่าถึงรอบยัง
  */
 declare(strict_types=1);
 
@@ -16,8 +19,13 @@ final class Scheduler
     /**
      * Bookings whose start is inside their own reminder window and that have
      * not been reminded yet.
+     *
+     * public เพื่อให้ถามได้ว่า "ตอนนี้ใครถึงคิวเตือนบ้าง" โดยไม่ต้องยิงจริง —
+     * รูปเดียวกับ `DeliveryDigest::queue()` · เกณฑ์ตรงนี้คือทั้งหมดที่ตัดสินว่า
+     * ลูกค้าจะได้รับการเตือนหรือไม่ ทดสอบผ่าน runOnce() ไม่ได้เพราะขั้นถัดไป
+     * คือการส่งเข้ากลุ่มจริง
      */
-    private static function dueBookings(): array
+    public static function dueBookings(): array
     {
         return Db::all(
             'SELECT b.*, e.employee_name AS assigned_name,
@@ -55,6 +63,10 @@ final class Scheduler
         if (!Telegram::isEnabled()) {
             return ['sent' => 0, 'skipped' => 'telegram ปิดอยู่หรือยังไม่ได้ตั้งค่า'];
         }
+        /* สรุปคิวส่งมอบขี่รอบกวาดนี้ไปด้วย แทนที่จะตั้งงานตามเวลาอีกตัว —
+           ตัวมันเองรู้ว่าถึงรอบหรือยัง (ดู DeliveryDigest::isDue) */
+        $digest = DeliveryDigest::runOnce();
+
         $rows = self::dueBookings();
         $sent = 0;
         foreach ($rows as $b) {
@@ -73,6 +85,6 @@ final class Scheduler
                 $sent++;
             }
         }
-        return ['sent' => $sent, 'checked' => count($rows)];
+        return ['sent' => $sent, 'checked' => count($rows), 'digest' => $digest];
     }
 }

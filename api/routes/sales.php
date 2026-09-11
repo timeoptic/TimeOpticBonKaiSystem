@@ -37,7 +37,7 @@ GET('/api/sales', function (array $req) {
                 e.employee_name,
                 c.first_name, c.last_name
            FROM sales s
-           LEFT JOIN v_stock_lot st ON st.id = s.product_stock_id
+           LEFT JOIN v_stock_lot_all st ON st.id = s.product_stock_id
            LEFT JOIN employees e  ON e.id  = s.employee_id
            LEFT JOIN customers c  ON c.id  = s.customer_id
            $sqlWhere

@@ -78,6 +78,8 @@ export const SHOP = {
   line2: 'โทร. ___-___-____',
 };
 
-export const NATIONALITIES = ['Thai', 'NewZealand', 'Australian', 'British', 'American', 'Japanese'];
+/* สัญชาติย้ายไปอยู่ lib/nationalities.js แล้ว เพราะแต่ละตัวมีชื่อไทยกับคำค้นพ่วงมาด้วย
+   ไม่ใช่รายชื่อเปล่า ๆ อีกต่อไป — re-export ไว้ให้ที่เดิมยังอ้างชื่อนี้ได้ */
+export { NATIONALITIES } from './nationalities.js';
 
 export const BRANDS = ['Hoya', 'Hitop', 'Tantawan', 'Coach', 'SP Optic', 'RayBan', 'Maxim', 'Acuvue', 'B&L'];

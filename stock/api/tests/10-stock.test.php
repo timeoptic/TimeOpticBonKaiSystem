@@ -31,7 +31,7 @@ test('ตัดตามลำดับ FIFO — ล็อตที่รับ�
         $sku = skuWithLots(2);
 
         $lots = Db::all(
-            'SELECT l.lot_number, l.remaining_qty FROM stock_lots l
+            'SELECT l.id, l.lot_number, l.remaining_qty FROM stock_lots l
              JOIN products p ON p.id = l.product_id
              WHERE p.sku = ? AND l.remaining_qty > 0
              ORDER BY l.received_date ASC, l.id ASC',
@@ -42,7 +42,7 @@ test('ตัดตามลำดับ FIFO — ล็อตที่รับ�
         $out = Stock::issue(issueReq($sku, (int) $oldest['remaining_qty'], idem('fifo')));
 
         eq($out['cuts'][0]['lot'], $oldest['lot_number'], 'ล็อตแรกที่ถูกตัด');
-        eq(lotRemaining((string) $oldest['lot_number']), 0, 'ล็อตเก่าสุดต้องถูกใช้จนหมดก่อน');
+        eq(lotRemaining((int) $oldest['id']), 0, 'ล็อตเก่าสุดต้องถูกใช้จนหมดก่อน');
     });
 });
 
@@ -480,7 +480,8 @@ test('คืนแล้วของกลับเข้าล็อตเด�
 
         $cut = Stock::issue(issueReq($sku, 1, $k));
         $lot = $cut['cuts'][0]['lot'];
-        $afterCut = lotRemaining($lot);
+        $lotId = (int) $cut['cuts'][0]['lot_id'];
+        $afterCut = lotRemaining($lotId);
 
         $back = Stock::returnStock([
             'source'       => 'test',
@@ -490,7 +491,7 @@ test('คืนแล้วของกลับเข้าล็อตเด�
         ]);
 
         eq($back['action'], 'RETURN', 'ชนิด');
-        eq(lotRemaining($lot), $afterCut + 1, 'ของต้องกลับเข้าล็อตเดิม');
+        eq(lotRemaining($lotId), $afterCut + 1, 'ของต้องกลับเข้าล็อตเดิม');
         eq(Stock::availability($sku)['on_hand'], $before, 'ยอดรวมกลับมาเท่าเดิม');
     });
 });
@@ -518,13 +519,14 @@ test('คืนซ้ำสองครั้งด้วยกุญแจเ�
 
         $cut = Stock::issue(issueReq($sku, 1, $srcKey));
         $lot = $cut['cuts'][0]['lot'];
-        $afterCut = lotRemaining($lot);
+        $lotId = (int) $cut['cuts'][0]['lot_id'];
+        $afterCut = lotRemaining($lotId);
 
         Stock::returnStock(['source' => 'test', 'idem_key' => $backKey, 'reverses_key' => $srcKey, 'actor_id' => 1]);
         $again = Stock::returnStock(['source' => 'test', 'idem_key' => $backKey, 'reverses_key' => $srcKey, 'actor_id' => 1]);
 
         eq($again['replayed'], true, 'ครั้งที่สองต้องเป็นการเล่นซ้ำ');
-        eq(lotRemaining($lot), $afterCut + 1, 'ของต้องกลับเข้าแค่ชิ้นเดียว');
+        eq(lotRemaining($lotId), $afterCut + 1, 'ของต้องกลับเข้าแค่ชิ้นเดียว');
     });
 });
 

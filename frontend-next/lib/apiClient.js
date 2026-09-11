@@ -37,8 +37,23 @@ async function request(method, path, body, signal) {
   } catch {
     /* empty body */
   }
-  if (!res.ok) throw new Error(errorText(data) || `HTTP ${res.status}`);
+  if (!res.ok) throw apiError(res.status, data);
   return data;
+}
+
+/**
+ * ข้อผิดพลาดที่พกรหัสสถานะ รหัสเหตุผล และตัวคำตอบไปด้วย
+ *
+ * ยังเป็น Error ที่ `message` คือข้อความภาษาไทยเหมือนเดิม — ที่เรียกอยู่แล้วไม่ต้องแก้
+ * ส่วนหน้าที่ต้องแตกเงื่อนไข (เช่นรับเงิน "อาจซ้ำ" ที่ถามยืนยันแล้วส่งใหม่ได้) อ่าน
+ * `reason` แทนการเทียบข้อความ ซึ่งเปลี่ยนคำเมื่อไหร่ก็พังเงียบ
+ */
+function apiError(status, data) {
+  const e = new Error(errorText(data) || `HTTP ${status}`);
+  e.status = status;
+  e.reason = (data && data.reason) || null;
+  e.data = data;
+  return e;
 }
 
 /**

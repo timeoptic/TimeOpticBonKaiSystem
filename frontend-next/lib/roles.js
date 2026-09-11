@@ -22,6 +22,7 @@ export const ROLE = {
   SALES: 'sales',
   TRAINEE: 'trainee',
   STOCK: 'stock',
+  ACCOUNTING: 'accounting',
 };
 
 /**
@@ -32,11 +33,32 @@ export const ROLE = {
  */
 export const can = (actor, perm) => Array.isArray(actor?.perms) && actor.perms.includes(perm);
 
-/** งานของแอดมิน — เงินของร้าน ข้อมูลระบบ รายงาน บันทึกการใช้งาน */
-export const isAdminUp = (actor) => can(actor, 'admin.zone');
+/** เงินของร้าน — รายรับ รายจ่าย รายงาน ซัพพลายเออร์ */
+export const inMoneyZone = (actor) => can(actor, 'money.zone');
 
-/** ทำงานได้ทั้งสองฝั่ง จึงต้องเลือกเองว่าจะเข้าฝั่งไหน */
-export const worksBothSides = (actor) => can(actor, 'frontdesk.use') && can(actor, 'stock.use');
+/** ข้อมูลระบบ — พนักงาน ผู้ใช้ ตั้งค่า บันทึกการใช้งาน */
+export const inSystemZone = (actor) => can(actor, 'system.zone');
+
+/**
+ * อยู่ในโซนแอดมินสักโซน — ใช้ตอบว่า "แถบข้างควรสลับเป็นเมนูโซนแอดมินไหม"
+ *
+ * เคยเป็นสิทธิ์เดียวชื่อ `admin.zone` · ตั้งแต่มีบทบาทบัญชี คำถามที่แท้จริงของแต่ละ
+ * จุดเรียกไม่เหมือนกันอีกแล้ว — ปุ่มยกเลิกใบขายถาม `inSystemZone` หน้ารายรับถาม
+ * `inMoneyZone` · ตัวนี้เหลือไว้ให้เฉพาะคำถามที่กว้างจริง ๆ คือเรื่องรูปร่างของเมนู
+ */
+export const isAdminUp = (actor) => inMoneyZone(actor) || inSystemZone(actor);
+
+/**
+ * ทำงานได้มากกว่าหนึ่งฝั่ง จึงต้องเลือกเองว่าจะเข้าฝั่งไหน
+ *
+ * "ฝั่งหน้าร้าน" ในที่นี้หมายถึงเว็บฝั่งนี้ทั้งใบ ไม่ใช่เฉพาะเมนูขายของ — โซน
+ * แอดมิน (รายรับ รายจ่าย รายงาน ตั้งค่า) อยู่ในเว็บใบเดียวกัน · บัญชีเปิด POS
+ * และเคสไม่ได้ แต่มีงานอยู่ในเว็บฝั่งนี้จริง และมีงานอยู่ฝั่งคลังด้วย ปุ่มข้ามฝั่ง
+ * จึงต้องขึ้นให้เขา ไม่งั้นเข้าไปดูมูลค่าคลังไม่ได้เลยทั้งที่ถือสิทธิ์อยู่
+ */
+export const worksBothSides = (actor) =>
+  (can(actor, 'frontdesk.use') || inMoneyZone(actor) || inSystemZone(actor))
+  && can(actor, 'stock.use');
 
 /** งานระบบ ไม่ใช่งานของร้าน */
 export const isSuperuser = (actor) => can(actor, 'system.manage');
@@ -68,6 +90,12 @@ export const roleTextOf = (actor) => actor?.roleText || '—';
  */
 export function homeFor(actor) {
   if (actor?.home) return actor.home;
+  /* รูปเดียวกับ `Roles::home` ฝั่ง PHP เป๊ะ — ไม่ได้เรียก worksBothSides ตรงนี้
+     เพราะตัวนั้นนับโซนแอดมินเป็นฝั่งด้วย ซึ่งจะพาบัญชีไปหน้าเลือกระบบ ทั้งที่
+     งานแรกของวันเขาคือรายรับ · สองไฟล์นี้ต้องตอบเหมือนกัน ไม่งั้นคุกกี้เก่า
+     กับคำตอบจาก API จะพาไปคนละหน้า */
+  if (mayUseFrontdesk(actor) && mayUseStock(actor)) return '/hub/';
+  if (!mayUseFrontdesk(actor) && inMoneyZone(actor)) return '/income/';
   return mayUseStock(actor) ? '/stock/dashboard/' : '/';
 }
 
@@ -85,10 +113,12 @@ export function homeFor(actor) {
  * แถบข้างจะสลับกลับไปเป็นเมนูหน้าร้านทันทีที่เปิดหน้านี้ — เมนูที่พาไปกระโดด
  * ออกจากกลุ่มของตัวเอง
  */
-export const ADMIN_PATHS = [
-  '/income', '/expense',
-  '/employees', '/users', '/suppliers', '/reports', '/settings', '/logs',
-];
+export const MONEY_PATHS = ['/income', '/expense', '/reports', '/suppliers'];
+export const SYSTEM_PATHS = ['/employees', '/users', '/settings', '/logs'];
+
+/* สองกลุ่มรวมกัน — ใช้ตอบว่ากำลังยืนอยู่ในโซนแอดมินไหม ไม่ได้ใช้ตัดสินสิทธิ์
+   คำตอบเรื่องสิทธิ์อยู่ที่ `inMoneyZone` / `inSystemZone` ทีละหน้า */
+export const ADMIN_PATHS = [...MONEY_PATHS, ...SYSTEM_PATHS];
 
 export const isAdminPath = (path) => ADMIN_PATHS.some(
   (p) => path === p || path.startsWith(`${p}/`),

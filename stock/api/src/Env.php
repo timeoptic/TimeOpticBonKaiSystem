@@ -17,11 +17,25 @@ final class Env
 
     public static function load(?string $path = null): void
     {
-        $path ??= dirname(__DIR__, 2) . '/.env';
+        /* ที่เดิมคือ `<stock>/.env` · ถ้าไม่มี ให้ขึ้นไปเหนือ document root อีกชั้น
+           (`<public_html>/../.env`) ซึ่งเป็นที่ที่ .env ไปอยู่ตอนขึ้นโฮสต์ — ที่นั่น
+           มีไฟล์เดียวรวมค่าของทั้งสองระบบไว้ ดูเหตุผลที่ api/config.php
+
+           ฝั่งเว็บไม่ได้พึ่งบรรทัดนี้: api/config.php putenv ค่าจากไฟล์นั้นไว้ให้
+           หมดแล้วก่อน StockModule::boot() และ get() ถาม getenv ก่อนไฟล์เสมอ
+           ที่ต้องมีคือฝั่ง CLI — `php api/bin/migrate.php` เข้าทาง bootstrap.php
+           ตรง ๆ ไม่มีใคร putenv ให้ หาไฟล์ไม่เจอก็ไม่มี DATABASE_URL แล้วต่อฐาน
+           ไม่ได้ ทั้งที่หน้าเว็บบนเครื่องเดียวกันทำงานอยู่ดี ๆ */
+        $candidates = $path !== null
+            ? [$path]
+            : [dirname(__DIR__, 2) . '/.env', dirname(__DIR__, 4) . '/.env'];
 
         $values = [];
-        if (is_readable($path)) {
-            foreach (file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
+        foreach ($candidates as $file) {
+            if (!is_readable($file)) {
+                continue;
+            }
+            foreach (file($file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
                 $line = trim($line);
                 if ($line === '' || str_starts_with($line, '#')) {
                     continue;
@@ -36,7 +50,8 @@ final class Env
                 if (strlen($val) >= 2 && ($val[0] === '"' || $val[0] === "'") && $val[-1] === $val[0]) {
                     $val = substr($val, 1, -1);
                 }
-                $values[$key] = $val;
+                // ไฟล์แรกที่มีคีย์นี้ชนะ — ไฟล์ถัดไปเป็นตัวสำรอง ไม่ใช่ตัวทับ
+                $values[$key] ??= $val;
             }
         }
 

@@ -1,7 +1,9 @@
 'use client';
-/** Dropdowns fed from /api/meta. Port of frontend/src/components/Selects.jsx. */
-import { useEffect, useMemo, useRef, useState } from 'react';
+/** Dropdowns fed from /api/meta (และรายการคงที่ใน lib/constants.js).
+ *  Port of frontend/src/components/Selects.jsx. */
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useMeta } from '../contexts/MetaContext.jsx';
+import { NATIONALITY_BY_VALUE, NATIONALITY_COMMON, NATIONALITY_ROWS } from '../lib/nationalities.js';
 import { typeaheadIndex } from '../lib/typeahead.js';
 
 /* พิมพ์ติด ๆ กันภายในเวลานี้นับเป็นคำเดียว เกินนี้ถือว่าเริ่มพิมพ์ใหม่ — ตัวเลขเดียวกับ
@@ -26,10 +28,15 @@ const TYPE_GAP = 1000;
  *     เพราะทั้งปุ่มและ input ที่ซ่อนอยู่เป็น form control ที่ fieldset ปิดได้
  */
 export function Select({
-  name, options, value, defaultValue, onChange, className = '', disabled = false, id, ...rest
+  name, options, value, defaultValue, onChange, className = '', disabled = false, id,
+  search = false, emptyText = 'ไม่พบตัวเลือกที่ตรงกับที่พิมพ์', ...rest
 }) {
+  /* หนึ่งตัวเลือกคือ [ค่า, ป้าย, ส่วนเสริม] · ส่วนเสริมมีได้สามอย่าง ไม่ใส่ก็ได้:
+       hint     บรรทัดรองใต้ป้าย (ชื่อไทยของสัญชาติ)
+       keywords คำที่ค้นเจอได้แต่ไม่ต้องแสดง (ชื่อประเทศ คำที่เคยสะกดผิดกันมา)
+       group    หัวข้อคั่นรายการ ('ใช้บ่อย' / 'ทั้งหมด') */
   const norm = useMemo(
-    () => (options || []).map((o) => (Array.isArray(o) ? o : [o, o])),
+    () => (options || []).map((o) => (Array.isArray(o) ? [o[0], o[1], o[2] || null] : [o, o, null])),
     [options],
   );
   const controlled = value !== undefined;
@@ -46,10 +53,38 @@ export function Select({
 
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
+  const [q, setQ] = useState('');
   const box = useRef(null);
   const trigger = useRef(null);
   const list = useRef(null);
+  const find = useRef(null);
   const typed = useRef({ buf: '', at: 0 });
+
+  /**
+   * รายการที่โชว์อยู่จริง เก็บเป็นเลขลำดับที่ชี้กลับไปที่ `norm` ไม่ใช่ตัวเลือกที่ก๊อบมา
+   * — ค่าที่เลือกอยู่ (`sel`) กับตัวที่กำลังชี้ (`active`) อ้างลำดับของ `norm` ทั้งคู่
+   * ถ้ากรองแล้วเปลี่ยนเลขลำดับ ค่าที่บันทึกจะเพี้ยนตามคำที่ค้างอยู่ในช่องค้นหา
+   *
+   * ตัวที่ขึ้นต้นด้วยคำที่พิมพ์มาก่อนตัวที่มีคำนั้นอยู่กลางคำ — พิมพ์ "th" ต้องได้ Thai
+   * ก่อน Lithuanian ไม่งั้นคำค้นสั้น ๆ ที่ใช้บ่อยที่สุดกลับเป็นคำที่หายากที่สุด
+   */
+  const view = useMemo(() => {
+    const all = norm.map((_, i) => i);
+    const needle = q.trim().toLowerCase();
+    if (!search || !needle) return all;
+    const scored = [];
+    all.forEach((i) => {
+      const [v, text, extra] = norm[i];
+      /* ช่องว่าง ("— ไม่ระบุ —") ไม่ใช่คำตอบของการค้นหา ซ่อนไปตอนพิมพ์ */
+      if (String(v) === '') return;
+      const hay = `${text} ${extra?.hint || ''} ${extra?.keywords || ''}`.toLowerCase();
+      if (!hay.includes(needle)) return;
+      const lead = hay.split(/\s+/).some((w) => w.startsWith(needle)) ? 0 : 1;
+      scored.push([lead, i]);
+    });
+    scored.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    return scored.map(([, i]) => i);
+  }, [norm, q, search]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -67,6 +102,21 @@ export function Select({
       document.removeEventListener('keydown', key, true);
     };
   }, [open]);
+
+  /* ปิดแล้วล้างคำค้นเสมอ — เปิดครั้งหน้าต้องเห็นรายการเต็ม ไม่ใช่ผลค้นหาของเมื่อกี้
+     ที่คนกดเปิดจำไม่ได้แล้วว่าเคยพิมพ์อะไรค้างไว้ · เปิดแล้วโฟกัสที่ช่องค้นหาเลย
+     คนที่กดเปิดรายการร้อยกว่าบรรทัดตั้งใจจะพิมพ์หา ไม่ได้ตั้งใจจะไล่เลื่อน */
+  useEffect(() => {
+    if (open) find.current?.focus();
+    else setQ('');
+  }, [open]);
+
+  /* พิมพ์แล้วรายการเปลี่ยน ตัวที่ชี้อยู่เดิมอาจถูกกรองออกไปแล้ว — ย้ายไปตัวแรกที่
+     ยังเหลืออยู่ กด Enter ทันทีหลังพิมพ์จึงได้ตัวบนสุดตามที่ตาเห็น */
+  useEffect(() => {
+    if (!open || !search) return;
+    setActive((a) => (view.includes(a) ? a : (view[0] ?? -1)));
+  }, [open, search, view]);
 
   /**
    * ตำแหน่งของรายการ — คำนวณเองแล้ววางแบบ fixed ไม่ใช่ absolute ใต้ปุ่ม
@@ -90,8 +140,10 @@ export function Select({
       const gap = 5;
       const below = window.innerHeight - r.bottom - gap;
       const above = r.top - gap;
+      /* รายการที่ค้นหาได้ขอสูงกว่านิดหน่อย เพราะแถวบนสุดถูกช่องค้นหากินไปแถวหนึ่ง */
+      const cap = search ? 340 : 288;
       /* สูงเท่าที่รายการอยากได้จริง แต่ไม่เกินเพดานเดิมของ .sel-list */
-      const want = Math.min(288, (list.current?.scrollHeight ?? 0) + 8 || 288);
+      const want = Math.min(cap, (list.current?.scrollHeight ?? 0) + 8 || cap);
       /* กางขึ้นเมื่อข้างบนมีที่มากกว่าและพอสำหรับสามสี่บรรทัด — ในแผ่นตัวกรองที่
          ติดขอบล่างจอ ใต้ปุ่มมักเหลืออยู่บ้างแต่ไม่พอ รายการจึงไปทับปุ่มท้ายแผ่น
          ส่วนช่องที่อยู่ครึ่งบนของจอยังกางลงตามปกติ เพราะข้างบนแคบกว่า */
@@ -114,7 +166,7 @@ export function Select({
       window.removeEventListener('resize', place);
       window.removeEventListener('scroll', place, true);
     };
-  }, [open]);
+  }, [open, search]);
 
   /* เลื่อนไปที่ตัวที่กำลังชี้อยู่ ทั้งตอนเพิ่งกางและตอนเดินด้วยลูกศรหรือพิมพ์ —
      รายการพนักงานยาวเกินกล่อง ตัวที่เลือกอยู่จะอยู่นอกจอถ้าไม่เลื่อนให้ */
@@ -149,27 +201,35 @@ export function Select({
     if (disabled) return;
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Home' || e.key === 'End') {
       e.preventDefault();
-      if (!norm.length) return;
+      if (!view.length) return;
       if (!open) { setOpen(true); setActive(sel); return; }
-      const from = active < 0 ? sel : active;
-      if (e.key === 'Home') setActive(0);
-      else if (e.key === 'End') setActive(norm.length - 1);
-      else setActive((from + (e.key === 'ArrowDown' ? 1 : -1) + norm.length) % norm.length);
+      /* เดินตามลำดับที่ "เห็นอยู่" ไม่ใช่ลำดับของรายการเต็ม — กรองจนเหลือสามตัวแล้ว
+         กดลูกศรลงต้องไปตัวถัดไปในสามตัวนั้น ไม่ใช่ตัวที่ถูกกรองออกไปแล้ว */
+      const here = view.indexOf(active < 0 ? sel : active);
+      const from = here < 0 ? 0 : here;
+      if (e.key === 'Home') setActive(view[0]);
+      else if (e.key === 'End') setActive(view[view.length - 1]);
+      else setActive(view[(from + (e.key === 'ArrowDown' ? 1 : -1) + view.length) % view.length]);
       return;
     }
-    if (e.key === 'Enter' || e.key === ' ') {
+    if (e.key === 'Enter' || (e.key === ' ' && !search)) {
       e.preventDefault();
       if (open && active >= 0 && norm[active]) pick(norm[active][0]);
       else if (!open) { setOpen(true); setActive(sel); }
       return;
     }
     /* ตัวอักษรตัวเดียวคือการพิมพ์เพื่อกระโดด — ปุ่มอย่าง Tab/Shift ยาวกว่าหนึ่งตัว
-       จึงไม่ถูกนับ และ Ctrl+อะไรก็ตามเป็นคำสั่ง ไม่ใช่ตัวอักษรที่พิมพ์ */
-    if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+       จึงไม่ถูกนับ และ Ctrl+อะไรก็ตามเป็นคำสั่ง ไม่ใช่ตัวอักษรที่พิมพ์
+       ช่องที่มีช่องค้นหาไม่ต้องกระโดด เพราะตัวอักษรที่พิมพ์ลงช่องค้นหาแทนอยู่แล้ว */
+    if (!search && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
       e.preventDefault();
       jump(e.key);
     }
   };
+
+  /* หัวข้อคั่นโผล่เมื่อกลุ่มเปลี่ยน และเฉพาะตอนที่ยังไม่ได้พิมพ์ค้นหา — ผลการค้นหา
+     เรียงตามความตรงของคำ ไม่ได้เรียงตามกลุ่มแล้ว หัวข้อจึงชี้ผิดถ้ายังโชว์อยู่ */
+  let lastGroup = null;
 
   return (
     /* className ของที่เรียกใช้ไปอยู่ที่กล่องห่อ ไม่ใช่ที่ปุ่ม — คลาสพวกนี้เป็นคลาสจัดวาง
@@ -198,7 +258,7 @@ export function Select({
 
       {open && !disabled && (
         <ul
-          className={`sel-list ${drop ? 'sel-list--fixed' : ''} ${drop?.up ? 'up' : ''}`.trim()}
+          className={`sel-list ${search ? 'sel-list--search' : ''} ${drop ? 'sel-list--fixed' : ''} ${drop?.up ? 'up' : ''}`.trim()}
           role="listbox"
           ref={list}
           style={drop ? {
@@ -209,22 +269,52 @@ export function Select({
             maxHeight: drop.maxHeight,
           } : undefined}
         >
-          {norm.map(([v, text], i) => (
-            <li key={String(v)}>
-              <button
-                type="button"
-                role="option"
-                aria-selected={i === sel}
-                data-on={i === active ? '1' : undefined}
-                data-sel={i === sel ? '1' : undefined}
-                className={`sel-opt ${i === sel ? 'sel' : ''} ${i === active ? 'on' : ''}`.trim()}
-                onMouseEnter={() => setActive(i)}
-                onClick={() => pick(v)}
-              >
-                {text}
-              </button>
+          {search ? (
+            /* ช่องค้นหาติดหัวรายการไว้ ไม่เลื่อนหายไปพร้อมตัวเลือก — คนที่พิมพ์ผิด
+               จนรายการว่างต้องเห็นคำที่ตัวเองพิมพ์อยู่ตรงหน้าถึงจะรู้ว่าต้องแก้ตรงไหน */
+            <li className="sel-find" role="presentation">
+              <input
+                ref={find}
+                className="sel-find-input"
+                type="text"
+                value={q}
+                placeholder={typeof search === 'string' ? search : 'พิมพ์เพื่อค้นหา'}
+                onChange={(e) => setQ(e.target.value)}
+                onKeyDown={onKey}
+                autoComplete="off"
+                aria-label="ค้นหาในรายการ"
+              />
             </li>
-          ))}
+          ) : null}
+
+          {view.map((i) => {
+            const [v, text, extra] = norm[i];
+            const group = q.trim() ? null : (extra?.group || null);
+            const head = group && group !== lastGroup ? group : null;
+            lastGroup = group;
+            return (
+              <Fragment key={String(v)}>
+                {head ? <li className="sel-head" role="presentation">{head}</li> : null}
+                <li>
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={i === sel}
+                    data-on={i === active ? '1' : undefined}
+                    data-sel={i === sel ? '1' : undefined}
+                    className={`sel-opt ${i === sel ? 'sel' : ''} ${i === active ? 'on' : ''}`.trim()}
+                    onMouseEnter={() => setActive(i)}
+                    onClick={() => pick(v)}
+                  >
+                    <span className="sel-opt-text">{text}</span>
+                    {extra?.hint ? <span className="sel-opt-hint">{extra.hint}</span> : null}
+                  </button>
+                </li>
+              </Fragment>
+            );
+          })}
+
+          {view.length ? null : <li className="sel-empty" role="presentation">{emptyText}</li>}
         </ul>
       )}
     </div>
@@ -244,6 +334,65 @@ export function ListSelect({ name, kind, value, defaultValue, onChange, blank = 
   const options = [...(blank ? [['', blank]] : []), ...(meta.lists[kind] || [])];
   return (
     <Select name={name} options={options} value={value} defaultValue={defaultValue} onChange={onChange} {...rest} />
+  );
+}
+
+/**
+ * ช่องสัญชาติ
+ *
+ * รายการเต็มมี 185 สัญชาติ ซึ่งยาวเกินกว่าจะไล่หาด้วยตา จึงมีของสามอย่างช่วย:
+ *
+ *  1. **ช่องค้นหา** — พิมพ์ได้ทั้งคำสัญชาติ ('German') ชื่อไทย ('เยอรมัน') และชื่อ
+ *     ประเทศ ('Germany') · ที่ต้องรับชื่อประเทศด้วยเพราะข้อมูลเดิมสามปีในฐานเก็บ
+ *     เป็นชื่อประเทศเกือบทั้งหมด (England, Switzerland, Holland) คนที่ชินกับคำเดิม
+ *     จะพิมพ์คำเดิม · คำที่เคยสะกดผิดกันมาจริง ๆ (Isreal, Denish, Newzeland) ก็ค้นเจอ
+ *  2. **กลุ่ม "ใช้บ่อย"** — สิบสี่สัญชาติที่กินไป ~98% ของลูกค้าทั้งร้าน ลอยไว้หัวรายการ
+ *     ไทยอยู่บนสุดเพราะเป็น 3,408 ใบจาก 4,100 ใบ · A→Z ล้วน ๆ แปลว่าตัวที่ใช้บ่อย
+ *     ที่สุดอยู่บรรทัดที่ 165 ซึ่งไม่มีเหตุผลอะไรมารองรับนอกจากตัวอักษร
+ *  3. **ชื่อไทยบรรทัดรอง** — คนกรอกคิดเป็น 'เยอรมัน' ไม่ใช่ 'German'
+ *
+ * ค่าที่บันทึกยังเป็นอังกฤษเหมือนเดิม ชื่อไทยมีไว้อ่านอย่างเดียว
+ *
+ * ค่าที่บันทึกไว้แล้วแต่ไม่ตรงกับรายการ (ใบเก่าที่เก็บว่า 'Switzerland' หรือคำที่พิมพ์
+ * มั่วไว้) ถูกพ่วงเป็นตัวเลือกบนสุดให้ด้วย — `Select` ตกไปที่ตัวเลือกแรกเมื่อหาค่า
+ * ไม่เจอ ซึ่งแปลว่าแค่เปิดใบเก่าขึ้นมาแก้เบอร์โทรแล้วกดบันทึก สัญชาติเดิมก็หายไปเงียบ ๆ
+ */
+export function NationalitySelect({ value, defaultValue = '', blank = '— ไม่ระบุ —', ...rest }) {
+  const current = String((value !== undefined ? value : defaultValue) ?? '');
+
+  const options = useMemo(() => {
+    const row = (en) => {
+      const m = NATIONALITY_BY_VALUE[en];
+      return [en, en, { hint: m.th, keywords: `${m.th} ${m.aka}` }];
+    };
+    const common = NATIONALITY_COMMON.map((en) => {
+      const [v, text, extra] = row(en);
+      return [v, text, { ...extra, group: 'ใช้บ่อย' }];
+    });
+    const rest2 = NATIONALITY_ROWS
+      .filter(([en]) => !NATIONALITY_COMMON.includes(en))
+      .map(([en]) => {
+        const [v, text, extra] = row(en);
+        return [v, text, { ...extra, group: 'ทั้งหมด (A→Z)' }];
+      });
+    /* ค่าเดิมของใบนี้วางบนสุด ไม่ใช่ท้ายรายการ — คนแก้ใบเก่าต้องเห็นทันทีว่าตอนนี้
+       ในใบเก็บคำว่าอะไรอยู่ ก่อนจะตัดสินใจว่าจะเปลี่ยนเป็นคำในรายการไหม */
+    const legacy = current && !NATIONALITY_BY_VALUE[current]
+      ? [[current, current, { hint: 'ไม่มีในรายการ', group: 'ค่าเดิมในใบนี้' }]]
+      : [];
+
+    return [...legacy, ['', blank], ...common, ...rest2];
+  }, [blank, current]);
+
+  return (
+    <Select
+      options={options}
+      value={value}
+      defaultValue={defaultValue}
+      search="ค้นหา — ไทย, Thai หรือ Thailand"
+      emptyText="ไม่พบสัญชาตินี้ — ลองพิมพ์ชื่อประเทศแทน"
+      {...rest}
+    />
   );
 }
 

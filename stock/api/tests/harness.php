@@ -100,6 +100,16 @@ function withRollback(callable $fn): mixed
         if ($pdo->inTransaction()) {
             $pdo->rollBack();
         }
+
+        /* ล้างรายการที่ `LowStock` จดไว้ระหว่างเคสนี้ทิ้งด้วย
+         *
+         * การตัดสต็อกลงทะเบียน `flush()` ไว้กับ shutdown ของโปรเซส · เคสที่ถูก
+         * rollback ไม่ได้ล้างสิ่งที่จดไว้ตามไปด้วย แล้วตอนตัวรันจบ flush จะ
+         * ประเมินสินค้าเหล่านั้นจากสถานะ *จริง* ในฐาน — ซึ่งมีของที่ต่ำกว่า
+         * ขั้นต่ำอยู่จริงหลายตัว · ผลคือการรันเทสต์จะยิงข้อความเข้ากลุ่ม
+         * Telegram ของร้าน ซึ่งเป็นสิ่งที่เทสต์ไม่ควรทำเด็ดขาด
+         */
+        \Optic\Service\LowStock::reset();
     }
 }
 
@@ -149,16 +159,61 @@ function saleReq(string $sku, int $qty, string $k, array $extra = []): array
     return ['source' => 'frontdesk'] + issueReq($sku, $qty, $k, $extra);
 }
 
-/** Reads a lot's current remaining quantity. */
-function lotRemaining(string $lotNumber): int
+/**
+ * Reads a lot's current remaining quantity.
+ *
+ * **รับ id ของล็อต ไม่ใช่ `lot_number`** — เลขล็อตนับแยกกันของสินค้าใครสินค้ามัน
+ * และไม่มี UNIQUE คุมทั้งตาราง โค้ดจริงจึงผูกด้วย `lot_number AND product_id`
+ * เสมอ (ดู `Receiving::receive`) · เวอร์ชันแรกของตัวช่วยนี้หาด้วย `lot_number`
+ * อย่างเดียว พอฐานมีสองสินค้าที่เลขล็อตชนกัน (LNS-0001 กับ LNS-0003 ต่างก็มี
+ * `L260903-01` ของตัวเอง) มันอ่านยอดของสินค้าอีกตัวมาตอบ แล้วเทสต์ที่ถูกต้อง
+ * อยู่แล้วสามตัวก็ฟ้องว่าการคืนของพัง ทั้งที่ของกลับเข้าล็อตครบ
+ */
+function lotRemaining(int $lotId): int
 {
     return (int) \Optic\Db::value(
-        'SELECT remaining_qty FROM stock_lots WHERE lot_number = ?',
-        [$lotNumber],
+        'SELECT remaining_qty FROM stock_lots WHERE id = ?',
+        [$lotId],
     );
 }
 
 /** A SKU that has stock in more than one lot, so FIFO has something to order. */
+/* ย้ายมาจาก 70-min-stock.test.php ตอนที่ไฟล์ที่สองต้องใช้ — ตัวช่วยที่อยู่ในไฟล์
+   ทดสอบไฟล์หนึ่งจะหาไม่เจอเมื่อรันด้วยตัวกรอง (`run.php 71-low`) เพราะไฟล์นั้น
+   ไม่ถูกโหลด · ของที่ใช้ร่วมกันอยู่ที่นี่ */
+/**
+ * A stocked product with a minimum and a given quantity on hand.
+ *
+ * Returns the id and the SKU, because the two questions asked below need
+ * different ones — the filters answer with products, the movements take a SKU.
+ *
+ * @return array{id:int,sku:string}
+ */
+function productAtLevel(int $onHand, int $minStock): array
+{
+    $sku = 'MIN-' . strtoupper(bin2hex(random_bytes(3)));
+    $out = \Optic\Service\Catalog::createProduct([
+        'sku'                => $sku,
+        'name'               => 'สินค้าทดสอบขั้นต่ำ',
+        'product_type'       => 'Frame',
+        'category_id'        => (int) \Optic\Db::value("SELECT id FROM categories WHERE code = 'Frame'"),
+        'base_selling_price' => '900.00',
+        'min_stock'          => $minStock,
+        'is_custom_made'     => false,
+    ], [\Optic\Roles::OWNER]);
+
+    if ($onHand > 0) {
+        \Optic\Service\Receiving::receive([
+            'sku'           => $sku,
+            'quantity'      => $onHand,
+            'cost_per_unit' => '100.00',
+            'received_date' => date('Y-m-d'),
+        ], [\Optic\Roles::OWNER], 1);
+    }
+
+    return ['id' => $out['id'], 'sku' => $sku];
+}
+
 function skuWithLots(int $minLots = 2): string
 {
     $row = \Optic\Db::one(

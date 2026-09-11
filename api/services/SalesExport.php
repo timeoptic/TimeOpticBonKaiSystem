@@ -39,9 +39,10 @@ final class SalesExport
      * บนหน้าจอไม่ได้ใช้ — แต่ตัวเลขเงินทุกตัวมาจากสูตรเดียวกัน และ
      * `api/cli/check-report-export.php` คอยเทียบให้ว่ายังตรงกันอยู่
      */
-    public static function mainRows(string $from, string $to, string $status = 'all'): array
+    public static function mainRows(string $from, string $to, string $status = 'all', string $group = 'all'): array
     {
-        $onlyStatus = SalesReport::statusSql($status, 'o.order_closed = 1', 'o.order_closed = 0');
+        $onlyStatus = SalesReport::statusSql($status, 'o.order_closed = 1', 'o.order_closed = 0')
+            . SalesReport::groupSql($group, 'cs.customer_category');
         $rows       = Db::all(
             "SELECT DATE(o.order_date)                                    AS opened_on,
                     DATE(o.order_close_date)                              AS closed_on,
@@ -89,8 +90,11 @@ final class SalesExport
      * ทั้งวันเปิดบิลและวันปิดงาน · ส่วนที่ยังไม่จบคือใบที่ลูกค้ายังไม่ได้รับของ
      * (`fulfillment_status = 'waiting'`) ซึ่งวันปิดยังไม่เกิด จึงเว้นว่างไว้
      */
-    public static function posRows(string $from, string $to, string $status = 'all'): array
+    public static function posRows(string $from, string $to, string $status = 'all', string $group = 'all'): array
     {
+        if (!SalesReport::groupHasPos($group)) {
+            return [];
+        }
         $out        = [];
         $onlyStatus = SalesReport::statusSql(
             $status,
@@ -176,11 +180,11 @@ final class SalesExport
     }
 
     /** แถวทั้งหมดตามตัวกรอง เรียงตามวันเปิดบิล แล้วตามเลขเคส */
-    public static function rows(string $from, string $to, string $channel, string $status = 'all'): array
+    public static function rows(string $from, string $to, string $channel, string $status = 'all', string $group = 'all'): array
     {
         $rows = array_merge(
-            SalesReport::wantsMain($channel) ? self::mainRows($from, $to, $status) : [],
-            SalesReport::wantsPos($channel)  ? self::posRows($from, $to, $status)  : []
+            SalesReport::wantsMain($channel) ? self::mainRows($from, $to, $status, $group) : [],
+            SalesReport::wantsPos($channel)  ? self::posRows($from, $to, $status, $group)  : []
         );
         usort($rows, fn(array $a, array $b) => [$a['date'], $a['code']] <=> [$b['date'], $b['code']]);
         return $rows;
@@ -250,15 +254,18 @@ final class SalesExport
     /* ------------------------------------------------------------------ */
 
     /** ชื่อไฟล์ที่ผู้ใช้จะเห็นตอนดาวน์โหลด */
-    public static function fileName(string $from, string $to): string
+    public static function fileName(string $from, string $to, string $group = 'all'): string
     {
         $y = substr($from, 0, 4);
+        /* ไฟล์ที่กรองประเภทลูกค้าไว้ต้องบอกในชื่อ — ตัวเลขในไฟล์ SightFirst เปิดดูทีหลัง
+           แล้วเข้าใจว่าเป็นยอดทั้งร้านได้ง่ายมาก */
+        $suffix = ['shop' => ' (ลูกค้าร้าน)', 'sightfirst' => ' (SightFirst)'][$group] ?? '';
         /* ทั้งปีพอดี = ตั้งชื่อด้วยปี · ช่วงอื่นเขียนวันที่ให้ครบ ไม่งั้นไฟล์สอง
            ช่วงของปีเดียวกันจะชื่อชนกันในโฟลเดอร์ดาวน์โหลด */
         if ($from === "$y-01-01" && $to === "$y-12-31") {
-            return "รายงานยอดขาย $y.xlsx";
+            return "รายงานยอดขาย $y$suffix.xlsx";
         }
-        return "รายงานยอดขาย $from ถึง $to.xlsx";
+        return "รายงานยอดขาย $from ถึง $to$suffix.xlsx";
     }
 
     /** ประกอบสมุดงานทั้งเล่ม */
@@ -266,9 +273,10 @@ final class SalesExport
         string $from,
         string $to,
         string $channel,
-        string $status = 'all'
+        string $status = 'all',
+        string $group = 'all'
     ): Xlsx {
-        $rows = self::rows($from, $to, $channel, $status);
+        $rows = self::rows($from, $to, $channel, $status, $group);
 
         /* จัดกลุ่มตามเดือนก่อน แล้วค่อยวาด — เดือนที่ไม่มีเคสจะไม่มีชีท แต่ยังมี
            บรรทัดของตัวเองในตารางสรุปพร้อมเลขศูนย์ ให้เห็นว่าเดือนนั้นเงียบจริง

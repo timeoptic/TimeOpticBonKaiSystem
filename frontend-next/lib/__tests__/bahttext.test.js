@@ -48,7 +48,9 @@ test('englishInteger: หลักสิบ ยี่สิบ และกา�
   assert.equal(englishInteger(1000000), 'one million');
 });
 
-test('bahtTextEn: ขึ้นต้นตัวใหญ่ และปิดท้าย "only" เมื่อไม่มีสตางค์', () => {
-  assert.equal(bahtTextEn(3800), 'Three thousand eight hundred baht only');
+/* ฝั่งอังกฤษไม่มี "only" ปิดท้าย (ร้านขอตัดออก) ส่วนฝั่งไทยยังลงท้ายว่า "ถ้วน" เหมือนเดิม
+   — เทสต์ bahtText ข้างบนคุมคำนั้นอยู่ ตัดออกทั้งสองภาษาพร้อมกันไม่ได้ */
+test('bahtTextEn: ขึ้นต้นตัวใหญ่ ไม่มี "only" ปิดท้ายจำนวนเต็ม', () => {
+  assert.equal(bahtTextEn(3800), 'Three thousand eight hundred baht');
   assert.equal(bahtTextEn(1234.5), 'One thousand two hundred thirty-four baht fifty satang');
 });

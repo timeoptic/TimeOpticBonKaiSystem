@@ -44,10 +44,18 @@ final class Roles
     public const TRAINEE = 'trainee';
     /** พนักงานคลัง — เข้าระบบแล้วอยู่ฝั่งคลัง */
     public const STOCK = 'stock';
+    /**
+     * บัญชี — อ่านเงินของร้าน ไม่ได้เป็นคนทำให้ตัวเลขเกิด
+     *
+     * ไม่มี `frontdesk.use` จึงเดินได้เฉพาะเส้นทางกลุ่มการเงินของ `/api` (ดูด่าน
+     * ที่สองใน `api/index.php`) และไม่มี `stock.move` เพราะคนที่ตรวจตัวเลขกับคน
+     * ที่ทำให้ตัวเลขเกิดไม่ควรเป็นคนเดียวกัน — ต้องการทั้งสองอย่างก็ให้สองบทบาท
+     */
+    public const ACCOUNTING = 'accounting';
 
     public const ALL = [
         self::SUPERUSER, self::OWNER, self::ADMIN,
-        self::SALES, self::TRAINEE, self::STOCK,
+        self::SALES, self::TRAINEE, self::STOCK, self::ACCOUNTING,
     ];
 
     /** ชื่อที่ใช้เป็นแท็กในตารางผู้ใช้ — สั้น ไม่ตัดบรรทัดเวลามีหลายอัน */
@@ -58,6 +66,7 @@ final class Roles
         self::SALES     => 'Sales',
         self::TRAINEE   => 'Trainee Staff',
         self::STOCK     => 'Stock',
+        self::ACCOUNTING => 'Accounting',
     ];
 
     public const LABEL = [
@@ -67,6 +76,7 @@ final class Roles
         self::SALES     => 'พนักงานขาย',
         self::TRAINEE   => 'พนักงานฝึกหัด',
         self::STOCK     => 'พนักงานคลัง',
+        self::ACCOUNTING => 'บัญชี',
     ];
 
     /** คำอธิบายหนึ่งบรรทัดข้างเช็กบ็อกซ์ตอนกำหนดสิทธิ์ */
@@ -77,6 +87,7 @@ final class Roles
         self::SALES     => 'ระบบหน้าร้านทั้งหมด และดูเคสลูกค้าได้ทุกใบ',
         self::TRAINEE   => 'เหมือนพนักงานขายทุกอย่าง — ป้ายไว้ให้รายงานอ่านออก',
         self::STOCK     => 'เฉพาะระบบคลัง ไม่เห็นเคสลูกค้าและไม่เห็นต้นทุน',
+        self::ACCOUNTING => 'การเงินและรายงาน เห็นต้นทุน — ไม่แตะผู้ใช้ ตั้งค่า และการบันทึกสต็อก',
     ];
 
     /**
@@ -87,15 +98,17 @@ final class Roles
      * เจ้าของร้านหรือผู้ดูแลระบบไม่ได้ ไม่งั้นสิทธิ์ "จัดการผู้ใช้" กลายเป็นสิทธิ์
      * "เป็นอะไรก็ได้" ในสองคลิก
      *
-     * ขาย ฝึกหัด และคลังอยู่ระดับเดียวกัน — คนละงาน ไม่ใช่คนละชั้น
+     * ขาย ฝึกหัด คลัง และบัญชีอยู่ระดับเดียวกัน — คนละงาน ไม่ใช่คนละชั้น ·
+     * บัญชีเห็นตัวเลขที่พนักงานขายไม่เห็น แต่นั่นคือสิทธิ์ ไม่ใช่ยศ
      */
     private const RANK = [
-        self::SUPERUSER => 4,
-        self::OWNER     => 3,
-        self::ADMIN     => 2,
-        self::SALES     => 1,
-        self::TRAINEE   => 1,
-        self::STOCK     => 1,
+        self::SUPERUSER  => 4,
+        self::OWNER      => 3,
+        self::ADMIN      => 2,
+        self::SALES      => 1,
+        self::TRAINEE    => 1,
+        self::STOCK      => 1,
+        self::ACCOUNTING => 1,
     ];
 
     /* ─────────────────────────────────────────────────────────── สิทธิ์ */
@@ -113,7 +126,10 @@ final class Roles
         'case.view_all' => ['การเข้าถึงระบบ', 'ดู Case ลูกค้าทั้งหมดในระบบ',
             'ทุกคนที่ทำงานหน้าร้านต้องรับเคสต่อจากกันได้ จึงเห็นทั้งหมด ไม่ใช่เฉพาะของตัวเอง'],
         'stock.use'     => ['การเข้าถึงระบบ', 'ระบบคลังและต้นทุน', null],
-        'admin.zone'    => ['การเข้าถึงระบบ', 'การเงินร้าน · ข้อมูลระบบ · รายงาน · บันทึกการใช้งาน', null],
+        'money.zone'    => ['การเข้าถึงระบบ', 'รายรับ · รายจ่าย · รายงาน · ซัพพลายเออร์',
+            'เคยรวมกับข้อมูลระบบเป็น admin.zone ก้อนเดียว · แยกออกมาเพราะบัญชีต้องอ่านเงินได้ โดยไม่ได้สิทธิ์ตั้งค่าระบบและจัดการคนติดมาด้วย'],
+        'system.zone'   => ['การเข้าถึงระบบ', 'พนักงาน · การตั้งค่า · การแจ้งเตือน · บันทึกการใช้งาน',
+            'อีกครึ่งของ admin.zone เดิม — งานที่กระทบว่าระบบทำงานยังไง ไม่ใช่ตัวเลขว่าร้านได้เท่าไร'],
         'users.manage'  => ['การเข้าถึงระบบ', 'จัดการผู้ใช้ · ตั้งรหัสผ่าน',
             'ตั้งบทบาทได้ไม่เกินบทบาทสูงสุดของตัวเอง — แอดมินตั้งเจ้าของร้านไม่ได้'],
         'system.manage' => ['การเข้าถึงระบบ', 'งานระบบ · migration · ตั้งค่าที่กระทบทั้งระบบ',
@@ -121,8 +137,8 @@ final class Roles
 
         'cost.view'     => ['การมองเห็นข้อมูล', 'ต้นทุน/ชิ้น · มูลค่าคลัง · ต้นทุนขาย',
             'ตัดออกจากคำตอบของ API ไม่ใช่แค่ซ่อนในหน้าเว็บ'],
-        'branch.money'  => ['การมองเห็นข้อมูล', 'ยอดและกำไรจากสาขา · หน้าค้างรับ',
-            'ทั้งหน้าเป็นตัวเลขเงิน จึงปิดทั้งหน้า ไม่ใช่ปิดเป็นคอลัมน์'],
+        'branch.money'  => ['การมองเห็นข้อมูล', 'หน้าการเบิกจากสาขา · หน้าจัดการสาขา · ยอดและกำไรจากสาขา',
+            'สองหน้านี้ปิดทั้งหน้า ไม่ใช่ปิดเป็นคอลัมน์ — แต่ชื่อสาขายังเลือกได้ตามปกติตอนบันทึกเบิก'],
 
         'stock.move'    => ['การบันทึกสต็อก', 'เบิก · ตัดของเสีย · คืนของ · รับของเข้า', null],
         'scrap.blame'   => ['การบันทึกสต็อก', 'ระบุว่าคนอื่นเป็นคนทำของเสีย',
@@ -145,6 +161,14 @@ final class Roles
     private const WAREHOUSE = ['stock.use', 'stock.move', 'product.add'];
 
     /**
+     * งานเงินล้วน — บัญชีถือชุดนี้ทั้งชุด แอดมินขึ้นไปถือมันบวกอย่างอื่น
+     *
+     * ประกาศแยกด้วยเหตุผลเดียวกับ `FLOOR`: วันที่กลุ่มการเงินได้สิทธิ์ใหม่หนึ่งข้อ
+     * ทุกคนที่ควรได้ต้องได้พร้อมกัน โดยไม่ต้องมีใครไล่เติมสี่ที่แล้วจำได้ครบ
+     */
+    private const MONEY = ['money.zone', 'cost.view', 'branch.money', 'branch.settle'];
+
+    /**
      * บทบาท → ชุดสิทธิ์ · สิทธิ์จริงของคนหนึ่งคนคือยูเนียนของทุกบทบาทที่ถือ
      *
      * เขียนซ้อนกันด้วย `...` ไม่ใช่คัดลอกรายการ — วันที่แอดมินได้สิทธิ์ใหม่หนึ่งข้อ
@@ -155,21 +179,21 @@ final class Roles
         self::SALES   => self::FLOOR,
         self::TRAINEE => self::FLOOR,
         self::STOCK   => self::WAREHOUSE,
+        /* `stock.use` ตัวเดียว ไม่ใช่ `WAREHOUSE` ทั้งชุด — เข้าไปอ่านมูลค่าคลัง
+           และยอดสาขาได้ แต่ไม่มี `stock.move` และ `product.add` */
+        self::ACCOUNTING => [...self::MONEY, 'stock.use'],
         self::ADMIN   => [
-            ...self::FLOOR, ...self::WAREHOUSE,
-            'admin.zone', 'users.manage', 'cost.view', 'branch.money',
-            'catalog.edit', 'branch.settle',
+            ...self::FLOOR, ...self::WAREHOUSE, ...self::MONEY,
+            'system.zone', 'users.manage', 'catalog.edit',
         ],
         self::OWNER => [
-            ...self::FLOOR, ...self::WAREHOUSE,
-            'admin.zone', 'users.manage', 'cost.view', 'branch.money',
-            'catalog.edit', 'branch.settle',
+            ...self::FLOOR, ...self::WAREHOUSE, ...self::MONEY,
+            'system.zone', 'users.manage', 'catalog.edit',
             'cost.edit', 'scrap.blame', 'branch.manage',
         ],
         self::SUPERUSER => [
-            ...self::FLOOR, ...self::WAREHOUSE,
-            'admin.zone', 'users.manage', 'cost.view', 'branch.money',
-            'catalog.edit', 'branch.settle',
+            ...self::FLOOR, ...self::WAREHOUSE, ...self::MONEY,
+            'system.zone', 'users.manage', 'catalog.edit',
             'cost.edit', 'scrap.blame', 'branch.manage',
             'system.manage',
         ],
@@ -275,8 +299,18 @@ final class Roles
     public static function viewAllCases(array $roles): bool { return self::has($roles, 'case.view_all'); }
     /** @param list<string> $roles */
     public static function useStock(array $roles): bool { return self::has($roles, 'stock.use'); }
-    /** งานของแอดมิน — เงินของร้าน ข้อมูลระบบ รายงาน ล็อก @param list<string> $roles */
-    public static function adminZone(array $roles): bool { return self::has($roles, 'admin.zone'); }
+    /**
+     * เงินของร้าน — รายรับ รายจ่าย รายงาน ซัพพลายเออร์
+     *
+     * แยกจาก `systemZone` เพราะบัญชีต้องอ่านตัวเลขพวกนี้ได้ โดยไม่ได้สิทธิ์ตั้งค่า
+     * ระบบและจัดการผู้ใช้ติดมาด้วย · แอดมินขึ้นไปถือทั้งสองอัน สิทธิ์จึงไม่ขยับ
+     *
+     * @param list<string> $roles
+     */
+    public static function moneyZone(array $roles): bool { return self::has($roles, 'money.zone'); }
+
+    /** ข้อมูลระบบ — พนักงาน ตั้งค่า แจ้งเตือน บันทึกการใช้งาน @param list<string> $roles */
+    public static function systemZone(array $roles): bool { return self::has($roles, 'system.zone'); }
     /** @param list<string> $roles */
     public static function manageAdmins(array $roles): bool { return self::has($roles, 'users.manage'); }
     /** งานของระบบ ไม่ใช่งานของร้าน @param list<string> $roles */
@@ -365,9 +399,13 @@ final class Roles
      * หน้าแรกหลังล็อกอิน
      *
      * คนที่ทำงานฝั่งเดียวถูกส่งเข้าไปให้ถึงที่ทำงานเลย — คนที่เปิดระบบวันละสามสิบ
-     * ครั้งไม่ควรต้องเลือกเมนูเดิมทุกครั้ง · คนที่ทำได้ทั้งสองฝั่งลงที่แดชบอร์ด
-     * ของฝั่งคลัง ซึ่งตอบคำถามแรกของวันว่า "เมื่อคืนเกิดอะไรขึ้นบ้าง" · หน้าเลือก
-     * ระบบยังอยู่ที่ /hub/ และยังมีปุ่มในเมนู สำหรับตอนที่จะข้ามฝั่งจริง ๆ
+     * ครั้งไม่ควรต้องเลือกเมนูเดิมทุกครั้ง เพราะไม่มีอะไรให้เลือก
+     *
+     * คนที่ทำได้ทั้งสองฝั่ง (แอดมิน เจ้าของร้าน ผู้ดูแลระบบ) ลงที่หน้าเลือกระบบ
+     * `/hub/` · เคยส่งลงแดชบอร์ดฝั่งคลังตรง ๆ ด้วยเหตุผลว่ามันตอบคำถามแรกของวัน
+     * ว่า "เมื่อคืนเกิดอะไรขึ้นบ้าง" แต่นั่นเป็นการเดาแทนเจ้าของร้านว่าวันนี้เปิด
+     * ระบบมาเพื่ออะไร และวันที่เดาผิด — ซึ่งคือวันที่เขาเปิดมาดูหน้าร้าน — แปลว่า
+     * ต้องเดินย้อนออกจากฝั่งที่ไม่ได้ตั้งใจเข้าทุกครั้ง · ถามครั้งเดียวถูกกว่า
      *
      * เป็นเส้นทางของหน้าเว็บ ไม่ใช่ของ API — อยู่ที่นี่เพราะเป็นคำตอบของ
      * "คนนี้ทำงานฝั่งไหน" ซึ่งเป็นคำถามเดียวกับที่ทั้งไฟล์นี้ตอบ
@@ -376,6 +414,10 @@ final class Roles
      */
     public static function home(array $roles): string
     {
+        if (self::useFrontdesk($roles) && self::useStock($roles)) return '/hub/';
+        /* บัญชีมี `stock.use` ติดมาด้วย แต่งานแรกของวันคือเงิน ไม่ใช่คลัง — และ
+           หน้าร้านที่ `/` เป็นหน้าที่เขาเปิดไม่ได้อยู่แล้ว */
+        if (!self::useFrontdesk($roles) && self::moneyZone($roles)) return '/income/';
         return self::useStock($roles) ? '/stock/dashboard/' : '/';
     }
 

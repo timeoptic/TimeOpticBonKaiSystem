@@ -41,6 +41,20 @@ function bookingVals(array $b): array
     return $out;
 }
 
+/* เทียบเป็นช่วงวันที่ ไม่ใช่ DATE_FORMAT(...) = ? โดยตั้งใจ
+   ------------------------------------------------------
+   `WHERE DATE_FORMAT(booking_date,'%Y-%m') = ?` ตอบ 1267 "Illegal mix of
+   collations" บน MariaDB 11.8 ของโฮสต์ ทั้งที่ฐาน ตาราง และคอนเนกชันเป็น
+   utf8mb4_unicode_ci เหมือนกันหมด — เพราะ `ATTR_EMULATE_PREPARES => false`
+   ทำให้ค่าที่ผูกเข้ามาเป็น prepared parameter จริง ซึ่งเซิร์ฟเวอร์ให้ collation
+   ปริยายของ charset (utf8mb4_general_ci) ไม่ใช่ของ session · วัดได้ด้วย
+   `SELECT COLLATION(?)` เทียบกับ `SELECT COLLATION('x')` ซึ่งได้คนละค่า
+
+   ที่คำสั่งอื่นทั้งระบบไม่พังเพราะมันเทียบกับ *คอลัมน์* ซึ่ง coercibility เป็น
+   IMPLICIT จึงชนะพารามิเตอร์ · คำสั่งนี้เทียบผลของฟังก์ชัน (COERCIBLE) กับ
+   พารามิเตอร์ (COERCIBLE) ไม่มีฝั่งไหนชนะ MariaDB เลยปฏิเสธทั้งคำสั่ง
+
+   เทียบช่วงวันที่บนคอลัมน์ตรง ๆ จึงไม่มีสตริงให้ทะเลาะกัน และใช้ index ได้ด้วย */
 GET('/api/bookings/calendar', function (array $req) {
     $raw   = str_or($req['query']['month'] ?? null);
     $month = preg_match('/^\d{4}-\d{2}$/', $raw) ? $raw : substr(today(), 0, 7);
@@ -54,9 +68,10 @@ GET('/api/bookings/calendar', function (array $req) {
                 SUM(status = 'no_show') no_show,
                 SUM(status = 'cancelled') cancelled
            FROM bookings
-          WHERE DATE_FORMAT(booking_date, '%Y-%m') = ?
+          WHERE booking_date >= ? AND booking_date < DATE_ADD(?, INTERVAL 1 MONTH)
           GROUP BY booking_date ORDER BY booking_date",
-        $month
+        $month . '-01',
+        $month . '-01'
     );
     return ['month' => $month, 'days' => $days];
 });
@@ -252,13 +267,22 @@ POST('/api/bookings/:id/status', function (array $req) {
         bad("สถานะ \"$s\" ไม่ถูกต้อง");
     }
 
+    /* ตัดสินใจว่าสถานะไหนเป็นอะไรใน PHP แล้วส่งลงไปเป็นเลข 0/1
+       เดิมเทียบในคำสั่งตรง ๆ (`CASE WHEN ? = 'confirmed'`) ซึ่งเป็นการเทียบ
+       พารามิเตอร์กับลิเทอรัล — coercibility เท่ากันทั้งคู่ ถ้า collation ไม่ตรง
+       MariaDB ปฏิเสธทั้งคำสั่งด้วย error 1267 (ดูคำอธิบายที่ /bookings/calendar)
+       เทียบเป็นตัวเลขไม่มี collation ให้ทะเลาะกัน และอ่านง่ายกว่าด้วย */
+    $isConfirmed = $s === 'confirmed' ? 1 : 0;
+    $isArrived   = $s === 'arrived' ? 1 : 0;
+    $isDropped   = in_array($s, ['cancelled', 'no_show'], true) ? 1 : 0;
+
     Db::run(
         "UPDATE bookings SET status = ?,
-           confirmed_at = CASE WHEN ? = 'confirmed' AND confirmed_at IS NULL THEN NOW() ELSE confirmed_at END,
-           arrived_at   = CASE WHEN ? = 'arrived'   AND arrived_at   IS NULL THEN NOW() ELSE arrived_at END,
-           cancelled_reason = CASE WHEN ? IN ('cancelled','no_show') THEN ? ELSE cancelled_reason END
+           confirmed_at = CASE WHEN ? = 1 AND confirmed_at IS NULL THEN NOW() ELSE confirmed_at END,
+           arrived_at   = CASE WHEN ? = 1 AND arrived_at   IS NULL THEN NOW() ELSE arrived_at END,
+           cancelled_reason = CASE WHEN ? = 1 THEN ? ELSE cancelled_reason END
          WHERE id = ?",
-        $s, $s, $s, $s, nul($body['reason'] ?? null), $id
+        $s, $isConfirmed, $isArrived, $isDropped, nul($body['reason'] ?? null), $id
     );
 
     if (str_or($body['note'] ?? null) !== '') {

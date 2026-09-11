@@ -134,7 +134,6 @@ function BookingDetailInner() {
             ['LINE / WhatsApp', b.line_id || '-'],
             ['ผู้ดูแล', b.assigned_name || '-'],
             ['ผู้รับจอง', b.created_by_name || '-'],
-            ['ยืนยันเมื่อ', fmtDateTime(b.confirmed_at) || '-'],
             ['มาถึงเมื่อ', fmtDateTime(b.arrived_at) || '-'],
             b.cancelled_reason ? ['เหตุผล', b.cancelled_reason] : null,
             ['หมายเหตุ', b.notes || '-'],
@@ -158,11 +157,6 @@ function BookingDetailInner() {
             </FormGrid>
 
             <Row style={{ marginTop: 12 }}>
-              {b.status === 'booked' && (
-                <button type="button" className="btn btn-sm btn-accent" onClick={() => setStatus('confirmed')}>
-                  <Icon name="check" /> ยืนยันคิว
-                </button>
-              )}
               {['booked', 'confirmed'].includes(b.status) && (
                 <button type="button" className="btn btn-sm btn-ok" onClick={() => setStatus('arrived')}>
                   <Icon name="userCheck" /> ลูกค้ามาถึง

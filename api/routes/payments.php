@@ -38,6 +38,13 @@ GET('/api/payments', function (array $req) {
     );
 });
 
+/**
+ * ยอดเท่ากันกับออเดอร์เดียวกันภายในกี่นาทีถึงนับว่า "อาจซ้ำ" (ร้านเลือก 10 นาที)
+ * — ครอบการกดซ้ำ รีเฟรช และสองคนบันทึกพร้อมกัน · ลูกค้าที่จ่ายสองงวดยอดเท่ากันจริง
+ * มักห่างกันเป็นวัน และถ้าเกิดภายในช่วงนี้จริงก็แค่ต้องกดยืนยันหนึ่งครั้ง
+ */
+const PAYMENT_DUPLICATE_MINUTES = 10;
+
 POST('/api/payments', function (array $req) {
     $body   = $req['body'];
     $amount = num($body['amount'] ?? null);
@@ -54,7 +61,72 @@ POST('/api/payments', function (array $req) {
     $kind   = in_array($kindIn, ['deposit', 'partial', 'full', 'final'], true) ? $kindIn : 'partial';
     $method = str_or($body['method'] ?? null, 'Cash') ?: 'Cash';
 
-    $id = Db::tx(function (Tx $q) use ($body, $amount, $kind, $method, $receivedBy) {
+    $orderId = int_or($body['order_id'] ?? null);
+    $caseId  = int_or($body['case_id'] ?? null);
+
+    $id = Db::tx(function (Tx $q) use ($body, $amount, $kind, $method, $receivedBy, $orderId, $caseId) {
+        /* ด่านกันบันทึกเงินผิด — เหตุการณ์จริง 11 ก.ย. 2026 ออเดอร์ 10459 ถูกบันทึก
+           ฿2,900 สามครั้งห่างกันไม่กี่วินาที · หน้าเว็บกันแล้วก็จริง แต่แท็บที่สองหรือ
+           เครื่องที่สองไม่รู้เรื่องนั้น ด่านจริงจึงต้องอยู่ที่นี่
+
+           ล็อกแถวออเดอร์ก่อนอ่านยอด — สองคำขอที่มาพร้อมกันต้องต่อคิวกัน ไม่งั้นทั้งคู่
+           เห็นยอดคงเหลือเดิมแล้วผ่านด่านไปพร้อมกัน */
+        if ($orderId) {
+            $order = $q->get('SELECT total_price, discount FROM custom_orders WHERE id = ? FOR UPDATE', $orderId);
+            if (!$order) {
+                bad('ไม่พบออเดอร์นี้');
+            }
+            $net     = round2((float) $order['total_price'] - (float) $order['discount']);
+            $paid    = round2($q->get(
+                'SELECT COALESCE(SUM(amount), 0) s FROM payments WHERE order_id = ? AND cancelled_at IS NULL',
+                $orderId
+            )['s']);
+            $balance = round2(max(0, $net - $paid));
+            /* รับเกินยอดไม่ได้เลย ไม่มีทางยืนยันข้าม (ร้านตัดสินไว้) · ยอด 0 คือยังไม่ใส่
+               ราคา ไม่มียอดให้เทียบ จึงรับมัดจำได้ */
+            if ($net > 0 && $amount > $balance + 0.001) {
+                throw new HttpError(
+                    400,
+                    $balance > 0
+                        ? 'รับเกินยอดคงเหลือไม่ได้ — คงเหลือ ' . number_format($balance, 2) . ' บาท'
+                        : 'ออเดอร์นี้ชำระครบแล้ว รับเงินเพิ่มไม่ได้',
+                    ['reason' => 'over_balance', 'balance' => $balance]
+                );
+            }
+        }
+
+        /* ยอดเท่ากันกับออเดอร์เดียวกัน (ไม่มีออเดอร์ = เคสเดียวกัน) ภายในไม่กี่นาที =
+           น่าจะกดซ้ำ · ถามก่อน ไม่ได้ห้าม — ลูกค้าจ่ายสองก้อนเท่ากันจริงก็มี
+           เทียบเวลาด้วย NOW() ของฐานข้อมูลเอง เพราะ created_at ก็มาจากนาฬิกาเดียวกัน */
+        if (($orderId || $caseId) && !boolInt($body['confirm_duplicate'] ?? null)) {
+            $dup = $q->get(
+                'SELECT p.id, p.amount, TIMESTAMPDIFF(SECOND, p.created_at, NOW()) AS seconds_ago,
+                        e.employee_name
+                   FROM payments p
+                   LEFT JOIN employees e ON e.id = p.received_by
+                  WHERE ' . ($orderId ? 'p.order_id = ?' : 'p.case_id = ?') . '
+                    AND p.cancelled_at IS NULL AND p.amount = ?
+                    AND p.created_at >= NOW() - INTERVAL ' . PAYMENT_DUPLICATE_MINUTES . ' MINUTE
+                  ORDER BY p.id DESC LIMIT 1',
+                $orderId ?: $caseId,
+                $amount
+            );
+            if ($dup) {
+                $ago = (int) $dup['seconds_ago'];
+                throw new HttpError(
+                    409,
+                    'เพิ่งบันทึกรับเงิน ' . number_format((float) $dup['amount'], 2) . ' บาท ไปเมื่อ '
+                        . ($ago < 60 ? "$ago วินาที" : intdiv($ago, 60) . ' นาที') . 'ก่อน — ถ้าไม่ใช่รายการซ้ำ ให้ยืนยันแล้วบันทึกอีกครั้ง',
+                    ['reason' => 'possible_duplicate', 'duplicate' => [
+                        'id'               => (int) $dup['id'],
+                        'amount'           => (float) $dup['amount'],
+                        'seconds_ago'      => $ago,
+                        'received_by_name' => $dup['employee_name'],
+                    ]]
+                );
+            }
+        }
+
         $r = $q->run(
             'INSERT INTO payments (case_id, order_id, sale_id, kind, method, amount,
                reference, received_by, paid_at, notes, source)

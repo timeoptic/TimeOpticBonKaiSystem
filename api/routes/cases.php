@@ -65,12 +65,43 @@ GET('/api/cases', function (array $req) {
     }
 
     /* ── โหมดเดิม: คืนทั้งก้อนเป็น array ────────────────────────────────────
-       ProcessCaseList กับหน้าขั้นตอนทั้งห้ายังใช้เส้นนี้ (กรองด้วย stage_group
-       เหลือหลักสิบแถว จึงไม่ต้องแบ่งหน้า) · กระดานงานย้ายไป paged=1 แล้ว */
+       ProcessCaseList กับหน้าขั้นตอนทั้งสี่ยังใช้เส้นนี้ — แบ่งหน้าในเบราว์เซอร์
+       เพราะการ์ดตัวเลขบนหน้านั้นนับจากทั้งขั้น ไม่ใช่แค่หน้าแรก
+       กระดานงานย้ายไป paged=1 แล้ว */
     if ($clientSql) {
         $where[] = $clientSql;
     }
     $sqlWhere = $where ? 'WHERE ' . implode(' AND ', $where) : '';
+
+    /**
+     * กรองด้วย "ขั้นที่งานอยู่จริง" — ตัวเดียวกับที่กระดานงานใช้แบ่งคอลัมน์
+     *
+     * `stage_group` ข้างบนอ่านจาก cases.status ซึ่งคนตั้งด้วยมือและไม่มีอะไร
+     * บังคับให้ตรงกับงานที่ทำไปจริง · เคสที่กดปุ่ม "เริ่ม" ที่ขั้นวัดสายตาแล้ว
+     * แต่ status ยังค้างอยู่ "รับลูกค้า / ลงข้อมูล" จึงขึ้นในคอลัมน์วัดสายตาบน
+     * กระดานงาน แต่หายไปทั้งใบจากหน้า /exam — สองหน้าตอบคนละคำถามอยู่
+     *
+     * `process_stage` คำนวณใน PHP (caseStageMap) จึงเขียน WHERE ลง SQL ไม่ได้
+     * ลำดับที่นี่เหมือน caseBoardPage() ทุกอย่าง: เอา id ที่ตรงตัวกรองอื่นมาก่อน
+     * → คำนวณขั้น → กรอง → ค่อยดึงแถวเต็มเฉพาะที่จะส่งจริง
+     *
+     * LIMIT ต้องมาหลังการกรอง ไม่ใช่ก่อน — ถ้าตัดที่ SQL ก่อน ขั้นที่มีเคสน้อย
+     * (วัดสายตามีใบเดียวในกองเปิด 1,175 ใบ) จะโดนตัดทิ้งทั้งขั้น
+     */
+    $limit = min(int_or($q['limit'] ?? null, 300), 5000);
+    if ($wantStage = str_or($q['process_stage'] ?? null)) {
+        $ids = array_map(
+            static fn(array $r) => (int) $r['id'],
+            Db::all("SELECT id FROM v_case_board $sqlWhere ORDER BY $order", ...$args)
+        );
+        $stages = caseStageMap($ids);
+        $keep = array_values(array_filter(
+            $ids,
+            static fn(int $id) => ($stages[$id]['process_stage'] ?? null) === $wantStage
+        ));
+        return caseBoardRows(array_slice($keep, 0, $limit), $stages);
+    }
+
     /**
      * เพดานเดิมคือ 1,000 ซึ่งพอตอนที่ฐานมีข้อมูลตัวอย่างไม่กี่สิบเคส
      *
@@ -81,7 +112,7 @@ GET('/api/cases', function (array $req) {
      * 5,000 คือเพดานที่เผื่อไว้ให้โตได้อีกหลายปี · ไม่ปล่อยไร้เพดานเพราะพารามิเตอร์
      * ที่ผู้ใช้ส่งมาได้ไม่ควรสั่งให้ฐานคายทุกแถวที่มี
      */
-    $args[] = min(int_or($q['limit'] ?? null, 300), 5000);
+    $args[] = $limit;
 
     $rows = Db::all(
         "SELECT * FROM v_case_board $sqlWhere ORDER BY $order LIMIT ?",

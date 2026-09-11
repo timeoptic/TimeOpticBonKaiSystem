@@ -50,6 +50,16 @@ export const STATUSES = [
 ];
 
 /**
+ * ประเภทลูกค้า — คีย์ชุดเดียวกับกระดานงาน · ขายหน้าร้าน (POS) ไม่มีประเภทลูกค้า
+ * จึงนับเป็นลูกค้าร้าน และไม่มีอะไรให้เห็นเมื่อเลือก SightFirst (ดู SalesReport::GROUPS)
+ */
+export const GROUPS = [
+  ['all', 'ทั้งหมด'],
+  ['shop', 'ลูกค้าร้าน'],
+  ['sightfirst', 'SightFirst'],
+];
+
+/**
  * ทุกช่วงจบที่ "วันนี้" ไม่ใช่วันสิ้นสัปดาห์หรือวันสิ้นเดือน
  *
  * วันที่ยังไม่มาถึงไม่มียอดขายอยู่แล้ว การลากช่วงไปถึงสิ้นเดือนแปลว่ากราฟรายวัน
@@ -108,11 +118,13 @@ export function readFilter(searchParams, now = new Date()) {
   if (to < from) to = from;
   const channel = get('channel');
   const status = get('status');
+  const group = get('group');
   return {
     from,
     to,
     channel: CHANNELS.some(([c]) => c === channel) ? channel : 'all',
     status: STATUSES.some(([s]) => s === status) ? status : 'all',
+    group: GROUPS.some(([g]) => g === group) ? group : 'all',
   };
 }
 
@@ -122,10 +134,11 @@ export function readFilter(searchParams, now = new Date()) {
  * ค่า 'all' ไม่ถูกเขียนลง URL — URL ที่สั้นที่สุดที่ยังให้ผลเดิมคือ URL ที่คนส่ง
  * ต่อกันแล้วอ่านออก และฝั่ง API ก็ตกกลับเป็น 'all' อยู่แล้วเมื่อไม่มีค่าส่งมา
  */
-export function filterQuery({ from, to, channel, status }) {
+export function filterQuery({ from, to, channel, status, group }) {
   const p = new URLSearchParams({ from, to });
   if (channel && channel !== 'all') p.set('channel', channel);
   if (status && status !== 'all') p.set('status', status);
+  if (group && group !== 'all') p.set('group', group);
   return p.toString();
 }
 

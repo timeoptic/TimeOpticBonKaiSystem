@@ -424,6 +424,10 @@ test('รับเงินไปแล้ว คืนของย้อนห�
             'branch_id' => $branch,
             'taken_by'  => 'สมชาย',
         ]));
+        $lotId = (int) $out['cuts'][0]['lot_id'];
+        /* ต้องอ่านไว้ *ก่อน* การคืนที่จะถูกปฏิเสธ ไม่งั้นไม่มีอะไรให้เทียบ */
+        $before = lotRemaining($lotId);
+
         Settlement::settle($out['branch_issue_id'], ['amount' => 999], [Roles::OWNER], 1);
 
         throwsReason(
@@ -438,7 +442,7 @@ test('รับเงินไปแล้ว คืนของย้อนห�
         );
 
         // And the refusal must leave the stock exactly where it was.
-        eq(lotRemaining((string) $out['cuts'][0]['lot']), 0 + lotRemaining((string) $out['cuts'][0]['lot']), 'ยอดล็อตไม่เปลี่ยน');
+        eq(lotRemaining($lotId), $before, 'ยอดล็อตไม่เปลี่ยน');
         $issue = Db::one('SELECT status FROM branch_issues WHERE id = ?', [$out['branch_issue_id']]);
         eq($issue['status'], 'settled', 'สถานะต้องยังเป็นรับเงินแล้ว');
     });
@@ -1456,14 +1460,18 @@ test('ตารางบอกตรงกับสิทธิ์จริง�
         $branch = $row('เพิ่ม · แก้สาขา');
         eq($branch['allow'][Roles::ADMIN], Roles::manageBranches([Roles::ADMIN]), 'จัดการสาขา · ฝ่ายบัญชี');
 
+    /* ทุกบทบาทเบิกได้ ยกเว้นบัญชี — บทบาทแรกที่เข้าระบบมาเพื่ออ่านตัวเลข
+       ไม่ใช่มาทำให้ตัวเลขเกิด */
         $move = $row('เบิก · ตัดของเสีย');
         foreach (Roles::ALL as $r) {
-            eq($move['allow'][$r], true, "ทุกบทบาทต้องเบิกได้ — {$r}");
+            eq($move['allow'][$r], $r !== Roles::ACCOUNTING, "สิทธิ์เบิกของ {$r}");
         }
 
-        /* แถวที่ทุกบทบาทได้เหมือนกันหมดถูกทำเครื่องหมาย `always` — หน้าจอจะได้
-           วาดต่างออกไป แทนที่จะวาดเครื่องหมายถูกหกอันเรียงกันที่ไม่ได้บอกอะไร */
-        eq($row('เพิ่มสินค้าใหม่')['always'], true, 'เพิ่มสินค้าใหม่เปิดให้ทุกบทบาท');
+        /* `always` = จริงกับทุกบทบาท · เคยมีสองแถวที่เข้าเงื่อนไขนี้ (เพิ่มสินค้า
+           ใหม่ กับ เบิก) แล้วบทบาทบัญชีทำให้ไม่เหลือสักแถว — ซึ่งเป็นคำตอบที่ถูก
+           ไม่ใช่ของที่ต้องซ่อม: ตั้งแต่มีคนที่เข้าระบบมาอ่านอย่างเดียว ประโยคว่า
+           "ทุกคนในร้านทำสิ่งนี้ได้" ไม่จริงอีกต่อไป และตารางต้องพูดตามนั้น */
+        eq($row('เพิ่มสินค้าใหม่')['always'], false, 'บัญชีเพิ่มสินค้าไม่ได้ แถวนี้จึงไม่ใช่ของทุกคนแล้ว');
         eq($row('กรอก/แก้ต้นทุน')['always'], false, 'ต้นทุนไม่ใช่ของทุกคน');
     });
 });
@@ -1615,7 +1623,7 @@ function stockedForCancel(int $qty = 5): array
     ], [Roles::OWNER]);
 
     $lot = 'LOT-' . strtoupper(bin2hex(random_bytes(3)));
-    Receiving::receive([
+    $received = Receiving::receive([
         'sku'           => $sku,
         'lot_number'    => $lot,
         'quantity'      => $qty,
@@ -1623,7 +1631,7 @@ function stockedForCancel(int $qty = 5): array
         'received_date' => date('Y-m-d'),
     ], [Roles::OWNER], 1);
 
-    return ['sku' => $sku, 'lot' => $lot];
+    return ['sku' => $sku, 'lot' => $lot, 'lot_id' => (int) $received['lotId']];
 }
 
 /** สาขามาเบิกของจากสินค้าที่เพิ่งสร้าง แล้วคืน id ของรายการค้างรับ */
@@ -1661,11 +1669,11 @@ test('แก้รายการค้างรับแล้ว ยอดใ�
     withRollback(function () {
         $p = stockedForCancel();
         $id = aPendingIssue($p['sku'], 2);
-        $before = lotRemaining($p['lot']);
+        $before = lotRemaining($p['lot_id']);
 
         Settlement::edit($id, ['taken_by' => 'คนใหม่'], [Roles::OWNER], 1);
 
-        eq(lotRemaining($p['lot']), $before, 'ยอดล็อตต้องเท่าเดิม');
+        eq(lotRemaining($p['lot_id']), $before, 'ยอดล็อตต้องเท่าเดิม');
     });
 });
 
@@ -1699,15 +1707,15 @@ test('พนักงานขายแก้รายการค้างร�
 test('ยกเลิกใบค้าง แล้วของกลับเข้าล็อตเดิมครบ', function () {
     withRollback(function () {
         $p = stockedForCancel(5);
-        $full = lotRemaining($p['lot']);
+        $full = lotRemaining($p['lot_id']);
         $id = aPendingIssue($p['sku'], 2);
 
-        eq(lotRemaining($p['lot']), $full - 2, 'เบิกแล้วยอดต้องลดก่อน');
+        eq(lotRemaining($p['lot_id']), $full - 2, 'เบิกแล้วยอดต้องลดก่อน');
 
         $out = Settlement::cancel($id, ['note' => 'สาขาเอาของมาคืน'], [Roles::OWNER], 1);
 
         eq($out['status'], 'cancelled', 'สถานะต้องเป็นยกเลิก');
-        eq(lotRemaining($p['lot']), $full, 'ของต้องกลับเข้าล็อตเดิมครบ');
+        eq(lotRemaining($p['lot_id']), $full, 'ของต้องกลับเข้าล็อตเดิมครบ');
     });
 });
 
@@ -1760,7 +1768,7 @@ test('ยกเลิกรายการค้างรับต้องบ�
 test('ยกเลิกซ้ำไม่ได้ — ของคืนไปแล้วรอบเดียว', function () {
     withRollback(function () {
         $p = stockedForCancel(5);
-        $full = lotRemaining($p['lot']);
+        $full = lotRemaining($p['lot_id']);
         $id = aPendingIssue($p['sku'], 2);
 
         Settlement::cancel($id, ['note' => 'คืนของ'], [Roles::OWNER], 1);
@@ -1770,7 +1778,7 @@ test('ยกเลิกซ้ำไม่ได้ — ของคืนไป
             'ยกเลิกซ้ำ',
         );
 
-        eq(lotRemaining($p['lot']), $full, 'ยอดต้องไม่เกินของที่เคยรับเข้า');
+        eq(lotRemaining($p['lot_id']), $full, 'ยอดต้องไม่เกินของที่เคยรับเข้า');
     });
 });
 
@@ -1788,7 +1796,7 @@ test('สาขาเบิกเกินของที่มี ปฏิเ�
         );
         eq($e->extra['available'], 2, 'ต้องบอกด้วยว่ามีอยู่เท่าไร คนกดจะได้แก้จำนวนได้เลย');
 
-        eq(lotRemaining($p['lot']), 2, 'ของบนชั้นต้องไม่ขยับ');
+        eq(lotRemaining($p['lot_id']), 2, 'ของบนชั้นต้องไม่ขยับ');
         eq(
             (int) Db::value('SELECT COUNT(*) FROM stock_lots WHERE lot_number = ?', ['SHORT-' . $p['sku']]),
             0,

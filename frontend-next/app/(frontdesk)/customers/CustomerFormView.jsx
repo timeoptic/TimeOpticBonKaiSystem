@@ -12,8 +12,7 @@ import { api } from '../../../lib/apiClient.js';
 import { useAsync, onSubmit } from '../../../lib/hooks.js';
 import { useToast } from '../../../components/Toast.jsx';
 import { Card, Field, FormActions, FormGrid, Loading, PageHead } from '../../../components/ui.jsx';
-import { ListSelect } from '../../../components/Selects.jsx';
-import { NATIONALITIES } from '../../../lib/constants.js';
+import { ListSelect, NationalitySelect } from '../../../components/Selects.jsx';
 import { dateOnly } from '../../../lib/format.js';
 import { Icon } from '../../../components/Icon.jsx';
 import { DateField } from '../../../components/DateField.jsx';
@@ -80,7 +79,7 @@ export function CustomerFormView({ editing }) {
               <ListSelect name="sex" kind="sex" defaultValue={c.sex || ''} blank="—" />
             </Field>
             <Field label="สัญชาติ / Nationality">
-              <input name="nationality" defaultValue={c.nationality || ''} list="nat-list" />
+              <NationalitySelect name="nationality" defaultValue={c.nationality || ''} />
             </Field>
             <Field label="วันเกิด / Birth date">
               <DateField name="birth_date" defaultValue={dateOnly(c.birth_date)} />
@@ -98,10 +97,6 @@ export function CustomerFormView({ editing }) {
               <textarea name="notes" defaultValue={c.notes || ''} />
             </Field>
           </FormGrid>
-
-          <datalist id="nat-list">
-            {NATIONALITIES.map((n) => <option key={n} value={n} />)}
-          </datalist>
 
           <FormActions>
             <button className="btn btn-lg" type="submit">

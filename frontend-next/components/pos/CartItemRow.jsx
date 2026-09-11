@@ -57,7 +57,7 @@ export function CartItemRow({ item, bad, onQty, onBump, onPrice, onMeta, onCusto
         <span className="pos-line-sum">{money(lineTotal(item))}</span>
       </div>
 
-      {/* ช่องกรอกเพิ่มตามชนิดสินค้า — นิยามมาจาก products.attributes.pos_fields
+      {/* ช่องกรอกเพิ่มตามชนิดสินค้า — นิยามมาจาก pos_items.pos_fields
           ผูกกับแถวนี้แถวเดียว ไม่ใช่ช่องกลางของทั้งใบ */}
       {(item.pos_fields || []).length > 0 && (
         <div className="pos-meta">

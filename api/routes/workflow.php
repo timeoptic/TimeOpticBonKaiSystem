@@ -15,7 +15,7 @@ POST('/api/centerings', upsertFactory([
     'status' => 'centering',
     'cols'   => ['order_id', 'frame_product_id', 'r_pd', 'l_pd', 'pd_total', 'r_height', 'l_height',
         'r_seg_height', 'l_seg_height', 'vertex_distance', 'pantoscopic_tilt', 'wrap_angle',
-        'center_point_note', 'other_params', 'measured_at',
+        'center_point_note', 'other_params', 'measured_at', 'corridor',
         'performed_by', 'photo_taken_by', 'recorded_by', 'notes'],
     'intCols' => ['order_id', 'frame_product_id', 'performed_by', 'photo_taken_by', 'recorded_by'],
 ]));

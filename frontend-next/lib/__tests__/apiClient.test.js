@@ -53,3 +53,19 @@ test('request: throws with the server error message on a non-ok response', async
   global.fetch = async () => ({ ok: false, status: 400, json: async () => ({ error: 'กรุณากรอกชื่อ' }) });
   await assert.rejects(() => api.post('/api/employees', {}), /กรุณากรอกชื่อ/);
 });
+
+test('request: the thrown error carries status, reason and the response body', async () => {
+  /* หน้ารับเงินต้องแยก "อาจซ้ำ" (ถามยืนยันแล้วส่งใหม่ได้) ออกจากข้อผิดพลาดอื่น —
+     ข้อความภาษาไทยเปลี่ยนได้ รหัสเหตุผลคือสิ่งที่โค้ดตัดสินใจด้วย */
+  process.env.NEXT_PUBLIC_API_ORIGIN = '';
+  const { api } = await import('../apiClient.js');
+  const body = { error: 'เพิ่งบันทึกยอดนี้ไป', reason: 'possible_duplicate', duplicate: { amount: 2900, seconds_ago: 4 } };
+  global.fetch = async () => ({ ok: false, status: 409, json: async () => body });
+  await assert.rejects(() => api.post('/api/payments', {}), (e) => {
+    assert.equal(e.message, 'เพิ่งบันทึกยอดนี้ไป');
+    assert.equal(e.status, 409);
+    assert.equal(e.reason, 'possible_duplicate');
+    assert.deepEqual(e.data, body);
+    return true;
+  });
+});

@@ -85,11 +85,14 @@ GET('/api/stock', function (array $req) {
     $where = [];
     $args  = [];
 
+    /* คำค้นถูกตัดเป็นคำ ๆ แล้วต้องเจอครบทุกคำ — คนขายพิมพ์ "MC 1.6" ไม่ได้พิมพ์
+       ชื่อสินค้า · กฎทั้งหมดกับเหตุผลอยู่ที่ core/StockSearch.php */
     if ($term = str_or($q['q'] ?? null)) {
-        $p = like($term);
-        $where[] = '(s.product_name LIKE ? OR s.brand LIKE ? OR s.brand_name LIKE ?
-                     OR s.vendor_name LIKE ? OR s.sku LIKE ? OR CAST(s.id AS CHAR) = ?)';
-        array_push($args, $p, $p, $p, $p, $p, $term);
+        [$search, $searchArgs] = stockSearch($term);
+        if ($search !== '') {
+            $where[] = $search;
+            $args    = [...$args, ...$searchArgs];
+        }
     }
     if ($type = str_or($q['type'] ?? null)) {
         $where[] = 's.product_type = ?';
@@ -168,8 +171,21 @@ GET('/api/stock', function (array $req) {
         }
         unset($row);
         $rows = array_values($byProduct);
+
+        /* สินค้าที่ยังไม่เคยรับของเข้าสักล็อต ต้องเลือกได้เหมือนของที่ขายหมด — แถวพวกนี้
+           id เป็น null หน้าเว็บขอเปิดล็อตค้างส่งก่อน (POST /api/stock/backorder-lot) */
+        $limit = min(int_or($q['limit'] ?? null, 300), 2000);
+        $locations = [];
+        foreach (stockProductsWithoutLots((string) $term, $type ?: null, $limit) as $p) {
+            $name = (string) $p['product_name'];
+            if (!array_key_exists($name, $locations)) {
+                $locations[$name] = Db::get('SELECT location FROM product_locations WHERE product_name = ?', $name)['location'] ?? null;
+            }
+            $rows[] = $p + ['location' => $locations[$name], 'supplier_name' => null, 'lot_count' => 0];
+        }
+
         usort($rows, fn($a, $b) => strcmp((string) $a['product_name'], (string) $b['product_name']));
-        return array_slice($rows, 0, min(int_or($q['limit'] ?? null, 300), 2000));
+        return array_slice($rows, 0, $limit);
     }
 
     /* group=lot: one row per received batch, carrying how many are left.
@@ -199,6 +215,35 @@ GET('/api/stock', function (array $req) {
         $rows = array_values(array_filter($rows, fn($r) => $r['sold'] === $target));
     }
     return array_slice($rows, 0, min(int_or($q['limit'] ?? null, 300), 2000));
+});
+
+/**
+ * เลือกสินค้าที่ยังไม่เคยรับของเข้าในหน้าขาย — ขอให้ฝั่งคลังเปิดล็อตค้างส่ง (ยอดศูนย์)
+ * แล้วตอบเป็นแถวรูปเดียวกับ GET /api/stock?group=product ให้หน้าเว็บใช้ต่อได้เลย
+ * ออเดอร์จึงมี id ของล็อตให้ชี้ ตอนยืนยันการขายยอดติดลบลงบนล็อตใบนี้
+ */
+POST('/api/stock/backorder-lot', function (array $req) {
+    $sku = str_or($req['body']['sku'] ?? null);
+    if ($sku === '') {
+        bad('ต้องระบุ SKU ของสินค้า');
+    }
+    $r   = StockClient::post('/stock/backorder-lot', ['sku' => $sku]);
+    $row = Db::get('SELECT s.* FROM v_stock_lot s WHERE s.id = ?', (int) $r['lot_id']);
+    if (!$row) {
+        missing();
+    }
+    $left = Db::get(
+        'SELECT COALESCE(SUM(remaining_qty), 0) n FROM stock_lots WHERE product_id = ?',
+        (int) $row['product_id']
+    );
+    $row['remaining_qty'] = (int) ($left['n'] ?? 0);
+    $row['lot_count']     = 0;
+    $row['supplier_name'] = null;
+    $row['location']      = Db::get(
+        'SELECT location FROM product_locations WHERE product_name = ?',
+        $row['product_name']
+    )['location'] ?? null;
+    return $row;
 });
 
 GET('/api/stock/names', function (array $req) {

@@ -24,8 +24,9 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../../../../../lib/apiClient.js';
-import { useAsync } from '../../../../../lib/hooks.js';
+import { useAsync, useObjectUrls } from '../../../../../lib/hooks.js';
 import { useToast } from '../../../../../components/Toast.jsx';
+import { useConfirm } from '../../../../../components/Confirm.jsx';
 import { Badge, Card, CardFold, Field, FormGrid, Kv, Row, Split, Stack } from '../../../../../components/ui.jsx';
 import { EmployeeSelect } from '../../../../../components/Selects.jsx';
 import { useProcessActions } from '../../../../../components/ProcessShell.jsx';
@@ -33,6 +34,8 @@ import { useMeta } from '../../../../../contexts/MetaContext.jsx';
 import { custName, fmtDate, fmtDateTime, money, nowLocal, toStamp } from '../../../../../lib/format.js';
 import { Icon } from '../../../../../components/Icon.jsx';
 import { DateTimeField } from '../../../../../components/DateTimeField.jsx';
+import { Lightbox } from '../../../../../components/Lightbox.jsx';
+import { isPreviewable } from '../../../../../lib/lightbox.js';
 
 /* ไอคอนต่อวิธีจ่าย — ชุดเดียวกับขั้น "ชำระเงิน" ตัวเลือกจริงมาจาก meta.lists.pay_type
    ไม่ได้พิมพ์รายการไว้เอง ร้านเพิ่มช่องทางใหม่แล้วที่นี่ขึ้นตาม */
@@ -73,8 +76,9 @@ function lensBlocks(order) {
   return [{ label: 'LENS', name: order.lens_name, sub }];
 }
 
-export function DeliveryPanel({ c, reload, actorId }) {
+export function DeliveryPanel({ c, reload }) {
   const { ok, err } = useToast();
+  const confirm = useConfirm();
   const { meta } = useMeta();
   const actions = useProcessActions();
   const [ask, setAsk] = useState(false);
@@ -109,6 +113,13 @@ export function DeliveryPanel({ c, reload, actorId }) {
   /* ---- ฟอร์มรับเงิน ---------------------------------------------------- */
   const slipRef = useRef(null);
   const [slips, setSlips] = useState([]);
+  /* URL พรีวิวคงที่ต่อไฟล์ — เดิมเรียก URL.createObjectURL ตรง ๆ ใน JSX ได้ blob ใหม่ทุกครั้ง
+     ที่แผงรีเรนเดอร์ (พิมพ์จำนวนเงินหนึ่งตัวก็หนึ่งชุด) ค้างในหน่วยความจำจนปิดแท็บ */
+  const urlOfSlip = useObjectUrls(slips);
+  const [slipView, setSlipView] = useState(null);
+  const pendingSlipImages = slips
+    .filter((f) => isPreviewable(f.type) && urlOfSlip(f))
+    .map((f) => ({ key: f.name + f.size, file: f, src: urlOfSlip(f), alt: f.name, name: f.name }));
   const [method, setMethod] = useState(null);
   const [receivedBy, setReceivedBy] = useState('');
   const [paidAt, setPaidAt] = useState(nowLocal());
@@ -153,7 +164,7 @@ export function DeliveryPanel({ c, reload, actorId }) {
     if (!receivedBy) return err(new Error('กรุณาเลือกผู้รับเงิน'));
     setSaving(true);
     try {
-      const saved = await api.post('/api/payments', {
+      const payload = {
         case_id: c.id,
         order_id: o.id || null,
         kind: kindFor(paid, entered, balance),
@@ -163,7 +174,20 @@ export function DeliveryPanel({ c, reload, actorId }) {
         paid_at: toStamp(paidAt),
         notes: note.trim() || null,
         source: 'delivery',
-      });
+      };
+      /* API ตอบ "อาจซ้ำ" เมื่อยอดเท่ากันกับออเดอร์เดียวกันเพิ่งถูกบันทึกไม่กี่นาที —
+         ถามคนกดก่อน ยืนยันแล้วค่อยส่งใหม่ (เส้นเดียวกับขั้นชำระเงิน กติกาเดียวกัน) */
+      let saved;
+      try {
+        saved = await api.post('/api/payments', payload);
+      } catch (ex) {
+        if (ex.reason !== 'possible_duplicate') throw ex;
+        const again = await confirm('อาจเป็นรายการซ้ำ', ex.message, {
+          confirmText: 'ไม่ซ้ำ — บันทึกอีกรายการ', danger: true,
+        });
+        if (!again) return;
+        saved = await api.post('/api/payments', { ...payload, confirm_duplicate: true });
+      }
       /* สลิปพังไม่ควรทำให้เงินที่รับมาแล้วหายไปด้วย — แจ้งแยก แล้วปล่อยให้แนบ
          ซ้ำจากประวัติได้ ดีกว่าลบรายการทิ้งแล้วให้พนักงานกรอกใหม่ทั้งใบ */
       let slipFailed = 0;
@@ -191,8 +215,16 @@ export function DeliveryPanel({ c, reload, actorId }) {
 
   /* ---- ส่งมอบ ---------------------------------------------------------- */
   const [handedBy, setHandedBy] = useState('');
-  const [deliveredAt, setDeliveredAt] = useState(nowLocal());
   const [dNote, setDNote] = useState('');
+  /* เวลาส่งมอบคือ "ตอนนี้" เสมอ — จอโชว์เฉย ๆ แก้ไม่ได้ ของจริงจะถูกประทับตอน
+     กดยืนยัน เดินตามนาฬิกาไปเรื่อย ๆ จะได้ไม่โชว์เวลาหนึ่งแต่บันทึกอีกเวลาหนึ่ง
+     เมื่อเปิดหน้าค้างไว้ทั้งเช้า */
+  const [deliveredAt, setDeliveredAt] = useState(nowLocal());
+  useEffect(() => {
+    if (delivered) return undefined;
+    const t = setInterval(() => setDeliveredAt(nowLocal()), 15000);
+    return () => clearInterval(t);
+  }, [delivered]);
 
   const saveDelivery = async () => {
     setBusy(true);
@@ -200,9 +232,10 @@ export function DeliveryPanel({ c, reload, actorId }) {
       await api.post('/api/case-deliveries', {
         case_id: c.id,
         order_id: o.id || null,
-        delivered_at: toStamp(deliveredAt),
-        handed_over_by: handedBy || actorId() || null,
-        employee_id: handedBy || actorId() || null,
+        /* ประทับเวลาตอนกดจริง ไม่ใช่ตอนเปิดหน้า */
+        delivered_at: toStamp(nowLocal()),
+        handed_over_by: handedBy,
+        employee_id: handedBy,
         received_by_customer_name: name,
         note: dNote.trim() || null,
       });
@@ -233,6 +266,12 @@ export function DeliveryPanel({ c, reload, actorId }) {
     if (delivered) return true;
     if (blocking.length) {
       err(new Error(`ยังส่งมอบไม่ได้ — ${blocking.join(', ')}`));
+      return false;
+    }
+    /* ใครเป็นคนยื่นของให้ลูกค้าต้องมีชื่อ — เดาจากคนที่ล็อกอินอยู่ไม่ได้ เครื่องหน้าร้าน
+       เปิดค้างด้วยบัญชีเดียวทั้งวันแต่คนส่งมอบเปลี่ยนไปตามกะ */
+    if (!handedBy) {
+      err(new Error('กรุณาเลือกผู้ส่งมอบ'));
       return false;
     }
     return new Promise((resolve) => { decide.current = resolve; setAsk(true); });
@@ -467,11 +506,32 @@ export function DeliveryPanel({ c, reload, actorId }) {
                       <Row style={{ gap: 8, marginTop: 10 }}>
                         {slips.map((f) => (
                           <span className="slip-chip lg" key={f.name + f.size}>
-                            {f.type === 'application/pdf'
-                              ? <span className="slip-file"><Icon name="file" /></span>
-                              : <img src={URL.createObjectURL(f)} alt={f.name} />}
+                            {isPreviewable(f.type) && urlOfSlip(f)
+                              ? (
+                                <button
+                                  type="button"
+                                  className="slip-open"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSlipView(pendingSlipImages.findIndex((x) => x.file === f));
+                                  }}
+                                  aria-label={`ดูรูปใหญ่ ${f.name}`}
+                                  title="กดเพื่อดูรูปใหญ่"
+                                >
+                                  <img src={urlOfSlip(f)} alt={f.name} />
+                                </button>
+                              )
+                              : <span className="slip-file"><Icon name="file" /></span>}
                           </span>
                         ))}
+                        {slipView !== null && pendingSlipImages.length > 0 ? (
+                          <Lightbox
+                            items={pendingSlipImages}
+                            index={slipView}
+                            onIndex={setSlipView}
+                            onClose={() => setSlipView(null)}
+                          />
+                        ) : null}
                         <button
                           type="button"
                           className="btn btn-sm btn-light"
@@ -524,15 +584,16 @@ export function DeliveryPanel({ c, reload, actorId }) {
             ProcessShell ด้านบน จะได้ไม่มีปุ่ม "ส่งมอบเสร็จ" สองอันบนจอเดียวกัน */}
         <Card title="บันทึกการส่งมอบ">
           <FormGrid>
-            <Field label="ผู้ส่งมอบ">
+            <Field label="ผู้ส่งมอบ *">
               <EmployeeSelect
                 name="handed_over_by"
                 value={handedBy}
                 onChange={(e) => setHandedBy(e.target.value)}
+                required
               />
             </Field>
             <Field label="วันที่ส่งมอบ">
-              <DateTimeField value={deliveredAt} onChange={setDeliveredAt} />
+              <div className="dlv-stamp">{fmtDateTime(deliveredAt)}</div>
             </Field>
           </FormGrid>
           <Field label="หมายเหตุ" className="full">

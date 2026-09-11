@@ -1,7 +1,19 @@
 'use client';
 /**
- * One list per 9-process workflow stage. Each `app/<stage>/page.jsx` is a
- * thin wrapper passing its own icon/title/subtitle + `stageGroup` filter.
+ * One list per workflow stage. Each `app/<stage>/page.jsx` is a thin wrapper
+ * passing its own icon/title/subtitle + the `stage` it shows.
+ *
+ * กรองด้วย `process_stage` — ขั้นที่งานอยู่จริง ตัวเดียวกับที่กระดานงานใช้แบ่ง
+ * คอลัมน์ · ของเดิมกรองด้วย `stage_group` ซึ่งอ่านจาก cases.status ที่คนตั้งด้วย
+ * มือ สองหน้าจึงตอบคนละคำถาม: เคสที่กดปุ่ม "เริ่ม" ที่ขั้นวัดสายตาแล้วแต่ status
+ * ยังค้างอยู่ "รับลูกค้า" ขึ้นบนกระดานงาน แต่หน้า /exam ขึ้น "ไม่มีเคสในขั้นนี้"
+ * (ทั้งฐานไม่มีเคสเปิดที่ stage_group = 'exam' เลยสักใบ — หน้านั้นว่างมาตลอด)
+ *
+ * โหลดทั้งขั้นมาแล้วแบ่งหน้าในเบราว์เซอร์ แบบเดียวกับหน้าส่งมอบ — การ์ดตัวเลข
+ * ทั้งสี่ใบนับจากก้อนนี้ จึงต้องได้มาครบ ไม่ใช่แค่หน้าแรก · ขั้นที่หนาที่สุดคือ
+ * ชำระเงิน ~920 ใบ ≈ 860 KB ต่อการโหลดหนึ่งครั้ง (เปลี่ยนขั้น/ค้นหา/สลับสมุด
+ * เท่านั้น ไม่ใช่ทุกตัวอักษร — ค้นหาหน่วงไว้ 250 ms) ถ้าวันหนึ่งช้าจนรำคาญ
+ * ทางแก้คือย้ายไปเส้น paged=1&stage= ที่กระดานงานใช้ แล้วยกการนับขึ้นฝั่งเซิร์ฟเวอร์
  *
  * หน้าตาใช้ชิ้นส่วนชุดเดียวกับกระดานผลิต/ส่งมอบ (hero, การ์ดตัวเลขที่กดกรองได้,
  * แถบค้นหา, ตารางแถบสีซ้ายมือ, แถบแบ่งหน้า) เพื่อให้ทั้ง 5 ขั้นหน้าตาเหมือนกันหมด
@@ -37,7 +49,7 @@ const VIEWS = {
   stale: { label: 'ค้างเกิน 7 วัน', icon: 'clock', kind: 'danger', desc: 'เปิดเคสมานานแล้วยังไม่ขยับ', test: (r) => Number(r.age_days) > 7 },
 };
 
-export function ProcessCaseList({ stageGroup, icon, title, subtitle }) {
+export function ProcessCaseList({ stage, icon, title, subtitle }) {
   const router = useRouter();
   const [term, setTerm] = useState('');
   const [view, setView] = useState('');
@@ -48,9 +60,9 @@ export function ProcessCaseList({ stageGroup, icon, title, subtitle }) {
 
   const { data, loading, error } = useAsync(
     () => api.get('/api/cases', {
-      stage_group: stageGroup, open: 1, limit: 300, client, q: q.trim(),
+      process_stage: stage, open: 1, limit: 5000, client, q: q.trim(),
     }),
-    [stageGroup, client, q],
+    [stage, client, q],
   );
 
   const all = useMemo(() => data || [], [data]);
@@ -59,7 +71,7 @@ export function ProcessCaseList({ stageGroup, icon, title, subtitle }) {
     [all, view],
   );
 
-  useEffect(() => { setPage(1); }, [q, view, client, perPage, stageGroup]);
+  useEffect(() => { setPage(1); }, [q, view, client, perPage, stage]);
 
   const hasItems = all.some((r) => r.frame_name || r.lens_name);
   const hasMoney = all.some((r) => r.order_id);

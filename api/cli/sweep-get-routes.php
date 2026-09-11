@@ -52,7 +52,10 @@ $ids = [
     'booking'    => firstId('SELECT id FROM bookings ORDER BY id DESC LIMIT 1'),
     'prescript'  => firstId('SELECT id FROM prescriptions ORDER BY id DESC LIMIT 1'),
     'stock'      => firstId('SELECT id FROM stock_lots ORDER BY id DESC LIMIT 1'),
-    'upload'     => firstId('SELECT id FROM uploads ORDER BY id DESC LIMIT 1'),
+    /* ตารางชื่อ case_photos ไม่ใช่ uploads — เดิมถามหาตารางที่ไม่มีอยู่จริง
+       `firstId()` กลืน exception แล้วคืน null เส้น /api/uploads/:id จึงขึ้นว่า
+       "ข้าม เพราะไม่มีข้อมูลจริงให้ใส่" ทุกรอบ ทั้งที่ในฐานมีรูปอยู่ */
+    'upload'     => firstId('SELECT id FROM case_photos ORDER BY id DESC LIMIT 1'),
     'product'    => firstId('SELECT id FROM products ORDER BY id DESC LIMIT 1'),
     'sku'        => firstId('SELECT sku FROM products WHERE sku IS NOT NULL ORDER BY id DESC LIMIT 1'),
 ];

@@ -63,6 +63,17 @@ export default function ChangePasswordPage() {
     }
   }
 
+  /* ทางออกของคนที่เข้ามาผิดบัญชี หรือยังไม่พร้อมตั้งรหัสตอนนี้ — ต้องออกจากระบบก่อน
+     ลิงก์ไป /login/ เฉย ๆ หน้านั้นเห็น session ค้างแล้วพาวนกลับมาที่นี่อีก
+     (เส้น logout เปิดให้บัญชีที่ติดธงเปลี่ยนรหัสอยู่แล้ว — requirePasswordChange ใน api/index.php) */
+  async function backToLogin() {
+    try {
+      await api.post('/api/auth/logout', {});
+    } finally {
+      location.assign('/login/');
+    }
+  }
+
   if (!actor) return null;
 
   return (
@@ -117,6 +128,12 @@ export default function ChangePasswordPage() {
           </Stack>
         </form>
       </Card>
+
+      <p style={{ textAlign: 'center' }}>
+        <button type="button" className="btn" onClick={backToLogin} disabled={busy}>
+          กลับไปหน้าเข้าสู่ระบบ
+        </button>
+      </p>
     </div>
   );
 }

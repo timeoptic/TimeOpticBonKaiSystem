@@ -29,6 +29,7 @@ function reportMeta(array $r): array
         'to'      => $r['to'],
         'channel' => $r['channel'],
         'status'  => $r['status'],
+        'group'   => $r['group'],
         /* ขอบเขตของข้อมูลที่ร้านมีจริง — หน้าจอที่ว่างใช้บอกว่าทำไมถึงว่าง
            และเสนอช่วงที่มีข้อมูลให้กดได้ แทนที่จะขึ้น ฿0 เฉย ๆ */
         'bounds'  => SalesReport::bounds($r['channel']),
@@ -47,8 +48,8 @@ GET('/api/reports/overview', function (array $req) {
     $r  = SalesReport::range($req['query']);
     $ch = $r['channel'];
 
-    $main = SalesReport::wantsMain($ch) ? SalesReport::mainBills($r['from'], $r['to'], $r['status']) : [];
-    $pos  = SalesReport::wantsPos($ch)  ? SalesReport::posBills($r['from'], $r['to'], $r['status'])  : [];
+    $main = SalesReport::wantsMain($ch) ? SalesReport::mainBills($r['from'], $r['to'], $r['status'], $r['group']) : [];
+    $pos  = SalesReport::wantsPos($ch)  ? SalesReport::posBills($r['from'], $r['to'], $r['status'], $r['group'])  : [];
 
     $mt  = SalesReport::totals($main);
     $pt  = SalesReport::totals($pos);
@@ -64,7 +65,7 @@ GET('/api/reports/overview', function (array $req) {
             'customers'            => $cust['known'],
             'walk_in'              => $cust['walk_in'],
             'balance'              => $all['balance'],
-            'outstanding_all_time' => SalesReport::outstandingAllTime($ch),
+            'outstanding_all_time' => SalesReport::outstandingAllTime($ch, $r['group']),
             'avg_bill'             => $all['avg'],
             'paid'                 => $all['paid'],
         ],
@@ -113,7 +114,7 @@ GET('/api/reports/main-process', function (array $req) {
             'by_lens' => [], 'by_employee' => [], 'daily' => [], 'profit' => null];
     }
 
-    $bills  = SalesReport::mainBills($r['from'], $r['to'], $r['status']);
+    $bills  = SalesReport::mainBills($r['from'], $r['to'], $r['status'], $r['group']);
     $labels = SalesReport::lensTypeLabels();
 
     $profit    = 0.0;
@@ -174,7 +175,8 @@ GET('/api/reports/main-process', function (array $req) {
  */
 GET('/api/reports/pos', function (array $req) {
     $r = SalesReport::range($req['query']);
-    if (!SalesReport::wantsPos($r['channel'])) {
+    /* ขายหน้าร้านไม่มีประเภทลูกค้า — เลือก SightFirst แล้วหน้านี้ว่างเหมือนตอนกรองช่องทางออก */
+    if (!SalesReport::wantsPos($r['channel']) || !SalesReport::groupHasPos($r['group'])) {
         return reportMeta($r) + ['kpi' => SalesReport::totals([]), 'bills' => [],
             'by_category' => [], 'daily' => [], 'voided' => ['bills' => 0, 'amount' => 0.0]];
     }
@@ -227,7 +229,7 @@ GET('/api/reports/pos', function (array $req) {
  */
 GET('/api/reports/payments', function (array $req) {
     $r        = SalesReport::range($req['query']);
-    $receipts = SalesReport::receipts($r['from'], $r['to'], $r['channel']);
+    $receipts = SalesReport::receipts($r['from'], $r['to'], $r['channel'], $r['group']);
 
     $byMethod  = [];
     $byChannel = ['main' => 0.0, 'pos' => 0.0];
@@ -251,8 +253,8 @@ GET('/api/reports/payments', function (array $req) {
     usort($methods, fn($a, $b) => $b['amount'] <=> $a['amount']);
 
     /* บิลที่ผ่อนอยู่ — จ่ายมาแล้วบางส่วน ยังไม่ครบ นับจากบิลที่เปิดในช่วงนี้ */
-    $main = SalesReport::wantsMain($r['channel']) ? SalesReport::mainBills($r['from'], $r['to'], $r['status']) : [];
-    $pos  = SalesReport::wantsPos($r['channel'])  ? SalesReport::posBills($r['from'], $r['to'], $r['status'])  : [];
+    $main = SalesReport::wantsMain($r['channel']) ? SalesReport::mainBills($r['from'], $r['to'], $r['status'], $r['group']) : [];
+    $pos  = SalesReport::wantsPos($r['channel'])  ? SalesReport::posBills($r['from'], $r['to'], $r['status'], $r['group'])  : [];
     $inst = ['bills' => 0, 'balance' => 0.0, 'paid' => 0.0];
     foreach (array_merge($main, $pos) as $b) {
         if ((float) $b['paid'] > 0.001 && (float) $b['balance'] > 0.001) {
@@ -295,8 +297,8 @@ GET('/api/reports/payments', function (array $req) {
 GET('/api/reports/profit', function (array $req) {
     $r = SalesReport::range($req['query']);
 
-    $main    = SalesReport::wantsMain($r['channel']) ? SalesReport::mainBills($r['from'], $r['to'], $r['status']) : [];
-    $posRows = SalesReport::wantsPos($r['channel'])  ? SalesReport::posBills($r['from'], $r['to'], $r['status'])  : [];
+    $main    = SalesReport::wantsMain($r['channel']) ? SalesReport::mainBills($r['from'], $r['to'], $r['status'], $r['group']) : [];
+    $posRows = SalesReport::wantsPos($r['channel'])  ? SalesReport::posBills($r['from'], $r['to'], $r['status'], $r['group'])  : [];
 
     /* `revenue` คือยอดขายทั้งหมด · `costed_revenue` คือยอดขายเฉพาะใบที่รู้ต้นทุน
        — อัตรากำไรต้องหารด้วยตัวหลัง ไม่ใช่ตัวแรก · หารด้วยยอดรวมทั้งก้อนแปลว่า
@@ -377,8 +379,8 @@ GET('/api/reports/profit', function (array $req) {
 GET('/api/reports/employees', function (array $req) {
     $r = SalesReport::range($req['query']);
 
-    $main = SalesReport::wantsMain($r['channel']) ? SalesReport::mainBills($r['from'], $r['to'], $r['status']) : [];
-    $pos  = SalesReport::wantsPos($r['channel'])  ? SalesReport::posBills($r['from'], $r['to'], $r['status'])  : [];
+    $main = SalesReport::wantsMain($r['channel']) ? SalesReport::mainBills($r['from'], $r['to'], $r['status'], $r['group']) : [];
+    $pos  = SalesReport::wantsPos($r['channel'])  ? SalesReport::posBills($r['from'], $r['to'], $r['status'], $r['group'])  : [];
 
     $blank = 'ไม่ระบุพนักงาน';
     $rows  = [];
@@ -462,7 +464,7 @@ GET('/api/reports/employees', function (array $req) {
  */
 GET('/api/reports/channels', function (array $req) {
     $r     = SalesReport::range($req['query']);
-    $cases = SalesReport::referralCases($r['from'], $r['to']);
+    $cases = SalesReport::referralCases($r['from'], $r['to'], $r['group']);
 
     /* จัดกลุ่มตาม *ป้าย* ไม่ใช่ตามโค้ด — โค้ดเก่ากับโค้ดใหม่ของช่องทางเดียวกัน
        จึงมารวมเป็นแท่งเดียว (ดู REFERRAL_LABELS) */
@@ -580,6 +582,12 @@ GET('/api/reports/channels', function (array $req) {
         $byBooking = [];
     }
 
+    /* คิวจองยังไม่มีเคส จึงไม่มีประเภทลูกค้าให้แยก — กรองประเภทลูกค้าอยู่ ไม่แสดง
+       ดีกว่าแสดงคิวทั้งร้านใต้หัวข้อ "SightFirst" แล้วถูกอ่านว่าเป็นของกลุ่มนั้น */
+    if ($r['group'] !== 'all') {
+        $byBooking = [];
+    }
+
     $top = $byReferral[0] ?? null;
 
     return reportMeta($r) + [
@@ -619,8 +627,8 @@ GET('/api/reports/channels', function (array $req) {
  */
 GET('/api/reports/export.xlsx', function (array $req) {
     $r     = SalesReport::range($req['query']);
-    $bytes = SalesExport::workbook($r['from'], $r['to'], $r['channel'], $r['status'])->toBytes();
-    $name  = SalesExport::fileName($r['from'], $r['to']);
+    $bytes = SalesExport::workbook($r['from'], $r['to'], $r['channel'], $r['status'], $r['group'])->toBytes();
+    $name  = SalesExport::fileName($r['from'], $r['to'], $r['group']);
 
     /* ชื่อไฟล์ภาษาไทยต้องส่งเป็น filename* ตาม RFC 5987 · filename= ธรรมดาที่มี
        ไบต์นอก ASCII เบราว์เซอร์แต่ละตัวเดาการเข้ารหัสคนละแบบ บางตัวได้ชื่อเป็น

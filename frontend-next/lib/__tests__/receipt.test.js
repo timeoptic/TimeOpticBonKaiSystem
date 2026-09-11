@@ -62,10 +62,28 @@ test('orderReceipt: แจกแจงราคากรอบและเลน
   const priced = r.lines.filter((l) => typeof l.amount === 'number');
   assert.deepEqual(priced.map((l) => [l.desc, l.qty, l.unit, l.amount]), [
     ['Frame : Ray-Ban RB2140', 1, 3900, 3900],
-    ['Lens : Hoya Nulux', 2, 2550, 5100],
+    ['Lens', 1, 5100, 5100],
   ]);
   assert.equal(linesTotal(r.lines), 9000);
   assert.equal(r.total, 9000);
+});
+
+/* ค่าเลนส์อยู่ที่บรรทัดแม่บรรทัดเดียว สองข้างที่ห้อยอยู่ใต้มันเป็นแค่ชื่อรุ่น
+   ถ้าข้างใดข้างหนึ่งมีราคาขึ้นมาด้วย ยอดของใบจะถูกนับซ้ำทันที */
+test('orderReceipt: Lens R / Lens L ห้อยใต้บรรทัด Lens เป็นรายละเอียด ไม่มีราคาซ้ำ', () => {
+  const r = orderReceipt(ORDER);
+  const sides = r.lines.filter((l) => /^Lens [RL] :/.test(l.desc));
+  assert.deepEqual(sides.map((l) => l.desc), [
+    'Lens R : Hoya Nulux',
+    'Lens L : Hoya Nulux',
+  ]);
+  for (const l of sides) {
+    assert.equal(l.amount, null, l.desc);
+    assert.equal(l.unit, null, l.desc);
+    assert.equal(l.qty, null, l.desc);
+    /* ย่อหน้าลึกกว่าบรรทัด Lens หนึ่งขั้น — ไม่งั้นอ่านเหมือนสินค้าที่ลืมใส่ราคา */
+    assert.equal(l.indent, 2, l.desc);
+  }
 });
 
 test('orderReceipt: บรรทัดหัวแพ็กเกจไม่มีราคา — กันนับซ้ำกับกรอบ/เลนส์ที่อยู่ใต้มัน', () => {
@@ -81,11 +99,14 @@ test('orderReceipt: ทุกบรรทัดที่มีราคา ต�
   }
 });
 
-test('orderReceipt: Index ไม่มีช่องราคาในฐาน จึงพิมพ์ขีดกลาง ไม่ใช่ 0.00 ที่ชวนเข้าใจผิด', () => {
+/* Index ไม่มีช่องราคาในฐาน ราคาส่วนเพิ่มไปรวมอยู่ที่ก้อนออพชั่นแล้ว — ช่องราคาจึงเว้นว่าง
+   ไม่ใช่ 0.00 ที่ชวนเข้าใจผิด และไม่ใช่ขีดกลางที่กลายเป็นรอยเปื้อนบนตารางที่ตีเส้นอยู่แล้ว */
+test('orderReceipt: Index ไม่มีช่องราคาในฐาน ช่องราคาจึงเว้นว่าง ไม่มีทั้ง 0.00 และขีดกลาง', () => {
   const idx = orderReceipt(ORDER).lines.find((l) => l.desc.startsWith('Index'));
   assert.equal(idx.desc, 'Index : 1.60');
-  assert.equal(idx.amount, '—');
-  assert.equal(idx.unit, '—');
+  assert.equal(idx.amount, null);
+  assert.equal(idx.unit, null);
+  assert.equal(idx.qty, null);
 });
 
 test('orderReceipt: ออพชั่นเสริมขึ้นเป็นบรรทัดของตัวเองพร้อมราคา และพ่วงชื่อที่เลือกไว้', () => {
@@ -99,19 +120,41 @@ test('orderReceipt: ออพชั่นเสริมขึ้นเป็น
   assert.equal(linesTotal(r.lines), 10200);
 });
 
-test('orderReceipt: เลนส์สองข้างคนละราคา แยกเป็นสองบรรทัด จำนวนข้างละ 1', () => {
+/* สองข้างคนละรุ่นคนละราคาก็ยังเป็นบรรทัดเดียว จำนวน 1 ราคาต่อหน่วยเท่ากับราคารวม —
+   "หนึ่งหน่วย" บนบรรทัดนี้คือค่าเลนส์ของแว่นคู่นี้ ไม่ใช่เลนส์หนึ่งชิ้น */
+test('orderReceipt: เลนส์สองข้างคนละราคา รวมเป็นบรรทัดเดียว จำนวน 1 ราคาต่อหน่วย = ราคารวม', () => {
   const r = orderReceipt({
     ...ORDER, lens_name: null,
     lens_r_name: 'Hoya Nulux', lens_l_name: 'Essilor Varilux',
     lens_od_price: '2000.00', lens_os_price: '3100.00',
   });
   const priced = r.lines.filter((l) => typeof l.amount === 'number');
-  assert.deepEqual(priced.map((l) => [l.desc, l.qty, l.amount]), [
-    ['Frame : Ray-Ban RB2140', 1, 3900],
-    ['Lens R : Hoya Nulux', 1, 2000],
-    ['Lens L : Essilor Varilux', 1, 3100],
+  assert.deepEqual(priced.map((l) => [l.desc, l.qty, l.unit, l.amount]), [
+    ['Frame : Ray-Ban RB2140', 1, 3900, 3900],
+    ['Lens', 1, 5100, 5100],
   ]);
+  assert.deepEqual(
+    r.lines.filter((l) => /^Lens [RL] :/.test(l.desc)).map((l) => l.desc),
+    ['Lens R : Hoya Nulux', 'Lens L : Essilor Varilux'],
+  );
   assert.equal(linesTotal(r.lines), 9000);
+});
+
+/* เลนส์ข้างเดียว — เกิดกับใบที่กรอกราคาไว้ข้างเดียวและไม่ได้กรอกชื่อรุ่น (ชื่อรุ่นชื่อเดียว
+   ถือว่าเป็นของทั้งคู่ ดู lensLabels) ห้อยข้างเดียวตามข้อมูลที่มี ส่วนบรรทัดแม่ยังเป็น
+   จำนวน 1 ราคาต่อหน่วยเท่ากับราคารวมเหมือนทุกใบ */
+test('orderReceipt: มีราคาเลนส์ข้างเดียว บรรทัด Lens ถือราคาข้างเดียว และห้อยข้างเดียว', () => {
+  const r = orderReceipt({
+    ...ORDER, lens_name: null, lens_r_name: null, lens_l_name: null,
+    lens_od_price: '2550.00', lens_os_price: '0.00', total_price: '6450.00',
+  });
+  const lens = r.lines.find((l) => l.desc === 'Lens');
+  assert.deepEqual([lens.qty, lens.unit, lens.amount], [1, 2550, 2550]);
+  assert.deepEqual(
+    r.lines.filter((l) => /^Lens [RL] :/.test(l.desc)).map((l) => l.desc),
+    ['Lens R : —'],
+  );
+  assert.equal(linesTotal(r.lines), 6450);
 });
 
 test('orderReceipt: ช่องแยกบวกไม่ถึงยอดรวม ผลต่างต้องโผล่เป็นบรรทัด ไม่ใช่หายไปเงียบ ๆ', () => {
@@ -128,8 +171,8 @@ test('orderReceipt: ใบเก่าจาก Access ที่ไม่มี�
   assert.equal(priced[0].desc, 'Progressive Glasses');
   assert.equal(priced[0].amount, 16000);
   assert.equal(linesTotal(r.lines), 16000);
-  /* กรอบ/เลนส์ยังต้องขึ้นเป็นสเปกให้อ่านได้ แค่ไม่มีราคาให้แสดง */
-  assert.equal(r.lines.find((l) => l.desc.startsWith('Frame')).amount, '—');
+  /* กรอบ/เลนส์ยังต้องขึ้นเป็นสเปกให้อ่านได้ แค่ช่องราคาเว้นว่างเพราะแยกราคาไม่ได้ */
+  assert.equal(r.lines.find((l) => l.desc.startsWith('Frame')).amount, null);
 });
 
 test('orderReceipt: ค่าสายตาไม่มีราคาและต้องไม่มีขีดกลาง — ไม่ใช่สินค้า', () => {
@@ -235,4 +278,29 @@ test('saleReceipt: ใบที่ไม่มีสินค้าเลยก�
 test('saleReceipt: เลขที่ใบมาจากชุดเลขใบเสร็จ ไม่ใช่ pos_no', () => {
   assert.equal(saleReceipt(SALE, 'BillP-2026-09-00007').billNo, 'BillP-2026-09-00007');
   assert.equal(saleReceipt(SALE).billNo, '');
+});
+
+/* ────────────────────────────────────────────────────────────────────────────
+   ใบนี้เป็นของลูกค้าคนไหน
+
+   ชื่อบนบล็อกลูกค้าของใบเสร็จไม่ใช่ชื่อคนที่มาตัดแว่นเสมอไป — เคสเป็นของพ่อ
+   แต่ลูกเป็นคนออกบิล หน้าใบเสร็จจึงต้องรู้ id ของ "ลูกค้าในเคส" เพื่อไปหยิบนาม
+   ที่เคยออกใบให้คนนี้มาเติมให้ (GET /api/bill-parties?customer_id=)
+
+   ค่านี้มากับ payload อยู่แล้วทั้งสองทาง (custom_orders.customer_id · pos_sales.customer_id)
+   แต่เดิม orderReceipt/saleReceipt ตัดทิ้งไปเพราะใบพิมพ์ไม่ได้ใช้
+   ──────────────────────────────────────────────────────────────────────────── */
+
+test('orderReceipt: พา customer_id ของออเดอร์ติดมากับใบ', () => {
+  assert.equal(orderReceipt({ ...ORDER, customer_id: 7 }).customerId, 7);
+});
+
+test('saleReceipt: พา customer_id ของใบขายติดมากับใบ', () => {
+  assert.equal(saleReceipt({ ...SALE, customer_id: 12 }).customerId, 12);
+});
+
+/* ขายหน้าร้านให้คนเดินเข้ามาโดยไม่ได้เปิดใบลูกค้า — ต้องเป็น null ไม่ใช่ 0 หรือ
+   undefined เพราะหน้าใบเสร็จใช้ค่านี้ตัดสินว่าจะยิงถามนามที่เคยใช้หรือไม่ */
+test('saleReceipt: ใบขายที่ไม่ได้ผูกลูกค้า customerId เป็น null', () => {
+  assert.equal(saleReceipt(SALE).customerId, null);
 });

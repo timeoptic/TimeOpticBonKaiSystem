@@ -2562,6 +2562,21 @@ kbd {
 
 .combo__input:focus { cursor: text; }
 
+/* ดรอปดาวน์ที่เปิดด้วยนิ้วถูกตั้ง readonly ไว้ชั่วคราวเพื่อกันแป้นพิมพ์ไม่ให้เด้ง
+   ขึ้นมาทับรายการ (ดู Select.tsx) — มันไม่ใช่ช่อง "แตะไม่ได้" ตามกฎ
+   .input[readonly] ข้างบน แต่คือรายการที่กำลังเปิดอยู่ตรงหน้า จึงต้องหน้าตา
+   เหมือนช่องปกติทุกประการ ไม่ใช่สีเทาแบบช่องที่ถูกล็อก */
+.combo__input[readonly] {
+  background: var(--color-field);
+  border-color: transparent;
+  color: var(--color-ink);
+  cursor: pointer;
+}
+.combo__input[readonly]:focus {
+  background: var(--color-card);
+  border-color: var(--brand-1);
+}
+
 /* While the list is open the field is empty and the placeholder is standing in
    for the current choice — so it reads as the value it is, not as grey hint
    text. Closed with nothing chosen, it goes back to being a hint. */
@@ -2576,6 +2591,24 @@ kbd {
   font-size: var(--text-xs);
   color: var(--color-muted);
   pointer-events: none;
+}
+
+/* ทางกลับไปพิมพ์ค้นหา สำหรับคนที่เปิดรายการด้วยนิ้ว — ปุ่มนี้คือที่เดียวที่เรียก
+   แป้นพิมพ์ขึ้นมาได้ จึงต้องกดโดนด้วยนิ้วโป้ง ไม่ใช่ลูกศรตกแต่งขนาดสิบพิกเซล */
+.combo__caret--type {
+  pointer-events: auto;
+  display: grid;
+  place-items: center;
+  inline-size: 40px;
+  block-size: 40px;
+  inset-inline-end: 3px;
+  padding: 0;
+  border: 0;
+  background: none;
+  border-radius: var(--radius-input);
+  font-size: var(--text-md);
+  color: var(--color-ink-2);
+  cursor: pointer;
 }
 
 .combo__list {

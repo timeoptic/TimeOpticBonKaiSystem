@@ -75,14 +75,20 @@ POST('/api/customers/duplicates', function (array $req) {
 
     /* ดึงมาเฉพาะแถวที่มีโอกาสซ้ำ แล้วค่อยหาเหตุผลใน PHP — ตารางลูกค้าของร้านเดียว
        ไม่ได้ใหญ่ แต่ก็ไม่ควรกวาดทั้งตารางทุกครั้งที่มีคนกดบันทึก */
+    /* ด่าน "ช่องนี้กรอกมาไหม" ใช้ CHAR_LENGTH(?) > 0 ไม่ใช่ ? <> ''
+       การเทียบพารามิเตอร์กับลิเทอรัลว่างเป็นการเทียบของสองอย่างที่ coercibility
+       เท่ากัน ถ้า collation ของทั้งสองไม่ตรง MariaDB ปฏิเสธทั้งคำสั่งด้วย 1267
+       (บนโฮสต์ พารามิเตอร์ได้ utf8mb4_general_ci ส่วนลิเทอรัลได้ unicode_ci —
+       ดูคำอธิบายเต็มที่ /api/bookings/calendar) · ความยาวเป็นตัวเลข ไม่มี collation
+       ส่วนบรรทัด `... = ?` ที่เหลือเทียบกับคอลัมน์ซึ่งเป็น IMPLICIT จึงชนะและไม่พัง */
     $rows = Db::all(
         "SELECT * FROM customers
-          WHERE (? <> '' AND REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+          WHERE (CHAR_LENGTH(?) > 0 AND REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
                    COALESCE(phone,''),' ',''),'-',''),'(',''),')',''),'+','') = ?)
-             OR (? <> '' AND LOWER(TRIM(COALESCE(email,''))) = ?)
-             OR (? <> '' AND LOWER(TRIM(COALESCE(line_id,''))) = ?)
-             OR (? <> '' AND LOWER(TRIM(COALESCE(first_name,''))) = ?)
-             OR (? <> '' AND LOWER(TRIM(COALESCE(last_name,''))) = ?)
+             OR (CHAR_LENGTH(?) > 0 AND LOWER(TRIM(COALESCE(email,''))) = ?)
+             OR (CHAR_LENGTH(?) > 0 AND LOWER(TRIM(COALESCE(line_id,''))) = ?)
+             OR (CHAR_LENGTH(?) > 0 AND LOWER(TRIM(COALESCE(first_name,''))) = ?)
+             OR (CHAR_LENGTH(?) > 0 AND LOWER(TRIM(COALESCE(last_name,''))) = ?)
           ORDER BY id DESC LIMIT 50",
         $phone, $phone,
         $email, $email,

@@ -1,14 +1,14 @@
 import ExcelJS from "exceljs";
 
 /**
- * แดชบอร์ด ลงเป็นไฟล์ Excel จริง — ชีตละเรื่อง มีแถวรวม และใส่กราฟได้
+ * แดชบอร์ด ลงเป็นไฟล์ Excel จริง — ชีตละเรื่อง มีแถวรวม
  *
  * เคยเป็น CSV ซึ่งเปิดได้แต่มีชีตเดียว ไม่มีสี ไม่มีรูป และตัวเลขที่จัดรูปแบบ
  * แล้วรวมไม่ได้ · `.xlsx` คือไฟล์ zip ที่ข้างในเป็น XML หลายใบ เขียนเองไม่ไหว
  * จึงพึ่ง ExcelJS — เป็น dependency ตัวเดียวที่โปรเจกต์นี้ยอมรับเพื่อเรื่องนี้
  *
  * สิ่งที่ไฟล์นี้รับผิดชอบคือ "รูปร่างของสมุดงาน" เท่านั้น — ตัวเลขมาจากหน้าจอ
- * และกราฟมาจาก `chartimage.ts` · ที่นี่ไม่คำนวณอะไรเองสักตัว ยกเว้นแถวรวม
+ * รูปกราฟมาจาก `chartimage.ts` · ที่นี่ไม่คำนวณอะไรเองสักตัว ยกเว้นแถวรวม
  * ซึ่งบวกจากแถวที่เพิ่งเขียนลงไป จึงตรงกับสิ่งที่อยู่บนชีตเสมอ
  */
 
@@ -32,8 +32,19 @@ export type Sheet = {
   note?: string;
   columns: Column[];
   rows: Cell[][];
-  /** ภาพกราฟของชีตนี้ (data URL) — วางไว้ใต้ตาราง */
-  chart?: string;
+  /**
+   * ภาพกราฟของชีตนี้ (data URL) — วางเรียงลงมาใต้ตาราง
+   *
+   * เป็นรายการ ไม่ใช่ใบเดียว เพราะตัวเลขชุดเดียวกันตอบได้สองคำถาม: แท่งอันดับ
+   * บอกว่าใครมากที่สุด วงกลมบอกว่าใครกินไปกี่เปอร์เซ็นต์ของทั้งก้อน · ชีตที่
+   * เป็นอนุกรมเวลา (รายวัน) มีใบเดียวตามเดิม — สัดส่วนของ "วันที่ 3" ไม่ใช่
+   * คำถามที่ใครถาม
+   *
+   * เป็นรูป ไม่ใช่กราฟที่ Excel แก้ได้ และตั้งใจให้เป็นแบบนั้น — กราฟที่ Excel
+   * แก้ได้ต้องมีช่วงเซลล์ของตัวเองให้ชี้ ซึ่งแปลว่าต้องเขียนตารางสรุปย่อ ๆ ลง
+   * ไปใต้ตารางจริงอีกชุด · ตารางชุดนั้นคือสิ่งที่ถูกถอดออกไปแล้ว
+   */
+  charts?: string[];
   /**
    * คอลัมน์ที่ใช้จัดกลุ่ม — ทุกครั้งที่ค่าเปลี่ยน จะมีแถวรวมย่อยคั่น
    *
@@ -49,34 +60,15 @@ const TOTAL_FILL = "FFEFF5F1";
 /* ยอดรวมย่อยจางกว่ายอดรวมท้ายตาราง — สองอย่างนี้คนละน้ำหนัก และถ้าสีเท่ากัน
    ตารางสี่สาขาจะอ่านเหมือนมียอดรวมท้ายตารางห้าอัน */
 const SUB_FILL = "FFF7FAF8";
-const BAR_INK = "FF1F7A4D";
 
-/**
- * ผู้ใช้เลือกได้ว่าจะเอาอะไรลงไฟล์
- *
- * "กราฟอย่างเดียว" มีเพราะไฟล์ที่เอาไปแปะในสไลด์หรือส่งให้เจ้าของร้านดู ไม่มี
- * ใครอ่านตารางสามร้อยแถว · "ข้อมูลอย่างเดียว" มีเพราะไฟล์ที่เอาไป pivot ต่อ
- * รูปในชีตเป็นสิ่งกีดขวาง
- */
-export type Mode = "data" | "both" | "charts";
-
-/**
- * เขียนสมุดงานแล้วให้เบราว์เซอร์เซฟ
- *
- * ชีต "กราฟ" รวมกราฟทุกใบไว้ใบเดียวตอนเลือกโหมดกราฟอย่างเดียว — สมุดที่มีสิบ
- * ชีตซึ่งแต่ละชีตมีรูปเดียวคือสมุดที่ต้องคลิกสิบครั้งเพื่อดูสิ่งที่ควรเห็นพร้อมกัน
- */
-export async function download(name: string, title: string, sheets: Sheet[], mode: Mode): Promise<void> {
+/** เขียนสมุดงานแล้วให้เบราว์เซอร์เซฟ */
+export async function download(name: string, title: string, sheets: Sheet[]): Promise<void> {
   const wb = new ExcelJS.Workbook();
   wb.creator = "TimeOptic";
   wb.created = new Date();
 
-  if (mode === "charts") {
-    writeChartSheet(wb, title, sheets);
-  } else {
-    for (const sheet of sheets) {
-      writeSheet(wb, title, sheet, mode === "both");
-    }
+  for (const sheet of sheets) {
+    writeSheet(wb, title, sheet);
   }
 
   const buffer = await wb.xlsx.writeBuffer();
@@ -95,9 +87,10 @@ export async function download(name: string, title: string, sheets: Sheet[], mod
   URL.revokeObjectURL(url);
 }
 
-function writeSheet(wb: ExcelJS.Workbook, title: string, sheet: Sheet, withChart: boolean): void {
+function writeSheet(wb: ExcelJS.Workbook, title: string, sheet: Sheet): void {
   // ชื่อชีตของ Excel ห้ามเกิน 31 ตัวและห้ามมี : \ / ? * [ ]
-  const ws = wb.addWorksheet(sheet.name.replace(/[:\\/?*[\]]/g, " ").slice(0, 31));
+  const name = sheet.name.replace(/[:\\/?*[\]]/g, " ").slice(0, 31);
+  const ws = wb.addWorksheet(name);
 
   ws.mergeCells(1, 1, 1, Math.max(1, sheet.columns.length));
   const heading = ws.getCell(1, 1);
@@ -225,43 +218,34 @@ function writeSheet(wb: ExcelJS.Workbook, title: string, sheet: Sheet, withChart
     };
   }
 
-  if (withChart) {
-    // `write` เดินผ่านแถวรวมย่อยกับแถวรวมท้ายตารางมาแล้ว จึงเป็นบรรทัดว่างจริง
-    // บรรทัดแรกใต้ตาราง ต่างจาก lastDataRow ซึ่งเป็นแถวข้อมูลแถวสุดท้าย
-    const after = writeBars(ws, sheet, write + 2);
-    if (sheet.chart) placeChart(wb, ws, sheet.chart, after + 1);
+  // `write` เดินผ่านแถวรวมย่อยกับแถวรวมท้ายตารางมาแล้ว จึงเป็นบรรทัดว่างจริง
+  // บรรทัดแรกใต้ตาราง ต่างจาก lastDataRow ซึ่งเป็นแถวข้อมูลแถวสุดท้าย
+  let after = write + 2;
+  for (const chart of sheet.charts ?? []) {
+    after = placeChart(wb, ws, chart, after) + 1;
   }
 }
 
-/** ชีตเดียวที่มีแต่กราฟ เรียงลงมา สำหรับคนที่ขอแค่ภาพ */
-function writeChartSheet(wb: ExcelJS.Workbook, title: string, sheets: Sheet[]): void {
-  const ws = wb.addWorksheet("กราฟ");
-  ws.getCell(1, 1).value = title;
-  ws.getCell(1, 1).font = { bold: true, size: 13 };
-
-  let row = 3;
-  for (const sheet of sheets) {
-    if (!sheet.chart) continue;
-    const label = ws.getCell(row, 1);
-    label.value = sheet.name;
-    label.font = { bold: true, size: 12 };
-    row = writeBars(ws, sheet, row + 1);
-    placeChart(wb, ws, sheet.chart, row);
-    row += 20;
-  }
-
-  if (row === 3) {
-    ws.getCell(3, 1).value = "ช่วงที่เลือกยังไม่มีข้อมูลให้วาดกราฟ";
-  }
-}
-
-/** วางภาพหนึ่งใบลงชีต ที่แถวที่บอก กว้างครึ่งหน้ากระดาษพอดี */
-function placeChart(wb: ExcelJS.Workbook, ws: ExcelJS.Worksheet, dataUrl: string, row: number): void {
+/**
+ * วางภาพหนึ่งใบลงชีต ที่แถวที่บอก กว้างครึ่งหน้ากระดาษพอดี
+ *
+ * คืนแถวสุดท้ายที่ภาพกินไปถึง เพื่อให้ภาพใบถัดไปเริ่มต่อจากนั้น ไม่ใช่ทับกัน ·
+ * ภาพลอยอยู่เหนือเซลล์ Excel จึงไม่รู้เองว่ามันสูงกี่แถว — สูง 20px ต่อแถวเป็น
+ * ค่าปริยายของ Excel และเผื่อไว้อีกสองแถวเป็นช่องไฟ
+ */
+function placeChart(
+  wb: ExcelJS.Workbook,
+  ws: ExcelJS.Worksheet,
+  dataUrl: string,
+  row: number,
+): number {
+  const height = dataUrl.length > 0 ? heightOf(dataUrl) : 260;
   const id = wb.addImage({ base64: dataUrl, extension: "png" });
   ws.addImage(id, {
     tl: { col: 0, row: row - 1 },
-    ext: { width: 720, height: dataUrl.length > 0 ? heightOf(dataUrl) : 260 },
+    ext: { width: 720, height },
   });
+  return row + Math.ceil(height / 20) + 2;
 }
 
 /**
@@ -277,53 +261,4 @@ function heightOf(dataUrl: string): number {
   const h = (bin.charCodeAt(20) << 24) | (bin.charCodeAt(21) << 16) | (bin.charCodeAt(22) << 8) | bin.charCodeAt(23);
   if (w <= 0 || h <= 0) return 260;
   return Math.round((720 * h) / w);
-}
-
-/**
- * กราฟที่วาดด้วยเซลล์ ไม่ใช่รูป
- *
- * Google Sheets ทิ้งรูปที่ฝังมากับ .xlsx ตอนนำเข้า — ไฟล์ที่มีแต่รูปจึงเปิดใน
- * Sheets แล้วว่างเปล่า และ "ข้อมูล" กับ "ข้อมูล + กราฟ" กลายเป็นไฟล์เดียวกัน
- * แท่งที่ทำจากตัวอักษรในเซลล์รอดทุกโปรแกรม เพราะมันคือข้อความธรรมดา
- *
- * ตัวเลขที่เอามาวาดคือคอลัมน์แรกที่ตั้งค่ารวมยอดไว้และไม่ใช่เงิน — จำนวนชิ้น
- * หรือจำนวนใบ · ถ้าชีตนั้นมีแต่คอลัมน์เงิน ก็ใช้คอลัมน์เงินคอลัมน์แรก
- */
-function writeBars(ws: ExcelJS.Worksheet, sheet: Sheet, startRow: number): number {
-  const valueAt =
-    sheet.columns.findIndex((c) => c.total && !c.money) >= 0
-      ? sheet.columns.findIndex((c) => c.total && !c.money)
-      : sheet.columns.findIndex((c) => c.total);
-
-  if (valueAt < 0 || sheet.rows.length === 0) return startRow;
-
-  const points = sheet.rows
-    .map((r) => ({ label: String(r[0] ?? "—"), value: Number(r[valueAt] ?? 0) }))
-    .filter((p) => Number.isFinite(p.value) && p.value > 0)
-    .slice(0, 20);
-
-  if (points.length === 0) return startRow;
-
-  const head = ws.getCell(startRow, 1);
-  head.value = `กราฟ · ${sheet.columns[valueAt]?.header ?? ""}`;
-  head.font = { bold: true, size: 11 };
-  const why = ws.getCell(startRow + 1, 1);
-  why.value = "วาดด้วยตัวอักษร จึงไม่หายตอนเปิดใน Google Sheets";
-  why.font = { size: 9, color: { argb: NOTE_INK } };
-
-  const top = Math.max(...points.map((p) => p.value));
-  let row = startRow + 2;
-  for (const p of points) {
-    ws.getCell(row, 1).value = p.label;
-    const bar = ws.getCell(row, 2);
-    // อย่างน้อยหนึ่งบล็อกเสมอ — ค่าที่มีอยู่จริงแต่วาดออกมาว่างคืออ่านว่าเป็นศูนย์
-    bar.value = "█".repeat(Math.max(1, Math.round((p.value / top) * 30)));
-    bar.font = { color: { argb: BAR_INK } };
-    const n = ws.getCell(row, 3);
-    n.value = p.value;
-    n.numFmt = sheet.columns[valueAt]?.money ? "#,##0.00" : "#,##0";
-    row += 1;
-  }
-
-  return row + 1;
 }

@@ -32,11 +32,20 @@ function Gate({ children }) {
 }
 
 /**
- * ยังไม่ได้ล็อกอิน = ไม่โหลดอะไรทั้งนั้น
+ * ยังไม่ได้ล็อกอิน = ไม่วาดอะไรทั้งนั้น
  *
- * อยู่นอก MetaProvider เพราะ /api/meta ก็ต้องล็อกอินเหมือนกัน ถ้าเรียงกลับกัน
- * หน้าล็อกอินจะขึ้นพร้อมข้อความ "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้" ทุกครั้ง ทั้งที่
- * เซิร์ฟเวอร์ปกติดี — แค่ยังไม่รู้ว่าใครถาม
+ * เมื่อก่อนด่านนี้อยู่ **นอก** MetaProvider เพื่อไม่ให้ /api/meta ถูกยิงก่อนรู้ว่า
+ * ใครถาม · ผลข้างเคียงคือคำขอสามทอดต้องวิ่งต่อกันเป็นแถว (`auth/me` → `meta` →
+ * ข้อมูลของหน้า) ซึ่งวัดจากเครื่องจริงแล้วกิน ~210ms จาก ~277ms ที่กว่าเนื้อหา
+ * จะขึ้นจอ ทั้งที่ HTML กับ JS เสร็จตั้งแต่ ~60ms
+ *
+ * ตอนนี้ MetaProvider ครอบด่านนี้อยู่ สองคำขอแรกจึงออกพร้อมกัน · ที่ทำได้เพราะ
+ * หน้าล็อกอินย้ายไปอยู่กลุ่ม `(gate)` ซึ่งไม่มี Providers ครอบแล้ว — ความกลัวเดิม
+ * ที่ว่า "หน้าล็อกอินจะขึ้นเชื่อมต่อเซิร์ฟเวอร์ไม่ได้" จึงไม่มีทางเกิดอีก
+ *
+ * ที่ยังเหลือคือคนที่ session หมดอายุแล้วเปิด URL ของหน้าร้านตรง ๆ จะมี /api/meta
+ * ตอบ 401 ค้างไว้ใน Network หนึ่งบรรทัดก่อนถูกเด้งไป /login/ — ไม่มีผลกับหน้าจอ
+ * เพราะ `Gate` วาดเฉพาะตอนที่มี actor แล้วเท่านั้น
  *
  * เมื่อก่อนหน้าล็อกอินขึ้นแทนที่ทั้งแอปตรงนี้ ตอนนี้ทั้งแอปมีหน้าล็อกอินใบเดียว
  * ที่ `/login/` จึงเด้งไปที่นั่นแทน · เด้งด้วย `location.assign` ไม่ใช่ router
@@ -66,11 +75,7 @@ function AuthGate({ children }) {
   if (!ready || !actor || mustChangePassword(actor) || !mayUseFrontdesk(actor)) {
     return <Loading text="กำลังตรวจสอบสิทธิ์…" />;
   }
-  return (
-    <MetaProvider>
-      <Gate>{children}</Gate>
-    </MetaProvider>
-  );
+  return <Gate>{children}</Gate>;
 }
 
 export function Providers({ children }) {
@@ -78,7 +83,9 @@ export function Providers({ children }) {
     <ToastProvider>
       <ConfirmProvider>
         <AuthProvider>
-          <AuthGate>{children}</AuthGate>
+          <MetaProvider>
+            <AuthGate>{children}</AuthGate>
+          </MetaProvider>
         </AuthProvider>
       </ConfirmProvider>
     </ToastProvider>

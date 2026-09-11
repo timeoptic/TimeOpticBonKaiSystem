@@ -43,18 +43,18 @@ $pass = 0;
 $fail = 0;
 
 /** ยอดที่หน้ารายงานบนเว็บจะโชว์ด้วยตัวกรองชุดนี้ */
-function webTotals(string $from, string $to, string $channel, string $status): array
+function webTotals(string $from, string $to, string $channel, string $status, string $group = 'all'): array
 {
-    $main = SalesReport::wantsMain($channel) ? SalesReport::mainBills($from, $to, $status) : [];
-    $pos  = SalesReport::wantsPos($channel)  ? SalesReport::posBills($from, $to, $status)  : [];
+    $main = SalesReport::wantsMain($channel) ? SalesReport::mainBills($from, $to, $status, $group) : [];
+    $pos  = SalesReport::wantsPos($channel)  ? SalesReport::posBills($from, $to, $status, $group)  : [];
     $all  = array_merge($main, $pos);
     return SalesReport::totals($all) + ['customers' => SalesReport::customers($all)['known']];
 }
 
 /** ยอดที่ไฟล์ Excel จะโชว์ด้วยตัวกรองชุดเดียวกัน */
-function fileTotals(string $from, string $to, string $channel, string $status): array
+function fileTotals(string $from, string $to, string $channel, string $status, string $group = 'all'): array
 {
-    return SalesExport::totals(SalesExport::rows($from, $to, $channel, $status));
+    return SalesExport::totals(SalesExport::rows($from, $to, $channel, $status, $group));
 }
 
 /**
@@ -78,35 +78,47 @@ $ranges = [
 echo "\nเทียบไฟล์ Excel กับหน้ารายงาน — ต้องเท่ากันทุกช่อง\n";
 echo str_repeat('-', 78) . "\n";
 
+/* ประเภทลูกค้าเทียบเฉพาะสถานะ "ทั้งหมด" — สถานะกับประเภทเป็นเงื่อนไข AND คนละคอลัมน์
+   กันอยู่แล้ว การคูณครบทุกคู่ได้แถวเพิ่มสามเท่าโดยไม่ได้ตรวจอะไรเพิ่ม */
+$combos = [];
+foreach (SalesReport::CHANNELS as $channel) {
+    foreach (SalesReport::STATUSES as $status) {
+        $combos[] = [$channel, $status, 'all'];
+    }
+    foreach (SalesReport::GROUPS as $group) {
+        if ($group !== 'all') {
+            $combos[] = [$channel, 'all', $group];
+        }
+    }
+}
+
 foreach ($ranges as $label => [$from, $to]) {
-    foreach (SalesReport::CHANNELS as $channel) {
-        foreach (SalesReport::STATUSES as $status) {
-            $web  = webTotals($from, $to, $channel, $status);
-            $file = fileTotals($from, $to, $channel, $status);
+    foreach ($combos as [$channel, $status, $group]) {
+        $web  = webTotals($from, $to, $channel, $status, $group);
+        $file = fileTotals($from, $to, $channel, $status, $group);
 
-            $diff = [];
-            foreach (['bills', 'revenue', 'paid', 'balance', 'avg', 'customers'] as $key) {
-                $a = $web[$key];
-                $b = $file[$key];
-                /* เทียบเงินด้วยความคลาดเคลื่อนหนึ่งสตางค์ ไม่ใช่ === เพราะทั้งสอง
-                   ฝั่งบวกเลขทศนิยมคนละลำดับ · ส่วนจำนวนใบต้องเท่ากันเป๊ะ */
-                $same = is_int($a) ? $a === $b : abs((float) $a - (float) $b) < 0.005;
-                if (!$same) {
-                    $diff[] = sprintf('%s: เว็บ %s ≠ ไฟล์ %s', $key, (string) $a, (string) $b);
-                }
+        $diff = [];
+        foreach (['bills', 'revenue', 'paid', 'balance', 'avg', 'customers'] as $key) {
+            $a = $web[$key];
+            $b = $file[$key];
+            /* เทียบเงินด้วยความคลาดเคลื่อนหนึ่งสตางค์ ไม่ใช่ === เพราะทั้งสอง
+               ฝั่งบวกเลขทศนิยมคนละลำดับ · ส่วนจำนวนใบต้องเท่ากันเป๊ะ */
+            $same = is_int($a) ? $a === $b : abs((float) $a - (float) $b) < 0.005;
+            if (!$same) {
+                $diff[] = sprintf('%s: เว็บ %s ≠ ไฟล์ %s', $key, (string) $a, (string) $b);
             }
+        }
 
-            $what = sprintf('%-20s %-5s %-7s', $label, $channel, $status);
-            if ($diff) {
-                $fail++;
-                echo "  FAIL $what\n";
-                foreach ($diff as $d) {
-                    echo "        $d\n";
-                }
-            } else {
-                $pass++;
-                printf("  ok   %s %6d ใบ %16s บาท\n", $what, $web['bills'], number_format($web['revenue'], 2));
+        $what = sprintf('%-20s %-5s %-7s %-10s', $label, $channel, $status, $group);
+        if ($diff) {
+            $fail++;
+            echo "  FAIL $what\n";
+            foreach ($diff as $d) {
+                echo "        $d\n";
             }
+        } else {
+            $pass++;
+            printf("  ok   %s %6d ใบ %16s บาท\n", $what, $web['bills'], number_format($web['revenue'], 2));
         }
     }
 }

@@ -847,5 +847,5 @@ function ResetDialog({ user, onClose, onDone }) {
 
 /* งานของแอดมิน — คนที่พิมพ์ URL เข้ามาตรง ๆ จะเห็นคำอธิบาย ไม่ใช่หน้าเปล่า */
 export default function UsersPage() {
-  return <AdminOnly><UsersInner /></AdminOnly>;
+  return <AdminOnly zone="system"><UsersInner /></AdminOnly>;
 }

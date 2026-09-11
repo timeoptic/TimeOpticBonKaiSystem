@@ -110,6 +110,46 @@ POST('/api/receipts', function (array $req) {
     return issueReceipt('sale', $saleId, round2((float) $s['total_amount']), int_or($actor['id'] ?? null));
 });
 
+/**
+ * PUT /api/receipts/:id/bill — บล็อกลูกค้าที่พิมพ์ลงใบนี้จริง
+ *
+ * แยกจาก POST /api/receipts เพราะเป็นคนละเหตุการณ์: เปิดหน้า = ออกเลข ·
+ * กดพิมพ์ = ตกลงว่าจะเอาชื่อชุดนี้ลงกระดาษ ใบที่เปิดดูเฉย ๆ แล้วปิดไปจึงมีเลข
+ * แต่ไม่มีบล็อกลูกค้า ซึ่งตรงกับสิ่งที่เกิดขึ้นจริง
+ *
+ * เขียนทับได้ — พิมพ์ใหม่ด้วยชื่ออื่นคือเจตนาของคนกด ไม่ใช่ความผิดพลาด
+ * ร่องรอยว่าเคยเป็นอะไรมาก่อนอยู่ที่ activity_log
+ */
+PUT('/api/receipts/:id/bill', function (array $req) {
+    $id = int_or($req['params']['id']);
+    if (!Db::get('SELECT id FROM receipts WHERE id = ?', $id)) {
+        missing('ไม่พบใบเสร็จนี้');
+    }
+
+    $body    = $req['body'];
+    $partyId = int_or($body['bill_party_id'] ?? null);
+
+    Db::run(
+        'UPDATE receipts
+            SET bill_name = ?, bill_tax_id = ?, bill_address = ?, bill_phone = ?, bill_party_id = ?
+          WHERE id = ?',
+        nul($body['bill_name'] ?? null),
+        nul($body['bill_tax_id'] ?? null),
+        nul($body['bill_address'] ?? null),
+        nul($body['bill_phone'] ?? null),
+        $partyId,
+        $id
+    );
+
+    /* "ใช้ล่าสุดเมื่อไหร่" นับจากการพิมพ์ลงใบจริง ไม่ใช่การกดบันทึกชื่อ — ลำดับใน
+       กล่องค้นจึงสะท้อนนามที่ร้านใช้อยู่จริง ไม่ใช่นามที่เพิ่งพิมพ์แก้คำผิด */
+    if ($partyId !== null) {
+        Db::run('UPDATE bill_parties SET last_used_at = NOW() WHERE id = ?', $partyId);
+    }
+
+    return Db::get('SELECT * FROM receipts WHERE id = ?', $id);
+});
+
 /** GET /api/receipts — ทะเบียนเลขใบเสร็จที่ออกไปแล้ว เรียงใหม่สุดก่อน */
 GET('/api/receipts', function (array $req) {
     $q     = $req['query'];

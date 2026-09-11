@@ -9,8 +9,10 @@
  *      (ฟอร์มเดิมของร้านเรียง Excluding → VAT 7% → Including ซึ่งอ่านได้ทางเดียว)
  *   2. ผลรวมของบรรทัดที่มีราคา ต้องเท่ากับยอดท้ายใบเสมอ ไม่งั้นใบใช้ไม่ได้
  *      ส่วนลดจึงเป็น "บรรทัดติดลบ" ไม่ใช่ตัวเลขที่หายไปเงียบๆ
- *   3. กรอบ / เลนส์ / ออพชั่น ต้องแยกราคาให้ลูกค้าเห็นทีละรายการ ห้ามยุบเป็นก้อนเดียว
+ *   3. กรอบ / เลนส์ / ออพชั่น ต้องแยกราคาให้ลูกค้าเห็นทีละรายการ ห้ามยุบรวมข้ามชนิดกัน
  *      และบรรทัด "แพ็กเกจ" (Progressive Glasses) ต้องไม่มีราคา ไม่งั้นนับซ้ำกับลูกของมัน
+ *      ข้อยกเว้นข้อเดียวคือสองข้างของเลนส์: ค่าเลนส์รวมอยู่ที่บรรทัด "Lens" บรรทัดเดียว
+ *      ส่วน Lens R / Lens L ห้อยใต้มันเป็นรายละเอียดรุ่น ไม่มีราคาซ้ำ (ร้านขอไว้)
  *
  * ข้อ 3 มีข้อยกเว้นที่มาจากข้อมูลจริง ไม่ใช่ความชอบ:
  *   ออเดอร์ที่เปิดในระบบนี้กรอกราคาแยกครบ (frame_price / lens_od_price / lens_os_price /
@@ -20,6 +22,8 @@
  *   จึงตกไปใช้บรรทัดเดียวที่ถือยอดรวมไว้ — แยกไม่ได้เพราะไม่มีข้อมูลให้แยก
  *   ใบที่เปิดใหม่ตั้งแต่นี้ไปเข้าทางแจกแจงทั้งหมด
  */
+
+import { cylPower, sphPower } from './format.js';
 
 const n = (v) => Number(v || 0);
 const round2 = (v) => Math.round((Number(v) || 0) * 100) / 100;
@@ -37,16 +41,20 @@ export function vatBreakdown(totalIncl, rate = VAT_RATE) {
   return { excl, vat: round2(incl - excl), incl };
 }
 
-/** บรรทัดบรรยาย ไม่มีตัวเลขในสามคอลัมน์ขวา (หัวแพ็กเกจ / ค่าสายตา) */
+/**
+ * บรรทัดบรรยาย ไม่มีตัวเลขในสามคอลัมน์ขวา — หัวแพ็กเกจ · ค่าสายตา · ข้างของเลนส์ ·
+ * สเปกอย่าง Index ที่ไม่มีช่องราคาของตัวเองในฐาน
+ *
+ * ช่องราคาของบรรทัดพวกนี้ **เว้นว่าง ไม่ใช่ขีดกลาง** (ร้านขอไว้) — บนกระดาษที่ตีเส้น
+ * ตารางอยู่แล้ว ขีดกลางเรียงกันหลายบรรทัดอ่านเป็นรอยเปื้อน ไม่ได้สื่อว่า "ไม่มีราคา"
+ * ราคาของสเปกพวกนี้ไปรวมอยู่ในบรรทัดแม่ข้างบนแล้ว (Lens / ออพชั่นเสริม)
+ *
+ * `indent` เป็นระดับความลึก ไม่ใช่แค่ใช่/ไม่ใช่: false = ชิดซ้าย · true = ลูกของหัวข้อ ·
+ * 2 = ลูกของบรรทัดที่ย่อหน้าอยู่แล้ว (Lens R / Lens L ที่ห้อยใต้บรรทัด Lens)
+ */
 const note = (desc, indent = false) => ({ desc, indent, qty: null, unit: null, amount: null });
 /** บรรทัดที่มีราคา */
 const line = (desc, qty, unit, amount, indent = false) => ({ desc, indent, qty, unit, amount });
-/**
- * บรรทัดที่ "ควรมีราคาแต่ระบบไม่มีช่องเก็บ" — พิมพ์ขีดกลางในคอลัมน์ราคา
- * ต่างจาก note ตรงที่ note คือของที่ไม่ควรมีราคาอยู่แล้ว (ค่าสายตา)
- * ส่วน spec คือของที่ลูกค้าอาจคาดว่ามีราคา แต่ตอบไม่ได้ — ต้องบอกว่าไม่มี ไม่ใช่เว้นว่างเงียบ ๆ
- */
-const spec = (desc, indent = true) => ({ desc, indent, qty: null, unit: DASH, amount: DASH });
 /**
  * บรรทัดค่าสายตา — note ที่ติดธง rx ไว้ เพราะเป็นกลุ่มเดียวบนใบที่ "เลือกได้ว่าจะพิมพ์ไหม"
  * ลูกค้าบางคนไม่อยากให้ค่าสายตาติดไปกับใบที่ยื่นเบิก/ยื่นภาษี ปุ่มบนแถบเครื่องมือ
@@ -57,15 +65,22 @@ const rxNote = (desc) => ({ ...note(desc, true), rx: true });
 
 const DASH = '—';
 
-/** ค่าสายตาหนึ่งข้างในบรรทัดเดียว เช่น "-1.25 / -0.50 x 180" */
+/**
+ * ค่าสายตาหนึ่งข้างในบรรทัดเดียว เช่น "-1.25 / -0.50 x 180"
+ *
+ * SPH/CYL อ่านผ่าน sphPower/cylPower ตัวเดียวกับที่หน้าเว็บใช้ ไม่ใช่ค่าดิบจากฐาน —
+ * ใบที่บันทึกไว้สมัยเติมศูนย์หน้าเก็บเป็น '-01.25' ถ้าพิมพ์ค่าดิบ ใบเสร็จจะเป็น
+ * '-01.25' ทั้งที่หน้าจอตรงหน้าลูกค้าเขียน '-1.25' — ค่าเดียวกันต้องมีหน้าตาเดียว
+ * AXIS ไม่ต้องแปลง เป็นจำนวนเต็มองศาอยู่แล้วไม่มีรูปแบบให้ขัดกัน
+ */
 function eyeLine(rx, k) {
   if (!rx) return '';
   const sph = rx[`${k}_sphere`];
   const cyl = rx[`${k}_cylinder`];
   const axis = rx[`${k}_axis`];
   const parts = [];
-  if (String(sph ?? '').trim()) parts.push(String(sph).trim());
-  if (String(cyl ?? '').trim()) parts.push(`/ ${String(cyl).trim()}`);
+  if (String(sph ?? '').trim()) parts.push(sphPower(sph));
+  if (String(cyl ?? '').trim()) parts.push(`/ ${cylPower(cyl)}`);
   if (String(axis ?? '').trim()) parts.push(`x ${String(axis).trim()}`);
   return parts.join(' ');
 }
@@ -101,23 +116,31 @@ function glassesLines(o) {
   const frame = frameLabel(o);
   if (frame || frameP > 0) out.push(line(`Frame : ${frame || DASH}`, 1, frameP, frameP, true));
 
-  /* เลนส์ — ยุบเป็นบรรทัดเดียว "จำนวน 2" ได้เฉพาะตอนสองข้างเป็นรุ่นเดียวกันและราคาเท่ากัน
-     ไม่งั้นจำนวน × ราคาต่อหน่วย จะไม่เท่ากับราคารวมของบรรทัดนั้น */
+  /* เลนส์ — ค่าเลนส์อยู่ที่บรรทัด "Lens" บรรทัดเดียว แล้วแตกเป็น Lens R / Lens L ข้างใต้
+     เป็นรายละเอียดรุ่นที่ไม่มีราคาซ้ำ คนอ่านใบจะได้เห็น "ค่าเลนส์ทั้งคู่เท่าไหร่" จากที่เดียว
+     ไม่ต้องบวกสองบรรทัดเอง — ยอดท้ายใบไม่ขยับ เพราะราคาถูกนับที่บรรทัดแม่บรรทัดเดียว
+
+     บรรทัดนี้นับเป็น **หนึ่งหน่วย** คือ "ค่าเลนส์ของแว่นคู่นี้" ไม่ใช่สองข้างแยกชิ้น
+     จำนวนจึงเป็น 1 และราคาต่อหน่วยเท่ากับราคารวมเสมอ ไม่ว่าสองข้างจะราคาเท่ากันไหม —
+     กฎ จำนวน × ราคาต่อหน่วย = ราคารวม จึงยังจริง และไม่มีราคาเฉลี่ยต่อข้างซึ่งเป็น
+     ตัวเลขที่ไม่ได้เกิดขึ้นจริงในการขายโผล่บนใบ (มีเทสต์คุมอยู่) */
   const names = lensLabels(o);
   const oneName = names.length === 1 ? names[0][1] : null;
-  if (oneName && odP === osP) {
-    out.push(line(`Lens : ${oneName}`, 2, odP, round2(odP * 2), true));
-  } else {
-    const rName = o?.lens_r_name || oneName || '';
-    const lName = o?.lens_l_name || oneName || '';
-    if (rName || odP > 0) out.push(line(`Lens R : ${rName || DASH}`, 1, odP, odP, true));
-    if (lName || osP > 0) out.push(line(`Lens L : ${lName || DASH}`, 1, osP, osP, true));
+  const rName = o?.lens_r_name || oneName || '';
+  const lName = o?.lens_l_name || oneName || '';
+  const sides = [];
+  if (rName || odP > 0) sides.push(`Lens R : ${rName || DASH}`);
+  if (lName || osP > 0) sides.push(`Lens L : ${lName || DASH}`);
+  if (sides.length) {
+    const lensP = round2(odP + osP);
+    out.push(line('Lens', 1, lensP, lensP, true));
+    for (const desc of sides) out.push(note(desc, 2));
   }
 
   /* ดัชนีหักเหไม่มีช่องราคาของตัวเองในฐาน — ค่าใช้จ่ายส่วนเพิ่มทั้งหมดรวมอยู่ที่
-     options_price ก้อนเดียว จึงพิมพ์ดัชนีเป็นสเปก (ขีดกลาง) แล้วให้ก้อนออพชั่นถือราคา */
+     options_price ก้อนเดียว จึงพิมพ์ดัชนีเป็นบรรทัดบรรยายเปล่า แล้วให้ก้อนออพชั่นถือราคา */
   const index = String(o?.lens_index ?? '').trim();
-  if (index) out.push(spec(`Index : ${index}`));
+  if (index) out.push(note(`Index : ${index}`, true));
 
   if (optP > 0) {
     const addons = [o?.lens_coating, o?.lens_tint, o?.lens_addons]
@@ -152,10 +175,10 @@ export function orderReceipt(o, receiptNo) {
     /* ใบเก่าจาก Access — มีแต่ยอดรวม ไม่มีอะไรให้แยก */
     lines = [line(heading, 1, gross, gross)];
     const frame = frameLabel(o);
-    if (frame) lines.push(spec(`Frame : ${frame}`));
-    for (const [label, name] of lensLabels(o)) lines.push(spec(`${label} : ${name}`));
+    if (frame) lines.push(note(`Frame : ${frame}`, true));
+    for (const [label, name] of lensLabels(o)) lines.push(note(`${label} : ${name}`, true));
     const index = String(o?.lens_index ?? '').trim();
-    if (index) lines.push(spec(`Index : ${index}`));
+    if (index) lines.push(note(`Index : ${index}`, true));
   }
 
   if (rx) {
@@ -181,6 +204,9 @@ export function orderReceipt(o, receiptNo) {
     date: o?.order_date || null,
     customerName: [o?.first_name, o?.mid_name, o?.last_name].filter(Boolean).join(' ').trim(),
     customerPhone: o?.phone || '',
+    /* ลูกค้าในเคส ไม่ใช่ชื่อที่จะพิมพ์ลงใบ — ใบออกในนามคนอื่นได้ (เคสของพ่อ ลูกออกบิล)
+       หน้าใบเสร็จใช้ค่านี้ไปถามว่าเคยออกใบให้คนนี้ในนามใครไว้บ้าง */
+    customerId: n(o?.customer_id) || null,
     cashier: o?.employee_name || '',
     lines,
     total: round2(gross - discount),
@@ -208,6 +234,9 @@ export function saleReceipt(s, receiptNo) {
     customerName: s?.customer_name_snapshot
       || [s?.first_name, s?.mid_name, s?.last_name].filter(Boolean).join(' ').trim(),
     customerPhone: s?.customer_phone_snapshot || '',
+    /* ขายหน้าร้านไม่ผูกใบลูกค้าก็ได้ — null แปลว่า "ไม่รู้ว่าใคร" ซึ่งหน้าใบเสร็จ
+       ใช้ตัดสินว่าจะไม่ไปถามหานามที่เคยใช้ */
+    customerId: n(s?.customer_id) || null,
     cashier: s?.created_by_name || '',
     lines,
     total: round2(s?.total_amount),

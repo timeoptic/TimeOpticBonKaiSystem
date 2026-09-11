@@ -47,7 +47,7 @@ function ReportTabs() {
 
 export default function ReportsLayout({ children }) {
   return (
-    <AdminOnly>
+    <AdminOnly zone="money">
       <PageHead icon="chart" title="รายงาน" subtitle="ยอดขายและผลประกอบการ" />
       {/* `reports-wide` เป็นตะขอให้ CSS รู้ว่าอยู่ในหน้ารายงาน — การ์ด KPI
           ยืดเต็มความกว้างและกราฟสูงขึ้นบนจอคอม โดยไม่กระทบหน้าอื่นที่ใช้

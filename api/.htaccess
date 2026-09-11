@@ -4,9 +4,18 @@
 <IfModule mod_rewrite.c>
     RewriteEngine On
 
-    # a real file (none exist here today, but keep the escape hatch) wins
-    RewriteCond %{REQUEST_FILENAME} -f [OR]
-    RewriteCond %{REQUEST_FILENAME} -d
+    # ไฟล์จริงชนะ front controller — เก็บไว้เป็นทางหนีทีไล่
+    #
+    # เดิมมี `-d` ต่อท้ายด้วย ซึ่งพังตอนมีคนอัปรูปใบแรก: `routes/uploads.php`
+    # สร้างโฟลเดอร์ `api/uploads/` ขึ้นมาจริงบนดิสก์ พอโฟลเดอร์นั้นมีตัวตนแล้ว
+    # `-d` ก็พาคำขอ `/api/uploads` ออกจาก index.php ไปให้ Apache เสิร์ฟแทน
+    # แล้ว mod_dir เด้ง 301 เติม / ให้ ก่อนจะจบที่ 403 เพราะ `Options -Indexes`
+    # ปิดการไล่ดูโฟลเดอร์ไว้ · ผลคือ **อัปรูปสำเร็จ แต่หน้าเว็บโหลดรายการรูป
+    # ไม่ได้อีกเลยทุกเคส** และพังหลังอัปใบแรกเท่านั้น ตอนทดสอบก่อนหน้าจึงไม่เจอ
+    #
+    # ไม่มีโฟลเดอร์ไหนใต้ /api/ ที่ควรถูกเสิร์ฟตรง ๆ สักอัน — ทุกคำขอต้องผ่าน
+    # front controller เท่านั้น เส้น /api/uploads/:id จึงจะตรวจสิทธิ์ได้ก่อนส่งรูป
+    RewriteCond %{REQUEST_FILENAME} -f
     RewriteRule ^ - [L]
 
     RewriteRule ^ index.php [QSA,L]

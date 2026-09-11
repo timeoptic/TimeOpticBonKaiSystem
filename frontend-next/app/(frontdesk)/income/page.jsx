@@ -14,5 +14,5 @@ function IncomePageInner() {
 /* งานของแอดมิน — พนักงานขายที่พิมพ์ URL เข้ามาตรง ๆ จะเห็นคำอธิบาย
    ไม่ใช่หน้าเปล่าหรือถูกเด้งกลับเงียบ ๆ */
 export default function IncomePage() {
-  return <AdminOnly><IncomePageInner /></AdminOnly>;
+  return <AdminOnly zone="money"><IncomePageInner /></AdminOnly>;
 }

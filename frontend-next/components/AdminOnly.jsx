@@ -13,26 +13,32 @@
  */
 import Link from 'next/link';
 import { useAuth } from '../contexts/AuthContext.jsx';
-import { isAdminUp, roleTextOf } from '../lib/roles.js';
+import { inMoneyZone, inSystemZone, roleTextOf } from '../lib/roles.js';
 import { Card, Loading, PageHead } from './ui.jsx';
 import { Icon } from './Icon.jsx';
 
-export function AdminOnly({ children }) {
+/**
+ * @param {{zone: 'money' | 'system', children: React.ReactNode}} props
+ *   `zone` บอกว่าหน้านี้อยู่ครึ่งไหนของโซนแอดมิน — การเงิน หรือ ข้อมูลระบบ ·
+ *   ไม่มีค่าปริยาย เพราะค่าปริยายที่เดาผิดคือหน้าที่เปิดให้คนที่ไม่ควรเปิด
+ */
+export function AdminOnly({ zone, children }) {
   const { actor, ready } = useAuth();
 
   if (!ready) return <Loading />;
-  if (isAdminUp(actor)) return children;
+  if (zone === 'money' ? inMoneyZone(actor) : inSystemZone(actor)) return children;
+
+  const what = zone === 'money' ? 'การเงิน' : 'ข้อมูลระบบ';
 
   return (
     <>
-      <PageHead icon="lock" title="เมนูนี้สำหรับผู้ดูแลระบบ" subtitle="Admin only" />
+      <PageHead icon="lock" title={`เมนูนี้สำหรับผู้ที่มีสิทธิ์ส่วน${what}`} subtitle="Admin only" />
       <Card>
         <p>
-          บัญชีของคุณ ({roleTextOf(actor)}) ไม่มีสิทธิ์เข้าถึงส่วน
-          <b> การเงิน</b> และ <b>ข้อมูลระบบ</b>
+          บัญชีของคุณ ({roleTextOf(actor)}) ไม่มีสิทธิ์เข้าถึงส่วน <b>{what}</b>
         </p>
         <p className="muted">
-          ถ้าต้องใช้งานส่วนนี้ ให้ผู้ดูแลระบบเปลี่ยนบทบาทของบัญชีคุณเป็นแอดมินขึ้นไป
+          ถ้าต้องใช้งานส่วนนี้ ให้ผู้ดูแลระบบเพิ่มบทบาทที่มีสิทธิ์ส่วนนี้ให้บัญชีคุณ
         </p>
         <p style={{ marginTop: 14 }}>
           <Link className="btn" href="/"><Icon name="arrowLeft" /> กลับไปเมนูหลัก</Link>

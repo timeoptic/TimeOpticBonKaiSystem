@@ -77,7 +77,7 @@ test('บัญชีที่ถูกปิดใช้งานล็อก�
 
 group('สิทธิ์');
 
-test('กฎสิทธิ์ของหกบทบาท', function () {
+test('กฎสิทธิ์ของเจ็ดบทบาท', function () {
     ok(Roles::manageAdmins([Roles::SUPERUSER]), 'ผู้ดูแลระบบจัดการผู้ใช้ได้');
     ok(Roles::manageAdmins([Roles::OWNER]), 'เจ้าของจัดการผู้ใช้ได้');
     ok(Roles::manageAdmins([Roles::ADMIN]), 'แอดมินจัดการผู้ใช้ได้');
@@ -108,9 +108,63 @@ test('กฎสิทธิ์ของหกบทบาท', function () {
     ok(Roles::manageSystem([Roles::SUPERUSER]), 'ผู้ดูแลระบบทำงานระบบได้');
     ok(!Roles::manageSystem([Roles::OWNER]), 'เจ้าของร้านไม่ได้ถือสิทธิ์งานระบบ');
 
+    /* ทุกบทบาทบันทึกความเคลื่อนไหวได้ ยกเว้นบัญชี — คนที่ตรวจตัวเลขกับคนที่
+       ทำให้ตัวเลขเกิด ไม่ควรเป็นคนเดียวกัน · ยกเว้นไว้ตรงนี้อย่างเปิดเผย ไม่ใช่
+       ลบลูปทิ้งแล้วเหลือแต่ข้อที่นึกออก */
     foreach (Roles::ALL as $r) {
+        if ($r === Roles::ACCOUNTING) {
+            ok(!Roles::moveStock([$r]), 'บัญชีบันทึกความเคลื่อนไหวไม่ได้');
+            continue;
+        }
         ok(Roles::moveStock([$r]), "{$r} ต้องบันทึกความเคลื่อนไหวได้");
     }
+});
+
+test('บทบาทบัญชี — เงินและรายงาน ไม่แตะคนและการตั้งค่า', function () {
+    $acc = [Roles::ACCOUNTING];
+
+    // สิ่งที่เข้ามาทำ
+    ok(Roles::moneyZone($acc), 'เข้ากลุ่มการเงินได้');
+    ok(Roles::seeCost($acc), 'เห็นต้นทุน');
+    ok(Roles::seeBranchMoney($acc), 'เห็นยอดและกำไรจากสาขา');
+    ok(Roles::settleBranch($acc), 'บันทึกรับเงินจากสาขาได้');
+    ok(Roles::useStock($acc), 'เข้าฝั่งคลังไปดูมูลค่าคลังกับยอดสาขาได้');
+
+    // สิ่งที่กันไว้ — งานคน งานระบบ และทุกอย่างที่ทำให้ตัวเลขเปลี่ยน
+    ok(!Roles::systemZone($acc), 'ไม่เข้ากลุ่มข้อมูลระบบ');
+    ok(!Roles::manageAdmins($acc), 'จัดการผู้ใช้ไม่ได้');
+    ok(!Roles::manageSystem($acc), 'งานระบบไม่ได้');
+    ok(!Roles::enterRxCost($acc), 'กรอกต้นทุนไม่ได้ — ตรวจตัวเลขที่ตัวเองตั้งไม่ได้');
+    ok(!Roles::editCatalog($acc), 'แก้แคตตาล็อกไม่ได้');
+    ok(!Roles::addProduct($acc), 'เพิ่มสินค้าไม่ได้');
+    ok(!Roles::manageBranches($acc), 'เพิ่ม/แก้สาขาไม่ได้');
+
+    /* ไม่มี frontdesk.use — ด่านที่สองใน api/index.php ปล่อยให้เดินเฉพาะเส้นทาง
+       กลุ่มการเงิน ที่เหลือของ /api ปิดเหมือนพนักงานคลัง */
+    ok(!Roles::useFrontdesk($acc), 'ไม่มีสิทธิ์ระบบหน้าร้าน');
+    ok(!Roles::viewAllCases($acc), 'ไม่เห็นเคสลูกค้า');
+
+    eq(Roles::home($acc), '/income/', 'ลงที่หน้ารายรับ ซึ่งเป็นงานแรกของวัน');
+    eq(Roles::rank($acc), Roles::rank([Roles::SALES]), 'ยศเท่าพนักงาน — คนละงาน ไม่ใช่คนละชั้น');
+    ok(Roles::canGrant([Roles::ADMIN], Roles::ACCOUNTING), 'แอดมินตั้งบทบาทบัญชีให้คนอื่นได้');
+});
+
+test('แยก admin.zone เป็นสองโซนแล้ว สิทธิ์ของคนเดิมไม่ขยับ', function () {
+    /* แอดมิน เจ้าของร้าน ผู้ดูแลระบบ ต้องได้ทั้งสองโซน — ไม่งั้นการแยกครั้งนี้
+       คือการยึดสิทธิ์คืนจากคนที่มีอยู่ โดยไม่มีใครสั่ง */
+    foreach ([Roles::ADMIN, Roles::OWNER, Roles::SUPERUSER] as $r) {
+        ok(Roles::moneyZone([$r]), "{$r} ยังเข้ากลุ่มการเงินได้");
+        ok(Roles::systemZone([$r]), "{$r} ยังเข้ากลุ่มข้อมูลระบบได้");
+    }
+
+    // และคนที่ไม่เคยมี ก็ยังไม่มี
+    foreach ([Roles::SALES, Roles::TRAINEE, Roles::STOCK] as $r) {
+        ok(!Roles::moneyZone([$r]), "{$r} ไม่ได้กลุ่มการเงิน");
+        ok(!Roles::systemZone([$r]), "{$r} ไม่ได้กลุ่มข้อมูลระบบ");
+    }
+
+    // ชื่อ admin.zone ต้องไม่เหลือค้างอยู่ในตารางสิทธิ์อีก
+    ok(!in_array('admin.zone', Roles::permsOf([Roles::OWNER]), true), 'ไม่มี admin.zone หลงเหลือ');
 });
 
 test('พนักงานฝึกหัดได้ชุดสิทธิ์เดียวกับพนักงานขายทุกช่อง', function () {
@@ -181,16 +235,17 @@ test('ตั้งบทบาทได้ไม่เกินบทบาท�
 });
 
 test('หน้าแรกหลังล็อกอินตรงกับฝั่งที่ทำงาน', function () {
+    /* มีฝั่งเดียว = ส่งถึงที่ทำงานเลย ไม่ต้องผ่านหน้าเลือก */
     eq(Roles::home([Roles::SALES]), '/', 'พนักงานขายเข้าหน้าร้าน');
-    /* ที่เหลือลงแดชบอร์ดฝั่งคลังหมด — หน้าเลือกระบบเป็นหน้าที่ทุกคนกดผ่านไปเฉย ๆ
-       และหน้าเบิกตอบว่า "จะทำอะไรต่อ" ทั้งที่คำถามแรกของวันคือ "เมื่อคืนเกิดอะไร" */
     eq(Roles::home([Roles::TRAINEE]), '/', 'พนักงานฝึกหัดเข้าหน้าร้าน เหมือนพนักงานขาย');
-    foreach ([Roles::STOCK, Roles::SUPERUSER, Roles::OWNER, Roles::ADMIN] as $r) {
-        eq(Roles::home([$r]), '/stock/dashboard/', "{$r} เข้าแดชบอร์ด");
+    eq(Roles::home([Roles::STOCK]), '/stock/dashboard/', 'พนักงานคลังเข้าแดชบอร์ดคลัง');
+
+    /* มีสองฝั่ง = ถามก่อน · เดาแทนไม่ได้ว่าวันนี้เปิดมาทำอะไร และการเดาผิดแปลว่า
+       ต้องเดินย้อนออกจากฝั่งที่ไม่ได้ตั้งใจเข้าทุกเช้า */
+    foreach ([Roles::SUPERUSER, Roles::OWNER, Roles::ADMIN] as $r) {
+        eq(Roles::home([$r]), '/hub/', "{$r} ลงหน้าเลือกระบบ");
     }
-    /* ถือทั้งสองฝั่ง = ลงฝั่งคลัง เหมือนแอดมิน — ไม่ใช่ลงหน้าร้านเพราะบังเอิญ
-       เขียนบทบาทขายไว้ก่อนในรายการ */
-    eq(Roles::home([Roles::SALES, Roles::STOCK]), '/stock/dashboard/', 'ถือสองฝั่งลงฝั่งคลัง');
+    eq(Roles::home([Roles::SALES, Roles::STOCK]), '/hub/', 'ถือสองฝั่งก็ลงหน้าเลือกระบบ');
 });
 
 test('ตำแหน่งงานไม่มีผลต่อสิทธิ์', function () {

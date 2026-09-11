@@ -13,8 +13,8 @@ import TaskDialog from "@/stockmod/components/TaskDialog";
 import { useToast } from "@/stockmod/components/Toaster";
 import RecordCard, { CardList } from "@/stockmod/components/RecordCard";
 import { IconChart } from "@/stockmod/components/Icon";
-import { download, type Mode, type Sheet } from "@/stockmod/lib/workbook";
-import { daysPng, INK, rankPng } from "@/stockmod/lib/chartimage";
+import { download, type Sheet } from "@/stockmod/lib/workbook";
+import { daysPng, INK, piePng, rankPng } from "@/stockmod/lib/chartimage";
 import Paginator from "@/stockmod/components/Paginator";
 
 /**
@@ -292,9 +292,8 @@ export default function DashboardPage() {
   /**
    * กำลังเขียนไฟล์อยู่
    *
-   * การเขียน .xlsx เกิดในเบราว์เซอร์ ไม่ใช่ที่เซิร์ฟเวอร์ — ช่วงยาว ๆ ที่มีกราฟ
-   * ด้วยใช้เวลาหลายวินาที ปุ่มที่ไม่บอกอะไรระหว่างนั้นจะถูกกดซ้ำแล้วได้ไฟล์
-   * ซ้อนกันสามใบ
+   * การเขียน .xlsx เกิดในเบราว์เซอร์ ไม่ใช่ที่เซิร์ฟเวอร์ — ช่วงยาว ๆ ใช้เวลา
+   * หลายวินาที ปุ่มที่ไม่บอกอะไรระหว่างนั้นจะถูกกดซ้ำแล้วได้ไฟล์ซ้อนกันสามใบ
    */
   const [saving, setSaving] = useState(false);
   const [exportProblem, setExportProblem] = useState<string | null>(null);
@@ -377,7 +376,7 @@ export default function DashboardPage() {
 
 
   /**
-   * ทั้งหน้า ลงเป็นไฟล์ Excel — ชีตละเรื่อง มีแถวรวม เลือกได้ว่าจะเอากราฟด้วยไหม
+   * ทั้งหน้า ลงเป็นไฟล์ Excel — ชีตละเรื่อง มีแถวรวม
    *
    * ประกอบจากตัวเลขชุดเดียวกับที่วาดอยู่บนจอ ไม่ใช่ยิงถามใหม่ — ไฟล์ที่ได้จึง
    * ตรงกับสิ่งที่คนกดกำลังมองอยู่เสมอ แม้ข้อมูลจะเปลี่ยนไปแล้วในวินาทีนั้น
@@ -385,12 +384,13 @@ export default function DashboardPage() {
    * ราคาทุนลงไฟล์เฉพาะคนที่เห็นมันบนจอ · API ตัดตัวเลขพวกนี้ออกจากคำตอบให้คน
    * อื่นอยู่แล้ว ตรงนี้จึงไม่ใช่ด่าน แต่ถ้าไม่เช็คก็จะได้คอลัมน์เปล่า ๆ ที่อ่าน
    * เหมือนของฟรีทั้งคลัง
-   *
-   * กราฟถูกวาดตอนกด ไม่ได้เตรียมไว้ล่วงหน้า — คนส่วนใหญ่กดโหลดข้อมูลอย่างเดียว
-   * และการวาดภาพเจ็ดใบทิ้งไว้เผื่อทุกครั้งที่เปิดหน้าคือการทำงานที่ไม่มีใครขอ
    */
-  async function exportBook(mode: Mode) {
+  async function exportBook() {
     if (report.status !== "ready" || saving) return;
+    /* ปุ่มไม่โผล่ให้คนที่ไม่มีสิทธิ์เห็นต้นทุนอยู่แล้ว · ที่เช็คซ้ำตรงนี้เพราะ
+       กล่องเลือกชีตเปิดค้างอยู่ได้ข้ามการเปลี่ยนสิทธิ์ และ "ปุ่มหายไป" ไม่ใช่
+       สิ่งเดียวกับ "กดไม่ได้" */
+    if (!money$) return;
     const d = report.data;
 
     setSaving(true);
@@ -399,7 +399,6 @@ export default function DashboardPage() {
       // ตัวเลขดิบ ไม่ผ่านตัวจัดรูปแบบ — Excel ต้องได้จำนวนไว้บวก ไม่ใช่ข้อความ
       // ที่มีลูกน้ำคั่นหลักแล้วรวมไม่ได้ · คนที่ไม่มีสิทธิ์เห็นทุนได้ช่องว่าง
       const cost$ = (v: number | null) => (money$ && v !== null ? v : null);
-      const wantCharts = mode !== "data";
       const day = (s: string) => s.slice(5).replace("-", "/");
 
       /* ไม่มีการกรองซ้ำตรงนี้อีกแล้ว — API กรองมาให้ตั้งแต่ต้นทางด้วยตัวกรอง
@@ -414,6 +413,19 @@ export default function DashboardPage() {
 
       const scopeNote = scopeWords === "" ? "" : ` · เฉพาะ ${scopeWords}`;
 
+      /* หกชนิดการเคลื่อนไหวของชีตสรุป — ตารางกับกราฟอ่านจากรายการเดียวกัน จะได้
+         ไม่มีวันหลุดจากกันตอนใครสักคนเพิ่มชนิดที่เจ็ด · สีตามชนิด ไม่ใช่สีเดียว
+         ทั้งใบ เพราะ "รับเข้า 300 ชิ้น" กับ "ตัดของเสีย 300 ชิ้น" ยาวเท่ากันแต่
+         ไม่ใช่ข่าวแบบเดียวกัน · ปรับยอดไม่มีทิศ จึงเป็นสีกลาง */
+      const summary = [
+        { label: "รับเข้า", s: d.in, color: INK.in },
+        { label: "จ่ายออก", s: d.out, color: INK.out },
+        { label: "ตัดของเสีย", s: d.scrap, color: INK.scrap },
+        { label: "คืนของ", s: d.return, color: INK.in },
+        { label: "ปรับยอด", s: d.adjust, color: INK.flat },
+        { label: "ใบสั่งตัด RX", s: d.rxOrder, color: INK.cost },
+      ];
+
       const sheets: Sheet[] = [
         {
           name: "สรุปรายการ",
@@ -425,16 +437,23 @@ export default function DashboardPage() {
             { header: "มูลค่า (บาท)", money: true, total: true },
             { header: "ชิ้นที่ยังไม่รู้ต้นทุน", width: 20, total: true },
           ],
-          rows: (
-            [
-              ["รับเข้า", d.in],
-              ["จ่ายออก", d.out],
-              ["ตัดของเสีย", d.scrap],
-              ["คืนของ", d.return],
-              ["ปรับยอด", d.adjust],
-              ["ใบสั่งตัด RX", d.rxOrder],
-            ] as const
-          ).map(([label, s]) => [label, s.rows, s.qty, cost$(s.value), s.qtyNoCost]),
+          rows: summary.map((m) => [m.label, m.s.rows, m.s.qty, cost$(m.s.value), m.s.qtyNoCost]),
+          /* เรียงตามลำดับของตาราง ไม่ได้เรียงจากมากไปน้อย — หกแถวนี้ไม่ใช่อันดับ
+             แต่เป็นวงจรของของในคลัง (เข้า ออก เสีย คืน ปรับ สั่งตัด) การสลับที่
+             ให้แท่งยาวขึ้นก่อนคือการทำให้ภาพกับตารางข้างบนอ่านคนละลำดับ */
+          charts: [
+            rankPng(
+              summary.map((m) => ({
+                label: m.label,
+                sub: `${m.s.rows} ใบ`,
+                value: m.s.qty,
+                color: m.color,
+              })),
+              INK.out,
+              "ชิ้น",
+              "แต่ละรายการเคลื่อนไหวไปกี่ชิ้น",
+            ),
+          ],
         },
         {
           name: "รายวัน",
@@ -446,17 +465,17 @@ export default function DashboardPage() {
             { header: "ต้นทุนขาย (บาท)", money: true, total: true },
           ],
           rows: d.byDay.map((r) => [r.day, r.inQty, r.outQty, r.scrapQty, cost$(r.cogs)]),
-          chart: wantCharts
-            ? daysPng(
-                d.byDay.map((r) => day(r.day)),
-                [
-                  { label: "รับเข้า", color: INK.in, values: d.byDay.map((r) => r.inQty) },
-                  { label: "จ่ายออก", color: INK.out, values: d.byDay.map((r) => r.outQty) },
-                  { label: "ของเสีย", color: INK.scrap, values: d.byDay.map((r) => r.scrapQty) },
-                ],
-                `ความเคลื่อนไหวรายวัน ${d.from} ถึง ${d.to}`,
-              )
-            : undefined,
+          charts: [
+            daysPng(
+              d.byDay.map((r) => day(r.day)),
+              [
+                { label: "รับเข้า", color: INK.in, values: d.byDay.map((r) => r.inQty) },
+                { label: "จ่ายออก", color: INK.out, values: d.byDay.map((r) => r.outQty) },
+                { label: "ของเสีย", color: INK.scrap, values: d.byDay.map((r) => r.scrapQty) },
+              ],
+              `ความเคลื่อนไหวรายวัน ${d.from} ถึง ${d.to}`,
+            ),
+          ],
         },
         {
           /* สรุปสาขาละแถว มาก่อนชีตรายการ — คำถาม "สาขาไหนเบิกไปเป็นทุนเท่าไร"
@@ -478,18 +497,19 @@ export default function DashboardPage() {
             cost$(b.cost),
             b.qtyNoCost,
           ]),
-          chart: wantCharts
-            ? rankPng(
-                draws.map((b) => ({
-                  label: b.branch,
-                  sub: `${b.draws} ใบ`,
-                  value: b.qty,
-                })),
-                INK.out,
-                "ชิ้น",
-                "สาขาไหนเบิกไปเท่าไร",
-              )
-            : undefined,
+          charts: [
+            rankPng(
+              draws.map((b) => ({ label: b.branch, sub: `${b.draws} ใบ`, value: b.qty })),
+              INK.out,
+              "ชิ้น",
+              "สาขาไหนเบิกไปเท่าไร",
+            ),
+            piePng(
+              draws.map((b) => ({ label: b.branch, sub: `${b.draws} ใบ`, value: b.qty })),
+              "สัดส่วนของที่แต่ละสาขาเบิกไป",
+              "ชิ้น",
+            ),
+          ],
         },
         {
           name: "สาขาเบิกอะไรไป",
@@ -526,18 +546,19 @@ export default function DashboardPage() {
               it.qtyNoCost,
             ]),
           ),
-          chart: wantCharts
-            ? rankPng(
-                draws.map((b) => ({
-                  label: b.branch,
-                  sub: `${b.draws} ใบ`,
-                  value: b.qty,
-                })),
-                INK.out,
-                "ชิ้น",
-                "สาขาเบิกไปเท่าไร",
-              )
-            : undefined,
+          charts: [
+            rankPng(
+              draws.map((b) => ({ label: b.branch, sub: `${b.draws} ใบ`, value: b.qty })),
+              INK.out,
+              "ชิ้น",
+              "สาขาเบิกไปเท่าไร",
+            ),
+            piePng(
+              draws.map((b) => ({ label: b.branch, sub: `${b.draws} ใบ`, value: b.qty })),
+              "สัดส่วนของที่แต่ละสาขาเบิกไป",
+              "ชิ้น",
+            ),
+          ],
         },
         {
           name: "ใครสั่งตัด RX",
@@ -574,18 +595,19 @@ export default function DashboardPage() {
               cost$(it.revenue),
             ]),
           ),
-          chart: wantCharts
-            ? rankPng(
-                rx.map((b) => ({
-                  label: b.branch,
-                  sub: `${b.qty} ชิ้น`,
-                  value: b.orders,
-                })),
-                INK.cost,
-                "ใบ",
-                "ใครสั่งตัด RX ไปกี่ใบ",
-              )
-            : undefined,
+          charts: [
+            rankPng(
+              rx.map((b) => ({ label: b.branch, sub: `${b.qty} ชิ้น`, value: b.orders })),
+              INK.cost,
+              "ใบ",
+              "ใครสั่งตัด RX ไปกี่ใบ",
+            ),
+            piePng(
+              rx.map((b) => ({ label: b.branch, sub: `${b.qty} ชิ้น`, value: b.orders })),
+              "สัดส่วนใบสั่งตัด RX แยกตามผู้สั่ง",
+              "ใบ",
+            ),
+          ],
         },
         {
           name: "สินค้าจ่ายออกมากสุด",
@@ -596,14 +618,19 @@ export default function DashboardPage() {
             { header: "ต้นทุนรวม (บาท)", money: true, total: true },
           ],
           rows: d.topProducts.map((p) => [p.sku, p.name, p.qty, cost$(p.cost)]),
-          chart: wantCharts
-            ? rankPng(
-                d.topProducts.map((p) => ({ label: p.name, sub: p.sku, value: p.qty })),
-                INK.out,
-                "ชิ้น",
-                "สินค้าที่จ่ายออกมากที่สุด",
-              )
-            : undefined,
+          charts: [
+            rankPng(
+              d.topProducts.map((p) => ({ label: p.name, sub: p.sku, value: p.qty })),
+              INK.out,
+              "ชิ้น",
+              "สินค้าที่จ่ายออกมากที่สุด",
+            ),
+            piePng(
+              d.topProducts.map((p) => ({ label: p.name, sub: p.sku, value: p.qty })),
+              "สัดส่วนใน 10 อันดับแรกที่จ่ายออกมากสุด",
+              "ชิ้น",
+            ),
+          ],
         },
         {
           name: "ใครเบิกมากสุด",
@@ -614,14 +641,19 @@ export default function DashboardPage() {
             { header: "จำนวน (ชิ้น)", total: true },
           ],
           rows: d.topPeople.map((p) => [p.name, p.rows, p.qty]),
-          chart: wantCharts
-            ? rankPng(
-                d.topPeople.map((p) => ({ label: p.name, sub: `${p.rows} รายการ`, value: p.qty })),
-                INK.in,
-                "ชิ้น",
-                "ใครเบิกมากที่สุด",
-              )
-            : undefined,
+          charts: [
+            rankPng(
+              d.topPeople.map((p) => ({ label: p.name, sub: `${p.rows} รายการ`, value: p.qty })),
+              INK.in,
+              "ชิ้น",
+              "ใครเบิกมากที่สุด",
+            ),
+            piePng(
+              d.topPeople.map((p) => ({ label: p.name, sub: `${p.rows} รายการ`, value: p.qty })),
+              "สัดส่วนใน 10 อันดับแรกของคนที่เบิกมากสุด",
+              "ชิ้น",
+            ),
+          ],
         },
         {
           name: "ของเสียแยกตามคน",
@@ -633,18 +665,19 @@ export default function DashboardPage() {
             { header: "มูลค่า (บาท)", money: true, total: true },
           ],
           rows: d.scrapPeople.map((p) => [p.name, p.rows, p.qty, cost$(p.cost)]),
-          chart: wantCharts
-            ? rankPng(
-                d.scrapPeople.map((p) => ({
-                  label: p.name,
-                  sub: `${p.rows} รายการ`,
-                  value: p.qty,
-                })),
-                INK.scrap,
-                "ชิ้น",
-                "ของเสีย แยกตามคนที่ทำ",
-              )
-            : undefined,
+          charts: [
+            rankPng(
+              d.scrapPeople.map((p) => ({ label: p.name, sub: `${p.rows} รายการ`, value: p.qty })),
+              INK.scrap,
+              "ชิ้น",
+              "ของเสีย แยกตามคนที่ทำ",
+            ),
+            piePng(
+              d.scrapPeople.map((p) => ({ label: p.name, sub: `${p.rows} รายการ`, value: p.qty })),
+              "สัดส่วนของเสียใน 10 อันดับแรก",
+              "ชิ้น",
+            ),
+          ],
         },
       ];
 
@@ -667,17 +700,14 @@ export default function DashboardPage() {
         return;
       }
 
-      /* ชื่อไฟล์บอกโหมดด้วย — สามปุ่มที่ให้ชื่อเดียวกันคือสามไฟล์ที่ Chrome ต่อ
-         ท้ายเป็น (1) (2) แล้วเปิดมาแยกไม่ออกว่าอันไหนมีกราฟ ทั้งที่ข้างในต่างกัน
-         ตัวกรองก็อยู่ในชื่อด้วย ด้วยเหตุผลเดียวกัน */
-      const suffix = { data: "ข้อมูล", both: "ข้อมูล+กราฟ", charts: "กราฟ" }[mode];
+      /* ตัวกรองอยู่ในชื่อไฟล์ด้วย — สองช่วงที่กรองคนละแบบให้ชื่อเดียวกันคือสอง
+         ไฟล์ที่ Chrome ต่อท้ายเป็น (1) (2) แล้วเปิดมาแยกไม่ออกว่าอันไหนคืออะไร */
       const tag = scopeWords === "" ? "" : `-${scopeWords.replace(/ · /g, "-")}`;
 
       await download(
-        `timeoptic-dashboard-${d.from}-ถึง-${d.to}${tag}-${suffix}.xlsx`,
+        `timeoptic-dashboard-${d.from}-ถึง-${d.to}${tag}.xlsx`,
         `แดชบอร์ด ${d.from} ถึง ${d.to}${scopeNote}`,
         book,
-        mode,
       );
     } catch (e) {
       const why = e instanceof Error ? e.message : "สร้างไฟล์ไม่สำเร็จ";
@@ -808,11 +838,15 @@ export default function DashboardPage() {
 
           </div>
 
-          {/* ปุ่มเดียว ได้ทั้งข้อมูลและกราฟ — เคยมีสามปุ่ม (ข้อมูล / ข้อมูล+กราฟ /
-              กราฟ) ซึ่งเป็นคำถามที่คนกดไม่ได้อยากตอบ · ไฟล์ที่มีกราฟอยู่ด้วยไม่ได้
-              เสียหายอะไรกับคนที่อยากได้แค่ตัวเลข เขาก็ไม่เปิดชีตกราฟ
+          {/* ปุ่มเดียว ได้ตารางล้วน — เคยมีสามปุ่ม (ข้อมูล / ข้อมูล+กราฟ / กราฟ)
+              ซึ่งเป็นคำถามที่คนกดไม่ได้อยากตอบ · แล้วกราฟในไฟล์ก็ถูกถอดออกทั้งหมด
+              เพราะมันคือตัวเลขชุดเดิมที่ถูกตัดเหลือ 20 แถวแล้ววาดซ้ำใต้ตาราง
               คำถามที่เหลืออยู่จริงคือ "เอาชีตไหนบ้าง" ซึ่งถามในกล่องตอนกด */}
-          {report.status === "ready" ? (
+          {/* ไฟล์ที่ออกไปคือแดชบอร์ดทั้งหน้าในรูปตาราง — ต้นทุนขาย ต้นทุนรวม
+              รายสาขา มูลค่าของเสีย · คนที่ดูตัวเลขพวกนี้บนจอไม่ได้ ก็ไม่ควรมี
+              ปุ่มที่พาไปหามันในไฟล์ · เดิมปุ่มขึ้นให้ทุกคนแล้วค่อยเว้นคอลัมน์
+              ต้นทุนไว้ว่าง ซึ่งเป็นไฟล์ที่อ่านเหมือนของไม่มีต้นทุนทั้งคลัง */}
+          {report.status === "ready" && money$ ? (
             <button
               type="button"
               className="btn btn--primary btn--small btn--icon toolbar__export"
@@ -846,7 +880,7 @@ export default function DashboardPage() {
           title="เอาชีตไหนบ้าง"
           head={
             <p className="field__help">
-              ได้ทั้งข้อมูลและกราฟในไฟล์เดียว · ช่วง {date(from)} – {date(to)}
+              ตารางทั้งหมดในไฟล์เดียว · ช่วง {date(from)} – {date(to)}
               {scopeWords === "" ? "" : ` · เฉพาะ ${scopeWords}`}
             </p>
           }
@@ -917,7 +951,7 @@ export default function DashboardPage() {
               <button
                 type="button"
                 className="btn btn--primary btn--icon"
-                onClick={() => void exportBook("both")}
+                onClick={() => void exportBook()}
                 disabled={saving || exSheets.length === 0}
               >
                 <IconChart />
@@ -1137,13 +1171,13 @@ export default function DashboardPage() {
                 ink={CHART_INK.out}
                 unit="ชิ้น"
                 rows={(movers.status === "ready" ? movers.data.best : []).slice(0, 10).map((p) => {
-                  const low = p.minStock > 0 && p.onHand < p.minStock;
+                  const low = p.onHand <= p.minStock;
                   return {
                     key: String(p.id),
                     label: p.name,
                     sub:
                       `${p.sku} · เหลือ ${count(p.onHand)}` +
-                      (low ? ` · ต่ำกว่าขั้นต่ำ ${count(p.minStock)}` : "") +
+                      (low ? (p.minStock > 0 ? ` · ต่ำกว่าขั้นต่ำ ${count(p.minStock)}` : " · ของหมด") : "") +
                       (money$ && p.cost ? ` · ต้นทุน ${money(p.cost)}` : ""),
                     value: p.qty,
                   };

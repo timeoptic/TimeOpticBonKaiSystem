@@ -11,7 +11,7 @@
  * "ไม่มีข้อมูล".
  */
 import { Badge } from './ui.jsx';
-import { fmtDate, power } from '../lib/format.js';
+import { fmtDate, glassesUseOf, power } from '../lib/format.js';
 
 export const RX_SOURCE_LABEL = {
   history: 'ดึงจากประวัติ',
@@ -32,13 +32,26 @@ const cell = (row, k, f) => {
   return f === 'sphere' || f === 'cylinder' || f === 'add' ? power(v) : String(v);
 };
 
+/**
+ * ป้ายแบบของแว่น (Distance / Progressive …) ในแถวสรุปรอบตรวจ — วางหน้าค่าสายตาเสมอ
+ * ไม่ได้ระบุก็ยังกินที่เท่าเดิมเป็นป้ายจาง ๆ แถวที่เรียงกันหลายแถวจะได้ให้ค่า R / L ตรงแนว
+ */
+export function GlassesUseTag({ value }) {
+  /* Badge ไม่รับ className — kind คือสตริงที่ต่อเข้า className อยู่แล้ว จึงฝากคลาสไปกับมัน */
+  return value
+    ? <Badge kind="blue rx-use" title="แบบของแว่น">{value}</Badge>
+    : <Badge kind="gray rx-use none">ไม่ระบุแบบ</Badge>;
+}
+
 export function RxSetBlock({ row, title, sub, star = false }) {
+  const use = glassesUseOf(row);
   return (
     <div className="exam-set">
       <div className="exam-set-head">
         <b>{star ? `★ ${title}` : title}</b>
         <span className="muted">{sub}</span>
         {row?.source ? <Badge kind="gray">{RX_SOURCE_LABEL[row.source] || row.source}</Badge> : null}
+        {use ? <Badge kind="blue">{`${row.kind === 'old' ? 'แว่นเดิมเป็นแบบ' : 'ใช้สำหรับ'} ${use}`}</Badge> : null}
       </div>
       {row ? (
         <div className="rx-grid-wrap">

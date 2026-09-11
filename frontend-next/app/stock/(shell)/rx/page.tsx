@@ -25,10 +25,8 @@ import { date, diopter, money } from "@/stockmod/lib/format";
 import {
   ADD_LADDER,
   AXIS_LADDER,
-  COATING_SEED,
   CYL_LADDER,
   EYE_OPTIONS,
-  INDEX_SEED,
   LENS_DESIGN_SEED,
   power,
   RX_BRANDS,
@@ -874,10 +872,13 @@ function OrderRow({
  * something that is never received.
  */
 export function NewOrderDialog({
+  lensOnly = false,
   mayCost,
   onClose,
   onSaved,
 }: {
+  /** Ask for the lens only and open the order from the first stop. */
+  lensOnly?: boolean;
   mayCost: boolean;
   onClose: () => void;
   onSaved: (referenceDoc: string, awaitingCost: boolean) => void;
@@ -901,15 +902,13 @@ export function NewOrderDialog({
    *
    * Every order is a different one: a different customer, a different power,
    * often a different price for the same lens. So the sheet asks for the lens
-   * the way the catalogue form asks for one — brand, model, coating, index —
-   * and the API files the model once behind the scenes, matching on the
-   * composed name so the same lens ordered twice stays one row in the
-   * catalogue and two rows in the order book.
+   * by the three things the shop names it by — brand, model, lens type — and
+   * the API files the model once behind the scenes, matching on the composed
+   * name so the same lens ordered twice stays one row in the catalogue and two
+   * rows in the order book. Coating and index are not asked here.
    */
   const [brand, setBrand] = useState("");
   const [lensModel, setLensModel] = useState("");
-  const [coating, setCoating] = useState("");
-  const [index, setIndex] = useState("");
   const [design, setDesign] = useState("");
 
   /**
@@ -976,7 +975,10 @@ export function NewOrderDialog({
    * each stop is one question the person at the counter can answer from what
    * is in front of them: what lens, what power, what it costs.
    */
-  const STOPS = ["เลนส์ที่สั่ง", "ค่าสายตา", "ใบสั่งและราคา"] as const;
+  // ในหน้าเคสถามแค่เลนส์ข้อเดียว — ราคาและต้นทุนลงทีหลังที่หน้าคลัง
+  const STOPS = lensOnly
+    ? (["เลนส์ที่สั่ง"] as const)
+    : (["เลนส์ที่สั่ง", "ค่าสายตา", "ใบสั่งและราคา"] as const);
   const [step, setStep] = useState(0);
   const last = step === STOPS.length - 1;
 
@@ -988,8 +990,8 @@ export function NewOrderDialog({
    * walk further to learn less.
    */
   function blocking(): string | null {
-    if (step === 0 && [brand, lensModel, coating, index, design].every((v) => v.trim() === "")) {
-      return "บอกก่อนว่าสั่งเลนส์อะไร — กรอกอย่างน้อยหนึ่งช่อง แบรนด์ รุ่น Coating หรือ Index";
+    if (step === 0 && [brand, lensModel, design].every((v) => v.trim() === "")) {
+      return "บอกก่อนว่าสั่งเลนส์อะไร — กรอกอย่างน้อยหนึ่งช่อง แบรนด์ รุ่น หรือชนิดเลนส์";
     }
     return null;
   }
@@ -1038,14 +1040,12 @@ export function NewOrderDialog({
    * says the lens will be called is what the order files it as.
    */
   const composed = useApi<{ name: string }>(
-    [brand, lensModel, coating, index, design].some((v) => v.trim() !== "")
+    [brand, lensModel, design].some((v) => v.trim() !== "")
       ? `/products/compose-name${qs({
           type: "Lens",
           custom: "1",
           brand,
           model: lensModel,
-          coating,
-          lens_index: index,
           lens_design: design,
         })}`
       : null,
@@ -1063,8 +1063,6 @@ export function NewOrderDialog({
   function startFrom(r: ProductRow): void {
     setBrand(r.brand ?? "");
     setLensModel(r.model ?? "");
-    setCoating(r.coating ?? "");
-    setIndex(r.lensIndex ?? "");
     setDesign(r.lensDesign ?? "");
     setPrice(r.basePrice > 0 ? String(r.basePrice) : "");
     setEye(r.eyeSide ?? "");
@@ -1086,8 +1084,8 @@ export function NewOrderDialog({
       return;
     }
 
-    if ([brand, lensModel, coating, index, design].every((v) => v.trim() === "")) {
-      setProblem("บอกก่อนว่าสั่งเลนส์อะไร — กรอกอย่างน้อยหนึ่งช่อง แบรนด์ รุ่น Coating หรือ Index");
+    if ([brand, lensModel, design].every((v) => v.trim() === "")) {
+      setProblem("บอกก่อนว่าสั่งเลนส์อะไร — กรอกอย่างน้อยหนึ่งช่อง แบรนด์ รุ่น หรือชนิดเลนส์");
       return;
     }
     if (!autoDoc && !doc.trim()) {
@@ -1097,6 +1095,13 @@ export function NewOrderDialog({
 
     setBusy(true);
     setProblem(null);
+
+    // What was not asked is not sent. Copying an old sheet still fills these
+    // boxes, and plano is where the powers start, so on the lens-only sheet
+    // they would otherwise file a price and a 0.00 nobody entered.
+    const sheet = lensOnly
+      ? { branch: "", eye: "", sph: "", cyl: "", axis: "", add: "", cost: "", price: "", note: "" }
+      : { branch, eye, sph, cyl, axis, add, cost, price, note };
 
     try {
       const { order } = await api.post<{
@@ -1108,19 +1113,17 @@ export function NewOrderDialog({
         // customer, and the order still carries its own power and price.
         brand: brand.trim() || null,
         lens_model: lensModel.trim() || null,
-        lens_coating: coating.trim() || null,
-        lens_index: index.trim() || null,
         lens_design: design.trim() || null,
         reference_doc: doc.trim(),
-        branch_id: branch === "" ? null : Number(branch),
-        eye_side: eye || null,
-        sph: sph.trim() || null,
-        cyl: cyl.trim() || null,
-        axis: axis.trim() || null,
-        add: add.trim() || null,
-        unit_cost: mayCost && cost.trim() ? cost.trim() : null,
-        sale_price: price.trim() || null,
-        note: note.trim() || null,
+        branch_id: sheet.branch === "" ? null : Number(sheet.branch),
+        eye_side: sheet.eye || null,
+        sph: sheet.sph.trim() || null,
+        cyl: sheet.cyl.trim() || null,
+        axis: sheet.axis.trim() || null,
+        add: sheet.add.trim() || null,
+        unit_cost: mayCost && sheet.cost.trim() ? sheet.cost.trim() : null,
+        sale_price: sheet.price.trim() || null,
+        note: sheet.note.trim() || null,
       });
 
       onSaved(order.referenceDoc, order.awaitingCost);
@@ -1133,6 +1136,7 @@ export function NewOrderDialog({
   return (
     <TaskDialog eyebrow="ใบสั่งตัด RX" title="เปิดใบสั่งใหม่" onClose={onClose}>
         <form className="pform" onSubmit={submit} noValidate>
+          {lensOnly ? null : (
           <ol className="wizard__steps" aria-label="ขั้นตอนการเปิดใบสั่ง">
             {STOPS.map((name, i) => (
               <li
@@ -1156,6 +1160,7 @@ export function NewOrderDialog({
               </li>
             ))}
           </ol>
+          )}
 
           {step === 0 ? (
           <>
@@ -1165,8 +1170,9 @@ export function NewOrderDialog({
           <div className="copyfrom">
             <p className="field__label">เริ่มจากเลนส์ที่เคยสั่ง</p>
             <p className="field__help">
-              เลือกใบเก่าที่ใกล้ที่สุด แล้วแบรนด์ รุ่น Coating Index ราคา และค่าสายตา
-              จะถูกเติมลงช่องด้านล่างให้ เหลือแก้เฉพาะส่วนที่ต่างจริง — เว้นไว้ก็ได้ถ้าจะกรอกเองทั้งใบ
+              {lensOnly
+                ? "เลือกใบเก่าที่ใกล้ที่สุด แล้วแบรนด์ รุ่น และชนิดเลนส์จะถูกเติมลงช่องด้านล่างให้ — เว้นไว้ก็ได้ถ้าจะกรอกเอง"
+                : "เลือกใบเก่าที่ใกล้ที่สุด แล้วแบรนด์ รุ่น ชนิดเลนส์ ราคา และค่าสายตา จะถูกเติมลงช่องด้านล่างให้ เหลือแก้เฉพาะส่วนที่ต่างจริง — เว้นไว้ก็ได้ถ้าจะกรอกเองทั้งใบ"}
             </p>
 
             <label className="sr-only" htmlFor="rx-copy">เลนส์ที่จะคัดลอก</label>
@@ -1222,9 +1228,7 @@ export function NewOrderDialog({
                   options={offer([], hints.data?.values?.model)}
                 />
               </div>
-              {/* ชนิดเลนส์มาก่อน coating และ index เพราะเป็นคำถามแรกที่ถามลูกค้า
-                  และเป็นตัวที่ทำให้ราคาต่างกันมากที่สุด · เลือกได้หรือพิมพ์เองก็ได้
-                  เหมือนช่องอื่นในชุดนี้ */}
+              {/* เลือกได้หรือพิมพ์เองก็ได้ เหมือนช่องอื่นในชุดนี้ */}
               <div className="field">
                 <label className="field__label" htmlFor="rx-design">ชนิดเลนส์</label>
                 <Select
@@ -1235,30 +1239,6 @@ export function NewOrderDialog({
                   disabled={busy}
                   placeholder="Single · Progressive · Bifocal"
                   options={offer(LENS_DESIGN_SEED, hints.data?.values?.lens_design)}
-                />
-              </div>
-              <div className="field">
-                <label className="field__label" htmlFor="rx-coating">Coating</label>
-                <Select
-                  free
-                  id="rx-coating"
-                  value={coating}
-                  onChange={setCoating}
-                  disabled={busy}
-                  placeholder="เลือก หรือพิมพ์ชื่อใหม่"
-                  options={offer(COATING_SEED, hints.data?.values?.coating)}
-                />
-              </div>
-              <div className="field">
-                <label className="field__label" htmlFor="rx-index">Index</label>
-                <Select
-                  free
-                  id="rx-index"
-                  value={index}
-                  onChange={setIndex}
-                  disabled={busy}
-                  placeholder="เลือก หรือพิมพ์ค่า"
-                  options={offer(INDEX_SEED, hints.data?.values?.lens_index)}
                 />
               </div>
             </div>

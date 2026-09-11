@@ -10,7 +10,7 @@ declare(strict_types=1);
 const ORDER_COLS = ['case_id', 'customer_id', 'employee_id', 'recorded_by',
     'final_prescription_id', 'order_date', 'appointment_date', 'appointment_time',
     'lens_type', 'frame_product_id', 'frame_name', 'frame_brand', 'frame_model',
-    'frame_color', 'frame_size', 'frame_sku', 'lens_product_id', 'right_lens_product_id',
+    'frame_color', 'frame_size', 'frame_sku', 'frame_type', 'lens_product_id', 'right_lens_product_id',
     'lens_name', 'lens_brand', 'lens_design', 'lens_index', 'lens_coating', 'lens_tint',
     'lens_addons', 'lens_r_name', 'lens_r_sku', 'lens_l_name', 'lens_l_sku',
     'frame_price', 'lens_od_price', 'lens_os_price', 'options_price',
@@ -35,6 +35,13 @@ function orderVals(array $b): array
     $discount = num($b['discount'] ?? null);
     if ($discount > $total) {
         bad('ส่วนลดห้ามมากกว่ายอดรวม');
+    }
+
+    /* ช่องบนหน้าจอเป็นตัวเลือกล็อก แต่ API กันเองด้วย — ไม่งั้นยิงตรงเข้ามาได้คำสิบแบบ
+       ในสิบใบ แล้วนับทีหลังไม่ได้ว่าใบไหนกรอบเจาะ · ไม่เลือก = NULL (ผ่าน nul() ข้างล่าง) */
+    $b['frame_type'] = trim((string) ($b['frame_type'] ?? ''));
+    if ($b['frame_type'] !== '' && !in_array($b['frame_type'], Lookups::FRAME_TYPES, true)) {
+        bad('ประเภทกรอบไม่อยู่ในรายการ');
     }
 
     $out = [];
@@ -111,7 +118,9 @@ function orderDetail(?int $id): array
         ? Db::get('SELECT * FROM prescriptions WHERE id = ?', (int) $o['final_prescription_id'])
         : null;
 
-    $item = fn($sid) => $sid ? Db::get('SELECT * FROM v_stock_lot WHERE id = ?', (int) $sid) : null;
+    /* v_stock_lot_all ไม่ใช่ v_stock_lot — ออเดอร์จากระบบเดิมชี้ไปที่ของใน legacy_stock
+       ซึ่งไม่อยู่ในคลังจริงแล้ว (ดู migration 032) */
+    $item = fn($sid) => $sid ? Db::get('SELECT * FROM v_stock_lot_all WHERE id = ?', (int) $sid) : null;
     $o['left_lens']  = $item($o['lens_product_id']);
     $o['right_lens'] = $item($o['right_lens_product_id']);
     $o['frame']      = $item($o['frame_product_id']);
@@ -299,13 +308,19 @@ POST('/api/orders/:id/fill', function (array $req) {
         if (!$sid) {
             return null;
         }
-        $s = Db::get('SELECT * FROM v_stock_lot WHERE id = ?', $sid);
-        if (!$s) {
-            bad("ไม่พบสินค้ารหัส $sid");
-        }
         $held = in_array($sid, array_map('intval', array_filter([
             $o['lens_product_id'], $o['right_lens_product_id'], $o['frame_product_id'],
         ])), true);
+        $s = Db::get('SELECT * FROM v_stock_lot WHERE id = ?', $sid);
+        /* ออเดอร์จากระบบเดิมที่ยังไม่ปิดถือของใน legacy_stock อยู่ — บันทึกซ้ำโดยไม่เปลี่ยน
+           ชิ้นต้องผ่าน · แต่เลือกของเก่าชิ้นใหม่ไม่ได้ เพราะไม่ใช่ของในคลังจริง (migration 032)
+           เปลี่ยนไปเลือกของจริงแทน: releaseLot ของชิ้นเก่าไม่เจอแถวใน stock_lots จึงไม่ทำอะไร */
+        if (!$s && $held) {
+            $s = Db::get("SELECT * FROM v_stock_lot_all WHERE id = ? AND source = 'legacy'", $sid);
+        }
+        if (!$s) {
+            bad("ไม่พบสินค้ารหัส $sid");
+        }
         if ((int) $s['sold'] && !$held) {
             bad("สินค้ารหัส $sid ({$s['product_name']}) ถูกขายไปแล้ว");
         }

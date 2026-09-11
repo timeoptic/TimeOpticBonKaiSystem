@@ -17,7 +17,7 @@ import Link from 'next/link';
 import { useAsync } from '../../../lib/hooks.js';
 import { money, todayISO } from '../../../lib/format.js';
 import { useAuth } from '../../../contexts/AuthContext.jsx';
-import { isAdminUp } from '../../../lib/roles.js';
+import { inSystemZone } from '../../../lib/roles.js';
 import { Card, Loading } from '../../../components/ui.jsx';
 import { Icon } from '../../../components/Icon.jsx';
 import { useToast } from '../../../components/Toast.jsx';
@@ -256,7 +256,7 @@ export default function PosPage() {
                     ขึ้นไป คนอื่นเห็นวันที่แต่แก้ไม่ได้ — API ตรวจซ้ำอยู่ดี */}
                 <DateField
                   value={saleDate}
-                  readOnly={!isAdminUp(actor)}
+                  readOnly={!inSystemZone(actor)}
                   onChange={setSaleDate}
                 />
               </PosField>

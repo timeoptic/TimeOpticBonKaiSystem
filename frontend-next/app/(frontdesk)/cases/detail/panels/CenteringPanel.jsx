@@ -8,8 +8,8 @@
  * offered as a starting point — a suggestion, never the saved value, because
  * what matters is what was measured on the lens in front of you.
  *
- * Two tables carry this: `centerings` holds the optical values (PD, FH, CVD,
- * panto, wrap) and `frame_fittings` holds the frame's own box measurements
+ * Two tables carry this: `centerings` holds the optical values (PD, FH, Cor.,
+ * CVD, panto, wrap) and `frame_fittings` holds the frame's own box measurements
  * (A, B, DBL, ED) — both written by one press of the shell's บันทึก Draft.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -20,6 +20,7 @@ import {
 } from '../../../../../components/ui.jsx';
 import { EmployeeSelect } from '../../../../../components/Selects.jsx';
 import { PhotoUpload } from '../../../../../components/PhotoUpload.jsx';
+import { CENTERING_PHOTO_MAX } from '../../../../../lib/photos.js';
 import { Icon } from '../../../../../components/Icon.jsx';
 import { useProcessActions } from '../../../../../components/ProcessShell.jsx';
 import { dtLocal, nowLocal, toStamp } from '../../../../../lib/format.js';
@@ -83,6 +84,8 @@ export function CenteringPanel({ c, reload }) {
     setForm({
       r_pd: ce.r_pd || '', l_pd: ce.l_pd || '', pd_total: ce.pd_total || '',
       r_height: ce.r_height || '', l_height: ce.l_height || '',
+      /* Cor. — ความยาว corridor ของเลนส์โปรเกรสซีฟ ค่าเดียวใช้ทั้งสองข้าง คู่กับ FH ตอนสั่งเลนส์ */
+      corridor: ce.corridor || '',
       vertex_distance: ce.vertex_distance || '', pantoscopic_tilt: ce.pantoscopic_tilt || '',
       /* wrap ไม่ได้อยู่ในชุดที่ร้านวัด แต่ค่าที่เคยบันทึกไว้ต้องไม่หายตอนบันทึกทับ */
       wrap_angle: ce.wrap_angle || '', center_point_note: ce.center_point_note || '',
@@ -163,9 +166,10 @@ export function CenteringPanel({ c, reload }) {
             <Measure label="PD รวม" unit="mm" value={pdTotal} readOnly hint="ขวา + ซ้าย" />
           </Group>
 
-          <Group icon="eye" title="FH" cols={2} optional>
+          <Group icon="eye" title="FH" cols={3} optional>
             <Measure label="FH ขวา (R)" unit="mm" value={form.r_height} onChange={set('r_height')} placeholder="18.5" />
             <Measure label="FH ซ้าย (L)" unit="mm" value={form.l_height} onChange={set('l_height')} placeholder="18.5" />
+            <Measure label="Cor." unit="mm" value={form.corridor} onChange={set('corridor')} placeholder="14.0" hint="Corridor · เลนส์โปรเกรสซีฟ" />
           </Group>
 
           <Group icon="glasses" title="FRAME BOX" cols={4} optional>
@@ -181,9 +185,15 @@ export function CenteringPanel({ c, reload }) {
           </Group>
         </Card>
 
-        <Card title="รูปภาพการวัด" right={<span className="muted">แนะนำ 5–10 รูป</span>}>
+        <Card title="รูปภาพการวัด" right={<span className="muted">{`ไม่เกิน ${CENTERING_PHOTO_MAX} รูป`}</span>}>
           <p className="hint">ถ่ายให้เห็นใบหน้าตรง ด้านข้าง และกรอบที่มาร์คจุดไว้ให้ชัด</p>
-          <PhotoUpload caseId={c.id} kind="centering" centeringId={ce.id} takenBy={form.performed_by || null} />
+          <PhotoUpload
+            caseId={c.id}
+            kind="centering"
+            centeringId={ce.id}
+            takenBy={form.performed_by || null}
+            max={CENTERING_PHOTO_MAX}
+          />
         </Card>
       </Stack>
 

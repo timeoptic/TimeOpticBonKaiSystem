@@ -72,8 +72,37 @@ final class Users
               ORDER BY a.is_active DESC, a.display_name ASC'
         );
 
+        /* พนักงานที่ยังไม่มีบัญชี — ต้องถามจาก `employees` ไม่ใช่จาก `admins`
+           -----------------------------------------------------------------
+           คำสั่งข้างบนขึ้นต้นด้วย `FROM admins JOIN employees` จึงเห็นเฉพาะคนที่
+           **มีแถวใน `admins` อยู่แล้ว** · คนที่ถูกเพิ่มจากหน้า "พนักงาน" ไม่มี
+           แถวนั้นเลย (`POST /api/employees` เขียนลง `employees` อย่างเดียว)
+           ผลคือช่อง "เลือกพนักงาน" ในฟอร์มเพิ่มผู้ใช้ว่างเปล่าตลอด ทั้งที่หน้า
+           พนักงานมีคนอยู่ — เปิดบัญชีให้พนักงานที่มีอยู่แล้วไม่ได้เลยสักคน
+           ต้องกด "เพิ่มพนักงานใหม่…" ซึ่งสร้างคนซ้ำขึ้นมาอีกใบ
+
+           เงื่อนไขเดิมยังอยู่ครบ: ต้องยังทำงานอยู่ · ยังไม่มีชื่อผู้ใช้ · ยังไม่มี
+           บทบาท — คนที่ลาออกไปแล้วจึงยังไม่โผล่เหมือนเดิม */
+        $candidates = array_map(
+            static fn(array $c): array => [
+                'id'          => $c['admin_id'] === null ? null : (int) $c['admin_id'],
+                'employeeId'  => (int) $c['employee_id'],
+                'displayName' => (string) ($c['display_name'] ?? $c['employee_name']),
+                'jobTitle'    => $c['job_title'],
+            ],
+            Db::all(
+                'SELECT e.id AS employee_id, e.employee_name,
+                        a.id AS admin_id, a.display_name, a.job_title
+                   FROM employees e
+                   LEFT JOIN admins a ON a.employee_id = e.id
+                  WHERE e.active = 1
+                    AND a.username IS NULL
+                    AND NOT EXISTS (SELECT 1 FROM admin_roles r WHERE r.admin_id = a.id)
+                  ORDER BY COALESCE(a.display_name, e.employee_name)'
+            )
+        );
+
         $users = [];
-        $candidates = [];
         $ceiling = Roles::rank($actorRoles);
 
         foreach ($rows as $r) {
@@ -81,15 +110,7 @@ final class Users
 
             if ($r['username'] === null && $roles === []) {
                 /* ยังไม่มีทั้งบัญชีและบทบาท — เป็นแค่ตัวตนไว้ให้ประวัติอ้างถึง
-                   คนที่ลาออกไปแล้วไม่ควรโผล่ในช่องเลือกของฟอร์มเพิ่มผู้ใช้ */
-                if ((bool) $r['employee_active']) {
-                    $candidates[] = [
-                        'id'          => (int) $r['id'],
-                        'employeeId'  => (int) $r['employee_id'],
-                        'displayName' => $r['display_name'],
-                        'jobTitle'    => $r['job_title'],
-                    ];
-                }
+                   ไม่ต้องเก็บเป็น candidate ตรงนี้ คำสั่งข้างล่างกวาดให้ครบแล้ว */
                 continue;
             }
 

@@ -1,0 +1,66 @@
+/* คู่มือการใช้งาน — สไตล์ของหน้านี้หน้าเดียว (โหลดจาก manual/layout.jsx) */
+
+.manual{max-width:960px;margin:0 auto}
+
+/* หัวข้อที่กดมาจากสารบัญต้องไม่ไปจมใต้แถบบน */
+.manual-section{scroll-margin-top:84px}
+
+.manual-toc nav{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px 24px}
+.manual-toc-head{font-size:12px;font-weight:700;color:var(--ink-faint);margin:0 0 4px}
+.manual-toc ul{list-style:none;margin:0;padding:0}
+.manual-toc a{display:block;padding:9px 10px;border-radius:8px;color:var(--ink);text-decoration:none;line-height:1.4}
+.manual-toc a:hover,.manual-toc a:focus-visible{background:var(--accent-soft);color:var(--accent-deep)}
+
+.manual-section .card-body > p{line-height:1.75;margin:0 0 12px}
+.manual-lead{color:var(--ink-soft);line-height:1.75;margin:0 0 14px}
+.manual-block{margin:0 0 14px}
+.manual-block h3{font-size:15px;margin:16px 0 8px}
+
+.manual-steps,.manual-list{margin:0;padding-left:1.5em;line-height:1.8}
+.manual-steps li,.manual-list li{margin:3px 0;overflow-wrap:break-word}
+.manual-steps li::marker{font-weight:700;color:var(--accent-deep)}
+
+/* ป้ายชื่อปุ่ม/ช่องบนจอ — หน้าตาเหมือนปุ่มเล็ก ๆ ให้คนอ่านรู้ว่าต้องหาอะไรบนหน้าจอ */
+.manual-ui{
+  display:inline;padding:1px 7px;margin:0 1px;border:1px solid var(--line);border-bottom-width:2px;
+  border-radius:6px;background:var(--surface-alt);font-weight:600;font-size:.92em;
+  -webkit-box-decoration-break:clone;box-decoration-break:clone;
+}
+
+.manual-note{display:flex;gap:10px;padding:12px 14px;border-radius:10px;margin:0 0 14px;background:var(--accent-soft)}
+.manual-note.warn{background:var(--warn-soft)}
+.manual-note > .ico{flex:none;width:20px;height:20px;margin:3px 0 0;color:var(--accent-deep)}
+.manual-note.warn > .ico{color:var(--warn)}
+.manual-note b{display:block;margin-bottom:2px}
+.manual-note p{margin:0;line-height:1.7;overflow-wrap:break-word}
+
+/* แผนภาพ 6 ขั้น — กดแต่ละกล่องแล้วเลื่อนไปหัวข้อของขั้นนั้น */
+.manual-flow{list-style:none;margin:0 0 16px;padding:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px}
+.manual-flow a{
+  display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;padding:12px 8px;
+  border:1px solid var(--line);border-top:4px solid var(--stage);border-radius:10px;
+  text-align:center;color:var(--ink);text-decoration:none;
+}
+.manual-flow a:hover,.manual-flow a:focus-visible{background:var(--surface-alt)}
+.manual-flow-dot{display:grid;place-items:center;width:40px;height:40px;border-radius:50%;background:var(--stage);color:#fff}
+.manual-flow-dot .ico{width:20px;height:20px;margin:0}
+.manual-flow-no{font-size:12px;color:var(--ink-faint)}
+
+.manual-table-wrap{overflow-x:auto;margin:0 0 14px}
+.manual-table{width:100%;border-collapse:collapse;font-size:14px}
+.manual-table th,.manual-table td{border-bottom:1px solid var(--line);padding:9px 10px;text-align:left;vertical-align:top;line-height:1.6}
+.manual-table th{font-size:12.5px;color:var(--ink-faint);white-space:nowrap}
+.manual-table td:first-child{font-weight:600;white-space:nowrap}
+
+.manual-faq details{border:1px solid var(--line);border-radius:10px;margin:0 0 8px}
+.manual-faq summary{cursor:pointer;padding:12px 14px;font-weight:600;line-height:1.6;overflow-wrap:break-word}
+.manual-faq details[open] summary{border-bottom:1px solid var(--line)}
+.manual-faq details p{margin:0;padding:10px 14px 12px;line-height:1.75;overflow-wrap:break-word}
+
+.manual-open{display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 0}
+.manual-top{text-align:center;margin:10px 0 24px}
+
+@media (max-width:640px){
+  .manual-flow{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .manual-table td:first-child{white-space:normal}
+}

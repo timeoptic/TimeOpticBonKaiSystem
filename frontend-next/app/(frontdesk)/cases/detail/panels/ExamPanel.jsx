@@ -31,9 +31,10 @@ import {
 import { EmployeeSelect, ListSelect } from '../../../../../components/Selects.jsx';
 import { MultiSelect } from '../../../../../components/MultiSelect.jsx';
 import { useProcessActions } from '../../../../../components/ProcessShell.jsx';
+import { GlassesUseTag } from '../../../../../components/RxSets.jsx';
 import {
   cylPower, dtLocal, fmtDate, fmtDateTime, normAdd, normAxis, normCyl, normSphere,
-  nowLocal, sphPower, toStamp,
+  normVa, nowLocal, roundGlassesUse, rxPairMissing, sphPower, toStamp,
 } from '../../../../../lib/format.js';
 import { Icon } from '../../../../../components/Icon.jsx';
 import { DateField } from '../../../../../components/DateField.jsx';
@@ -64,8 +65,13 @@ const SHOWN_COLS = [...FULL_COLS, ['pd', 'PD']];
 /* คอลัมน์ที่แก้ไม่ได้แม้ตารางจะกรอกได้ */
 const LOCKED_COLS = ['pd'];
 
-/** ค่าที่ Final ต้องมีครบทั้งสองตา ถึงจะยืนยันได้ — ADD / PRISM / BASE ไม่บังคับ */
-const FINAL_REQUIRED = [['sphere', 'SPH'], ['cylinder', 'CYL'], ['axis', 'AXIS'], ['va', 'VA']];
+/**
+ * ค่าที่ Final ต้องมีครบทั้งสองตา ถึงจะยืนยันได้ — ทุกใบมีแค่สองช่องนี้เสมอ
+ *
+ * ที่เหลือไม่บังคับ: CYL / AXIS / ADD / PRISM / BASE ว่างได้ทั้งหมด แต่ CYL กับ AXIS
+ * ผูกกันเอง ถ้ากรอกข้างหนึ่งต้องมีอีกข้าง — ดู rxPairMissing()
+ */
+const FINAL_REQUIRED = [['sphere', 'SPH'], ['va', 'VA']];
 
 const EYE_LABEL = { r: 'R / ขวา', l: 'L / ซ้าย' };
 
@@ -73,7 +79,7 @@ const EYE_LABEL = { r: 'R / ขวา', l: 'L / ซ้าย' };
    พิมพ์รวดเดียวแล้ว Tab ไปช่องถัดไป ถ้าไปขัดกลางคันจะพิมพ์ไม่ทันมากกว่าจะได้ค่าถูก
    คีย์คือชื่อคอลัมน์ ตารางไหนมีคอลัมน์นี้ก็ได้กติกาเดียวกันทั้งหมด */
 const RX_NORMALIZE = {
-  sphere: normSphere, cylinder: normCyl, axis: normAxis, add: normAdd,
+  sphere: normSphere, cylinder: normCyl, axis: normAxis, add: normAdd, va: normVa,
 };
 
 const OLD_SOURCES = [
@@ -157,11 +163,21 @@ function RxGrid({ cols, get, set, readOnly = false, lockedCols = [], missing = n
     if (!error && value !== raw) set(k, f, value);
   };
 
+  /* CYL ↔ AXIS เป็นกติกาข้ามช่อง จึงคิดจากค่าที่อยู่ในแถวตอนนี้ ไม่ใช่ตอนออกจากช่อง
+     อย่างกติกาช่องเดียวข้างบน — คนที่กรอก CYL แล้วข้ามช่อง AXIS ไปเลย ไม่เคยออกจาก
+     ช่อง AXIS ให้ตรวจได้ ซึ่งเป็นกรณีที่ต้องเตือนพอดี */
+  const hasPair = ['cylinder', 'axis'].every((f) => cols.some(([c]) => c === f));
+  const pairOf = (k) => (hasPair && !readOnly
+    ? rxPairMissing({ cylinder: get(k, 'cylinder'), axis: get(k, 'axis') })
+    : null);
+  const pairs = { r: pairOf('r'), l: pairOf('l') };
+
   const eye = (k) => (
     <tr key={k}>
       <th scope="row">{EYE_LABEL[k]}</th>
       {cols.map(([f, colLabel]) => {
-        const bad = !!missing?.[`${k}_${f}`] || !!wrong[`${k}_${f}`];
+        const pairBad = pairs[k]?.field === f;
+        const bad = !!missing?.[`${k}_${f}`] || !!wrong[`${k}_${f}`] || pairBad;
         /* ล็อกไว้แต่ยังเป็น <input> ตัวเดียวกัน คอลัมน์จะได้กว้างและวางตัวเลขตรงกับช่องอื่น */
         const locked = lockedCols.includes(f);
         return (
@@ -178,7 +194,9 @@ function RxGrid({ cols, get, set, readOnly = false, lockedCols = [], missing = n
                   className={bad ? 'rx-missing' : undefined}
                   disabled={locked || undefined}
                   readOnly={locked || undefined}
-                  title={locked ? 'มาจากขั้น “วัด Center” — แก้ที่นี่ไม่ได้' : (wrong[`${k}_${f}`] || undefined)}
+                  title={locked
+                    ? 'มาจากขั้น “วัด Center” — แก้ที่นี่ไม่ได้'
+                    : (wrong[`${k}_${f}`] || (pairBad ? pairs[k].error : undefined))}
                   value={locked ? (get(k, f) || '—') : get(k, f)}
                   onChange={locked ? undefined : (e) => set(k, f, e.target.value)}
                   onBlur={locked ? undefined : () => fix(k, f)}
@@ -191,7 +209,12 @@ function RxGrid({ cols, get, set, readOnly = false, lockedCols = [], missing = n
   );
   /* เหตุผลเดียวกันที่โผล่ทั้งสองตาเขียนบรรทัดเดียวพอ คนอ่านต้องการรู้ว่า "ผิดยังไง"
      ส่วน "ช่องไหน" ขอบแดงบอกอยู่แล้ว */
-  const notes = [...new Set(Object.values(wrong).filter(Boolean))];
+  const notes = [...new Set([
+    ...Object.values(wrong),
+    /* ช่องที่พ่วงกันไม่ครบ: ถ้าตัวที่เรียกใช้รายงานอยู่แล้ว (missing) ไม่ต้องพูดซ้ำสองที่
+       — ตารางของ Final มีบรรทัด “ยังยืนยันไม่ได้” ของมันเองอยู่ใต้ตารางพอดี */
+    ...(missing ? [] : Object.values(pairs).map((p) => p?.error)),
+  ].filter(Boolean))];
 
   return (
     <div className="rx-grid-wrap">
@@ -244,9 +267,9 @@ const bothEyes = (row) => ({ r: eyeOf(row, 'r'), l: eyeOf(row, 'l') });
 /**
  * จัดรูปแบบ AXIS/ADD ของแถวที่เพิ่งอ่านมาจากฐานข้อมูล
  *
- * ใบที่กรอกไว้ก่อนมีกติกานี้เก็บเป็น '2.00' หรือ '090' ถ้าไม่จัดตอนอ่าน ตารางเดียวกัน
- * จะมีตาขวาเป็น 2.00 ตาซ้ายเป็น +02.00 ซึ่งทำลายเหตุผลทั้งหมดของการเติมศูนย์
- * (จุดทศนิยมต้องตรงกันถึงจะกวาดตาเทียบสองข้างได้)
+ * ใบที่กรอกไว้ก่อนมีกติกานี้เก็บเป็น '2.00' '+02.00' หรือ '090' ถ้าไม่จัดตอนอ่าน
+ * ตารางเดียวกันจะมีตาขวาเป็น 2.00 ตาซ้ายเป็น +2.00 — ค่าเท่ากันแต่คนละหน้าตา
+ * ในแถวเดียวกัน ซึ่งอ่านแล้วสะดุดทุกครั้งว่าตกลงมันต่างกันตรงไหน
  *
  * เปลี่ยนแค่รูปแบบ ไม่เปลี่ยนตัวเลข และค่าที่ผิดกติกาไม่ถูกแตะ — ปล่อยให้ขอบแดงบอก
  * แล้วให้คนที่รู้เรื่องเป็นคนแก้
@@ -398,7 +421,9 @@ export function ExamPanel({ c, reload }) {
     const next = {
       source: 'history',
       based_on_id: src.id,
-      old_glasses_type: src.old_glasses_type || oldForm.old_glasses_type || '',
+      /* แว่นที่ลูกค้าใส่มาวันนี้คือคู่ที่รอบนั้นสั่งตัด — แบบของมันจึงเป็น "ใช้สำหรับ" ของรอบนั้น
+         ไม่ใช่แบบแว่นเดิมของรอบนั้น (คู่ที่เก่ากว่าอีก) · รอบนั้นไม่ได้ระบุไว้ก็ไม่ลบที่เลือกไว้แล้ว */
+      old_glasses_type: roundGlassesUse(session) || oldForm.old_glasses_type || '',
       external_place: '',
       external_date: '',
       source_case_code: session.case_code || '',
@@ -440,8 +465,9 @@ export function ExamPanel({ c, reload }) {
    * ค่าที่ Final ยังขาด — คิดจากชุดที่กำลังจะถูกใช้จริง ไม่ใช่จากช่องที่พิมพ์อยู่
    * เพราะเลือก "ใช้ค่าจาก Measured" แล้วช่องที่ว่างคือช่องใน Measured
    *
-   * SPH / CYL / AXIS / VA ต้องครบทั้งสองตา ส่วน ADD / PRISM / BASE ไม่บังคับ
-   * — 0.00 เป็นค่าจริง คนไม่มีสายตาเอียงก็กรอก 0.00 ได้ ระบบไม่เดาให้
+   * SPH / VA ต้องครบทั้งสองตา ส่วน CYL / AXIS / ADD / PRISM / BASE ไม่บังคับ
+   * — CYL ว่างแปลว่าไม่ได้บันทึกค่าเอียงไว้ ไม่ใช่ 0.00 ระบบไม่เดาให้ทั้งสองทาง
+   * แต่ถ้ากรอก CYL แล้ว AXIS ต้องมาด้วย และกลับกัน — ค่าเอียงครึ่งเดียวสั่งตัดไม่ได้
    */
   const missingFinal = useMemo(() => {
     const cells = {};
@@ -450,14 +476,16 @@ export function ExamPanel({ c, reload }) {
       for (const [f, label] of FINAL_REQUIRED) {
         if (String(finalValues[k][f] ?? '').trim() === '') {
           cells[`${k}_${f}`] = true;
-          short.add(label);
+          short.add(`กรุณากรอก ${label}`);
         }
       }
+      const pair = rxPairMissing(finalValues[k]);
+      if (pair) {
+        cells[`${k}_${pair.field}`] = true;
+        short.add(pair.error);
+      }
     }
-    return {
-      cells,
-      labels: [...short].map((label) => `กรุณากรอก ${label}`),
-    };
+    return { cells, labels: [...short] };
   }, [finalValues]);
 
   const saveDraft = async () => {
@@ -507,13 +535,13 @@ export function ExamPanel({ c, reload }) {
       return false;
     }
     const values = finalValues;
-    /* ค่าสายตาที่จะเอาไปสั่งตัดต้องครบ ไม่ใช่แค่มี SPH — ใบที่ขาด AXIS หรือ VA
-       ไปโผล่ที่ห้องผลิตแล้วต้องโทรกลับมาถามคือสิ่งที่กันตรงนี้ */
+    /* ค่าสายตาที่จะเอาไปสั่งตัดต้องครบ ไม่ใช่แค่มี SPH — ใบที่ขาด VA หรือมีค่าเอียง
+       ครึ่งเดียว ไปโผล่ที่ห้องผลิตแล้วต้องโทรกลับมาถามคือสิ่งที่กันตรงนี้ */
     if (missingFinal.labels.length) {
       err(missingFinal.labels.join('\n'));
       return false;
     }
-    /* AXIS/ADD ที่ผิดรูปแบบต้องไม่หลุดไปถึงห้องผลิต — ตรวจซ้ำตรงนี้ ไม่พึ่งขอบแดงในตาราง
+    /* AXIS/ADD/VA ที่ผิดรูปแบบต้องไม่หลุดไปถึงห้องผลิต — ตรวจซ้ำตรงนี้ ไม่พึ่งขอบแดงในตาราง
        เพราะค่าที่ Final ใช้อาจถูกคัดลอกมาจากตารางอื่นที่ยังไม่มีใครคลิกเข้าไปเลยสักช่อง */
     const rxWrong = [];
     for (const k of ['r', 'l']) {
@@ -581,6 +609,9 @@ export function ExamPanel({ c, reload }) {
      ตาราง MEASURED / FINAL ข้างบนที่ไล่ SPH → CYL → ... ไม่ใช่จับกลุ่มตาขวาให้หมดก่อน
      — คนอ่านกวาดตาลงมาจากตารางบนแล้วเจอค่าเดียวกันเรียงลำดับเดิม */
   const compareCols = [
+    /* แบบของแว่นขึ้นก่อนตัวเลข — คู่เก่าเป็นแบบไหน คู่ใหม่สั่งไว้ใช้ทำอะไร อ่านเทียบในบรรทัดเดียว
+       MEASURED ว่างไว้โดยตั้งใจ "ใช้สำหรับ" เป็นการตัดสินใจของ Final ไม่ใช่ผลการวัด */
+    ['แบบ', oldForm.old_glasses_type, '', confirmed && finalRow ? finalRow.test_for : form.test_for],
     ['R SPH', oldForm.r_sphere, form.r_sphere, shownFinal.r.sphere],
     ['L SPH', oldForm.l_sphere, form.l_sphere, shownFinal.l.sphere],
     ['R CYL', oldForm.r_cylinder, form.r_cylinder, shownFinal.r.cylinder],
@@ -680,6 +711,7 @@ export function ExamPanel({ c, reload }) {
                   return (
                     <button type="button" key={s.key} className="rx-history-row" onClick={() => pullFrom(s)}>
                       <b>{`${fmtDate(s.exam_date)}${s.case_code ? ` · ${s.case_code}` : ''}`}</b>
+                      <GlassesUseTag value={roundGlassesUse(s)} />
                       <span>{`R ${sphPower(src?.r_sphere)} / ${cylPower(src?.r_cylinder)} x ${src?.r_axis || '—'}`}</span>
                       <span>{`L ${sphPower(src?.l_sphere)} / ${cylPower(src?.l_cylinder)} x ${src?.l_axis || '—'}`}</span>
                       <span className="muted">{s.final ? 'ค่าที่ใช้จริง' : 'ค่าที่วัดได้'}</span>

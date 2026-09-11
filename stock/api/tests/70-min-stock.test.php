@@ -10,39 +10,6 @@ use Optic\Service\Catalog;
 use Optic\Service\Receiving;
 use Optic\Service\Stock;
 
-/**
- * A stocked product with a minimum and a given quantity on hand.
- *
- * Returns the id and the SKU, because the two questions asked below need
- * different ones — the filters answer with products, the movements take a SKU.
- *
- * @return array{id:int,sku:string}
- */
-function productAtLevel(int $onHand, int $minStock): array
-{
-    $sku = 'MIN-' . strtoupper(bin2hex(random_bytes(3)));
-    $out = Catalog::createProduct([
-        'sku'                => $sku,
-        'name'               => 'สินค้าทดสอบขั้นต่ำ',
-        'product_type'       => 'Frame',
-        'category_id'        => (int) Db::value("SELECT id FROM categories WHERE code = 'Frame'"),
-        'base_selling_price' => '900.00',
-        'min_stock'          => $minStock,
-        'is_custom_made'     => false,
-    ], [Roles::OWNER]);
-
-    if ($onHand > 0) {
-        Receiving::receive([
-            'sku'           => $sku,
-            'quantity'      => $onHand,
-            'cost_per_unit' => '100.00',
-            'received_date' => date('Y-m-d'),
-        ], [Roles::OWNER], 1);
-    }
-
-    return ['id' => $out['id'], 'sku' => $sku];
-}
-
 /** Whether a product comes back under a given stock-state filter. */
 function inState(int $id, string $state): bool
 {
@@ -68,22 +35,28 @@ test('ตั้งขั้นต่ำแล้วเก็บได้ แล�
     });
 });
 
-test('ไม่ตั้งขั้นต่ำ = 0 = ไม่เตือน ไม่ใช่ขั้นต่ำศูนย์', function () {
+test('ขั้นต่ำ 0 = เตือนตอนของหมด — คนลืมกรอก ต้องไม่กลายเป็นไม่มีใครรู้ว่าของหมด', function () {
     withRollback(function () {
-        // No stock at all and no minimum: as short as a product can be, and
-        // still not something anyone asked to be told about.
-        $p = productAtLevel(0, 0);
+        /* เจ้าของร้านตัดสินใจ 2026-09-10: ช่องขั้นต่ำเปิดมาเป็น 0 เพราะคนชอบลืมกรอก
+           และ 0 ต้องแปลว่า "เตือนเมื่อหมด" ไม่ใช่ "ไม่ต้องเตือน" · เดิม 0 คือเงียบ
+           ผลคือสินค้าที่ไม่มีใครกรอกขั้นต่ำ หมดจนติดลบก็ไม่มีอะไรบอกใคร */
+        $empty = productAtLevel(0, 0);
+        eq(Inventory::product($empty['id'], true)['minStock'], 0, 'ค่าเริ่มต้นของขั้นต่ำ');
+        eq(inState($empty['id'], 'low'), true, 'ขั้นต่ำ 0 และของหมด ต้องเข้าตัวกรอง low');
+        eq(inState($empty['id'], 'out'), true, 'และยังนับว่าหมดสต็อกตามเดิม');
 
-        eq(Inventory::product($p['id'], true)['minStock'], 0, 'ค่าเริ่มต้นของขั้นต่ำ');
-        eq(inState($p['id'], 'low'), false, 'สินค้าที่ไม่ได้ตั้งขั้นต่ำต้องไม่เข้าตัวกรอง low');
-        eq(inState($p['id'], 'out'), true, 'แต่ยังนับว่าหมดสต็อกตามเดิม');
+        $stocked = productAtLevel(3, 0);
+        eq(inState($stocked['id'], 'low'), false, 'ขั้นต่ำ 0 แต่ยังมีของ ยังไม่ต้องเตือน');
     });
 });
 
-test('เหลือน้อยกว่าขั้นต่ำจึงเตือน เท่ากับขั้นต่ำยังไม่เตือน', function () {
+test('เหลือเท่ากับขั้นต่ำก็เตือนแล้ว — เส้นคือ ≤ ไม่ใช่ <', function () {
     withRollback(function () {
+        $above = productAtLevel(6, 5);
+        eq(inState($above['id'], 'low'), false, 'เหลือมากกว่าขั้นต่ำหนึ่งชิ้น');
+
         $atLevel = productAtLevel(5, 5);
-        eq(inState($atLevel['id'], 'low'), false, 'เหลือเท่าขั้นต่ำพอดี');
+        eq(inState($atLevel['id'], 'low'), true, 'เหลือเท่าขั้นต่ำพอดี');
 
         $below = productAtLevel(4, 5);
         eq(inState($below['id'], 'low'), true, 'เหลือน้อยกว่าขั้นต่ำหนึ่งชิ้น');

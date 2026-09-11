@@ -359,5 +359,5 @@ function LogsPageInner() {
 /* งานของแอดมิน — พนักงานขายที่พิมพ์ URL เข้ามาตรง ๆ จะเห็นคำอธิบาย
    ไม่ใช่หน้าเปล่าหรือถูกเด้งกลับเงียบ ๆ */
 export default function LogsPage() {
-  return <AdminOnly><LogsPageInner /></AdminOnly>;
+  return <AdminOnly zone="system"><LogsPageInner /></AdminOnly>;
 }

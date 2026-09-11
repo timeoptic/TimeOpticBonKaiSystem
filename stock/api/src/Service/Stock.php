@@ -131,6 +131,44 @@ final class Stock
         ];
     }
 
+    /**
+     * ล็อตค้างส่งของสินค้าตัวนี้ — เปิดให้ก่อนการขาย ถ้ายังไม่มี
+     *
+     * หน้าขายของหน้าร้านเก็บ id ของล็อตลงออเดอร์ แล้วตอนยืนยันการขายค่อยแปลงเป็น
+     * SKU ส่งมาตัด · สินค้าที่มีแต่ชื่อในแคตตาล็อก ยังไม่เคยรับของเข้าสักล็อต จึงไม่มี
+     * อะไรให้ออเดอร์ชี้ ทั้งที่การขายหน้าร้านตัดติดลบได้อยู่แล้ว (`MAY_GO_SHORT`)
+     *
+     * ใบที่เปิดคือ `SHORT-<sku>` ใบเดียวกับที่การตัดติดลบจะไปลงอยู่แล้ว ยอดศูนย์
+     * ไม่มีของเคลื่อน จึงไม่มีแถวในสมุด (ยอดศูนย์ = ผลรวมสมุดศูนย์ `doctor` ยังผ่าน)
+     * เรียกซ้ำได้ใบเดิม · เปิดแล้วไม่มีใครขายก็ไม่เสียหาย ยอดของสินค้ายังเป็นศูนย์
+     *
+     * @return array{lot_id:int,sku:string,created:bool}
+     */
+    public static function backorderLot(string $sku): array
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            throw ApiError::badRequest('ต้องระบุ sku', 'missing_field');
+        }
+        $p = self::product($sku);
+        if ((bool) $p['is_custom_made']) {
+            throw ApiError::customMade($sku);
+        }
+
+        return Db::tx(static function (PDO $pdo) use ($p) {
+            /* ล็อกแถวสินค้าก่อนหา — lot_number ไม่มี UNIQUE สองคนกดเลือกพร้อมกันจะได้ไม่
+               เปิดล็อตค้างส่งสองใบให้สินค้าตัวเดียว (คนที่สองรอ แล้วเจอใบของคนแรก) */
+            $pdo->prepare('SELECT id FROM products WHERE id = ? FOR UPDATE')->execute([$p['id']]);
+
+            $before = $pdo->prepare('SELECT COUNT(*) FROM stock_lots WHERE product_id = ? AND lot_number = ?');
+            $before->execute([$p['id'], 'SHORT-' . $p['sku']]);
+            $existed = (int) $before->fetchColumn() > 0;
+
+            $lot = self::shortfallLot($pdo, $p);
+            return ['lot_id' => (int) $lot['id'], 'sku' => (string) $p['sku'], 'created' => !$existed];
+        });
+    }
+
     /* ----------------------------------------------------------------- write */
 
     /**
@@ -548,6 +586,8 @@ final class Stock
                 $branchIssueId,
             ]);
 
+            LowStock::watch((int) $p['id']);
+
             $cuts[] = [
                 'lot'       => $lot['lot_number'],
                 'lot_id'    => (int) $lot['id'],
@@ -586,6 +626,8 @@ final class Stock
                 $issuedTo,
                 $branchIssueId,
             ]);
+
+            LowStock::watch((int) $p['id']);
 
             $cuts[] = [
                 'lot'       => $short['lot_number'],
@@ -755,6 +797,8 @@ final class Stock
                 $cut['lot_id'],
             ]);
 
+            LowStock::watchLot((int) $cut['lot_id']);
+
             $back[] = [
                 'lot'      => (string) $cut['lot_number'],
                 'lot_id'   => (int) $cut['lot_id'],
@@ -922,6 +966,8 @@ final class Stock
                     $actor,
                     $cut['lot_id'],
                 ]);
+
+                LowStock::watchLot((int) $cut['lot_id']);
 
                 $back[] = ['lot' => $cut['lot'], 'lot_id' => $cut['lot_id'], 'quantity' => $cut['quantity']];
             }

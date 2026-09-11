@@ -38,7 +38,12 @@ export function ConfirmProvider({ children }) {
         <div className="modal-back" onClick={(e) => { if (e.target === e.currentTarget) close(false); }}>
           <div className="modal">
             <h3>{dialog.title}</h3>
-            <div className="m-body"><p style={{ margin: 0 }}>{dialog.message}</p></div>
+            {/* ข้อความธรรมดาเป็นย่อหน้า · ส่งเป็น element มาได้ (เช่นตารางสรุปก่อนบันทึกเงิน) */}
+            <div className="m-body">
+              {typeof dialog.message === 'string'
+                ? <p style={{ margin: 0 }}>{dialog.message}</p>
+                : dialog.message}
+            </div>
             <div className="m-foot">
               <button type="button" className="btn btn-light" onClick={() => close(false)}>ยกเลิก</button>
               <button

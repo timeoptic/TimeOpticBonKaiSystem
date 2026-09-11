@@ -33,6 +33,7 @@ import { api } from '../../../../lib/apiClient.js';
 import { useAsync } from '../../../../lib/hooks.js';
 import { Card, Loading } from '../../../../components/ui.jsx';
 import { QueryParamPage } from '../../../../components/QueryParamPage.jsx';
+import { PaperView } from '../../../../components/PaperView.jsx';
 import { Icon } from '../../../../components/Icon.jsx';
 import {
   addPower, custName, cylPower, dominantEyeLabel, fmtDate, money, rxNum, sphPower,
@@ -340,134 +341,138 @@ function OrderSheet() {
         </p>
       </div>
 
-      <div className="iv-sheet">
-        {/* ═══ ครึ่งบน — Customer Copy ═══ */}
-        <section className="iv-half iv-top">
-          <Head order={o} copy="Customer Copy / สำหรับลูกค้า" />
+      {/* A4 = 210mm กว้างกว่าจอโทรศัพท์ราวสองเท่า — PaperView คืนทางดูให้
+          (ย่อพอดีจอ / ไถซ้าย-ขวา) ไม่มีผลอะไรตอนพิมพ์หรือบนเดสก์ท็อป */}
+      <PaperView>
+        <div className="iv-sheet">
+          {/* ═══ ครึ่งบน — Customer Copy ═══ */}
+          <section className="iv-half iv-top">
+            <Head order={o} copy="Customer Copy / สำหรับลูกค้า" />
 
-          <div className="iv-cust-body">
-            <div className="iv-col">
-              <F k="Name" v={name} />
-              <F k="Type" v={workType(o)} />
-              <F k="Frame" v={frameLabel(o)} />
-              <F k="Lens" v={lensSpec(o)} />
-            </div>
-            <div className="iv-col iv-money">
-              {moneyRows.map(([k, v]) => <F key={k} k={k} v={v} />)}
-            </div>
-          </div>
-
-          <div className="iv-shop">
-            <div className="iv-shop-info">
-              <div><Icon name="phone" /> <b>Tel.</b> {SHOP.tel}</div>
-              <div><b>E-mail:</b> {SHOP.email}</div>
-              <div>
-                <b>เวลาเปิดร้าน / Opening Hours</b>
-                {hours ? <> {hours}</> : null}
+            <div className="iv-cust-body">
+              <div className="iv-col">
+                <F k="Name" v={name} />
+                <F k="Type" v={workType(o)} />
+                <F k="Frame" v={frameLabel(o)} />
+                <F k="Lens" v={lensSpec(o)} />
+              </div>
+              <div className="iv-col iv-money">
+                {moneyRows.map(([k, v]) => <F key={k} k={k} v={v} />)}
               </div>
             </div>
-            <div className="iv-qrs">
-              {QRS.map(([src, label]) => <Qr key={label} src={src} label={label} />)}
-            </div>
-          </div>
-        </section>
 
-        {/* เส้นฉีก — ไม่ใช่ page break ทั้งสองครึ่งอยู่บนกระดาษแผ่นเดียวกัน */}
-        <div className="iv-cut" aria-hidden="true"><span>ฉีกตามรอยนี้</span></div>
-
-        {/* ═══ ครึ่งล่าง — Internal / Production Copy ═══ */}
-        <section className="iv-half iv-bottom">
-          <Head order={o} copy="Internal Copy / สำหรับร้าน" />
-
-          <div className="iv-job">
-            <div className="iv-job-appt">
-              <span>Appointment</span>
-              <b className="iv-box">{appt || ''}</b>
-            </div>
-          </div>
-
-          <div className="iv-who">
-            <F k="Customer" v={name} />
-            <F k="Phone no." v={o.phone} />
-            <F k="WhatsApp" fill />
-          </div>
-
-          {/* ค่าสายตา — สองข้างวางคู่กัน ช่างอ่านทีเดียวเห็นทั้งคู่ ไม่ต้องไล่แถว */}
-          <div className="iv-rx">
-            {EYES.map(([k, label]) => (
-              <div className="iv-rx-eye" key={k}>
-                <div className="iv-rx-title">
-                  {label}
-                  {dominantTag(rx, k)
-                    ? <span className="iv-rx-dom">{dominantTag(rx, k)}</span>
-                    : null}
+            <div className="iv-shop">
+              <div className="iv-shop-info">
+                <div><Icon name="phone" /> <b>Tel.</b> {SHOP.tel}</div>
+                <div><b>E-mail:</b> {SHOP.email}</div>
+                <div>
+                  <b>เวลาเปิดร้าน / Opening Hours</b>
+                  {hours ? <> {hours}</> : null}
                 </div>
-                {RX_ROWS.map(([rowLabel, read]) => (
-                  <div className="iv-rx-row" key={rowLabel}>
-                    <span className="iv-rx-k">{rowLabel}</span>
-                    <span className="iv-rx-v">{read(rx, k, ctr)}</span>
-                  </div>
-                ))}
               </div>
-            ))}
-          </div>
-
-          <div className="iv-spec">
-            <div className="iv-col">
-              <F k="Type" v={workType(o)} />
-              <F k="Frame" v={frameLabel(o)} />
-              <F k="RightLen" v={o.lens_r_name} />
-              <F k="LeftLen" v={o.lens_l_name} />
+              <div className="iv-qrs">
+                {QRS.map(([src, label]) => <Qr key={label} src={src} label={label} />)}
+              </div>
             </div>
-            <div className="iv-col iv-money">
-              {moneyRows.map(([k, v]) => <F key={k} k={k} v={v} />)}
-              <F k="Employee" v={o.employee_name} />
+          </section>
+
+          {/* เส้นฉีก — ไม่ใช่ page break ทั้งสองครึ่งอยู่บนกระดาษแผ่นเดียวกัน */}
+          <div className="iv-cut" aria-hidden="true"><span>ฉีกตามรอยนี้</span></div>
+
+          {/* ═══ ครึ่งล่าง — Internal / Production Copy ═══ */}
+          <section className="iv-half iv-bottom">
+            <Head order={o} copy="Internal Copy / สำหรับร้าน" />
+
+            <div className="iv-job">
+              <div className="iv-job-appt">
+                <span>Appointment</span>
+                <b className="iv-box">{appt || ''}</b>
+              </div>
             </div>
-          </div>
 
-          {/* ขั้นตอนงาน — ระบบไม่มีค่าให้ ตั้งใจเว้นช่องไว้ให้ช่างเซ็น/ลงวันที่กำกับทีละขั้น */}
-          <div className="iv-stages">
-            {STAGES.map((s) => (
-              <div className="iv-stage" key={s}>
-                <span className="iv-stage-k">{s}</span>
-                <span className="iv-stage-box" />
-              </div>
-            ))}
-          </div>
+            <div className="iv-who">
+              <F k="Customer" v={name} />
+              <F k="Phone no." v={o.phone} />
+              <F k="WhatsApp" fill />
+            </div>
 
-          {/* ค่าที่วัดหน้าลูกค้า + ขนาดกรอบ — ตารางช่องว่างให้ช่างกรอกมือ */}
-          <table className="iv-meas">
-            <thead>
-              <tr>
-                {MEASURES.map(([k, fig]) => (
-                  <th key={k}>
-                    <span className="iv-meas-fig">{fig ? <FrameFig kind={fig} /> : null}</span>
-                    <span className="iv-meas-k">{k}</span>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              <tr>{MEASURES.map(([k]) => <td key={k} />)}</tr>
-            </tbody>
-          </table>
-
-          {/* หมายเหตุจากสองขั้นก่อนหน้า พิมพ์ชิดบน ที่เหลือในกรอบยังเป็นที่ว่างให้ช่างเขียนมือ */}
-          <div className="iv-note">
-            <span>หมายเหตุ / รายละเอียดสำหรับสั่งงาน</span>
-            {notes.length > 0 && (
-              <div className="iv-note-body">
-                {notes.map(([k, v]) => (
-                  <div className="iv-note-row" key={k}>
-                    <span className="iv-f-k">{k}</span>
-                    <span className="iv-note-v">{v}</span>
+            {/* ค่าสายตา — สองข้างวางคู่กัน ช่างอ่านทีเดียวเห็นทั้งคู่ ไม่ต้องไล่แถว */}
+            <div className="iv-rx">
+              {EYES.map(([k, label]) => (
+                <div className="iv-rx-eye" key={k}>
+                  <div className="iv-rx-title">
+                    {label}
+                    {dominantTag(rx, k)
+                      ? <span className="iv-rx-dom">{dominantTag(rx, k)}</span>
+                      : null}
                   </div>
-                ))}
+                  {RX_ROWS.map(([rowLabel, read]) => (
+                    <div className="iv-rx-row" key={rowLabel}>
+                      <span className="iv-rx-k">{rowLabel}</span>
+                      <span className="iv-rx-v">{read(rx, k, ctr)}</span>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+
+            <div className="iv-spec">
+              <div className="iv-col">
+                <F k="Type" v={workType(o)} />
+                <F k="Frame" v={frameLabel(o)} />
+                <F k="RightLen" v={o.lens_r_name} />
+                <F k="LeftLen" v={o.lens_l_name} />
               </div>
-            )}
-          </div>
-        </section>
-      </div>
+              <div className="iv-col iv-money">
+                {moneyRows.map(([k, v]) => <F key={k} k={k} v={v} />)}
+                <F k="Employee" v={o.employee_name} />
+              </div>
+            </div>
+
+            {/* ขั้นตอนงาน — ระบบไม่มีค่าให้ ตั้งใจเว้นช่องไว้ให้ช่างเซ็น/ลงวันที่กำกับทีละขั้น */}
+            <div className="iv-stages">
+              {STAGES.map((s) => (
+                <div className="iv-stage" key={s}>
+                  <span className="iv-stage-k">{s}</span>
+                  <span className="iv-stage-box" />
+                </div>
+              ))}
+            </div>
+
+            {/* ค่าที่วัดหน้าลูกค้า + ขนาดกรอบ — ตารางช่องว่างให้ช่างกรอกมือ */}
+            <table className="iv-meas">
+              <thead>
+                <tr>
+                  {MEASURES.map(([k, fig]) => (
+                    <th key={k}>
+                      <span className="iv-meas-fig">{fig ? <FrameFig kind={fig} /> : null}</span>
+                      <span className="iv-meas-k">{k}</span>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                <tr>{MEASURES.map(([k]) => <td key={k} />)}</tr>
+              </tbody>
+            </table>
+
+            {/* หมายเหตุจากสองขั้นก่อนหน้า พิมพ์ชิดบน ที่เหลือในกรอบยังเป็นที่ว่างให้ช่างเขียนมือ */}
+            <div className="iv-note">
+              <span>หมายเหตุ / รายละเอียดสำหรับสั่งงาน</span>
+              {notes.length > 0 && (
+                <div className="iv-note-body">
+                  {notes.map(([k, v]) => (
+                    <div className="iv-note-row" key={k}>
+                      <span className="iv-f-k">{k}</span>
+                      <span className="iv-note-v">{v}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </section>
+        </div>
+      </PaperView>
     </>
   );
 }

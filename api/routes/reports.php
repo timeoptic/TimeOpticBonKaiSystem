@@ -21,7 +21,7 @@ GET('/api/reports/daily-closed', function (array $req) {
         'SELECT s.*, COALESCE(s.product_name_snapshot, st.product_name) AS product_name,
                 e.employee_name
            FROM sales s
-           LEFT JOIN v_stock_lot st ON st.id = s.product_stock_id
+           LEFT JOIN v_stock_lot_all st ON st.id = s.product_stock_id
            LEFT JOIN employees e    ON e.id  = s.employee_id
           WHERE DATE(s.sale_date) BETWEEN ? AND ? ORDER BY s.sale_date',
         $from, $to

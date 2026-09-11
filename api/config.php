@@ -15,9 +15,20 @@ function env(string $key, ?string $default = null): ?string
     return $v;
 }
 
-// .env support (same file the Node version used)
-$envFile = dirname(__DIR__) . '/.env';
-if (is_readable($envFile)) {
+/* .env — มองหาสองที่ ตามลำดับ (same file the Node version used)
+     1. รากโปรเจกต์          `<repo>/.env`            ตอนรันบนเครื่องในร้าน
+     2. เหนือ document root  `<public_html>/../.env`  ตอนขึ้นโฮสต์
+   ข้อ 2 มีเพราะบนโฮสต์ api/ ไปนั่งอยู่ใน public_html แปลว่า dirname(__DIR__)
+   คือโฟลเดอร์ที่เว็บเสิร์ฟได้ ไฟล์ที่มีรหัสฐานข้อมูลจึงจะเหลือ .htaccess เป็นด่าน
+   เดียว — แก้พลาดบรรทัดเดียววันหลังก็เปิดอ่านจากเน็ตได้ เก็บไว้นอก doc root
+   ไม่มีทางเสิร์ฟตั้งแต่ต้น
+
+   ไฟล์ที่เจอก่อนชนะรายคีย์ (putenv เฉพาะคีย์ที่ยังไม่มีค่า) และตัวแปรจริงของ
+   ระบบชนะทั้งสองไฟล์เสมอ */
+foreach ([dirname(__DIR__) . '/.env', dirname(__DIR__, 2) . '/.env'] as $envFile) {
+    if (!is_readable($envFile)) {
+        continue;
+    }
     foreach (file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
         $line = trim($line);
         if ($line === '' || $line[0] === '#' || !str_contains($line, '=')) {
@@ -57,10 +68,16 @@ return [
         'timeout'  => (int) env('STOCK_API_TIMEOUT', '10'),
         'mode'     => env('STOCK_API_MODE', 'off'),
     ],
+    /* สองปลายทาง คนละบอท คนละกลุ่ม (ดู Telegram::TARGETS)
+         TELEGRAM_*        → กลุ่ม "TimeOptic คิวลูกค้า" เรื่องที่ต้องขยับตอนนี้
+         DIGEST_TELEGRAM_* → กลุ่ม "TimeOptic รายงานการส่งมอบ" สรุปวันละครั้ง
+       ฝั่งคลังมีตัวส่งของตัวเองอ่าน STOCK_TELEGRAM_* คนละชุดกับที่นี่ */
     'telegram' => [
         // env always wins over the app_settings table
-        'bot_token' => env('TELEGRAM_BOT_TOKEN'),
-        'chat_id'   => env('TELEGRAM_CHAT_ID'),
+        'bot_token'        => env('TELEGRAM_BOT_TOKEN'),
+        'chat_id'          => env('TELEGRAM_CHAT_ID'),
+        'digest_bot_token' => env('DIGEST_TELEGRAM_BOT_TOKEN'),
+        'digest_chat_id'   => env('DIGEST_TELEGRAM_CHAT_ID'),
     ],
     // origins allowed to call the API (Next.js dev server)
     // เครื่องอื่นในวง LAN (iPad/มือถือ) เข้ามาด้วย origin เป็นเลข IP ของเครื่องนี้
