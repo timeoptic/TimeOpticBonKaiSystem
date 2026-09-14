@@ -45,9 +45,10 @@ export default function LotEditDialog({
 
   const n = Number(qty);
   const moved = Number.isInteger(n) && n !== lot.remainingQty;
-  // The server insists on a reason for a count above what was received; asking
-  // here saves the round trip and says why while the number is still on screen.
-  const needsReason = n > lot.initialQty && note.trim() === "";
+  /* ยอดที่เปลี่ยนคือการปรับสต็อก ต้องบอกเหตุผลทุกครั้ง ไม่ว่าเพิ่มหรือลด (ร้านขอไว้
+     14 ก.ย. 2026) · เหตุผลลงสมุดคู่แถว ADJUST · API บังคับเหมือนกัน ถามตรงนี้แค่
+     ประหยัดรอบไปกลับ · แก้แค่ต้นทุนหรือวันหมดอายุไม่ต้องมีเหตุผล */
+  const needsReason = moved && note.trim() === "";
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -57,7 +58,7 @@ export default function LotEditDialog({
       return;
     }
     if (needsReason) {
-      setProblem(`คงเหลือมากกว่าที่รับเข้า (${count(lot.initialQty)}) — กรอกเหตุผลกำกับไว้ด้วย`);
+      setProblem("เปลี่ยนยอดคงเหลือต้องกรอกเหตุผลที่ปรับยอดด้วย");
       return;
     }
 
@@ -150,8 +151,8 @@ export default function LotEditDialog({
 
         <div className="field">
           <label className="field__label" htmlFor="le-note">
-            หมายเหตุ
-            {needsReason ? <span className="field__req"> · ต้องกรอก</span> : null}
+            {moved ? "เหตุผลที่ปรับยอด" : "หมายเหตุ"}
+            {moved ? <span className="field__req"> · ต้องกรอก</span> : null}
           </label>
           <input
             id="le-note"
@@ -159,11 +160,17 @@ export default function LotEditDialog({
             value={note}
             onChange={(e) => setNote(e.target.value)}
             placeholder={
-              needsReason ? "เช่น ตรวจนับเจอของเกิน ผู้ขายส่งเกินมา" : "เช่น เลขที่ใบกำกับ"
+              moved ? "เช่น ตรวจนับประจำเดือน · หยิบผิด · ของแตก" : "เช่น เลขที่ใบกำกับ"
             }
             disabled={busy}
             autoComplete="off"
+            aria-invalid={needsReason && problem !== null ? "true" : undefined}
           />
+          {moved && n > lot.initialQty ? (
+            <span className="field__help">
+              คงเหลือ {count(n)} มากกว่าที่รับเข้า {count(lot.initialQty)} — บอกไว้ด้วยว่าเกินมาจากไหน
+            </span>
+          ) : null}
         </div>
 
         {problem ? (

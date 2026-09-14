@@ -252,17 +252,30 @@ final class Catalog
          * nobody reads.
          */
         $initial = (int) $lot['initial_qty'];
-        $reason = $note === false ? null : $note;
+        $reason = ($note === false || $note === null || trim($note) === '') ? null : trim($note);
+        $delta = $newRemaining - (int) $lot['remaining_qty'];
 
-        if ($newRemaining > $initial && ($reason === null || trim($reason) === '')) {
+        /*
+         * และทุกยอดที่ขยับต้องมีเหตุผล ไม่ใช่แค่ยอดที่เกินรับเข้า — ร้านขอไว้ 14 ก.ย. 2026 ·
+         * แถว ADJUST ที่ลดยอดลงโดยไม่มีคำอธิบาย คือของที่หายไปโดยไม่มีใครตอบได้ว่าไปไหน
+         *
+         * ถามเฉพาะตอนยอดเปลี่ยนจริง: กล่องแก้ล็อตส่งยอดเดิมมาทุกครั้ง คนที่แค่มาลงต้นทุน
+         * หรือวันหมดอายุไม่ควรโดนถามเหตุผลของการปรับยอดที่ไม่ได้ทำ — รวมถึงล็อตที่ยอดเกิน
+         * รับเข้าอยู่แล้วตั้งแต่ก่อน ซึ่งเหตุผลลงสมุดไปแล้วรอบนั้น
+         */
+        if ($delta !== 0 && $reason === null) {
+            if ($newRemaining > $initial) {
+                throw ApiError::badRequest(
+                    "คงเหลือ ({$newRemaining}) มากกว่าจำนวนที่รับเข้า ({$initial}) — "
+                    . 'ถ้าตรวจนับแล้วเจอของเกินจริง ให้กรอกเหตุผลกำกับไว้ด้วย',
+                    'over_initial_needs_note',
+                );
+            }
             throw ApiError::badRequest(
-                "คงเหลือ ({$newRemaining}) มากกว่าจำนวนที่รับเข้า ({$initial}) — "
-                . 'ถ้าตรวจนับแล้วเจอของเกินจริง ให้กรอกเหตุผลกำกับไว้ด้วย',
-                'over_initial_needs_note',
+                "เปลี่ยนคงเหลือจาก {$lot['remaining_qty']} เป็น {$newRemaining} ต้องกรอกเหตุผลที่ปรับยอดด้วย",
+                'adjust_needs_note',
             );
         }
-
-        $delta = $newRemaining - (int) $lot['remaining_qty'];
 
         Db::tx(static function (PDO $pdo) use ($lotId, $lot, $newRemaining, $cost, $expiry, $note, $supplier, $delta, $actorId, $initial, $reason): void {
             $sets = ['remaining_qty = ?'];
@@ -304,18 +317,15 @@ final class Catalog
                     $lot['product_id'], $lotId, $delta,
                     $cost !== false ? $cost : $lot['cost_per_unit'],
                     'ADJ-' . $lot['lot_number'],
-                    // The ledger has to explain the number afterwards. A surplus
-                    // above what was received carries its reason here, where
-                    // anyone reading the movement will see it.
-                    $newRemaining > $initial
-                        ? sprintf(
-                            'แก้คงเหลือจาก %d เป็น %d (มากกว่าที่รับเข้า %d) — %s',
-                            (int) $lot['remaining_qty'],
-                            $newRemaining,
-                            $initial,
-                            trim((string) $reason),
-                        )
-                        : sprintf('แก้คงเหลือจาก %d เป็น %d', (int) $lot['remaining_qty'], $newRemaining),
+                    // The ledger has to explain the number afterwards, so the
+                    // reason lands here where anyone reading the movement sees it
+                    // — every adjustment has one now, not just a surplus.
+                    sprintf(
+                        'แก้คงเหลือจาก %d เป็น %d%s',
+                        (int) $lot['remaining_qty'],
+                        $newRemaining,
+                        $newRemaining > $initial ? " (มากกว่าที่รับเข้า {$initial})" : '',
+                    ) . ($reason !== null ? ' — ' . $reason : ''),
                     $actorId,
                 ]);
 

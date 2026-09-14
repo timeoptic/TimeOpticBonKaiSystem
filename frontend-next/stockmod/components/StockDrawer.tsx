@@ -50,6 +50,8 @@ export default function StockDrawer({
   const [confirmDelete, setConfirmDelete] = useState(false);
   /** แผงรับของเข้าเปิดอยู่ไหม — อยู่ในลิ้นชักนี้เอง ไม่ต้องปิดแล้วไปหาที่อื่น */
   const [receiving, setReceiving] = useState(false);
+  /** แผงแก้ราคาขาย / ขั้นต่ำเปิดอยู่ไหม */
+  const [quick, setQuick] = useState(false);
   const toast = useToast();
 
   async function removeProduct() {
@@ -205,7 +207,38 @@ export default function StockDrawer({
                 <p className="readout__figure">{money(detail.basePrice)}</p>
                 <p className="readout__note">บาทต่อชิ้น</p>
               </div>
+              {!detail.isCustomMade ? (
+                <div className="readout__cell readout__cell--coral">
+                  <p className="readout__label">ขั้นต่ำ</p>
+                  <p className="readout__figure">{count(detail.minStock)}</p>
+                  <p className="readout__note">
+                    {detail.minStock > 0 ? "เหลือเท่านี้แล้วแจ้งเตือน" : "0 = เตือนเมื่อของหมด"}
+                  </p>
+                </div>
+              ) : null}
             </section>
+
+            {/* ราคาขายกับขั้นต่ำแก้ที่นี่ แทนดินสอบนแถวรายการ (ร้านขอไว้ 14 ก.ย. 2026) —
+                สองช่องนี้เปลี่ยนบ่อยกว่าส่วนอื่นของสินค้า จึงไม่ต้องเปิดฟอร์มสินค้าทั้งก้อน */}
+            {can.editCatalog(actor) ? (
+              quick ? (
+                <PriceMinEdit
+                  product={detail}
+                  onCancel={() => setQuick(false)}
+                  onSaved={() => {
+                    setQuick(false);
+                    load();
+                    onChanged();
+                  }}
+                />
+              ) : (
+                <div className="chips">
+                  <button type="button" className="btn btn--small" onClick={() => setQuick(true)}>
+                    {detail.isCustomMade ? "แก้ราคาขาย" : "แก้ราคา / ขั้นต่ำ"}
+                  </button>
+                </div>
+              )
+            ) : null}
 
             {/* The movements themselves live on their own pages now. What is
                 offered here depends on the product, so an action that could
@@ -297,6 +330,7 @@ export default function StockDrawer({
                     <DrawerLotCard
                       key={l.id}
                       lot={l}
+                      product={detail}
                       money={money$}
                       onDone={() => {
                         load();
@@ -324,7 +358,8 @@ export default function StockDrawer({
                       {live.map((l) => (
                         <LotRow
                           key={l.id}
-lot={l}
+                          lot={l}
+                          product={detail}
                           money={money$}
                           onDone={() => {
                             load();
@@ -392,10 +427,12 @@ type Lot = ProductDetail["lots"][number];
  */
 function DrawerLotCard({
   lot,
+  product,
   money: showCost,
   onDone,
 }: {
   lot: Lot;
+  product: { sku: string; name: string };
   money: boolean;
   onDone: () => void;
 }) {
@@ -431,7 +468,8 @@ function DrawerLotCard({
 
       {editing ? (
         <LotEditDialog
-          lot={lot as never}
+          // ล็อตในลิ้นชักไม่มีชื่อสินค้าติดมา — กล่องแก้ล็อตเคยขึ้นหัวว่าง
+          lot={{ ...lot, sku: product.sku, productName: product.name } as never}
           onClose={() => setEditing(false)}
           onSaved={() => {
             setEditing(false);
@@ -444,70 +482,142 @@ function DrawerLotCard({
 }
 
 /**
- * A lot row that can be corrected in place.
+ * ราคาขายกับขั้นต่ำ แก้ในลิ้นชัก — แทนดินสอบนแถวรายการสินค้า (ร้านขอไว้ 14 ก.ย. 2026)
  *
- * Changing the remaining quantity is a stock count, not an edit: the server
- * records an ADJUST movement for the difference, so the ledger still explains
- * the number afterwards. Deleting is only offered for a lot nothing has been
- * drawn from — anything else is history.
+ * ส่งข้อมูลหลักของสินค้าเดิมไปครบ แต่ไม่ส่ง `attributes` ซึ่ง API อ่านว่า "ไม่ใช่เรื่องของฉัน"
+ * แล้วปล่อยสเปกไว้ตามเดิม — แบบเดียวกับที่ดินสอบนแถวเคยทำ · สินค้าสั่งตัดไม่มีสต็อก จึงไม่มี
+ * ช่องขั้นต่ำ และไม่ส่ง `min_stock` ไป (ไม่ส่ง = คงค่าเดิม)
  */
-function LotRow({ lot, money: showCost, onDone }: { lot: Lot; money: boolean; onDone: () => void }) {
-  const actor = useActor();
+function PriceMinEdit({
+  product,
+  onCancel,
+  onSaved,
+}: {
+  product: ProductDetail;
+  onCancel: () => void;
+  onSaved: () => void;
+}) {
   const toast = useToast();
-  const [open, setOpen] = useState(false);
-  const [qty, setQty] = useState(String(lot.remainingQty));
-  const [cost, setCost] = useState(lot.costPerUnit === null ? "" : String(lot.costPerUnit));
-  const [reason, setReason] = useState("");
+  const [price, setPrice] = useState(product.basePrice > 0 ? String(product.basePrice) : "");
+  const [min, setMin] = useState(String(product.minStock));
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
 
-  /* กดถังขยะแล้วยังไม่ลบ — ถามก่อน · ปุ่มนี้อยู่ติดกับปุ่ม "บันทึก" ในแผงเดียวกัน
-     และคนกดมักถือของอยู่อีกมือ การกดพลาดหนึ่งครั้งลบล็อตหายไปทั้งใบ */
-  const [asking, setAsking] = useState(false);
-
-  const untouched = lot.remainingQty === lot.initialQty;
-
-  /**
-   * A count that finds more than was received is allowed — goods get mis-picked,
-   * returned without a slip, or over-shipped — but it has to say why, and the
-   * reason goes into the ledger beside the adjustment. The server insists on
-   * this too; asking here just saves a round trip.
-   */
-  const overInitial = Number(qty) > lot.initialQty;
-  const needsReason = overInitial && reason.trim() === "";
-
-  async function save() {
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    if (!product.isCustomMade && !/^\d{1,5}$/.test(min.trim())) {
+      setProblem("ขั้นต่ำต้องเป็นจำนวนเต็มตั้งแต่ 0 ขึ้นไป");
+      return;
+    }
     setBusy(true);
     setProblem(null);
     try {
-      const body: Record<string, unknown> = { remaining_qty: Number(qty) };
-      // Only send the cost when this person may set it, and only when it
-      // actually changed — an absent key means "leave it alone".
-      if (can.enterCost(actor) && cost !== (lot.costPerUnit === null ? "" : String(lot.costPerUnit))) {
-        body.cost_per_unit = cost.trim() || null;
-      }
-      if (reason.trim() !== "") {
-        body.note = reason.trim();
-      }
-      await api.post(`/lots/${lot.id}/update`, body);
-      setOpen(false);
-      /* ยอดที่ต่างจากเดิมคือการปรับสต็อก ไม่ใช่การแก้ป้าย — มันลง ADJUST ในสมุด
-         และเปลี่ยนของที่นับได้จริงบนชั้น คนกดควรเห็นตัวเลขที่เพิ่งเปลี่ยน */
-      if (Number(qty) !== lot.remainingQty) {
-        toast.warning({
-          text: `แก้ยอดล็อต ${lot.lotNumber} เป็น ${count(Number(qty))} ชิ้น`,
-          detail: `จากเดิม ${count(lot.remainingQty)} ชิ้น — ลง ADJUST ในสมุดแล้ว`,
-        });
-      } else {
-        toast.success({ text: `แก้ล็อต ${lot.lotNumber} แล้ว` });
-      }
-      onDone();
-    } catch (e) {
-      setProblem(ApiError.is(e) ? e.message : "แก้ไขไม่สำเร็จ");
-    } finally {
+      await api.post(`/products/${product.id}/update`, {
+        sku: product.sku,
+        name: product.name,
+        product_type: product.productType,
+        category_id: product.categoryId,
+        brand: product.brand,
+        is_custom_made: product.isCustomMade,
+        base_selling_price: price.trim(),
+        ...(product.isCustomMade ? {} : { min_stock: min.trim() }),
+      });
+      toast.success({ text: `แก้ ${product.sku} แล้ว`, detail: product.name });
+      onSaved();
+    } catch (err) {
+      setProblem(ApiError.is(err) ? err.message : "บันทึกไม่สำเร็จ");
       setBusy(false);
     }
   }
+
+  return (
+    <section className="drawer__section">
+      <h3 className="drawer__legend">{product.isCustomMade ? "แก้ราคาขาย" : "แก้ราคาขาย / ขั้นต่ำ"}</h3>
+      <form onSubmit={save} noValidate>
+        <div className="formgrid">
+          <div className="field">
+            <label className="field__label" htmlFor="pm-price">
+              ราคาขาย (฿ ต่อชิ้น)
+            </label>
+            <input
+              id="pm-price"
+              className="input"
+              inputMode="decimal"
+              value={price}
+              onChange={(e) => setPrice(e.target.value)}
+              placeholder="เว้นว่าง = ยังไม่ตั้งราคา"
+              disabled={busy}
+              autoComplete="off"
+              autoFocus
+            />
+          </div>
+          {!product.isCustomMade ? (
+            <div className="field">
+              <label className="field__label" htmlFor="pm-min">
+                ขั้นต่ำ (ชิ้น)
+              </label>
+              <input
+                id="pm-min"
+                className="input"
+                inputMode="numeric"
+                value={min}
+                onChange={(e) => setMin(e.target.value)}
+                disabled={busy}
+                autoComplete="off"
+              />
+              <span className="field__help">เหลือเท่านี้หรือน้อยกว่าแล้วแจ้งเตือน · 0 = เตือนเมื่อของหมด</span>
+            </div>
+          ) : null}
+        </div>
+
+        {problem ? (
+          <div className="notice notice--error" role="alert">
+            {problem}
+          </div>
+        ) : null}
+
+        <div className="chips">
+          <button type="submit" className="btn btn--primary btn--small" disabled={busy}>
+            {busy ? "กำลังบันทึก…" : "บันทึก"}
+          </button>
+          <button type="button" className="btn btn--quiet btn--small" onClick={onCancel} disabled={busy}>
+            ยกเลิก
+          </button>
+        </div>
+      </form>
+    </section>
+  );
+}
+
+/**
+ * ล็อตหนึ่งแถวในลิ้นชักสินค้า บนจอกว้าง
+ *
+ * ปุ่ม "แก้" เปิดกล่อง LotEditDialog ตัวเดียวกับการ์ดบนมือถือและหน้าล็อต — เดิมกางแผงใต้แถว
+ * ที่ไม่มีช่องวันหมดอายุ และถามเหตุผลเฉพาะตอนยอดเกินที่รับเข้า · กติกา "เปลี่ยนยอดคงเหลือ
+ * ต้องมีเหตุผล" (ร้านขอไว้ 14 ก.ย. 2026) จึงอยู่ที่กล่องเดียว
+ *
+ * ลบได้เฉพาะล็อตที่ยังไม่มีอะไรถูกตัดออก — ที่เหลือคือประวัติ แก้ด้วยการปรับยอด ไม่ใช่ลบ
+ */
+function LotRow({
+  lot,
+  product,
+  money: showCost,
+  onDone,
+}: {
+  lot: Lot;
+  product: { sku: string; name: string };
+  money: boolean;
+  onDone: () => void;
+}) {
+  const actor = useActor();
+  const toast = useToast();
+  const [editing, setEditing] = useState(false);
+  /* กดถังขยะแล้วยังไม่ลบ — ถามก่อน · การกดพลาดหนึ่งครั้งลบล็อตหายไปทั้งใบ */
+  const [asking, setAsking] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+
+  const untouched = lot.remainingQty === lot.initialQty;
 
   async function remove() {
     setBusy(true);
@@ -515,6 +625,7 @@ function LotRow({ lot, money: showCost, onDone }: { lot: Lot; money: boolean; on
     try {
       await api.post(`/lots/${lot.id}/delete`);
       toast.success({ text: `ลบล็อต ${lot.lotNumber} แล้ว` });
+      setAsking(false);
       onDone();
     } catch (e) {
       setProblem(ApiError.is(e) ? e.message : "ลบไม่สำเร็จ");
@@ -544,110 +655,34 @@ function LotRow({ lot, money: showCost, onDone }: { lot: Lot; money: boolean; on
         ) : null}
         <td className="grid__muted grid__when">{date(lot.receivedDate)}</td>
         <td>
-          <button
-            type="button"
-            className="btn btn--quiet btn--small"
-            onClick={() => setOpen((v) => !v)}
-            aria-expanded={open}
-          >
-            {open ? "ปิด" : "แก้"}
-          </button>
+          <div className="chips">
+            <button type="button" className="btn btn--quiet btn--small" onClick={() => setEditing(true)}>
+              แก้
+            </button>
+            {untouched && can.editCatalog(actor) ? (
+              <button
+                type="button"
+                className="btn btn--danger-quiet btn--small btn--icon"
+                onClick={() => setAsking(true)}
+                aria-label={`ลบล็อต ${lot.lotNumber}`}
+              >
+                <IconTrash />
+              </button>
+            ) : null}
+          </div>
         </td>
       </tr>
 
-      {open ? (
-        <tr className="grid__row">
-          <td colSpan={showCost ? 6 : 5}>
-            <div className="lotedit">
-              <div className="field">
-                <label className="field__label" htmlFor={`le-q-${lot.id}`}>
-                  คงเหลือจริง
-                </label>
-                <input
-                  id={`le-q-${lot.id}`}
-                  className="input"
-                  inputMode="numeric"
-                  value={qty}
-                  onChange={(e) => setQty(e.target.value)}
-                  disabled={busy}
-                />
-                <span className="field__help">
-                  รับเข้า {count(lot.initialQty)} ชิ้น · แก้แล้วระบบบันทึกเป็นการปรับยอด
-                </span>
-              </div>
-
-              <div className="field">
-                <label className="field__label" htmlFor={`le-c-${lot.id}`}>
-                  ต้นทุน/ชิ้น (฿)
-                </label>
-                <input
-                  id={`le-c-${lot.id}`}
-                  className="input"
-                  inputMode="decimal"
-                  value={cost}
-                  onChange={(e) => setCost(e.target.value)}
-                  disabled={busy || !can.enterCost(actor)}
-                  placeholder={can.enterCost(actor) ? "เว้นว่างถ้ายังไม่รู้" : "ฝ่ายบัญชีเป็นคนลง"}
-                />
-              </div>
-
-              <div className="field field--wide">
-                <label className="field__label" htmlFor={`le-n-${lot.id}`}>
-                  เหตุผลที่ปรับยอด
-                  {overInitial ? <span className="field__req"> · ต้องกรอก</span> : null}
-                </label>
-                <input
-                  id={`le-n-${lot.id}`}
-                  className="input"
-                  value={reason}
-                  onChange={(e) => setReason(e.target.value)}
-                  placeholder="เช่น ตรวจนับประจำเดือน ของเกิน 1 ชิ้น"
-                  disabled={busy}
-                  autoComplete="off"
-                  aria-invalid={needsReason ? "true" : undefined}
-                />
-                <span className="field__help">
-                  {overInitial
-                    ? `คงเหลือ ${count(Number(qty) || 0)} มากกว่าที่รับเข้า ${count(lot.initialQty)} — ` +
-                      "ตรวจนับเจอของเกินได้ แต่ต้องบอกไว้ในสมุดว่าเกินมาจากไหน"
-                    : "เว้นว่างได้ ถ้ากรอกจะถูกบันทึกไว้ในสมุดคู่กับการปรับยอด"}
-                </span>
-              </div>
-
-              {problem ? (
-                <div className="notice notice--error" role="alert">
-                  {problem}
-                </div>
-              ) : null}
-
-              <div className="chips">
-                <button
-                  type="button"
-                  className="btn btn--primary btn--small"
-                  onClick={save}
-                  disabled={busy || needsReason}
-                >
-                  {busy ? "กำลังบันทึก…" : "บันทึก"}
-                </button>
-                {untouched && can.editCatalog(actor) ? (
-                  <button
-                    type="button"
-                    className="btn btn--danger btn--small btn--icon"
-                    onClick={() => setAsking(true)}
-                    disabled={busy}
-                  >
-                    <IconTrash />
-                    ลบล็อตนี้
-                  </button>
-                ) : (
-                  <span className="field__help">
-                    ล็อตที่ตัดของออกไปแล้วลบไม่ได้ — ถ้าของหายให้ปรับยอด
-                  </span>
-                )}
-              </div>
-            </div>
-          </td>
-        </tr>
+      {editing ? (
+        <LotEditDialog
+          lot={{ ...lot, sku: product.sku, productName: product.name } as never}
+          onClose={() => setEditing(false)}
+          onSaved={() => {
+            setEditing(false);
+            toast.success({ text: `แก้ล็อต ${lot.lotNumber} แล้ว`, detail: product.sku });
+            onDone();
+          }}
+        />
       ) : null}
 
       {asking ? (
@@ -658,7 +693,10 @@ function LotRow({ lot, money: showCost, onDone }: { lot: Lot; money: boolean; on
           busy={busy}
           problem={problem}
           onConfirm={() => void remove()}
-          onClose={() => setAsking(false)}
+          onClose={() => {
+            setProblem(null);
+            setAsking(false);
+          }}
         />
       ) : null}
     </>

@@ -277,7 +277,7 @@ test('ปรับยอดคงเหลือแล้วเกิด log ADJ
         $lot = Db::one('SELECT * FROM stock_lots WHERE remaining_qty > 1 ORDER BY id LIMIT 1');
         $target = (int) $lot['remaining_qty'] - 1;
 
-        $out = Catalog::updateLot((int) $lot['id'], ['remaining_qty' => $target], [Roles::SALES], 1);
+        $out = Catalog::updateLot((int) $lot['id'], ['remaining_qty' => $target, 'note' => 'ตรวจนับประจำเดือน'], [Roles::SALES], 1);
 
         eq($out['remaining'], $target, 'ยอดใหม่');
         eq($out['adjusted'], -1, 'ส่วนต่างที่ปรับ');
@@ -289,13 +289,14 @@ test('ปรับยอดคงเหลือแล้วเกิด log ADJ
         ok($adj !== null, 'ต้องมี log ADJUST');
         eq((int) $adj['quantity'], -1, 'จำนวนใน log');
         ok(str_contains((string) $adj['notes'], 'แก้คงเหลือ'), 'หมายเหตุอธิบายว่าแก้จากเท่าไหร่เป็นเท่าไหร่');
+        ok(str_contains((string) $adj['notes'], 'ตรวจนับประจำเดือน'), 'เหตุผลอยู่ในสมุดคู่แถว ADJUST — ได้ ' . render($adj['notes']));
     });
 });
 
 test('ปรับยอดแล้วสมุดยังตรง', function () {
     withRollback(function () {
         $lot = Db::one('SELECT * FROM stock_lots WHERE remaining_qty > 1 ORDER BY id LIMIT 1');
-        Catalog::updateLot((int) $lot['id'], ['remaining_qty' => (int) $lot['remaining_qty'] - 1], [Roles::SALES], 1);
+        Catalog::updateLot((int) $lot['id'], ['remaining_qty' => (int) $lot['remaining_qty'] - 1, 'note' => 'ของแตก'], [Roles::SALES], 1);
 
         $bad = Db::all(
             'SELECT l.lot_number FROM stock_lots l
@@ -367,13 +368,89 @@ test('ปรับยอดเกินจำนวนรับเข้าแ�
     });
 });
 
-test('ปรับยอดปกติ (ไม่เกินที่รับเข้า) ยังไม่ต้องกรอกเหตุผล', function () {
-    withRollback(function () {
-        $lot = Db::one('SELECT * FROM stock_lots WHERE remaining_qty > 1 ORDER BY id LIMIT 1');
-        $lower = (int) $lot['remaining_qty'] - 1;
+/* ร้านขอไว้ 14 ก.ย. 2026: เปลี่ยนยอดคงเหลือต้องใส่เหตุผลทุกครั้ง ไม่ใช่แค่ตอนเกินที่รับเข้า
+   — ยอดที่ขยับโดยไม่มีคำอธิบายคือแถว ADJUST ที่ไม่มีใครตอบได้ว่าของหายไปไหน */
 
-        Catalog::updateLot((int) $lot['id'], ['remaining_qty' => $lower], [Roles::OWNER], 1);
-        eq(lotRemaining((int) $lot['id']), $lower, 'ลดยอดได้โดยไม่ต้องมีเหตุผล');
+/** ล็อตของเทสต์เอง `$qty` ชิ้น — ไม่พึ่งล็อตที่มีอยู่ในฐาน ซึ่งเครื่องทดสอบบางเครื่องไม่มี */
+function adjustableLot(int $qty): array
+{
+    $sku = 'ADJ-' . strtoupper(bin2hex(random_bytes(3)));
+    Catalog::createProduct([
+        'sku'                => $sku,
+        'name'               => 'สินค้าทดสอบปรับยอดล็อต',
+        'product_type'       => 'Frame',
+        'category_id'        => (int) Db::value("SELECT id FROM categories WHERE code = 'Frame'"),
+        'base_selling_price' => '500.00',
+        'is_custom_made'     => false,
+    ], [Roles::OWNER]);
+    Receiving::receive(
+        ['sku' => $sku, 'quantity' => $qty, 'cost_per_unit' => '100.00', 'received_date' => date('Y-m-d')],
+        [Roles::OWNER],
+        1,
+    );
+    return Db::one(
+        'SELECT l.* FROM stock_lots l JOIN products p ON p.id = l.product_id WHERE p.sku = ? ORDER BY l.id DESC LIMIT 1',
+        [$sku],
+    );
+}
+test('ลดยอดคงเหลือโดยไม่บอกเหตุผลถูกปฏิเสธ · บอกแล้วผ่านและเหตุผลลงสมุด', function () {
+    withRollback(function () {
+        $lot = adjustableLot(5);
+        $before = (int) $lot['remaining_qty'];
+        $lower = $before - 1;
+
+        throwsReason(
+            'adjust_needs_note',
+            fn() => Catalog::updateLot((int) $lot['id'], ['remaining_qty' => $lower], [Roles::OWNER], 1),
+            'ลดยอดไม่มีเหตุผล',
+        );
+        throwsReason(
+            'adjust_needs_note',
+            fn() => Catalog::updateLot((int) $lot['id'], ['remaining_qty' => $lower, 'note' => '   '], [Roles::OWNER], 1),
+            'เหตุผลเป็นช่องว่าง',
+        );
+        eq(lotRemaining((int) $lot['id']), $before, 'ถูกปฏิเสธแล้วยอดไม่ขยับ');
+
+        Catalog::updateLot((int) $lot['id'], ['remaining_qty' => $lower, 'note' => 'หยิบผิดไปใส่กล่องอื่น'], [Roles::OWNER], 1);
+        eq(lotRemaining((int) $lot['id']), $lower, 'มีเหตุผลแล้วลดยอดได้');
+
+        $adj = Db::one(
+            "SELECT notes FROM inventory_logs WHERE lot_id = ? AND action_type = 'ADJUST' ORDER BY id DESC LIMIT 1",
+            [$lot['id']],
+        );
+        ok(str_contains((string) $adj['notes'], 'หยิบผิดไปใส่กล่องอื่น'), 'เหตุผลลงสมุด — ได้ ' . render($adj['notes']));
+    });
+});
+
+test('แก้แค่ต้นทุนหรือวันหมดอายุไม่ต้องมีเหตุผล — ส่งยอดเดิมมาด้วยก็ไม่นับเป็นการปรับยอด', function () {
+    withRollback(function () {
+        $lot = adjustableLot(5);
+        $adjusts = static fn() => (int) Db::value(
+            "SELECT COUNT(*) FROM inventory_logs WHERE lot_id = ? AND action_type = 'ADJUST'",
+            [$lot['id']],
+        );
+        $had = $adjusts();
+
+        // กล่องแก้ล็อตส่งยอดคงเหลือเดิมมาทุกครั้ง แม้คนกดจะแก้แค่วันหมดอายุ
+        Catalog::updateLot(
+            (int) $lot['id'],
+            ['remaining_qty' => (int) $lot['remaining_qty'], 'expiry_date' => '2030-01-31'],
+            [Roles::OWNER],
+            1,
+        );
+        eq(Db::value('SELECT expiry_date FROM stock_lots WHERE id = ?', [$lot['id']]), '2030-01-31', 'วันหมดอายุใหม่');
+        eq($adjusts(), $had, 'ไม่มีแถว ADJUST เพิ่ม');
+    });
+});
+
+test('ล็อตที่ยอดเกินรับเข้าอยู่แล้ว แก้วันหมดอายุได้โดยไม่ถูกถามเหตุผลซ้ำ', function () {
+    withRollback(function () {
+        $lot = adjustableLot(3);
+        $over = (int) $lot['initial_qty'] + 2;
+        Catalog::updateLot((int) $lot['id'], ['remaining_qty' => $over, 'note' => 'ผู้ขายส่งเกิน'], [Roles::OWNER], 1);
+
+        Catalog::updateLot((int) $lot['id'], ['remaining_qty' => $over, 'expiry_date' => '2031-06-30'], [Roles::OWNER], 1);
+        eq(Db::value('SELECT expiry_date FROM stock_lots WHERE id = ?', [$lot['id']]), '2031-06-30', 'วันหมดอายุใหม่');
     });
 });
 
@@ -387,7 +464,7 @@ test('พนักงานหน้าร้านแก้ต้นทุน�
             'staff แก้ต้นทุน',
         );
 
-        $out = Catalog::updateLot((int) $lot['id'], ['remaining_qty' => (int) $lot['remaining_qty'] - 1], [Roles::SALES], 1);
+        $out = Catalog::updateLot((int) $lot['id'], ['remaining_qty' => (int) $lot['remaining_qty'] - 1, 'note' => 'ตรวจนับ'], [Roles::SALES], 1);
         eq($out['adjusted'], -1, 'staff ปรับยอดได้');
     });
 });

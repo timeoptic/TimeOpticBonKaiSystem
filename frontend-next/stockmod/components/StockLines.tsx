@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { can, useActor } from "./AppShell";
-import InlineEdit from "./InlineEdit";
 import Select from "./Select";
 import DateField from "./DateField";
 import QtyField from "./QtyField";
@@ -96,18 +95,6 @@ export default function StockLines({
     onChanged();
   }
 
-  async function patchLot(id: number, body: Record<string, unknown>) {
-    try {
-      await api.post(`/lots/${id}/update`, body);
-      toast.success({ text: "แก้ล็อตแล้ว", detail: product.sku });
-      done();
-    } catch (e) {
-      // Thrown on, not swallowed: InlineEdit shows it beside the figure that
-      // was refused, which is the only place it means anything.
-      throw new Error(ApiError.is(e) ? e.message : "บันทึกไม่สำเร็จ");
-    }
-  }
-
   async function removeLot(id: number) {
     setRemoving(true);
     setProblem(null);
@@ -173,43 +160,29 @@ export default function StockLines({
                 <span className="lotline__who">{l.supplierName ?? "ไม่ระบุผู้ขาย"}</span>
               </span>
 
+              {/* อ่านอย่างเดียว — แก้ที่ป๊อปอัป "รายละเอียดสินค้า · ประวัติ" (ร้านขอไว้
+                  14 ก.ย. 2026: ดินสอรกไป และแก้คงเหลือตรงนี้ไม่มีช่องให้ใส่เหตุผล) ·
+                  กล่องแก้ล็อตในป๊อปอัปมีครบทั้งคงเหลือ ต้นทุน วันหมดอายุ และเหตุผล */}
               <span className="lotline__cell">
                 <span className="lotline__label">คงเหลือ</span>
-                <InlineEdit
-                  label={`คงเหลือของล็อต ${date(l.receivedDate)}`}
-                  value={String(l.remainingQty)}
-                  suffix="ชิ้น"
-                  disabled={!mayEdit}
-                  onSave={(v) => patchLot(l.id, { remaining_qty: Number(v || 0) })}
-                />
+                <span className="lotline__value">{count(l.remainingQty)} ชิ้น</span>
                 <span className="lotline__sub">รับเข้า {count(l.initialQty)}</span>
               </span>
 
               <span className="lotline__cell">
                 <span className="lotline__label">ต้นทุน/ชิ้น</span>
-                <InlineEdit
-                  label={`ต้นทุนของล็อต ${date(l.receivedDate)}`}
-                  value={l.costPerUnit === null ? "" : String(l.costPerUnit)}
-                  display={l.costPerUnit === null ? undefined : money(l.costPerUnit)}
-                  empty="รอต้นทุน"
-                  placeholder="฿"
-                  disabled={!mayCost}
-                  onSave={(v) => patchLot(l.id, { cost_per_unit: v || null })}
-                />
+                {l.costPerUnit === null ? (
+                  <span className="status status--pending">รอต้นทุน</span>
+                ) : (
+                  <span className="lotline__value">{money(l.costPerUnit)}</span>
+                )}
               </span>
 
               <span className="lotline__cell">
                 <span className="lotline__label">หมดอายุ</span>
-                <InlineEdit
-                  label={`วันหมดอายุของล็อต ${date(l.receivedDate)}`}
-                  value={l.expiryDate ?? ""}
-                  display={l.expiryDate ? date(l.expiryDate) : undefined}
-                  empty="ไม่มี"
-                  placeholder="YYYY-MM-DD"
-                  numeric={false}
-                  disabled={!mayEdit}
-                  onSave={(v) => patchLot(l.id, { expiry_date: v || null })}
-                />
+                <span className="lotline__value">
+                  {l.expiryDate ? date(l.expiryDate) : <span className="grid__muted">ไม่มี</span>}
+                </span>
               </span>
 
               {/* Only a lot nothing has been drawn from can go — the rest is
@@ -289,7 +262,7 @@ export default function StockLines({
           </button>
 
           {live.length > 0 && live[0].costPerUnit === null ? (
-            <span className="chips__note">ล็อตล่าสุดยังไม่มีต้นทุน — กด ✎ ที่ช่องต้นทุนได้เลย</span>
+            <span className="chips__note">ล็อตล่าสุดยังไม่มีต้นทุน — ลงต้นทุนได้ที่รายละเอียดสินค้า</span>
           ) : null}
         </div>
       )}
