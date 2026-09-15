@@ -34,6 +34,7 @@ import {
   CASE_PROCESSES, eventNote, paymentStatusOf, processInfo,
 } from '../../../../lib/caseProcesses.js';
 import { custName, fmtDate, fmtDateTime, money, moneyShort } from '../../../../lib/format.js';
+import { ageText, birthWithAge } from '../../../../lib/customerAge.js';
 
 import { ReceptionPanel } from './panels/ReceptionPanel.jsx';
 import { ExamPanel } from './panels/ExamPanel.jsx';
@@ -195,7 +196,7 @@ function OverviewTab({ c, showTab }) {
               ['โทร', c.phone || '—'],
               ['LINE / WhatsApp', c.line_id || '—'],
               ['อีเมล', c.email || '—'],
-              ['วันเกิด', fmtDate(c.birth_date) || '—'],
+              ['วันเกิด', birthWithAge(c.birth_date, fmtDate) || '—'],
             ]}
           />
         </Card>
@@ -359,7 +360,9 @@ function CaseDetailInner() {
       <PageHead
         icon="board"
         title={c.case_code}
-        subtitle={custName(c)}
+        /* อายุอยู่บนหัวเคสที่ค้างอยู่ทุกขั้น — วัดสายตา (ค่า ADD) กับเลือกเลนส์ต้องใช้
+           ไม่มีวันเกิดหรือวันเกิดผิด = ชื่ออย่างเดียว ไม่ขึ้น "— ปี" */
+        subtitle={[custName(c), ageText(c.birth_date)].filter(Boolean).join(' · ')}
         actions={(
           <>
             <Link className="btn btn-ghost" href={'/customers/detail?id=' + c.customer_id}><Icon name="user" /> ข้อมูลลูกค้า</Link>

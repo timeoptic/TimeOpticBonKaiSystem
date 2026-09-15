@@ -13,6 +13,7 @@ import { StatusChip } from '../../../../components/StatusChip.jsx';
 import { ExamHistory } from '../../../../components/ExamHistory.jsx';
 import { QueryParamPage } from '../../../../components/QueryParamPage.jsx';
 import { custName, fmtDate, fmtDateTime, money } from '../../../../lib/format.js';
+import { birthWithAge } from '../../../../lib/customerAge.js';
 import { Icon } from '../../../../components/Icon.jsx';
 
 function CustomerDetailInner() {
@@ -69,7 +70,7 @@ function CustomerDetailInner() {
             ['ชื่อ-นามสกุล', custName(c)],
             ['เพศ', c.sex || '-'],
             ['สัญชาติ', c.nationality || '-'],
-            ['วันเกิด', fmtDate(c.birth_date) || '-'],
+            ['วันเกิด', birthWithAge(c.birth_date, fmtDate) || '-'],
             ['เบอร์โทร', c.phone || '-'],
             ['LINE / WhatsApp', c.line_id || '-'],
             ['อีเมล', c.email || '-'],

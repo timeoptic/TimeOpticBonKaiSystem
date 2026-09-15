@@ -19,6 +19,7 @@ import { useToast } from '../../../../../components/Toast.jsx';
 import { Field, FormActions, FormGrid, Kv } from '../../../../../components/ui.jsx';
 import { EmployeeSelect, ListSelect } from '../../../../../components/Selects.jsx';
 import { custName, fmtDate } from '../../../../../lib/format.js';
+import { birthWithAge } from '../../../../../lib/customerAge.js';
 import { Icon } from '../../../../../components/Icon.jsx';
 
 export function ReceptionPanel({ c, reload }) {
@@ -70,7 +71,7 @@ export function ReceptionPanel({ c, reload }) {
           ['ลูกค้า', <Link key="cust" href={'/customers/detail?id=' + c.customer_id}>{custName(c)}</Link>],
           ['โทร', c.phone || '—'],
           ['LINE / WhatsApp', c.line_id || '—'],
-          ['วันเกิด', fmtDate(c.birth_date) || '—'],
+          ['วันเกิด', birthWithAge(c.birth_date, fmtDate) || '—'],
           ['ตอนเปิดเคส', Number(c.is_new_customer) ? 'ลูกค้าใหม่' : 'ลูกค้าเก่า'],
         ]}
       />
