@@ -1,6 +1,6 @@
 'use client';
 /** Multi-file upload + thumbnail grid for a case's attached photos. */
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../lib/apiClient.js';
 import { useAsync } from '../lib/hooks.js';
 import { useToast } from './Toast.jsx';
@@ -10,8 +10,13 @@ import { photoUploadPlan } from '../lib/photos.js';
 import { isPreviewable } from '../lib/lightbox.js';
 import { Lightbox } from './Lightbox.jsx';
 
-/* max = null แปลว่ากล่องนี้ไม่จำกัดจำนวน (สลิปโอนเงิน, ไฟล์ส่งมอบ) */
-export function PhotoUpload({ caseId, kind = 'other', centeringId = null, paymentId = null, takenBy = null, max = null }) {
+/* max = null แปลว่ากล่องนี้ไม่จำกัดจำนวน (สลิปโอนเงิน, ไฟล์ส่งมอบ)
+   actions / actionsHint / onPhotos ใช้เฉพาะกล่องที่มีปุ่มของตัวเองต่อท้ายปุ่มเพิ่มรูป
+   (ปุ่ม "ส่งรูป" ของขั้นวัด Center) — กล่องอื่นไม่ส่งมา หน้าตาเหมือนเดิมทุกอย่าง */
+export function PhotoUpload({
+  caseId, kind = 'other', centeringId = null, paymentId = null, takenBy = null, max = null,
+  actions = null, actionsHint = null, onPhotos = null,
+}) {
   const { ok, err } = useToast();
   const confirm = useConfirm();
   const inputRef = useRef(null);
@@ -22,6 +27,12 @@ export function PhotoUpload({ caseId, kind = 'other', centeringId = null, paymen
     () => api.get('/api/uploads', { case_id: caseId, kind }),
     [caseId, kind]
   );
+
+  /* บอกเจ้าของกล่องทุกครั้งที่รายการเปลี่ยน (โหลดเสร็จ อัปโหลด ลบ) — ปุ่มส่งรูป
+     ต้องส่งชุดเดียวกับที่เห็นในกล่องนี้เป๊ะ ไม่ใช่ไปดึงรายการของตัวเองอีกรอบ */
+  useEffect(() => {
+    if (onPhotos && photos) onPhotos(photos);
+  }, [photos, onPhotos]);
 
   const pick = () => inputRef.current?.click();
 
@@ -77,6 +88,12 @@ export function PhotoUpload({ caseId, kind = 'other', centeringId = null, paymen
     } catch (ex) { err(ex); }
   };
 
+  const addButton = (
+    <button type="button" className="btn btn-sm btn-light" onClick={pick} disabled={full}>
+      <Icon name="camera" /> เพิ่มรูป
+    </button>
+  );
+
   return (
     <div className="stack">
       <input
@@ -89,16 +106,21 @@ export function PhotoUpload({ caseId, kind = 'other', centeringId = null, paymen
       />
       {/* ตัวนับวางเป็นบรรทัดใต้ปุ่ม ห้ามใช้ .row ครอบ — ปุ่มกว้างเต็มการ์ดได้เพราะ
           align-items:stretch ของ .stack พอโดน .row ครอบมันจะหดเหลือเท่าตัวอักษร
-          ตัวครอบตรงนี้จึงเป็น .stack เหมือนกัน แค่บีบ gap ให้ตัวนับติดปุ่ม */}
+          ตัวครอบตรงนี้จึงเป็น .stack เหมือนกัน แค่บีบ gap ให้ตัวนับติดปุ่ม
+          มีปุ่มต่อท้าย: สองปุ่มแบ่งครึ่งกันเต็มความกว้างการ์ด ด้วยเหตุผลเดียวกัน */}
       <div className="stack" style={{ gap: 6 }}>
-        <button type="button" className="btn btn-sm btn-light" onClick={pick} disabled={full}>
-          <Icon name="camera" /> เพิ่มรูป
-        </button>
+        {actions ? (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+            {addButton}
+            {actions}
+          </div>
+        ) : addButton}
         {max ? (
           <p className="hint" style={{ margin: 0 }}>
             {full ? `ครบ ${max} รูปแล้ว — ลบรูปเก่าก่อนถ้าจะเพิ่ม` : `แนบแล้ว ${count}/${max}`}
           </p>
         ) : null}
+        {actionsHint ? <p className="hint" style={{ margin: 0 }}>{actionsHint}</p> : null}
       </div>
       {loading ? null : (
         <div className="photo-grid">

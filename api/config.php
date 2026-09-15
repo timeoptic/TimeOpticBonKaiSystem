@@ -68,16 +68,19 @@ return [
         'timeout'  => (int) env('STOCK_API_TIMEOUT', '10'),
         'mode'     => env('STOCK_API_MODE', 'off'),
     ],
-    /* สองปลายทาง คนละบอท คนละกลุ่ม (ดู Telegram::TARGETS)
-         TELEGRAM_*        → กลุ่ม "TimeOptic คิวลูกค้า" เรื่องที่ต้องขยับตอนนี้
-         DIGEST_TELEGRAM_* → กลุ่ม "TimeOptic รายงานการส่งมอบ" สรุปวันละครั้ง
+    /* สามปลายทาง คนละบอท คนละกลุ่ม (ดู Telegram::TARGETS)
+         TELEGRAM_*           → กลุ่ม "TimeOptic คิวลูกค้า" เรื่องที่ต้องขยับตอนนี้
+         DIGEST_TELEGRAM_*    → กลุ่ม "TimeOptic รายงานการส่งมอบ" สรุปวันละครั้ง
+         CENTERING_TELEGRAM_* → กลุ่มรูปวัด Center จากปุ่ม "ส่งรูป" (ไม่ตกกลับไปกลุ่มไหน)
        ฝั่งคลังมีตัวส่งของตัวเองอ่าน STOCK_TELEGRAM_* คนละชุดกับที่นี่ */
     'telegram' => [
         // env always wins over the app_settings table
-        'bot_token'        => env('TELEGRAM_BOT_TOKEN'),
-        'chat_id'          => env('TELEGRAM_CHAT_ID'),
-        'digest_bot_token' => env('DIGEST_TELEGRAM_BOT_TOKEN'),
-        'digest_chat_id'   => env('DIGEST_TELEGRAM_CHAT_ID'),
+        'bot_token'           => env('TELEGRAM_BOT_TOKEN'),
+        'chat_id'             => env('TELEGRAM_CHAT_ID'),
+        'digest_bot_token'    => env('DIGEST_TELEGRAM_BOT_TOKEN'),
+        'digest_chat_id'      => env('DIGEST_TELEGRAM_CHAT_ID'),
+        'centering_bot_token' => env('CENTERING_TELEGRAM_BOT_TOKEN'),
+        'centering_chat_id'   => env('CENTERING_TELEGRAM_CHAT_ID'),
     ],
     // origins allowed to call the API (Next.js dev server)
     // เครื่องอื่นในวง LAN (iPad/มือถือ) เข้ามาด้วย origin เป็นเลข IP ของเครื่องนี้

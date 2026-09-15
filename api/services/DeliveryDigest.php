@@ -146,11 +146,14 @@ final class DeliveryDigest
      *
      * ชื่อที่ระบบไม่รู้จักถือว่าไม่ได้ตั้ง แล้วกลับไปใช้ค่าเริ่มต้น (Telegram::target()
      * จะตกไป main ซึ่งไม่ใช่สิ่งที่ตั้งใจ) — ค่าที่พิมพ์ผิดไม่ควรทำให้สรุปเปลี่ยนกลุ่มเงียบ ๆ
+     * ปลายทางที่ประกาศ `digest` false (กลุ่มรูปวัด Center) ก็ถือว่าไม่ได้ตั้งเช่นกัน
      */
     public static function target(): string
     {
         $v = self::setting(Telegram::settings(), 'delivery_digest_target');
-        return isset(Telegram::TARGETS[$v]) ? $v : self::DEFAULTS['delivery_digest_target'];
+        return isset(Telegram::TARGETS[$v]) && (Telegram::TARGETS[$v]['digest'] ?? true)
+            ? $v
+            : self::DEFAULTS['delivery_digest_target'];
     }
 
     /**

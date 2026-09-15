@@ -35,6 +35,9 @@ GET('/api/settings', function () {
             'chat_from_env'   => pinnedToEnv($t['env']['chat']),
             'configured'      => Telegram::isConfigured($key),
             'fell_back'       => Telegram::credentials($key)['fell_back'],
+            /* ตั้งไม่ครบแล้วตกกลับไปกลุ่มหลักไหม · เลือกเป็นกลุ่มรับสรุปคิวส่งมอบได้ไหม */
+            'fallback'        => $t['fallback'] ?? true,
+            'digest'          => $t['digest'] ?? true,
         ];
     }
 

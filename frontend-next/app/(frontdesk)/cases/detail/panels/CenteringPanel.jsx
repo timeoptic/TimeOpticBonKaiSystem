@@ -11,6 +11,10 @@
  * Two tables carry this: `centerings` holds the optical values (PD, FH, Cor.,
  * CVD, panto, wrap) and `frame_fittings` holds the frame's own box measurements
  * (A, B, DBL, ED) — both written by one press of the shell's บันทึก Draft.
+ *
+ * "ส่งรูป" sends every photo in รูปภาพการวัด plus the หมายเหตุ box, as shown on
+ * screen, to the Telegram group รูปวัด Center — see CenteringSendModal.jsx. It
+ * never saves the draft and never reloads the case, so nothing typed is lost.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../../../../../lib/apiClient.js';
@@ -25,6 +29,8 @@ import { Icon } from '../../../../../components/Icon.jsx';
 import { useProcessActions } from '../../../../../components/ProcessShell.jsx';
 import { dtLocal, nowLocal, toStamp } from '../../../../../lib/format.js';
 import { DateTimeField } from '../../../../../components/DateTimeField.jsx';
+import { noteUnsaved, sentToast } from '../../../../../lib/centeringSend.js';
+import { CenteringSendModal, SendIcon, SentToast } from './CenteringSendModal.jsx';
 
 const NOTE_MAX = 500;
 
@@ -71,7 +77,7 @@ const Group = ({ icon, title, cols = 0, optional = false, children }) => (
 );
 
 export function CenteringPanel({ c, reload }) {
-  const { ok } = useToast();
+  const { ok, err } = useToast();
   const actions = useProcessActions();
   const ce = useMemo(() => c.centering || {}, [c]);
   const ff = useMemo(() => c.frame_fitting || {}, [c]);
@@ -79,6 +85,13 @@ export function CenteringPanel({ c, reload }) {
 
   const [form, setForm] = useState({});
   const [fit, setFit] = useState({});
+
+  /* รายการในกล่องรูปภาพการวัด — null จนกว่ากล่องจะโหลดเสร็จ ข้อความ "กรุณาเพิ่มรูป"
+     จะได้ไม่กะพริบขึ้นมาก่อนรูปโหลด · photoRev เปลี่ยน = ให้กล่องโหลดรายการใหม่
+     (API บอกว่ารูปในเคสเปลี่ยนไประหว่างเปิด popup) */
+  const [photos, setPhotos] = useState(null);
+  const [photoRev, setPhotoRev] = useState(0);
+  const [sendOpen, setSendOpen] = useState(false);
 
   useEffect(() => {
     setForm({
@@ -147,6 +160,18 @@ export function CenteringPanel({ c, reload }) {
   }, [register]);
 
   const note = form.center_point_note || '';
+  const photoCount = photos ? photos.length : 0;
+
+  /* ส่งสำเร็จไม่ reload เคส — reload จะรีเซ็ตฟอร์มจากค่าที่บันทึกไว้ หมายเหตุที่พิมพ์ค้าง
+     (ซึ่งเพิ่งถูกส่งออกไป) จะหายไปจากช่องทันที */
+  const onSent = (res) => {
+    setSendOpen(false);
+    ok(<SentToast {...sentToast({ caseCode: res?.case_code || c.case_code, count: res?.count ?? photoCount })} />);
+  };
+  const onSendFailed = (f) => {
+    err(f.title);
+    if (f.refresh) setPhotoRev((n) => n + 1);
+  };
 
   return (
     <div className="split center-split">
@@ -188,11 +213,24 @@ export function CenteringPanel({ c, reload }) {
         <Card title="รูปภาพการวัด" right={<span className="muted">{`ไม่เกิน ${CENTERING_PHOTO_MAX} รูป`}</span>}>
           <p className="hint">ถ่ายให้เห็นใบหน้าตรง ด้านข้าง และกรอบที่มาร์คจุดไว้ให้ชัด</p>
           <PhotoUpload
+            key={photoRev}
             caseId={c.id}
             kind="centering"
             centeringId={ce.id}
             takenBy={form.performed_by || null}
             max={CENTERING_PHOTO_MAX}
+            onPhotos={setPhotos}
+            actions={(
+              <button
+                type="button"
+                className="btn btn-sm btn-accent"
+                onClick={() => setSendOpen(true)}
+                disabled={photoCount === 0}
+              >
+                <SendIcon /> ส่งรูป
+              </button>
+            )}
+            actionsHint={photos && photos.length === 0 ? 'กรุณาเพิ่มรูปภาพก่อนส่ง' : null}
           />
         </Card>
       </Stack>
@@ -264,6 +302,19 @@ export function CenteringPanel({ c, reload }) {
           />
         </Card>
       </Stack>
+
+      {sendOpen && photoCount > 0 ? (
+        <CenteringSendModal
+          caseId={c.id}
+          caseCode={c.case_code}
+          photos={photos}
+          note={note}
+          noteUnsaved={noteUnsaved(note, ce.center_point_note)}
+          onClose={() => setSendOpen(false)}
+          onSent={onSent}
+          onFailed={onSendFailed}
+        />
+      ) : null}
     </div>
   );
 }

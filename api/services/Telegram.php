@@ -46,6 +46,17 @@ final class Telegram
             'chat'  => 'digest_telegram_chat_id',
             'env'   => ['token' => 'DIGEST_TELEGRAM_BOT_TOKEN', 'chat' => 'DIGEST_TELEGRAM_CHAT_ID'],
         ],
+        /* ปุ่ม "ส่งรูป" ของขั้นวัด Center — รูปใบหน้าลูกค้ากับหมายเหตุ
+           `fallback` false: ตั้งไม่ครบแล้วต้องส่งไม่ออก ห้ามไปโผล่ในกลุ่มคิวลูกค้าแทน
+           `digest` false: ไม่ใช่กลุ่มที่เลือกรับสรุปคิวส่งมอบได้ */
+        'centering' => [
+            'label'    => 'รูปวัด Center',
+            'token'    => 'centering_telegram_bot_token',
+            'chat'     => 'centering_telegram_chat_id',
+            'env'      => ['token' => 'CENTERING_TELEGRAM_BOT_TOKEN', 'chat' => 'CENTERING_TELEGRAM_CHAT_ID'],
+            'fallback' => false,
+            'digest'   => false,
+        ],
     ];
 
     /** ปลายทางที่ใช้เมื่อไม่ได้ระบุ — ของเดิมทั้งหมดเป็นตัวนี้ */
@@ -58,6 +69,8 @@ final class Telegram
             'telegram_chat_id'          => $tg['chat_id'] ?? null,
             'digest_telegram_bot_token' => $tg['digest_bot_token'] ?? null,
             'digest_telegram_chat_id'   => $tg['digest_chat_id'] ?? null,
+            'centering_telegram_bot_token' => $tg['centering_bot_token'] ?? null,
+            'centering_telegram_chat_id'   => $tg['centering_chat_id'] ?? null,
         ], fn($v) => $v !== null && $v !== '');
     }
 
@@ -88,7 +101,8 @@ final class Telegram
         [$token, $chat] = $read($name);
         $fellBack = false;
 
-        if (($token === '' || $chat === '') && $name !== self::MAIN) {
+        /* ปลายทางที่ประกาศ fallback false (กลุ่มรูปวัด Center) ตั้งไม่ครบ = ส่งไม่ออก */
+        if (($token === '' || $chat === '') && $name !== self::MAIN && (self::TARGETS[$name]['fallback'] ?? true)) {
             [$token, $chat] = $read(self::MAIN);
             $fellBack = true;
         }
@@ -184,30 +198,110 @@ final class Telegram
          * ไม่งั้นการแจ้งเตือนจะเงียบไปทั้งหมดจนกว่าจะมีคนไปแก้ค่าเอง
          */
         if ($r['migrate_to'] !== null) {
-            $newChat = $r['migrate_to'];
-            $chatKey = self::TARGETS[$target]['chat'];
-            $envName = self::TARGETS[$target]['env']['chat'];
-            $pinned  = isset(self::$envOverride[$chatKey]);
-            self::saveSettings([$chatKey => $newChat]);
-            if ($pinned) {
-                // env ทับค่าที่เพิ่งบันทึกเสมอ จำใส่ override ไว้ให้โปรเซสนี้ใช้ต่อได้
-                self::$envOverride[$chatKey] = $newChat;
-                self::invalidate();
-                self::logged('telegram_migrate', null, $newChat, '', 0,
-                    "กลุ่มถูกอัปเกรดเป็นซูเปอร์กรุ๊ป — แก้ {$envName} ใน .env เป็น {$newChat} "
-                    . 'ไม่งั้นค่าเก่าจะกลับมาทับทุกครั้งที่รีสตาร์ท');
-            }
-            $chatId = $newChat;
-            $r      = self::dispatch($token, $newChat, $text);
+            $chatId = self::adoptChat($target, $r['migrate_to']);
+            $r      = self::dispatch($token, $chatId, $text);
         }
 
         return self::logged($kind, $bookingId, $chatId, $text, $r['ok'] ? 1 : 0, $r['error']);
     }
 
     /**
+     * ส่งรูปวัด Center (ปุ่ม "ส่งรูป") — ข้อความสรุปหนึ่งข้อความ แล้วรูปตาม mediaPlan()
+     * โดยตอบกลับ (reply) ข้อความนั้น พนักงานสองคนส่งพร้อมกัน รูปของสองเคสจะไม่ปนกัน
+     *
+     * คนกดจากหน้าเคสเองโดยตั้งใจ จึงไม่ดูสวิตช์รวม telegram_enabled (เหมือนปุ่มเตือนคิวเอง)
+     * แต่ไม่ตกกลับไปกลุ่มอื่นเด็ดขาด — ดู TARGETS['centering']['fallback']
+     *
+     * ข้อความผ่านแล้วรูปล้มกลางทาง = ล้มทั้งชุด คนกดส่งใหม่ได้ กลุ่มอาจเห็นหัวข้อซ้ำ
+     * ซึ่งดีกว่าบอกว่าสำเร็จทั้งที่รูปไปไม่ครบ · ลง notification_log หนึ่งแถวต่อการกด
+     *
+     * @param list<array{id:int, mime_type:string, path:string, name:string}> $files
+     * @return array{ok: bool, error: ?string}
+     */
+    public static function sendCenteringPhotos(string $text, array $files): array
+    {
+        $target = 'centering';
+        $cred   = self::credentials($target);
+        $token  = $cred['token'];
+        $chatId = $cred['chat'];
+        if ($token === '' || $chatId === '') {
+            return self::logged('centering_photos', null, $chatId, $text, 0,
+                'ยังไม่ได้ตั้งค่า Telegram กลุ่มรูปวัด Center');
+        }
+
+        $r = self::dispatch($token, $chatId, $text);
+        if ($r['migrate_to'] !== null) {
+            $chatId = self::adoptChat($target, $r['migrate_to']);
+            $r      = self::dispatch($token, $chatId, $text);
+        }
+        if (!$r['ok']) {
+            return self::logged('centering_photos', null, $chatId, $text, 0, $r['error']);
+        }
+
+        $byId = array_column($files, null, 'id');
+        foreach (self::mediaPlan($files) as $step) {
+            $form = ['chat_id' => $chatId];
+            if ($r['message_id'] !== null) {
+                $form['reply_parameters'] = json_encode([
+                    'message_id'                  => $r['message_id'],
+                    'allow_sending_without_reply' => true,
+                ]);
+            }
+            if ($step['method'] === 'sendMediaGroup') {
+                $media = [];
+                foreach ($step['ids'] as $i => $id) {
+                    $form["photo$i"] = self::attach($byId[$id]);
+                    $media[] = ['type' => 'photo', 'media' => "attach://photo$i"];
+                }
+                $form['media'] = json_encode($media);
+            } else {
+                $field        = $step['method'] === 'sendPhoto' ? 'photo' : 'document';
+                $form[$field] = self::attach($byId[$step['ids'][0]]);
+            }
+
+            [$body, $httpCode, $curlErr] = self::post(
+                "https://api.telegram.org/bot{$token}/{$step['method']}",
+                null,
+                $form
+            );
+            $sent = self::reply($body, $httpCode, $curlErr);
+            if (!$sent['ok']) {
+                return self::logged('centering_photos', null, $chatId, $text, 0, $sent['error']);
+            }
+        }
+        return self::logged('centering_photos', null, $chatId, $text, 1, null);
+    }
+
+    /** @param array{mime_type:string, path:string, name:string} $f */
+    private static function attach(array $f): CURLFile
+    {
+        return new CURLFile($f['path'], $f['mime_type'], $f['name']);
+    }
+
+    /**
+     * กลุ่มธรรมดาที่ถูกอัปเกรดเป็นซูเปอร์กรุ๊ป — จำ chat id ใหม่ของปลายทางนั้นไว้ แล้วคืน id ใหม่
+     */
+    private static function adoptChat(string $target, string $newChat): string
+    {
+        $chatKey = self::TARGETS[$target]['chat'];
+        $envName = self::TARGETS[$target]['env']['chat'];
+        $pinned  = isset(self::$envOverride[$chatKey]);
+        self::saveSettings([$chatKey => $newChat]);
+        if ($pinned) {
+            // env ทับค่าที่เพิ่งบันทึกเสมอ จำใส่ override ไว้ให้โปรเซสนี้ใช้ต่อได้
+            self::$envOverride[$chatKey] = $newChat;
+            self::invalidate();
+            self::logged('telegram_migrate', null, $newChat, '', 0,
+                "กลุ่มถูกอัปเกรดเป็นซูเปอร์กรุ๊ป — แก้ {$envName} ใน .env เป็น {$newChat} "
+                . 'ไม่งั้นค่าเก่าจะกลับมาทับทุกครั้งที่รีสตาร์ท');
+        }
+        return $newChat;
+    }
+
+    /**
      * ยิง sendMessage หนึ่งครั้ง — ไม่แตะ notification_log
      *
-     * @return array{ok: bool, error: ?string, migrate_to: ?string}
+     * @return array{ok: bool, error: ?string, migrate_to: ?string, message_id: ?int}
      */
     private static function dispatch(string $token, string $chatId, string $text): array
     {
@@ -222,9 +316,18 @@ final class Telegram
             "https://api.telegram.org/bot{$token}/sendMessage",
             $payload
         );
+        return self::reply($body, $httpCode, $curlErr);
+    }
 
+    /**
+     * อ่านคำตอบของ Bot API หนึ่งครั้ง — ข้อความกับรูปใช้ร่วมกัน
+     *
+     * @return array{ok: bool, error: ?string, migrate_to: ?string, message_id: ?int}
+     */
+    private static function reply(?string $body, int $httpCode, ?string $curlErr): array
+    {
         if ($curlErr !== null) {
-            return ['ok' => false, 'error' => mb_substr($curlErr, 0, 250), 'migrate_to' => null];
+            return ['ok' => false, 'error' => mb_substr($curlErr, 0, 250), 'migrate_to' => null, 'message_id' => null];
         }
         $data = json_decode((string) $body, true);
         if ($httpCode >= 400 || (is_array($data) && ($data['ok'] ?? null) === false)) {
@@ -236,9 +339,11 @@ final class Telegram
                 'migrate_to' => is_int($migrateTo) || (is_string($migrateTo) && $migrateTo !== '')
                     ? (string) $migrateTo
                     : null,
+                'message_id' => null,
             ];
         }
-        return ['ok' => true, 'error' => null, 'migrate_to' => null];
+        $messageId = $data['result']['message_id'] ?? null;
+        return ['ok' => true, 'error' => null, 'migrate_to' => null, 'message_id' => is_int($messageId) ? $messageId : null];
     }
 
     /** ask Telegram who the bot is — used by the "ทดสอบ" button, ปลายทางละตัว */
@@ -285,13 +390,18 @@ final class Telegram
         return null;
     }
 
-    /** @return array{0: ?string, 1: int, 2: ?string} body, status, curl error */
-    private static function post(string $url, ?string $json): array
+    /**
+     * `$form` คือ multipart ที่มี CURLFile (รูปวัด Center) — อัปโหลดรูปหลายเมกะไบต์
+     * ใช้เวลาเกินสิบสองวินาทีของข้อความธรรมดาได้ จึงให้เวลานานกว่า
+     *
+     * @return array{0: ?string, 1: int, 2: ?string} body, status, curl error
+     */
+    private static function post(string $url, ?string $json, ?array $form = null): array
     {
         $ch = curl_init($url);
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT        => 12,
+            CURLOPT_TIMEOUT        => $form !== null ? 120 : 12,
             CURLOPT_CONNECTTIMEOUT => 8,
         ]);
         $ca = self::caBundle();
@@ -303,6 +413,12 @@ final class Telegram
                 CURLOPT_POST       => true,
                 CURLOPT_POSTFIELDS => $json,
                 CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+            ]);
+        }
+        if ($form !== null) {
+            curl_setopt_array($ch, [
+                CURLOPT_POST       => true,
+                CURLOPT_POSTFIELDS => $form,
             ]);
         }
         $body = curl_exec($ch);
@@ -410,6 +526,69 @@ final class Telegram
         }
         $parts[] = "\nรหัสจอง " . self::esc($b['booking_code'] ?? '');
         return implode("\n", array_filter($parts, fn($p) => $p !== ''));
+    }
+
+    /* ------------------------------------------------------------------ *
+     * ปุ่ม "ส่งรูป" ของขั้นวัด Center (ดู POST /api/centering-photos/send)
+     * ------------------------------------------------------------------ */
+
+    /**
+     * ข้อความสรุปที่นำหน้ารูป — รูปทั้งชุดตอบกลับข้อความนี้
+     *
+     * หมายเหตุว่างก็เขียนว่า "ไม่มีหมายเหตุ" คนในกลุ่มจะได้ไม่ต้องเดาว่าหายไประหว่างทางไหม
+     *
+     * @param array{case_code:string, customer:string, count:int, note:?string,
+     *              sent_by:string, sent_at:string} $p
+     */
+    public static function centeringPhotosMessage(array $p): string
+    {
+        $note     = trim((string) ($p['note'] ?? ''));
+        $customer = trim((string) ($p['customer'] ?? ''));
+        $at       = (string) ($p['sent_at'] ?? '');
+
+        return implode("\n", [
+            '📸 <b>รูปวัด Center</b>',
+            '',
+            '🗂 เคส <b>' . self::esc($p['case_code'] ?? '') . '</b>',
+            '👤 ' . self::esc($customer !== '' ? $customer : 'ลูกค้า (ไม่ระบุชื่อ)'),
+            '🖼 ' . (int) ($p['count'] ?? 0) . ' รูป',
+            '',
+            '📝 <b>หมายเหตุ</b>',
+            $note !== '' ? self::esc($note) : 'ไม่มีหมายเหตุ',
+            '',
+            'ส่งโดย ' . self::esc($p['sent_by'] ?? '') . ' · ' . self::thaiDate($at) . ' ' . substr($at, 11, 5) . ' น.',
+        ]);
+    }
+
+    /**
+     * แบ่งไฟล์เป็นคำสั่งของ Bot API
+     *
+     * รูปรวมเป็นอัลบั้มละไม่เกินสิบ (sendMediaGroup รับ 2–10 ชิ้น) เศษใบเดียวใช้ sendPhoto
+     * ไฟล์ที่ไม่ใช่รูป (PDF) อยู่อัลบั้มเดียวกับรูปไม่ได้ ส่งทีละไฟล์ด้วย sendDocument
+     *
+     * @param list<array{id:int, mime_type:?string}> $files
+     * @return list<array{method:string, ids:list<int>}>
+     */
+    public static function mediaPlan(array $files): array
+    {
+        $photos = [];
+        $docs   = [];
+        foreach ($files as $f) {
+            if (str_starts_with((string) ($f['mime_type'] ?? ''), 'image/')) {
+                $photos[] = (int) $f['id'];
+            } else {
+                $docs[] = (int) $f['id'];
+            }
+        }
+
+        $plan = [];
+        foreach (array_chunk($photos, 10) as $chunk) {
+            $plan[] = ['method' => count($chunk) === 1 ? 'sendPhoto' : 'sendMediaGroup', 'ids' => $chunk];
+        }
+        foreach ($docs as $id) {
+            $plan[] = ['method' => 'sendDocument', 'ids' => [$id]];
+        }
+        return $plan;
     }
 
     /* ------------------------------------------------------------------ *

@@ -1,0 +1,98 @@
+/* popup "ส่งรูป" ของขั้นวัด Center
+ *
+ * ยืม .modal-back / .modal / .m-body / .m-foot / .btn ของระบบทั้งชุด ไฟล์นี้มีแค่
+ * ส่วนที่กล่องนี้มีเพิ่ม · เป็น CSS module ของหน้า /cases/detail หน้าเดียว แก้ที่นี่
+ * ไม่เปลี่ยนไฟล์ CSS กลางที่อีกสองร้อยกว่าหน้าอ้างชื่อไว้ (ดู deploy/README.md)
+ *
+ * บนจอ ≤560px กฎกลางของ .modal ทำกล่องเป็นแผ่นเด้งจากขอบล่าง กว้างเต็มจอ
+ * แถบปุ่มติดขอบล่าง — ที่นี่ไม่ได้ทับ แค่ขยายปุ่มให้กดง่ายและบีบรูปย่อเป็นสามคอลัมน์
+ */
+
+/* :global(.modal) นำหน้า — ต้องชนะ .modal{max-width:520px} ของกลางทุกลำดับการโหลด */
+:global(.modal).dialog { max-width: 640px; }
+:global(.modal).dialog.ask { max-width: 480px; }
+
+.head {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 15px 18px; border-bottom: 1px solid var(--line-soft);
+}
+.headText { flex: 1; min-width: 0; }
+/* สองคลาส + แท็ก เพื่อชนะ .modal h3 ของกลาง (ที่มี padding และเส้นใต้ของมันเอง) */
+.dialog .head h3 { margin: 0; padding: 0; border: 0; font-size: 16px; }
+.headText p { margin: 3px 0 0; font-size: var(--t-sm, 13px); color: var(--ink-faint); }
+
+.close {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 40px; height: 40px; margin: -8px -10px -8px 0;
+  border: 0; border-radius: 50%; background: transparent; color: var(--ink-soft); cursor: pointer;
+}
+.close:hover { background: var(--surface-alt); color: var(--ink); }
+
+.body { display: flex; flex-direction: column; gap: 16px; }
+.section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.label { margin: 0; font-size: var(--t-sm, 13px); font-weight: 600; color: var(--ink-soft); }
+.labelRow { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.count { font-weight: 700; color: var(--accent); white-space: nowrap; }
+.caseNo { font-size: 18px; font-weight: 700; letter-spacing: .2px; overflow-wrap: anywhere; }
+.flat { margin: 0; }
+
+/* รูปย่อเป็นกริด ขั้นต่ำ 96px ต่อช่อง → กล่อง 640px ได้ 5 คอลัมน์ · รูปเยอะเลื่อนเฉพาะกริด
+   ไม่ใช่ให้กล่องทั้งใบสูงเกินจอ */
+.thumbs {
+  list-style: none; margin: 0; padding: 2px;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px;
+  max-height: min(272px, 34vh); overflow-y: auto; overscroll-behavior: contain;
+}
+.thumb {
+  position: relative; aspect-ratio: 1; min-width: 0;
+  border-radius: 8px; overflow: hidden; border: 1px solid var(--line); background: var(--field);
+}
+.thumbOpen { display: block; width: 100%; height: 100%; padding: 0; border: 0; background: none; cursor: zoom-in; }
+.thumbOpen img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.thumbOpen:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.fileTile {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  width: 100%; height: 100%; padding: 6px; font-size: 11px; color: var(--ink-soft);
+  text-align: center; overflow-wrap: anywhere; text-decoration: none;
+}
+
+/* หมายเหตุอ่านอย่างเดียว — พื้นเทาเหมือนช่องกรอก แต่ไม่มีเคอร์เซอร์ ไม่มีกรอบโฟกัส */
+.note {
+  background: var(--field); border: 1px solid var(--line-soft); border-radius: var(--radius-sm, 8px);
+  padding: 10px 12px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere;
+  max-height: 150px; overflow-y: auto;
+}
+.noteEmpty { color: var(--ink-faint); }
+
+.warn, .alert {
+  display: flex; align-items: flex-start; gap: 8px; margin: 0;
+  padding: 9px 12px; border-radius: var(--radius-sm, 8px); font-size: var(--t-sm, 13px); line-height: 1.45;
+}
+.warn { background: var(--warn-soft, #FEF3C7); color: var(--warn, #92400E); }
+.alert { background: var(--danger-soft, #FDE8EC); color: var(--danger, #B4123E); }
+.warn :global(.ico), .alert :global(.ico) { flex: none; margin-top: 1px; }
+.alertDetail { display: block; margin-top: 2px; opacity: .85; overflow-wrap: anywhere; }
+
+.foot :global(.btn) { min-height: 44px; }
+
+/* หน้ายืนยันครั้งสุดท้าย */
+.summary { margin: 0; display: grid; gap: 6px; }
+.summary div {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+  padding: 9px 12px; background: var(--field); border-radius: var(--radius-sm, 8px);
+}
+.summary dt { color: var(--ink-soft); white-space: nowrap; }
+.summary dd { margin: 0; font-weight: 600; text-align: right; overflow-wrap: anywhere; }
+.askText { margin: 12px 0 0; color: var(--ink-soft); font-size: var(--t-sm, 13px); }
+
+.toastTitle { display: block; font-weight: 700; }
+.toastDetail { display: block; margin-top: 2px; font-size: 13px; opacity: .92; }
+
+@media (max-width: 560px) {
+  .thumbs { grid-template-columns: repeat(3, minmax(0, 1fr)); max-height: min(236px, 30vh); }
+  .foot :global(.btn) { flex: 1 1 0; min-height: 48px; padding-inline: 10px; }
+}
+
+@media (max-width: 339.98px) {
+  .thumbs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

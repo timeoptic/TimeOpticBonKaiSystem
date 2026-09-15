@@ -136,6 +136,13 @@ function SettingsPageInner() {
               <b> {targets[0]?.label}</b> แทน
             </p>
           ) : null}
+          {/* ปลายทางที่ไม่ตกกลับ (กลุ่มรูปวัด Center) — ตั้งไม่ครบคือส่งไม่ออกเลย ต้องบอกให้ชัด */}
+          {dest.fallback === false && !dest.configured ? (
+            <p className="muted" style={{ marginTop: 8 }}>
+              ยังไม่ได้ตั้งกลุ่มนี้ — ปุ่ม “ส่งรูป” ในขั้นวัด Center จะส่งไม่ได้จนกว่าจะตั้งค่า
+              (ไม่ส่งไปกลุ่มอื่นแทน)
+            </p>
+          ) : null}
 
           <FormGrid>
             <Field label="เปิดใช้งาน" className="full">
@@ -250,7 +257,8 @@ function SettingsPageInner() {
                 name="delivery_digest_target"
                 defaultValue={s.delivery_digest_target || 'digest'}
               >
-                {targets.map((t) => (
+                {/* กลุ่มรูปวัด Center รับรูปลูกค้าอย่างเดียว ไม่ใช่ที่ของสรุปคิวส่งมอบ */}
+                {targets.filter((t) => t.digest !== false).map((t) => (
                   <option key={t.key} value={t.key}>{t.label}</option>
                 ))}
               </select>
