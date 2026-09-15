@@ -198,9 +198,10 @@ export function OrderFormView({
   const [rxIdState, setRxId] = useState(undefined);
   const [items, setItems] = useState(undefined);
   const [prices, setPrices] = useState(undefined);
-  /* ติ๊ก "กรอบเดิมของลูกค้า" เป็น state ที่ตั้งค่าจากออเดอร์ทีหลัง (ดู useEffect
-     ใต้ตัวแปร o) — ตั้งตรงนี้เลยไม่ได้เพราะ o ยังไม่มีค่าในบรรทัดนี้ */
-  const [oldFrame, setOldFrame] = useState(false);
+  /* ติ๊ก "กรอบเดิมของลูกค้า" — undefined = ยังไม่มีใครกด อ่านจากออเดอร์ที่บันทึกไว้แทน
+     (ดู usesOldFrame ใต้ตัวแปร o · ตั้งจากออเดอร์ตรงนี้ไม่ได้เพราะ o ยังไม่มีค่า)
+     กดแล้วเป็น true/false ของคนกดตลอด ไม่ผูกกับ `items` */
+  const [oldFrame, setOldFrame] = useState(undefined);
   /** ข้างที่กำลังเปิดใบสั่งตัดอยู่ ('r' | 'l') หรือ null เมื่อไม่ได้เปิด */
   const [rxFor, setRxFor] = useState(null);
   /** ใบสั่งตัดที่เพิ่งเปิดในหน้านี้ แยกตามข้าง — ไม่มีล็อตให้ผูก จึงเก็บเอง */
@@ -266,10 +267,13 @@ export function OrderFormView({
   };
 
   /* ออเดอร์เก่าที่มีชื่อกรอบแต่ไม่ได้ผูกกับของในคลัง คือกรอบเดิมของลูกค้า —
-     ติ๊กให้เองตอนเปิดมาแก้ ไม่งั้นกดบันทึกซ้ำแล้วชื่อกรอบจะหาย · `items` เป็น
-     null แปลว่ายังไม่มีใครแตะฟอร์ม จึงยังอ่านสถานะจากออเดอร์ได้ */
+     ติ๊กให้เองตอนเปิดมาแก้ ไม่งั้นกดบันทึกซ้ำแล้วชื่อกรอบจะหาย
+     เดิมอ่านจากออเดอร์ "ตอนที่ items ยังไม่ถูกแตะ" ซึ่งผิดสองทาง (ร้านเจอ 15 ก.ย. 2026):
+     เอาติ๊กออกไม่ได้เพราะการเอาออกไม่แตะ items ค่าจึงเด้งกลับเป็นของออเดอร์ และกดล้างเลนส์
+     แล้วติ๊กหายเองทั้งที่ไม่มีใครกด · ตอนนี้อ่านจากออเดอร์จนกว่าจะมีคนกดติ๊กเท่านั้น
+     (e2e/order-old-frame.spec.js) */
   const oldFrameFromOrder = Boolean(o.frame_name) && !o.frame_product_id && !o.frame;
-  const usesOldFrame = items === undefined ? oldFrame || oldFrameFromOrder : oldFrame;
+  const usesOldFrame = oldFrame === undefined ? oldFrameFromOrder : oldFrame;
   /* Picking a stock item is a statement of fact about the order: it fills in
      that item's own details and its price, instead of leaving staff to retype
      what the system already knows. The fields stay editable afterwards. */
