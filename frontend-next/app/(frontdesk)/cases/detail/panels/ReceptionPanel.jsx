@@ -12,18 +12,28 @@
  * Saving here is a draft save: it writes the case row and leaves the
  * process status alone — ProcessShell owns "✓ เปิดเคสเรียบร้อย".
  */
+import { useState } from 'react';
 import Link from 'next/link';
 import { api } from '../../../../../lib/apiClient.js';
 import { readForm } from '../../../../../lib/hooks.js';
 import { useToast } from '../../../../../components/Toast.jsx';
-import { Field, FormActions, FormGrid, Kv } from '../../../../../components/ui.jsx';
+import {
+  Badge, Field, FormActions, FormGrid, Kv, Row,
+} from '../../../../../components/ui.jsx';
 import { EmployeeSelect, ListSelect } from '../../../../../components/Selects.jsx';
 import { custName, fmtDate } from '../../../../../lib/format.js';
 import { birthWithAge } from '../../../../../lib/customerAge.js';
+import { emptyFields, missingText } from '../../../../../lib/customerFill.js';
 import { Icon } from '../../../../../components/Icon.jsx';
+import { CustomerFillDialog } from './CustomerFillDialog.jsx';
 
 export function ReceptionPanel({ c, reload }) {
   const { ok, err } = useToast();
+  /* ข้อมูลลูกค้าไม่ครบ — ขั้นนี้คือตอนที่พนักงานคุยกับลูกค้าอยู่ ถามแล้วเติมได้ทันที
+     ป้ายนับแค่วันเกิดกับเบอร์โทร ปุ่มขึ้นเมื่อยังมีช่องไหนว่างก็ตาม (lib/customerFill.js) */
+  const [filling, setFilling] = useState(false);
+  const missing = missingText(c);
+  const canFill = emptyFields(c).length > 0;
 
   const save = async (e) => {
     e.preventDefault();
@@ -75,6 +85,26 @@ export function ReceptionPanel({ c, reload }) {
           ['ตอนเปิดเคส', Number(c.is_new_customer) ? 'ลูกค้าใหม่' : 'ลูกค้าเก่า'],
         ]}
       />
+
+      {missing || canFill ? (
+        <Row>
+          {/* ป้ายยาวกว่าป้ายทั่วไป — ปล่อยตัดบรรทัดได้ จอ 360px จะได้ไม่ล้นออกข้าง */}
+          {missing ? <Badge kind="warn" style={{ whiteSpace: 'normal' }}><Icon name="warning" /> {missing}</Badge> : null}
+          {canFill ? (
+            <button type="button" className="btn btn-sm btn-light" onClick={() => setFilling(true)}>
+              <Icon name="pencil" /> เติมข้อมูลลูกค้า
+            </button>
+          ) : null}
+        </Row>
+      ) : null}
+
+      {filling ? (
+        <CustomerFillDialog
+          c={c}
+          onClose={() => setFilling(false)}
+          onSaved={() => { setFilling(false); reload(); }}
+        />
+      ) : null}
     </div>
   );
 }

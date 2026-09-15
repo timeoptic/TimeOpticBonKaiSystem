@@ -32,6 +32,8 @@ require __DIR__ . '/../services/Booking.php';
 require __DIR__ . '/../services/Scheduler.php';
 require __DIR__ . '/../routes/processes.php';
 require __DIR__ . '/../routes/cases.php';
+/* POST /api/customers/:id/fill — "เติมข้อมูลลูกค้า" จากขั้นรับลูกค้า (32-customer-fill) */
+require __DIR__ . '/../routes/customers.php';
 require __DIR__ . '/../routes/uploads.php';
 require __DIR__ . '/../routes/receipts.php';
 require __DIR__ . '/../routes/bill-parties.php';

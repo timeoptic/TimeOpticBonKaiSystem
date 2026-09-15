@@ -30,6 +30,7 @@ import { CaseStepper } from '../../../../components/CaseStepper.jsx';
 import { ProcessShell } from '../../../../components/ProcessShell.jsx';
 import { ACTION_LABEL } from '../../../../lib/constants.js';
 import { SEND_EVENT_LABEL } from '../../../../lib/centeringSend.js';
+import { CUSTOMER_EVENT_LABEL } from '../../../../lib/caseCustomer.js';
 import {
   CASE_PROCESSES, eventNote, paymentStatusOf, processInfo,
 } from '../../../../lib/caseProcesses.js';
@@ -267,7 +268,7 @@ function OverviewTab({ c, showTab }) {
               rows={(c.events || []).slice(0, 5).map((ev) => [
                 fmtDateTime(ev.created_at),
                 <>
-                  {ACTION_LABEL[ev.action] || SEND_EVENT_LABEL[ev.action] || ev.action}
+                  {ACTION_LABEL[ev.action] || SEND_EVENT_LABEL[ev.action] || CUSTOMER_EVENT_LABEL[ev.action] || ev.action}
                   {ev.to_label ? <> <Icon name="arrowRight" /> {ev.to_label}</> : null}
                   {eventNote(ev) ? ` · ${eventNote(ev)}` : ''}
                 </>,

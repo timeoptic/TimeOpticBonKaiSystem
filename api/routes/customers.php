@@ -285,6 +285,123 @@ PUT('/api/customers/:id', function (array $req) {
     return Db::get('SELECT * FROM customers WHERE id = ?', $id);
 });
 
+/** ช่องที่ "เติมข้อมูลลูกค้า" เขียนได้ ตามลำดับบนจอ — ป้ายใช้ในข้อความและไทม์ไลน์ */
+const CUSTOMER_FILL_FIELDS = [
+    'birth_date' => 'วันเกิด',
+    'phone'      => 'เบอร์โทร',
+    'line_id'    => 'LINE / WhatsApp',
+    'email'      => 'อีเมล',
+    'sex'        => 'เพศ',
+];
+
+/**
+ * "เติมข้อมูลลูกค้า" จากขั้นรับลูกค้า — เขียนเฉพาะช่องที่ส่งมา และเฉพาะช่องที่ยังว่าง
+ *
+ * ทำไมไม่ใช้ PUT ข้างบน: PUT เขียนทับทั้งสิบคอลัมน์ในคำสั่งเดียว แต่แถวเคสที่หน้าเคส
+ * ถืออยู่ไม่มีชื่อกลางกับหมายเหตุลูกค้า ส่ง {...c} ไปเมื่อไหร่ สองช่องนั้นหายเงียบ ๆ
+ *
+ * ช่องที่มีค่าอยู่แล้วเขียนทับไม่ได้ (409) — แก้ค่าที่มีต้องไปหน้าแก้ไขข้อมูลลูกค้า
+ * และกันกรณีสองเครื่องเติมพร้อมกันด้วย: ล็อกแถวลูกค้าก่อนตรวจว่ายังว่างอยู่
+ * ปฏิเสธทั้งคำขอ ไม่เติมบางช่องแล้วข้ามบางช่อง — คนกดจะไม่รู้ว่าอะไรเข้าไปบ้าง
+ *
+ * case_id (ถ้าส่งมา) ต้องเป็นเคสของลูกค้าคนนี้ แล้วไทม์ไลน์เคสลง customer_filled
+ *
+ * เทสต์: api/tests/32-customer-fill.test.php
+ */
+POST('/api/customers/:id/fill', function (array $req) {
+    $id     = int_or($req['params']['id']);
+    $body   = $req['body'];
+    $caseId = int_or($body['case_id'] ?? null);
+
+    if (!$id || !Db::get('SELECT id FROM customers WHERE id = ?', $id)) {
+        missing('ไม่พบลูกค้า');
+    }
+
+    $fill = [];
+    foreach (CUSTOMER_FILL_FIELDS as $col => $label) {
+        $v = trim((string) ($body[$col] ?? ''));
+        if ($v !== '') {
+            $fill[$col] = $v;
+        }
+    }
+    if ($fill === []) {
+        throw new HttpError(400, 'ยังไม่ได้กรอกข้อมูลที่จะเติม', ['reason' => 'nothing_to_fill']);
+    }
+
+    if (isset($fill['birth_date'])) {
+        /* อายุคิดกับวันนี้ของร้าน ไม่ใช่ของเครื่องที่กด — ปีเต็ม ถึงวันเกิดแล้วค่อยนับเพิ่ม */
+        $ok = preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $fill['birth_date'], $m) === 1
+            && checkdate((int) $m[2], (int) $m[3], (int) $m[1]);
+        if ($ok) {
+            [$ty, $tm, $td] = array_map('intval', explode('-', today()));
+            $age = $ty - (int) $m[1] - (([$tm, $td] < [(int) $m[2], (int) $m[3]]) ? 1 : 0);
+            $ok  = $fill['birth_date'] <= today() && $age <= 120;
+        }
+        if (!$ok) {
+            throw new HttpError(400, 'วันเกิดไม่ถูกต้อง', ['reason' => 'bad_birth_date']);
+        }
+    }
+    /* ความยาวสูงสุดตามคอลัมน์บน production — phone varchar(40) · line_id varchar(80) · email varchar(120)
+       ยาวเกินแล้วปล่อยลงฐานได้ 500 จาก MariaDB แทนข้อความที่คนกดอ่านรู้เรื่อง */
+    if (isset($fill['phone']) && strlen(normPhone($fill['phone'])) < 9) {
+        throw new HttpError(400, 'เบอร์โทรต้องมีตัวเลขอย่างน้อย 9 หลัก', ['reason' => 'bad_phone']);
+    }
+    if (isset($fill['phone']) && mb_strlen($fill['phone']) > 40) {
+        throw new HttpError(400, 'เบอร์โทรยาวเกิน 40 ตัวอักษร', ['reason' => 'bad_phone']);
+    }
+    if (isset($fill['line_id']) && mb_strlen($fill['line_id']) > 80) {
+        throw new HttpError(400, 'LINE / WhatsApp ยาวเกิน 80 ตัวอักษร', ['reason' => 'bad_line']);
+    }
+    if (isset($fill['email']) && (mb_strlen($fill['email']) > 120 || filter_var($fill['email'], FILTER_VALIDATE_EMAIL) === false)) {
+        throw new HttpError(400, 'อีเมลไม่ถูกต้อง', ['reason' => 'bad_email']);
+    }
+    if (isset($fill['sex']) && !in_array($fill['sex'], Lookups::lists()['sex'] ?? [], true)) {
+        throw new HttpError(400, 'เพศต้องเลือกจากรายการ', ['reason' => 'bad_sex']);
+    }
+
+    if ($caseId) {
+        $case = Db::get('SELECT customer_id FROM cases WHERE id = ?', $caseId);
+        if (!$case || (int) $case['customer_id'] !== $id) {
+            throw new HttpError(400, 'เคสนี้ไม่ใช่ของลูกค้าคนนี้ — รีเฟรชหน้าแล้วลองใหม่', ['reason' => 'case_mismatch']);
+        }
+    }
+
+    return Db::tx(function (Tx $q) use ($id, $fill, $caseId) {
+        $c     = $q->get('SELECT * FROM customers WHERE id = ? FOR UPDATE', $id);
+        $taken = array_values(array_filter(
+            array_keys($fill),
+            static fn(string $col): bool => trim((string) ($c[$col] ?? '')) !== ''
+        ));
+        if ($taken) {
+            $names = implode(', ', array_map(static fn(string $col) => CUSTOMER_FILL_FIELDS[$col], $taken));
+            throw new HttpError(
+                409,
+                "ลูกค้ามี $names อยู่แล้ว — รีเฟรชหน้าแล้วดูอีกครั้ง ถ้าจะแก้ให้ไปที่หน้าแก้ไขข้อมูลลูกค้า",
+                ['reason' => 'already_filled', 'fields' => $taken]
+            );
+        }
+
+        $sets = implode(', ', array_map(static fn(string $col) => "`$col` = ?", array_keys($fill)));
+        $q->run("UPDATE customers SET $sets WHERE id = ?", ...[...array_values($fill), $id]);
+
+        $actor  = StockModule::actor();
+        $labels = array_map(static fn(string $col) => CUSTOMER_FILL_FIELDS[$col], array_keys($fill));
+        logEvent($q, $caseId, [
+            'action'      => 'customer_filled',
+            'entity'      => 'customer',
+            'entity_id'   => $id,
+            'employee_id' => $actor['employeeId'] ?? null,
+            'note'        => 'เติมข้อมูลลูกค้า: ' . implode(', ', $labels),
+            'payload'     => ['customer_id' => $id, 'fields' => $fill],
+        ]);
+
+        return [
+            'customer' => $q->get('SELECT * FROM customers WHERE id = ?', $id),
+            'filled'   => array_keys($fill),
+        ];
+    });
+});
+
 DELETE('/api/customers/:id', function (array $req) {
     $id = int_or($req['params']['id']);
     $n  = (int) (Db::get('SELECT COUNT(*) n FROM custom_orders WHERE customer_id = ?', $id)['n'] ?? 0);
