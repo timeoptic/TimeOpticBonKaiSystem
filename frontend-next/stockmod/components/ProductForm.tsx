@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { can, useActor } from "./AppShell";
 import QtyField from "./QtyField";
 import Select from "./Select";
+import SupplierSelect, { supplierIdOf } from "./SupplierSelect";
 import {
   api,
   ApiError,
@@ -895,7 +896,7 @@ export default function ProductForm({
       ({ lot: created } = await api.post<{ lot: CreatedLot }>("/lots", {
         sku: sku.trim(),
         quantity: Number(qty),
-        supplier_id: supplierId === "" ? null : Number(supplierId),
+        supplier_id: await supplierIdOf(supplierId),
         cost_per_unit: mayCost && cost.trim() ? cost.trim() : null,
         received_date: received,
         expiry_date: expiry || null,
@@ -1304,18 +1305,12 @@ export default function ProductForm({
             ) : null}
             <div className="field">
               <label className="field__label" htmlFor="pf-sup">ผู้ขาย</label>
-              <Select
+              <SupplierSelect
                 id="pf-sup"
                 value={supplierId}
                 onChange={setSupplierId}
                 disabled={busy || suppliers.status !== "ready"}
-                placeholder="ไม่ระบุ"
-                options={[
-                  { value: "", label: "ไม่ระบุ" },
-                  ...(suppliers.status === "ready"
-                    ? suppliers.data.suppliers.map((s) => ({ value: String(s.id), label: s.name }))
-                    : []),
-                ]}
+                suppliers={suppliers.status === "ready" ? suppliers.data.suppliers : []}
               />
             </div>
             <div className="field">

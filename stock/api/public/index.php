@@ -287,6 +287,13 @@ Http::get('/api/lens-options', static function (): array {
     ]);
 });
 
+/** เพิ่มผู้ขายจากชื่อที่พิมพ์ในช่องผู้ขาย — มีชื่อนี้อยู่แล้วใช้ตัวเดิม (ดู Inventory::supplierByName) */
+Http::post('/api/suppliers', static function (): array {
+    $actor = Auth::require();
+    Roles::require(Roles::moveStock($actor['roles']), 'เพิ่มผู้ขาย');
+    return ['supplier' => Inventory::supplierByName((string) (Http::body()['name'] ?? ''))];
+});
+
 Http::get('/api/suppliers', static function (): array {
     Auth::require();
     return ['suppliers' => Inventory::suppliers()];
@@ -654,6 +661,24 @@ Http::post('/api/movements/{id}/update', static function (array $p): array {
         throw ApiError::badRequest('id ต้องเป็นตัวเลข');
     }
     return ['log' => \Optic\Service\ShopIssue::edit((int) $p['id'], Http::body(), $actor['roles'], $actor['id'])];
+});
+
+/** รายการรับเข้าหนึ่งแถวกับล็อตของมัน — กล่องแก้การรับเข้าในหน้าความเคลื่อนไหว */
+Http::get('/api/movements/{id}/receipt', static function (array $p) use ($maySeeCost): array {
+    $actor = Auth::require();
+    if (!ctype_digit($p['id'])) {
+        throw ApiError::badRequest('id ต้องเป็นตัวเลข');
+    }
+    return ['receipt' => \Optic\Service\Receiving::receipt((int) $p['id'], $maySeeCost($actor))];
+});
+
+/** แก้การรับเข้าที่คีย์ผิด — จำนวน วันที่ ผู้ขาย วันหมดอายุ ต้นทุน หมายเหตุ (ดู Receiving::editReceipt) */
+Http::post('/api/movements/{id}/receipt', static function (array $p): array {
+    $actor = Auth::require();
+    if (!ctype_digit($p['id'])) {
+        throw ApiError::badRequest('id ต้องเป็นตัวเลข');
+    }
+    return ['receipt' => \Optic\Service\Receiving::editReceipt((int) $p['id'], Http::body(), $actor['roles'], (int) $actor['id'])];
 });
 
 /**

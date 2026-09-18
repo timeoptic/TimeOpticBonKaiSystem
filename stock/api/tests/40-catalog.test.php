@@ -621,3 +621,26 @@ test('ลบล็อตแล้วเหลือแถว "ลบล็อต
         eq(Db::value("SELECT product_id FROM inventory_logs WHERE action_type = 'LOT_DELETE' AND reference_doc = ?", [$lot['lotNumber']]), null, 'ลบสินค้าได้ แถวร่องรอยอยู่ต่อโดยไม่ผูกสินค้า');
     });
 });
+
+test('แก้การรับเข้า: จำนวนแก้ที่แถว IN กับล็อตพร้อมกัน · ต่ำกว่าที่ออกไปแล้วไม่ได้ · ต้องมีเหตุผล', function () {
+    withRollback(function () {
+        $made = Catalog::createProduct(productArgs(), [Roles::OWNER]);
+        $lot = Receiving::receive(
+            ['sku' => $made['sku'], 'quantity' => 5, 'received_date' => date('Y-m-d')],
+            [Roles::OWNER], 1,
+        );
+        $in = (int) Db::value("SELECT id FROM inventory_logs WHERE lot_id = ? AND action_type = 'IN'", [$lot['lotId']]);
+
+        throwsReason('reason_required', fn() => Receiving::editReceipt($in, ['quantity' => 3], [Roles::OWNER], 1), 'ไม่มีเหตุผล');
+
+        Receiving::editReceipt($in, ['quantity' => 3, 'reason' => 'นับผิด'], [Roles::OWNER], 1);
+        $l = Db::one('SELECT initial_qty, remaining_qty FROM stock_lots WHERE id = ?', [$lot['lotId']]);
+        eq([(int) $l['initial_qty'], (int) $l['remaining_qty']], [3, 3], 'ล็อตเป็น 3');
+        eq((int) Db::value('SELECT SUM(quantity) FROM inventory_logs WHERE lot_id = ?', [$lot['lotId']]), 3, 'สมุดรวมเท่ายอดล็อต');
+        ok(str_contains((string) Db::value('SELECT notes FROM inventory_logs WHERE id = ?', [$in]), 'จำนวน 5 → 3 — นับผิด'), 'แถวรับเข้าบอกว่าแก้อะไร');
+
+        Stock::issue(['source' => 'test', 'idem_key' => 'rcpt-' . bin2hex(random_bytes(4)), 'sku' => $made['sku'], 'quantity' => 2, 'actor_id' => 1]);
+        throwsReason('below_used', fn() => Receiving::editReceipt($in, ['quantity' => 1, 'reason' => 'x'], [Roles::OWNER], 1), 'ต่ำกว่าที่ออกไป');
+        throwsReason('forbidden', fn() => Receiving::editReceipt($in, ['quantity' => 4, 'reason' => 'x'], [Roles::STOCK], 1), 'พนักงานคลังแก้ย้อนหลังไม่ได้');
+    });
+});

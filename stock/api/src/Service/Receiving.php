@@ -136,6 +136,146 @@ final class Receiving
         ];
     }
 
+    /* ---------------------------------------------------------- แก้การรับเข้า */
+
+    /**
+     * รายการรับเข้าหนึ่งแถว พร้อมรายละเอียดของล็อตที่มันเปิด — สำหรับกล่องแก้การรับเข้า
+     *
+     * @return array<string,mixed>
+     */
+    public static function receipt(int $logId, bool $money): array
+    {
+        $r = self::receiptRow($logId);
+
+        return [
+            'id'           => (int) $r['id'],
+            'lotId'        => (int) $r['lot_id'],
+            'lotNumber'    => $r['lot_number'],
+            'sku'          => $r['sku'],
+            'name'         => $r['name'],
+            'quantity'     => (int) $r['initial_qty'],
+            'remaining'    => (int) $r['remaining_qty'],
+            // ของที่ออกจากล็อตไปแล้ว — จำนวนรับเข้าแก้ให้ต่ำกว่านี้ไม่ได้
+            'used'         => max(0, (int) $r['initial_qty'] - (int) $r['remaining_qty']),
+            'receivedDate' => $r['received_date'],
+            'expiryDate'   => $r['expiry_date'],
+            'supplierId'   => $r['supplier_id'] === null ? null : (int) $r['supplier_id'],
+            'costPerUnit'  => $money && $r['cost_per_unit'] !== null ? (float) $r['cost_per_unit'] : null,
+            'note'         => $r['lot_notes'],
+        ];
+    }
+
+    /**
+     * แก้การรับเข้าที่คีย์ผิด — ร้านขอ 18 ก.ย. 2026 ("มีแก้การเบิกแล้ว อยากได้แก้การรับเข้าด้วย")
+     *
+     * แก้ได้: จำนวนที่รับ · วันที่รับ · ผู้ขาย · วันหมดอายุ · ต้นทุน/ชิ้น · หมายเหตุของล็อต
+     *
+     * จำนวนแก้ที่ตัวรายการรับเข้าเอง ไม่ใช่ลงแถวปรับยอด — ที่ผิดคือตัวเลขตอนรับ ไม่ใช่ของหาย ·
+     * แถว IN กับยอดล็อตขยับเท่ากันในทรานแซกชันเดียว ยอดล็อตจึงยังเท่ากับผลรวมในสมุดเสมอ ·
+     * แก้ให้ต่ำกว่าของที่ออกจากล็อตไปแล้วไม่ได้ (ของที่ขายไปแล้วต้องมีที่มา)
+     *
+     * แก้จำนวนหรือวันที่ต้องมีเหตุผล · ต่อท้ายหมายเหตุของแถวรับเข้าว่าแก้อะไรจากเท่าไร โดยใคร
+     * คนที่อ่านหน้าความเคลื่อนไหวทีหลังจึงเห็นว่าตัวเลขนี้ถูกแก้ ไม่ใช่เห็นตัวเลขใหม่เฉย ๆ
+     *
+     * ที่เหลือ (ผู้ขาย วันหมดอายุ ต้นทุน หมายเหตุ) ส่งต่อให้ Catalog::updateLot ตัวเดิม —
+     * สิทธิ์ต้นทุน (cost.edit) และการเติมต้นทุนย้อนหลังไปทุกที่ (Costing::fill) อยู่ที่นั่นแล้ว
+     *
+     * สิทธิ์ชุดเดียวกับแก้การเบิกของร้าน (ShopIssue::edit) — แก้ย้อนหลังเป็นงานของเจ้าของร้าน
+     *
+     * @param array<string,mixed> $body
+     * @param list<string> $roles
+     * @return array<string,mixed>
+     */
+    public static function editReceipt(int $logId, array $body, array $roles, int $actorId): array
+    {
+        Roles::require(Roles::settleBranch($roles), 'แก้การรับเข้า');
+
+        $r = self::receiptRow($logId);
+        $initial = (int) $r['initial_qty'];
+        $used = max(0, $initial - (int) $r['remaining_qty']);
+
+        $qty = array_key_exists('quantity', $body) ? self::qty($body) : $initial;
+        $received = array_key_exists('received_date', $body)
+            ? self::date($body, 'received_date', required: true)
+            : $r['received_date'];
+        $reason = trim((string) ($body['reason'] ?? ''));
+
+        $changes = [];
+        if ($qty !== $initial) {
+            if ($qty < $used) {
+                throw ApiError::conflict(
+                    'below_used',
+                    "ล็อตนี้ออกไปแล้ว {$used} ชิ้น แก้จำนวนรับเข้าให้น้อยกว่านั้นไม่ได้ — ต้องยกเลิกการเบิกก่อน",
+                    ['used' => $used],
+                );
+            }
+            $changes[] = "จำนวน {$initial} → {$qty}";
+        }
+        if ($received !== $r['received_date']) {
+            $changes[] = "วันที่รับ {$r['received_date']} → {$received}";
+        }
+        if ($changes !== [] && $reason === '') {
+            throw ApiError::badRequest('แก้จำนวนหรือวันที่รับต้องบอกเหตุผลด้วย', 'reason_required');
+        }
+        if (mb_strlen($reason) > 300) {
+            throw ApiError::badRequest('เหตุผลยาวเกิน 300 ตัวอักษร', 'field_too_long');
+        }
+
+        if ($changes !== []) {
+            $who = (string) (Db::value('SELECT display_name FROM admins WHERE id = ?', [$actorId]) ?? '');
+            $trail = sprintf(
+                ' · แก้การรับเข้า %s: %s — %s%s',
+                date('Y-m-d H:i'),
+                implode(', ', $changes),
+                $reason,
+                $who !== '' ? " ({$who})" : '',
+            );
+            $delta = $qty - $initial;
+
+            Db::tx(static function (PDO $pdo) use ($r, $qty, $received, $delta, $trail): void {
+                $pdo->prepare(
+                    'UPDATE stock_lots SET initial_qty = ?, remaining_qty = remaining_qty + ?, received_date = ? WHERE id = ?'
+                )->execute([$qty, $delta, $received, $r['lot_id']]);
+                $pdo->prepare(
+                    'UPDATE inventory_logs SET quantity = ?, notes = CONCAT(COALESCE(notes, \'\'), ?) WHERE id = ?'
+                )->execute([$qty, $trail, $r['id']]);
+            });
+        }
+
+        // ที่เหลือส่งต่อ — ยอดคงเหลือส่งค่าปัจจุบันไป updateLot จึงไม่ลงแถวปรับยอดซ้ำ
+        $rest = [];
+        foreach (['supplier_id', 'expiry_date', 'cost_per_unit', 'note'] as $k) {
+            if (array_key_exists($k, $body)) {
+                $rest[$k] = $body[$k];
+            }
+        }
+        if ($rest !== []) {
+            $rest['remaining_qty'] = (int) Db::value('SELECT remaining_qty FROM stock_lots WHERE id = ?', [$r['lot_id']]);
+            Catalog::updateLot((int) $r['lot_id'], $rest, $roles, $actorId);
+        }
+
+        return self::receipt($logId, Roles::seeCost($roles));
+    }
+
+    /** @return array<string,mixed> */
+    private static function receiptRow(int $logId): array
+    {
+        $r = Db::one(
+            "SELECT g.id, g.lot_id, g.quantity, l.lot_number, l.initial_qty, l.remaining_qty,
+                    l.received_date, l.expiry_date, l.supplier_id, l.cost_per_unit, l.notes AS lot_notes,
+                    p.sku, p.name
+               FROM inventory_logs g
+               JOIN stock_lots l ON l.id = g.lot_id
+               JOIN products p ON p.id = g.product_id
+              WHERE g.id = ? AND g.action_type = 'IN'",
+            [$logId],
+        );
+        if ($r === null) {
+            throw ApiError::notFound('ไม่พบรายการรับเข้านี้');
+        }
+        return $r;
+    }
+
     /* -------------------------------------------------------------- helpers */
 
     /**

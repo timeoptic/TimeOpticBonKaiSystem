@@ -1205,6 +1205,35 @@ final class Inventory
         );
     }
 
+    /**
+     * ผู้ขายจากชื่อที่พิมพ์ในช่องผู้ขาย — มีอยู่แล้ว (ไม่สนตัวพิมพ์/ช่องว่างหัวท้าย) ใช้ตัวเดิม ไม่มีก็เพิ่ม
+     *
+     * ร้านขอ 18 ก.ย. 2026: ดรอปดาวน์ผู้ขายพิมพ์เพิ่มไม่ได้ และตารางผู้ขายยังว่างทั้งตาราง · คนรับของ
+     * รู้ชื่อผู้ขายจากใบส่งของที่ถืออยู่ ให้พิมพ์ลงไปเลย ไม่ต้องไปเพิ่มที่หน้าซัพพลายเออร์ของฝั่งการเงินก่อน
+     * รายละเอียดอื่น (คนติดต่อ เบอร์) ยังแก้ที่หน้านั้น
+     *
+     * @return array{id:int,name:string,created:bool}
+     */
+    public static function supplierByName(string $name): array
+    {
+        $name = trim(preg_replace('/\s+/u', ' ', $name) ?? '');
+        if ($name === '') {
+            throw \Optic\ApiError::badRequest('ต้องระบุชื่อผู้ขาย', 'missing_field');
+        }
+        if (mb_strlen($name) > 120) {
+            throw \Optic\ApiError::badRequest('ชื่อผู้ขายยาวเกิน 120 ตัวอักษร', 'field_too_long');
+        }
+        $found = Db::one('SELECT id, name, active FROM suppliers WHERE LOWER(TRIM(name)) = LOWER(?)', [$name]);
+        if ($found !== null) {
+            if (!(int) $found['active']) {
+                Db::run('UPDATE suppliers SET active = 1 WHERE id = ?', [$found['id']]);
+            }
+            return ['id' => (int) $found['id'], 'name' => $found['name'], 'created' => false];
+        }
+        Db::run('INSERT INTO suppliers (name) VALUES (?)', [$name]);
+        return ['id' => (int) Db::value('SELECT id FROM suppliers WHERE name = ?', [$name]), 'name' => $name, 'created' => true];
+    }
+
     /** Numbers the dashboard shows above the list. @return array<string,mixed> */
     public static function summary(bool $money = false): array
     {

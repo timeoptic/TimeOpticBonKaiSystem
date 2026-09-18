@@ -8,7 +8,6 @@ import { useToast } from "./Toaster";
 import ProductForm from "./ProductForm";
 import LensDetail from "./LensDetail";
 import { IconClose, IconTrash } from "./Icon";
-import backdropClose from "./backdrop";
 import useScrollLock from "@/stockmod/lib/scrollLock";
 import ConfirmDelete from "./ConfirmDelete";
 import RecordCard, { CardList } from "./RecordCard";
@@ -91,7 +90,6 @@ export default function StockDrawer({
       ref={ref}
       onClose={onClose}
       onCancel={onClose}
-      onClick={backdropClose}
     >
       <div className="drawer__inner">
         <header className="drawer__head">
