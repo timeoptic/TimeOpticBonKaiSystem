@@ -452,190 +452,31 @@ function stockProductsWithoutLots(string $term, ?string $type, int $limit = 300,
  */
 function stockLensFilter(array $q): array
 {
-    $want  = stockLensWant($q);
     $where = [];
     $args  = [];
 
-    if ($want['coating'] !== []) {
-        $where[] = 'LOWER(s.coating) IN (' . implode(',', array_fill(0, count($want['coating']), '?')) . ')';
-        $args    = [...$args, ...$want['coating']];
-    }
-    if ($want['design'] !== []) {
-        $where[] = 'LOWER(s.lens_design) IN (' . implode(',', array_fill(0, count($want['design']), '?')) . ')';
-        $args    = [...$args, ...$want['design']];
-    }
-    /* index เทียบเป็นตัวเลข "1.5" = "1.50" · ว่างต้องไม่ถูก CAST เป็น 0 */
-    if ($want['index'] !== []) {
-        $where[] = "(s.lens_index <> '' AND CAST(s.lens_index AS DECIMAL(4,2)) IN ("
-            . implode(',', array_fill(0, count($want['index']), 'CAST(? AS DECIMAL(4,2))')) . '))';
-        $args    = [...$args, ...$want['index']];
+    $coating = is_scalar($q['coating'] ?? null) ? trim((string) $q['coating']) : '';
+    if ($coating !== '' && mb_strtolower($coating) !== 'all') {
+        $words   = array_map('mb_strtolower', stockSearchWords($coating));
+        $where[] = 'LOWER(s.coating) IN (' . implode(',', array_fill(0, count($words), '?')) . ')';
+        $args    = [...$args, ...$words];
     }
 
-    foreach (['sph', 'cyl'] as $k) {
-        [$from, $to] = $want[$k];
-        if ($from === null && $to === null) {
+    foreach (['sph' => 'SPH', 'cyl' => 'CYL'] as $k => $label) {
+        $value = stockPowerValue($q[$k] ?? null, $label);
+        if ($value === null) {
             continue;
         }
         /* ตรวจว่าเป็นตัวเลขก่อน CAST — ค่าว่างหรือ "null" ถูก CAST เป็น 0 แล้วไปเท่ากับ 0.00 */
-        $attr = "JSON_UNQUOTE(JSON_EXTRACT(fp.attributes, '$.$k'))";
-        $cond = ["$attr REGEXP '^[+-]?[0-9]+([.][0-9]+)?$'"];
-        if ($from !== null) {
-            $cond[] = "CAST($attr AS DECIMAL(6,2)) >= CAST(? AS DECIMAL(6,2))";
-            $args[] = $from;
-        }
-        if ($to !== null) {
-            $cond[] = "CAST($attr AS DECIMAL(6,2)) <= CAST(? AS DECIMAL(6,2))";
-            $args[] = $to;
-        }
-        $where[] = 'EXISTS (SELECT 1 FROM products fp WHERE fp.id = s.product_id AND ' . implode(' AND ', $cond) . ')';
+        $attr    = "JSON_UNQUOTE(JSON_EXTRACT(fp.attributes, '$.$k'))";
+        $where[] = "EXISTS (SELECT 1 FROM products fp
+                             WHERE fp.id = s.product_id
+                               AND $attr REGEXP '^[+-]?[0-9]+([.][0-9]+)?$'
+                               AND CAST($attr AS DECIMAL(6,2)) = CAST(? AS DECIMAL(6,2)))";
+        $args[]  = $value;
     }
 
     return [$where ? '(' . implode(' AND ', $where) . ')' : '', $args];
-}
-
-/**
- * ตัวกรองเลนส์ที่ขอมา อ่านเป็นค่าที่เทียบได้ — ใช้ร่วมกันระหว่าง SQL (stockLensFilter)
- * กับตัวนับชิป (stockLensFacets) กติกาสองที่จึงไม่มีทางเพี้ยนจากกัน
- *
- *   · coating / design / index — หลายค่าคั่นด้วย `|` = ตัวไหนก็ได้ (OR) · ช่องต่างกันยัง AND
- *     coating ขยายคำพ้องด้วย (MC = MultiCoat) · "all" = ไม่กรอง
- *   · sph / cyl — ค่าเดียวเป๊ะ (แบบเดิม) หรือช่วง sph_from / sph_to · หัวท้ายกลับด้านสลับให้
- *
- * @return array{coating:list<string>,design:list<string>,index:list<string>,sph:array{0:?string,1:?string},cyl:array{0:?string,1:?string}}
- */
-function stockLensWant(array $q): array
-{
-    $list = static function (mixed $v): array {
-        $s = is_scalar($v) ? trim((string) $v) : '';
-        if ($s === '' || mb_strtolower($s) === 'all') {
-            return [];
-        }
-        return array_values(array_unique(array_filter(
-            array_map('trim', explode('|', $s)),
-            static fn(string $x): bool => $x !== '',
-        )));
-    };
-
-    $coating = [];
-    foreach ($list($q['coating'] ?? null) as $c) {
-        $coating = [...$coating, ...array_map('mb_strtolower', stockSearchWords($c))];
-    }
-
-    $index = [];
-    foreach ($list($q['index'] ?? null) as $i) {
-        if (is_numeric($i)) {
-            $index[] = sprintf('%.2F', (float) $i);
-        }
-    }
-
-    $want = [
-        'coating' => array_values(array_unique($coating)),
-        'design'  => array_map('mb_strtolower', $list($q['design'] ?? null)),
-        'index'   => array_values(array_unique($index)),
-    ];
-
-    foreach (['sph' => 'SPH', 'cyl' => 'CYL'] as $k => $label) {
-        $exact = stockPowerValue($q[$k] ?? null, $label);
-        $from  = $exact ?? stockPowerValue($q["{$k}_from"] ?? null, $label);
-        $to    = $exact ?? stockPowerValue($q["{$k}_to"] ?? null, $label);
-        if ($from !== null && $to !== null && (float) $from > (float) $to) {
-            [$from, $to] = [$to, $from];
-        }
-        $want[$k] = [$from, $to];
-    }
-
-    return $want;
-}
-
-/**
- * ชิปกับช่วงค่าสายตาของ LensPicker พร้อมจำนวน — นับจากเลนส์ที่รายการจะโชว์ได้จริง
- *
- * แต่ละช่องนับภายใต้ตัวกรองของช่องอื่น แต่ไม่ใช่ของตัวเอง — ถ้านับรวมของตัวเอง
- * พอเลือก 1.60 ชิป Index ตัวอื่นจะเป็นศูนย์หมด แล้วเลือกเพิ่มหรือเปลี่ยนไม่ได้
- *
- * $products = แถว attrs ดิบ (lens_index, lens_design, coating, sph, cyl) หนึ่งแถวต่อสินค้า
- * ของเลนส์ที่ตรงคำค้น — ยังไม่กรองเลนส์ ตัวกรองทำที่นี่ด้วยกติกาเดียวกับ SQL
- *
- * ทดสอบที่ `api/tests/13-stock-lens-filter.test.php`
- *
- * @return array<string,list<array{value:string,count:int}>> indexes / designs / coatings / sphs / cyls
- */
-function stockLensFacets(array $products, array $q): array
-{
-    $want = stockLensWant($q);
-    $num  = static fn(mixed $v): ?float =>
-        is_scalar($v) && preg_match('/^[+-]?[0-9]+([.][0-9]+)?$/', trim((string) $v)) ? round((float) $v, 2) : null;
-    $text = static fn(mixed $v): ?string => is_scalar($v) && trim((string) $v) !== '' ? trim((string) $v) : null;
-
-    $lenses = [];
-    foreach ($products as $p) {
-        $i = $num($p['lens_index'] ?? null);
-        $lenses[] = [
-            'index'   => $i === null ? null : sprintf('%.2F', $i),
-            'design'  => $text($p['lens_design'] ?? null),
-            'coating' => $text($p['coating'] ?? null),
-            'sph'     => $num($p['sph'] ?? null),
-            'cyl'     => $num($p['cyl'] ?? null),
-        ];
-    }
-
-    /* กติกาเดียวกับ stockLensFilter ทุกข้อ ข้ามเฉพาะช่อง $skip */
-    $fits = static function (array $l, string $skip) use ($want): bool {
-        foreach (['coating', 'design'] as $k) {
-            if ($k !== $skip && $want[$k] !== [] && !in_array(mb_strtolower((string) $l[$k]), $want[$k], true)) {
-                return false;
-            }
-        }
-        if ($skip !== 'index' && $want['index'] !== [] && !in_array($l['index'], $want['index'], true)) {
-            return false;
-        }
-        foreach (['sph', 'cyl'] as $k) {
-            [$from, $to] = $want[$k];
-            if ($k === $skip || ($from === null && $to === null)) {
-                continue;
-            }
-            if ($l[$k] === null
-                || ($from !== null && $l[$k] < (float) $from)
-                || ($to !== null && $l[$k] > (float) $to)) {
-                return false;
-            }
-        }
-        return true;
-    };
-
-    $tally = static function (string $k) use ($lenses, $fits): array {
-        $n = [];
-        foreach ($lenses as $l) {
-            if ($l[$k] !== null && $fits($l, $k)) {
-                $key = is_float($l[$k]) ? sprintf('%.2F', $l[$k]) : $l[$k];
-                $n[$key] = ($n[$key] ?? 0) + 1;
-            }
-        }
-        return $n;
-    };
-    $shape = static fn(array $n): array => array_map(
-        static fn($v, $c) => ['value' => (string) $v, 'count' => $c],
-        array_keys($n),
-        array_values($n),
-    );
-    $byNumber = static function (array $n) use ($shape): array {
-        uksort($n, static fn($a, $b) => (float) $a <=> (float) $b);
-        return $shape($n);
-    };
-
-    $designs = $tally('design');
-    uksort($designs, 'strnatcasecmp');
-    /* coating ที่มีของมากสุดขึ้นก่อน — แบบเดียวกับหน้าคลัง */
-    $coatings = $tally('coating');
-    uksort($coatings, static fn($a, $b) => [$coatings[$b], (string) $a] <=> [$coatings[$a], (string) $b]);
-
-    return [
-        'indexes'  => $byNumber($tally('index')),
-        'designs'  => $shape($designs),
-        'coatings' => $shape($coatings),
-        'sphs'     => $byNumber($tally('sph')),
-        'cyls'     => $byNumber($tally('cyl')),
-    ];
 }
 
 /**

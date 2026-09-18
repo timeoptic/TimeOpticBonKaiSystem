@@ -19,7 +19,7 @@ import {
 import { DataTable } from '../../../components/DataTable.jsx';
 import { FilterBar } from '../../../components/FilterBar.jsx';
 import { Pager } from '../../../components/Pager.jsx';
-import DateRangeField from '@/stockmod/components/DateRangeField';
+import { DateField } from '../../../components/DateField.jsx';
 import { Select } from '../../../components/Selects.jsx';
 import { Icon } from '../../../components/Icon.jsx';
 import { AdminOnly } from '../../../components/AdminOnly.jsx';
@@ -300,27 +300,15 @@ function LogsPageInner() {
           </button>
         )}
         search={(
-          <>
-            <div className="search-field">
-              <Icon name="search" />
-              <input
-                type="search"
-                placeholder="ชื่อคน / สิ่งที่ทำ / เส้นทาง / ค่าที่เปลี่ยน"
-                value={term}
-                onChange={(e) => setTerm(e.target.value)}
-              />
-            </div>
-            {/* ปฏิทินอยู่นอกแผ่นตัวกรอง — บนมือถือกดครั้งเดียวถึง (ร้านขอ 18 ก.ย. 2026) */}
-            <div className="fb-date">
-              <DateRangeField
-                clearable
-                placeholder="ทุกวัน"
-                from={from}
-                to={to}
-                onApply={({ from: f, to: t }) => { setFrom(f); setTo(t); }}
-              />
-            </div>
-          </>
+          <div className="search-field">
+            <Icon name="search" />
+            <input
+              type="search"
+              placeholder="ชื่อคน / สิ่งที่ทำ / เส้นทาง / ค่าที่เปลี่ยน"
+              value={term}
+              onChange={(e) => setTerm(e.target.value)}
+            />
+          </div>
         )}
       >
         <Field label="ชนิด">
@@ -328,6 +316,12 @@ function LogsPageInner() {
         </Field>
         <Field label="ใคร">
           <Select value={actorId} onChange={(e) => setActorId(e.target.value)} options={actorOptions} />
+        </Field>
+        <Field label="ตั้งแต่วันที่">
+          <DateField value={from} onChange={setFrom} />
+        </Field>
+        <Field label="ถึงวันที่">
+          <DateField value={to} onChange={setTo} />
         </Field>
         <button type="button" className="btn btn-light" onClick={setToday}>วันนี้</button>
       </FilterBar>

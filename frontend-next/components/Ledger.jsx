@@ -25,7 +25,6 @@ import { FilterBar } from './FilterBar.jsx';
 import { Pager } from './Pager.jsx';
 import { PAGE_SIZES } from '../lib/pager.js';
 import { ComboList, ListSelect } from './Selects.jsx';
-import DateRangeField from '@/stockmod/components/DateRangeField';
 import { DateField } from './DateField.jsx';
 import { fmtDate, money, todayISO } from '../lib/format.js';
 import { Icon } from './Icon.jsx';
@@ -211,29 +210,23 @@ export function Ledger({ title, subtitle, icon, endpoint, typeKey, typeList, wit
           </button>
         )}
         search={(
-          <>
-            <div className="search-field">
-              <Icon name="search" />
-              <input
-                type="search"
-                placeholder="ประเภท / สาขา / หมายเหตุ"
-                value={term}
-                onChange={(e) => setTerm(e.target.value)}
-              />
-            </div>
-            {/* ปฏิทินอยู่นอกแผ่นตัวกรอง — บนมือถือกดครั้งเดียวถึง (ร้านขอ 18 ก.ย. 2026) */}
-            <div className="fb-date">
-              <DateRangeField
-                clearable
-                placeholder="ทุกวัน"
-                from={from}
-                to={to}
-                onApply={({ from: f, to: t }) => { setFrom(f); setTo(t); }}
-              />
-            </div>
-          </>
+          <div className="search-field">
+            <Icon name="search" />
+            <input
+              type="search"
+              placeholder="ประเภท / สาขา / หมายเหตุ"
+              value={term}
+              onChange={(e) => setTerm(e.target.value)}
+            />
+          </div>
         )}
       >
+        <Field label="ตั้งแต่วันที่">
+          <DateField value={from} onChange={setFrom} />
+        </Field>
+        <Field label="ถึงวันที่">
+          <DateField value={to} onChange={setTo} />
+        </Field>
         <button type="button" className="btn btn-light" onClick={thisMonth}>เดือนนี้</button>
         {(from || to) && (
           <button type="button" className="btn btn-light" onClick={clearRange}>ล้างช่วงวันที่</button>

@@ -57,7 +57,7 @@ import { STAGE_GROUPS, stageInfo } from '../../../lib/constants.js';
 import {
   CARD_PAGE, CASE_FILTERS, boardColumns, boardQuery, dateFieldOptions, stageOptions,
 } from '../../../lib/caseBoard.js';
-import DateRangeField from '@/stockmod/components/DateRangeField';
+import { DateField } from '../../../components/DateField.jsx';
 import { custName, fmtDate, moneyShort } from '../../../lib/format.js';
 import { Icon } from '../../../components/Icon.jsx';
 import { CaseTags, SIGHT_FIRST } from '../../../components/CaseTags.jsx';
@@ -400,17 +400,6 @@ function CaseBoardInner() {
             value={term}
             onChange={(e) => setTerm(e.target.value)}
           />
-          {/* ปฏิทินอยู่แถวค้นหา ไม่ได้อยู่ในแผ่นตัวกรอง — บนมือถือกดครั้งเดียวถึง (ร้านขอ 18 ก.ย. 2026)
-              นับจากวันที่แบบไหน (เปิดเคส / นัดรับ …) ยังเลือกในแผ่น กลุ่ม "ช่วงวันที่" */}
-          <div className="fb-date bf-daterange">
-            <DateRangeField
-              clearable
-              placeholder="ทุกวันที่"
-              from={from}
-              to={to}
-              onApply={({ from: f, to: t }) => { setFrom(f); setTo(t); }}
-            />
-          </div>
           {/* โผล่เฉพาะจอโทรศัพท์ (globals.css: .fb-toggle) — สี่กลุ่มตัวกรองข้างล่าง
               รวมกันสูงราวครึ่งจอ 360px ก่อนที่การ์ดเคสใบแรกจะได้โผล่ */}
           <button
@@ -491,7 +480,7 @@ function CaseBoardInner() {
           </div>
 
           <div className="bf-group">
-            <span className="bf-legend"><Icon name="calendar" /> ช่วงวันที่นับจาก</span>
+            <span className="bf-legend"><Icon name="calendar" /> ช่วงวันที่</span>
             <div className="bf-dates">
               <Select
                 className="bf-date-field"
@@ -499,6 +488,9 @@ function CaseBoardInner() {
                 onChange={(e) => setDateField(e.target.value)}
                 options={dateFieldOptions({ caseFilter })}
               />
+              <DateField value={from} max={to} placeholder="ตั้งแต่" onChange={setFrom} />
+              <span className="bf-dates-sep muted">–</span>
+              <DateField value={to} min={from} placeholder="ถึง" onChange={setTo} />
             </div>
           </div>
 

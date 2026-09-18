@@ -1,17 +1,15 @@
 /**
- * ตัวกรองเลนส์ในหน้าขาย — ชิป Index / ชนิดเลนส์ / Coating (เลือกได้หลายตัว) กับช่วง SPH / CYL
+ * ตัวกรองเลนส์ในหน้าขาย — Coating / SPH / CYL
  *
- * ชิปในช่องเดียวกันเป็น "ตัวไหนก็ได้" (1.56 หรือ 1.60) ช่องต่างกันเป็น AND · ช่วงค่าสายตา
- * รวมหัวท้าย · ตัวเทียบจริงอยู่ฝั่ง API (`stockLensFilter()` ใน api/core/StockSearch.php)
- * ตัวเลือกกับจำนวนมาจาก GET /api/stock/lens-options ที่นี่แค่แปลงสถานะหน้าจอเป็น query
+ * พนักงานถือค่าสายตาที่วัดได้แล้วมาหาเลนส์ในลิ้นชัก เลนส์ที่ต่างกัน 0.25 คือของคนละชิ้น
+ * ทุกเงื่อนไขจึงต้องตรงครบ (AND) และเทียบตรงค่า — ตัวเทียบจริงอยู่ฝั่ง API
+ * (`stockLensFilter()` ใน api/core/StockSearch.php) ที่นี่แค่อ่านช่องที่พิมพ์ให้เป็นค่าเดียว
  *
  * ทดสอบที่ `lib/__tests__/lensFilter.test.js`
  */
 
-/** ยังไม่ได้เลือกอะไร */
-export const EMPTY_LENS = {
-  index: [], design: [], coating: [], sphFrom: '', sphTo: '', cylFrom: '', cylTo: '',
-};
+/** ค่า coating ที่มีในคลังจริงบนโฮสต์ครบทั้งห้าค่า (2026-09-15) */
+export const LENS_COATINGS = ['Hard', 'MC', 'Auto', 'Blue', 'Auto-Blue'];
 
 /* สองหลักพอสำหรับค่าสายตา (±12.00) · "1." ระหว่างพิมพ์ยังนับว่าเป็น 1 */
 const POWER = /^[+-]?(\d{1,2}(\.\d{0,2})?|\.\d{1,2})$/;
@@ -39,29 +37,28 @@ export function formatPower(value) {
 }
 
 /**
- * ตัวกรองทั้งชุด → query ของ GET /api/stock และ /api/stock/lens-options
- * หลายค่าในช่องเดียวส่งเป็น `1.56|1.60` · ช่องว่างไม่ส่ง
+ * ตัวกรองทั้งชุด → query ของ GET /api/stock
+ * `invalid` = ช่องที่พิมพ์ผิด หน้าจอต้องไม่ค้นด้วยเงื่อนไขที่เหลือครึ่งเดียว
+ * `active` = มีเงื่อนไขอย่างน้อยหนึ่งข้อ
  */
-export function lensParams(f = EMPTY_LENS) {
+export function lensQuery({ coating = '', sph = '', cyl = '' } = {}) {
   const params = {};
-  for (const k of ['index', 'design', 'coating']) {
-    if (f[k]?.length) params[k] = f[k].join('|');
+  const invalid = [];
+  if (coating) params.coating = coating;
+  for (const [key, text] of [['sph', sph], ['cyl', cyl]]) {
+    const { value, error } = parsePower(text);
+    if (error) invalid.push(key);
+    else if (value !== null) params[key] = value;
   }
-  for (const [k, v] of [['sph_from', f.sphFrom], ['sph_to', f.sphTo], ['cyl_from', f.cylFrom], ['cyl_to', f.cylTo]]) {
-    if (v !== '' && v != null) params[k] = v;
-  }
-  return params;
+  return { params, invalid, active: Object.keys(params).length > 0 };
 }
 
-/** เลือกชิปตัวนี้ถ้ายังไม่ได้เลือก เอาออกถ้าเลือกอยู่ */
-export function toggleLens(f, key, value) {
-  const on = f[key] || [];
-  return { ...f, [key]: on.includes(value) ? on.filter((v) => v !== value) : [...on, value] };
+/** ชิปของตัวกรองที่ใช้อยู่ — ช่องที่ว่างหรือพิมพ์ผิดไม่มีชิป */
+export function lensChips(filters) {
+  const { params } = lensQuery(filters);
+  const chips = [];
+  if (params.coating) chips.push({ key: 'coating', label: `Coating: ${params.coating}` });
+  if (params.sph) chips.push({ key: 'sph', label: `SPH: ${formatPower(params.sph)}` });
+  if (params.cyl) chips.push({ key: 'cyl', label: `CYL: ${formatPower(params.cyl)}` });
+  return chips;
 }
-
-/**
- * ชื่อเลนส์ที่แสดงบนจอ — ตัดคำว่า "Single Vision" (ร้านขอ 18 ก.ย. 2026) · ตัดตอนแสดงเท่านั้น
- * ชื่อที่เก็บยังเต็ม เพราะใบสั่งตัด RX จับคู่รุ่นด้วยชื่อ · คู่กับ `shortName` ใน stockmod/lib/format.ts
- */
-export const shortName = (name) =>
-  String(name ?? '').replace(/\s*Single Vision/gi, '').replace(/\s{2,}/g, ' ').trim();

@@ -316,41 +316,6 @@ POST('/api/stock/backorder-lot', function (array $req) {
     return $row;
 });
 
-/**
- * ชิป Index / ชนิดเลนส์ / Coating และช่วง SPH / CYL ของ LensPicker พร้อมจำนวน
- *
- * นับจากแถวชุดเดียวกับที่ GET /api/stock?group=product&type=Lens จะโชว์ (ตรงคำค้น
- * ก่อนกรองเลนส์) แล้วกรองต่อใน stockLensFacets() ด้วยกติกาเดียวกับ SQL ·
- * ชิปจึงไม่มีทางบอกว่ามีของ แล้วกดไปเจอรายการว่าง
- */
-GET('/api/stock/lens-options', function (array $req) {
-    $q    = $req['query'];
-    $term = str_or($q['q'] ?? null);
-    stockLensWant($q); // ค่าสายตาพิมพ์ผิด = 400 ตั้งแต่ตรงนี้ เหมือน GET /api/stock
-
-    $rows = stockProductRows(stockLotRows($term, 'Lens'), $term, 'Lens', STOCK_SEARCH_RANK_POOL, false);
-    /* ถอยไปตรงบางคำพร้อมกับรายการ ไม่งั้นชิปหายทั้งแถวเหนือรายการที่มีเลนส์ */
-    if ($rows === [] && count(stockSearchTokens($term)) > 1) {
-        $rows = stockProductRows(stockLotRows($term, 'Lens', true), $term, 'Lens', STOCK_SEARCH_RANK_POOL, true);
-    }
-    $ids  = array_values(array_unique(array_filter(array_map(
-        static fn(array $r) => $r['product_id'] ?? null,
-        $rows,
-    ))));
-    if ($ids === []) {
-        return stockLensFacets([], $q);
-    }
-
-    $attr = static fn(string $k) => "NULLIF(JSON_UNQUOTE(JSON_EXTRACT(attributes, '$.$k')), 'null')";
-    $products = Db::all(
-        'SELECT ' . $attr('lens_index') . ' AS lens_index, ' . $attr('lens_design') . ' AS lens_design,
-                ' . $attr('coating') . ' AS coating, ' . $attr('sph') . ' AS sph, ' . $attr('cyl') . ' AS cyl
-           FROM products WHERE id IN (' . implode(',', array_fill(0, count($ids), '?')) . ')',
-        ...$ids
-    );
-    return stockLensFacets($products, $q);
-});
-
 GET('/api/stock/names', function (array $req) {
     $type = str_or($req['query']['type'] ?? null);
     $filter = $type !== '' ? 'WHERE p.product_type = ?' : '';
