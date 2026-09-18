@@ -52,6 +52,9 @@ require __DIR__ . '/../services/DeliveryDigest.php';
    เทสต์จึงสวมบทด้วย \Optic\Auth::as() · SalesReport คือที่รายงานแยกกลุ่มสินค้า */
 require __DIR__ . '/../core/StockModule.php';
 require __DIR__ . '/../services/SalesReport.php';
+/* POS ขายกรอบ/คอนแทคเลนส์จากคลัง (81-pos-stock-sale) — ตัดสต็อกจริงผ่าน StockClient */
+require __DIR__ . '/../services/StockClient.php';
+StockClient::configure(['mode' => 'live']);
 require __DIR__ . '/../routes/pos.php';
 /* หน้ารายงาน (90-report-customer-group) — ยิงเส้น /api/reports/* ตัวจริง
    · ไฟล์ Excel ของหน้าการรับเงิน (91-payment-export) เปิดไฟล์ที่สร้างได้ออกมาตรวจ */
