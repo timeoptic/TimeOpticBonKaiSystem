@@ -146,10 +146,16 @@ final class ProductSearch
     {
         $pairs = [];
         $rest = preg_replace_callback(
-            '~(?<![\w.])([+\-\x{2212}]?\d{1,2}(?:\.\d{1,2})?)\s*/\s*([+\-\x{2212}]?\d{1,2}(?:\.\d{1,2})?)(?![\w.])~u',
+            '~(?<![\w.])([+\-\x{2212}]?(?:\d{1,2}(?:\.\d{1,2})?|\d{3,4}))\s*/\s*([+\-\x{2212}]?(?:\d{1,2}(?:\.\d{1,2})?|\d{3,4}))(?![\w.])~u',
             static function (array $m) use (&$pairs): string {
-                $sph = (float) str_replace("\u{2212}", '-', $m[1]);
-                $cyl = -abs((float) str_replace("\u{2212}", '-', $m[2]));
+                // "-350" พิมพ์ไม่ใส่จุด = -3.50 (ค่าสายตาไม่เคยเกิน ±20 เลขสามสี่หลักจึงเป็นหน่วยร้อย)
+                $val = static function (string $t): float {
+                    $t = str_replace("\u{2212}", '-', $t);
+                    $v = (float) $t;
+                    return !str_contains($t, '.') && abs($v) >= 100 ? $v / 100 : $v;
+                };
+                $sph = $val($m[1]);
+                $cyl = -abs($val($m[2]));
                 $pairs[] = [round($sph, 2), round($cyl, 2)];
                 return ' ';
             },
