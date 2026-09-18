@@ -29,14 +29,17 @@ GET('/api/dashboard', function () {
     $from = Sql::ORDER_FROM;
     $unf  = Sql::UNFILLED;
 
+    /* ป้ายบนการ์ดหน้าแรกนับจาก rows.length — LIMIT 100/200 เดิมทำให้ป้ายค้างที่ 200
+       ทั้งที่ค้างจริงมากกว่า · ส่งมาทั้งหมด (ตารางแบ่งหน้าฝั่งหน้าเว็บ) เพดาน 5000
+       มีไว้กันพังเท่านั้น */
     $unfilled = Db::all(
         "SELECT $sel $from WHERE o.order_closed = 0 AND $unf
-          ORDER BY o.order_date DESC LIMIT 100"
+          ORDER BY o.order_date DESC LIMIT 5000"
     );
     $unclosed = Db::all(
         "SELECT $sel $from WHERE o.order_closed = 0 AND NOT $unf
           ORDER BY o.appointment_date IS NULL, o.appointment_date, o.order_date DESC
-          LIMIT 200"
+          LIMIT 5000"
     );
     /* งานค้างแต่ละขั้น — นับจากขั้นที่เคสทำถึงจริง ให้ตรงกับกระดานงาน
        (cases.status ตั้งด้วยมือและเพี้ยนได้ ดู api/routes/processes.php) */
