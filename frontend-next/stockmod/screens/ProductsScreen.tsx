@@ -10,6 +10,7 @@ import { Filter, FilterBar, withCount } from "@/stockmod/components/FilterBar";
 import RecordCard, { CardList } from "@/stockmod/components/RecordCard";
 import TaskDialog from "@/stockmod/components/TaskDialog";
 import DateRangeField from "@/stockmod/components/DateRangeField";
+import ExportDialog, { branchOf, fetchAll, fetchLines, inSheet, orderOf, outSheet } from "@/stockmod/components/ExportDialog";
 import LensCells from "@/stockmod/components/LensCells";
 import ProductCell from "@/stockmod/components/ProductCell";
 import NewProductDialog from "@/stockmod/components/NewProductDialog";
@@ -183,6 +184,7 @@ export default function ProductsScreen({
   const [receiveInto, setReceiveInto] = useState<number | null>(null);
   const [state, setState] = useState<string>(lockState);
   const [creating, setCreating] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const actor = useActor();
   const toast = useToast();
@@ -425,6 +427,10 @@ function ProductRowCard({
             เพิ่มสินค้า
           </button>
         ) : null}
+        {/* Export สินค้า คงเหลือ รับเข้า และจ่ายออก ตามช่วงวัน (ร้านขอ 18 ก.ย. 2026) */}
+        <button type="button" className="btn" onClick={() => setExporting(true)}>
+          Export Excel
+        </button>
       </WorkHead>
 
       {summary.status === "ready" ? (
@@ -708,6 +714,74 @@ function ProductRowCard({
             if (lot?.awaitingCost) toast.warning(said);
             else toast.success(said);
           }}
+        />
+      ) : null}
+      {exporting ? (
+        <ExportDialog
+          title={title}
+          file="timeoptic-สินค้าและสต็อก"
+          sheets={[
+            { name: "สินค้าและคงเหลือ", hint: "สินค้าตามตัวกรองที่เปิดอยู่ ยอดคงเหลือ ณ ตอนนี้ (ช่วงวัน = รับเข้าในช่วงนั้น)" },
+            { name: "รับเข้ารายวัน", hint: "ทุกล็อตที่รับเข้าในช่วงวัน มียอดรวมย่อยรายวัน" },
+            { name: "จ่ายออกแยกตามออเดอร์", hint: "เบิก/ขาย/ตัดเสีย จัดกลุ่มตามเลขออเดอร์" },
+            { name: "จ่ายออกแยกตามสาขา", hint: "เบิก/ขาย/ตัดเสีย จัดกลุ่มตามสาขา" },
+          ]}
+          build={async (range, chosen, say) => {
+            const out = [];
+            const m = money$;
+            if (chosen.includes("สินค้าและคงเหลือ")) {
+              const rows = await fetchAll<ProductRow>(
+                (page) =>
+                  `/products${qs({ q: applied, make: ONLY_STOCK, type: ptype, ...lensParams(lens), state, from: range.from, to: range.to, sort: "name", dir: "asc", per: 100, page })}`,
+                say,
+              );
+              out.push({
+                name: "สินค้าและคงเหลือ",
+                note: `ยอดคงเหลือ ณ วันที่ออกไฟล์ · เฉพาะสินค้าที่มีล็อตรับเข้า ${range.from} ถึง ${range.to} และตรงตัวกรองที่เปิดอยู่`,
+                columns: [
+                  { header: "SKU", width: 12 },
+                  { header: "สินค้า", width: 42 },
+                  { header: "แบรนด์", width: 14 },
+                  { header: "ชนิด", width: 12 },
+                  { header: "Index", width: 8 },
+                  { header: "ชนิดเลนส์", width: 14 },
+                  { header: "Coating", width: 12 },
+                  { header: "SPH", width: 8 },
+                  { header: "CYL", width: 8 },
+                  { header: "ADD", width: 8 },
+                  { header: "คงเหลือ", total: true },
+                  { header: "ขั้นต่ำ" },
+                  { header: "มูลค่าต้นทุน", money: true, total: true },
+                  { header: "ราคาขาย", money: true },
+                ],
+                rows: rows.map((r) => [
+                  r.sku,
+                  shortName(r.name),
+                  r.brand,
+                  PRODUCT_TYPE_LABEL[r.productType as keyof typeof PRODUCT_TYPE_LABEL] ?? r.productType,
+                  r.lensIndex,
+                  r.lensDesign,
+                  r.coating,
+                  r.sph,
+                  r.cyl,
+                  r.add,
+                  r.onHand,
+                  r.minStock,
+                  m ? r.stockValue : null,
+                  r.basePrice > 0 ? r.basePrice : null,
+                ]),
+              });
+            }
+            if (chosen.some((c) => c !== "สินค้าและคงเหลือ")) {
+              say("กำลังดึงรายการรับเข้า/จ่ายออก…");
+              const lines = await fetchLines(range);
+              out.push(inSheet(lines, m));
+              out.push(outSheet("จ่ายออกแยกตามออเดอร์", "จ่ายออกและตัดเสีย จัดกลุ่มตามเลขออเดอร์/เอกสาร", lines, orderOf, m));
+              out.push(outSheet("จ่ายออกแยกตามสาขา", "จ่ายออกและตัดเสีย จัดกลุ่มตามสาขา", lines, (l) => branchOf(l.branch), m));
+            }
+            return out;
+          }}
+          onClose={() => setExporting(false)}
         />
       ) : null}
     </main>

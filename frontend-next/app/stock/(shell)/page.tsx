@@ -6,6 +6,7 @@ import { can, useActor, WorkHead } from "@/stockmod/components/AppShell";
 import { useToast } from "@/stockmod/components/Toaster";
 import ProductPicker from "@/stockmod/components/ProductPicker";
 import TaskDialog from "@/stockmod/components/TaskDialog";
+import ExportDialog, { branchOf, fetchLines, orderOf, outSheet } from "@/stockmod/components/ExportDialog";
 import { IconCart } from "@/stockmod/components/Icon";
 import Select from "@/stockmod/components/Select";
 import {
@@ -105,6 +106,7 @@ export default function IssuePage() {
    * when the whole lot is cut.
    */
   const [basket, setBasket] = useState<Line[]>([]);
+  const [exporting, setExporting] = useState(false);
 
   /**
    * Whether the form is open with nothing picked — the basket being reviewed.
@@ -502,6 +504,10 @@ export default function IssuePage() {
               {count(basket.length)}
             </span>
           ) : null}
+        </button>
+        {/* Export รายการที่เบิก/ตัดออกตามช่วงวัน แยกตามออเดอร์และสาขา (ร้านขอ 18 ก.ย. 2026) */}
+        <button type="button" className="btn" onClick={() => setExporting(true)}>
+          Export Excel
         </button>
         {/* แถบ "เรียงตาม" ของรายการข้างล่างมาโผล่ตรงนี้ — ProductPicker เป็นคน
             เรนเดอร์เข้ามาทาง portal เพราะสถานะการเรียงเป็นของมัน · กล่องนี้ว่าง
@@ -991,6 +997,25 @@ export default function IssuePage() {
           </form>
           )}
         </TaskDialog>
+      ) : null}
+      {exporting ? (
+        <ExportDialog
+          title="เบิก / ตัดสต็อก"
+          file="timeoptic-เบิก-ตัดสต็อก"
+          sheets={[
+            { name: "จ่ายออกแยกตามออเดอร์", hint: "ทุกรายการที่เบิก/ขาย/ตัดเสีย จัดกลุ่มตามเลขออเดอร์ มียอดรวมย่อย" },
+            { name: "จ่ายออกแยกตามสาขา", hint: "จัดกลุ่มตามสาขาที่เบิก ของร้านเองอยู่กลุ่ม TimeOptic (ร้าน)" },
+          ]}
+          build={async (range) => {
+            const lines = await fetchLines(range);
+            const money$ = can.seeCost(actor);
+            return [
+              outSheet("จ่ายออกแยกตามออเดอร์", "จ่ายออกและตัดเสีย จัดกลุ่มตามเลขออเดอร์/เอกสาร", lines, orderOf, money$),
+              outSheet("จ่ายออกแยกตามสาขา", "จ่ายออกและตัดเสีย จัดกลุ่มตามสาขา", lines, (l) => branchOf(l.branch), money$),
+            ];
+          }}
+          onClose={() => setExporting(false)}
+        />
       ) : null}
     </main>
   );
