@@ -223,11 +223,12 @@ final class Inventory
     }
 
     /**
-     * คำค้นหลายคำที่ไม่มีสินค้าตัวไหนตรงครบ — ถอยไปขึ้นตัวที่ตรงบางคำแทนรายการว่าง
+     * คำค้นแสดงเฉพาะสินค้าที่ตรงครบทุกคำ — ไม่ถอยไปขึ้นตัวที่ตรงบางคำแล้ว (ร้านขอ 18 ก.ย. 2026:
+     * "ให้แสดงแค่ตามค่าที่ค้นเท่านั้น อันใกล้เคียงไม่ต้องแสดง")
      *
-     * แบบเดียวกับหน้าขาย (GET /api/stock) · รายการ ชิปสถานะ และตัวกรองเลนส์ต้องถอย
-     * พร้อมกัน ไม่งั้นชิปบอก 0 เหนือรายการที่มีของ จึงตัดสินที่นี่จากตัวกรองชุดเต็ม
-     * แล้วส่ง `any` ต่อไปให้ productWhere · `any` ไม่ได้มาจาก query string
+     * เดิมคำค้นหลายคำที่ไม่มีตัวไหนตรงครบ ถอยไปแสดงตัวที่ตรงบางคำ ซึ่งกับเลนส์คือของผิดค่าสายตา
+     * ที่ดูเหมือนผลค้นหา · ตอนนี้ไม่ตรงก็ว่าง แล้วหน้าจอบอกว่าไม่เจอ · `any` ไม่ได้มาจาก query string
+     * ถูกล้างทิ้งที่นี่ที่เดียว (หน้าขายฝั่งหน้าร้าน GET /api/stock ยังถอยแบบเดิม — ไม่ได้แตะ)
      *
      * @param array<string,mixed> $filter
      * @return array<string,mixed>
@@ -235,13 +236,6 @@ final class Inventory
     private static function searchScope(array $filter): array
     {
         unset($filter['any']);
-        if (count(ProductSearch::tokens((string) ($filter['q'] ?? ''))) < 2) {
-            return $filter;
-        }
-        [$clause, $args] = self::productWhere($filter);
-        if ((int) Db::value("SELECT COUNT(*) FROM products p WHERE {$clause}", $args) === 0) {
-            $filter['any'] = true;
-        }
         return $filter;
     }
 
