@@ -29,6 +29,24 @@ export function date(value: string | null): string {
   return Number.isNaN(d.getTime()) ? value : day.format(d);
 }
 
+const clock = new Intl.DateTimeFormat("th-TH", {
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+  timeZone: "UTC", // same reading as `date` — the database already wrote Thai time.
+});
+
+/**
+ * `date` plus the hour and minute, for rows that are moments rather than days —
+ * two movements of one product on one day are otherwise in no visible order.
+ * A value with no time part (a DATE column) stays a bare date.
+ */
+export function dateTime(value: string | null): string {
+  if (!value || !/[ T]\d{2}:\d{2}/.test(value)) return date(value);
+  const d = new Date((value.includes("T") ? value : value.replace(" ", "T")).replace(/Z?$/, "Z"));
+  return Number.isNaN(d.getTime()) ? value : `${day.format(d)} ${clock.format(d)}`;
+}
+
 /**
  * Optical values read better with a true minus sign than a hyphen, and they
  * line up in tabular figures. Always signed — "+1.50" and "−1.50" both matter.

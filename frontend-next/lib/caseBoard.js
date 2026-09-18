@@ -30,6 +30,22 @@ export const CASE_FILTERS = [
 ];
 
 /**
+ * ช่วงวันที่กรองด้วยวันไหนของเคส — คีย์ชุดเดียวกับ `date_field` ใน api/routes/cases.php
+ *
+ * "วันปิดเคส" มีความหมายเฉพาะกองเคสที่จบแล้ว เคสที่ยังทำอยู่ไม่มีวันปิดให้เทียบ
+ * เลือกไว้ก็ได้กระดานว่างทุกครั้ง จึงไม่ยื่นให้เลือกนอกกองนั้น (ดู dateFieldOptions)
+ */
+export const DATE_FIELDS = [
+  ['opened', 'วันเปิดเคส'],
+  ['appointment', 'วันนัดรับ'],
+  ['closed', 'วันปิดเคส'],
+];
+
+export function dateFieldOptions({ caseFilter = '' }) {
+  return caseFilter === 'done' ? DATE_FIELDS : DATE_FIELDS.filter(([k]) => k !== 'closed');
+}
+
+/**
  * ตัวกรองชุดเดียวที่ทั้ง "จำนวนเคส" และ "รายการที่แสดง" ใช้ร่วมกัน
  *
  * เลขบนหัวคอลัมน์กับการ์ดในคอลัมน์นั้นต้องมาจากคำถามเดียวกันเสมอ — ถ้าสร้าง
@@ -37,8 +53,13 @@ export const CASE_FILTERS = [
  *
  * ค่าว่างถูก apiClient ตัดทิ้งตอนต่อ query string อยู่แล้ว จึงส่ง '' ได้ตามสบาย
  */
-export function boardQuery({ q = '', client = '', stage = '', caseFilter = '' }) {
+export function boardQuery({
+  q = '', client = '', stage = '', caseFilter = '', dateField = 'opened', from = '', to = '',
+}) {
   const showDone = caseFilter === 'done';
+  /* ช่วงหัวกลับหาง (แก้ URL เอง) สลับให้ แทนที่จะคืนกระดานว่างที่ไม่บอกว่าเพราะอะไร */
+  const [lo, hi] = from && to && to < from ? [to, from] : [from, to];
+  const field = dateFieldOptions({ caseFilter }).some(([k]) => k === dateField) ? dateField : 'opened';
   return {
     paged: 1,
     q: q.trim(),
@@ -48,6 +69,9 @@ export function boardQuery({ q = '', client = '', stage = '', caseFilter = '' })
     rush: caseFilter === 'rush' ? 1 : '',
     unpaid: caseFilter === 'unpaid' ? 1 : '',
     closed: showDone ? 1 : '',
+    date_field: lo || hi ? field : '',
+    from: lo,
+    to: hi,
   };
 }
 

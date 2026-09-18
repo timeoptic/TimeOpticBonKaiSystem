@@ -3,13 +3,17 @@
 import { useState } from "react";
 import Link from "next/link";
 import { can as may, useActor, WorkHead } from "@/stockmod/components/AppShell";
+import DateRangeField from "@/stockmod/components/DateRangeField";
 import Paginator from "@/stockmod/components/Paginator";
 import SortHead, { SortBar, useSort } from "@/stockmod/components/SortHead";
 import Select from "@/stockmod/components/Select";
 import RecordCard, { CardList } from "@/stockmod/components/RecordCard";
-import { type BranchRow, type Page, type SettlementRow, type SettlementSummary } from "@/stockmod/lib/api";
+import SettlementEditDialog from "@/stockmod/components/SettlementEditDialog";
+import { useToast } from "@/stockmod/components/Toaster";
+import { api, type BranchRow, type Page, type SettlementRow, type SettlementSummary } from "@/stockmod/lib/api";
 import { qs, useApi } from "@/stockmod/lib/useApi";
 import { count, date, money } from "@/stockmod/lib/format";
+import { settlementFileName, settlementSheets, settlementTitle } from "@/stockmod/lib/settlementBook";
 
 type List = Page<SettlementRow> & { summary: SettlementSummary };
 
@@ -26,14 +30,46 @@ const SORTS: readonly { col: SortKey; label: string }[] = [
 ];
 
 /**
+ * ช่วงวันที่เบิก — "ทุกช่วงเวลา" คือหน้าตาเดิมของหน้านี้ก่อนมีตัวกรอง
+ *
+ * ช่องเลือกวันที่ขึ้นเฉพาะตอนมีช่วงจริง เพราะ `DateRangeField` ต้องมีวันที่ให้วาดเสมอ ·
+ * ช่องที่แสดง "1 ก.ย. – 12 ก.ย." ทั้งที่ตารางกำลังนับทุกใบ คือช่องที่โกหก
+ */
+type Span = "all" | "this" | "last" | "custom";
+const SPANS: readonly { key: Span; label: string }[] = [
+  { key: "all", label: "ทุกช่วงเวลา" },
+  { key: "this", label: "เดือนนี้" },
+  { key: "last", label: "เดือนที่แล้ว" },
+  { key: "custom", label: "กำหนดเอง" },
+];
+
+/** `2026-09-04` ตามเวลาท้องถิ่น — toISOString ให้วันของ UTC ซึ่งเป็นเมื่อวานก่อนเจ็ดโมงเช้า */
+const iso = (d: Date): string =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+/** เดือนนี้ (0) ถึงวันนี้ หรือเดือนก่อน ๆ (-1) ทั้งเดือน */
+function monthOf(offset: number): { from: string; to: string } {
+  const now = new Date();
+  const first = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+  const last = offset === 0 ? now : new Date(now.getFullYear(), now.getMonth() + offset + 1, 0);
+  return { from: iso(first), to: iso(last) };
+}
+
+/**
  * ของที่สาขาอื่นเบิกไป และเป็นต้นทุนของร้านเท่าไร
  *
  * หน้านี้เคยเป็นสมุดหนี้: สาขาเบิกของไปแล้วค้างเงินไว้ มีปุ่มรับเงิน มีตัดหนี้สูญ
  * มีคอลัมน์กำไร · ตอนนี้ไม่ใช่แล้ว ร้านนับให้แค่ต้นทุน ส่วนเงินและกำไรเป็นงานของ
- * บัญชี ซึ่งคิดเองจากไฟล์ Excel ที่ส่งออกจากแดชบอร์ด
+ * บัญชี ซึ่งคิดเองจากไฟล์ Excel ที่ส่งออกจากแดชบอร์ด หรือจากปุ่ม Excel ของหน้านี้
+ * ที่ให้รายการทีละใบพร้อมหมายเหตุ (ร้านขอไว้ 12 ก.ย. 2026)
  *
- * ผลคือหน้านี้อ่านอย่างเดียว ไม่มีปุ่มที่เปลี่ยนอะไรได้เลย — และตัวเลขสองก้อน
- * ข้างบนคือคำตอบทั้งหมดที่หน้านี้มีหน้าที่ตอบ: เบิกไปกี่ใบ เป็นทุนเท่าไร
+ * ไม่มีปุ่มเรื่องเงินบนหน้านี้แล้ว (รับเงิน · ตัดหนี้สูญ) แต่ใบที่คีย์ผิดยังต้องแก้ได้ —
+ * ร้านขอไว้ 12 ก.ย. 2026: "แก้ไขได้ หรือกดยกเลิกแล้วคีย์ใหม่" · ปุ่มแก้ไขเปิด
+ * `SettlementEditDialog` ซึ่งแก้ได้ สาขา ผู้รับของ วันที่เบิก หมายเหตุ และยกเลิกใบ
+ * พร้อมคืนของเข้าล็อตเดิม · สินค้ากับจำนวนแก้ตรง ๆ ไม่ได้ ต้องยกเลิกแล้วเบิกใหม่ ไม่งั้น
+ * ต้นทุนของใบกับยอดล็อตจะไม่ตรงกัน (เหตุผลเต็มอยู่ในหัวไฟล์ของ dialog)
+ *
+ * ตัวเลขสองก้อนข้างบนยังเป็นคำตอบหลักของหน้านี้: เบิกไปกี่ใบ เป็นทุนเท่าไร
  *
  * ยังยิง `status=pending` เหมือนเดิม ไม่ใช่เพราะยังมีเรื่อง "ค้าง" อยู่ แต่เพราะ
  * ไม่มีอะไรมาปิดใบเบิกอีกแล้ว ทุกใบจึงค้างตลอดไป — ตัวกรองนี้จึงแปลว่า "ทุกใบที่
@@ -41,29 +77,75 @@ const SORTS: readonly { col: SortKey; label: string }[] = [
  */
 export default function SettlementsPage() {
   const actor = useActor();
+  const toast = useToast();
   const [branch, setBranch] = useState("");
   const [q, setQ] = useState("");
   const [applied, setApplied] = useState("");
+  const [span, setSpan] = useState<Span>("all");
+  const [range, setRange] = useState(() => monthOf(0));
   const [page, setPage] = useState(1);
+  const [saving, setSaving] = useState(false);
   const { sort, dir, sortBy } = useSort<SortKey>("issued", NATURAL_ASC);
 
   // ทุกคอลัมน์บนจอนี้เป็นต้นทุน จึงไม่มีรุ่นย่อให้คนที่ดูราคาทุนไม่ได้ · API
   // ปฏิเสธคำขอตั้งแต่ต้นอยู่แล้ว บอกตรงนี้ดีกว่าปล่อยให้มาถึงเป็น "โหลดไม่ได้"
   const allowed = may.seeBranchMoney(actor);
+  /* แก้/ยกเลิกใบเบิก — สิทธิ์เดียวกับที่ API ตรวจ (`Roles::settleBranch`) · เจ้าของร้าน
+     Superuser และฝ่ายบัญชี · ถามชื่อสิทธิ์ตรง ๆ ไม่ได้เพิ่มเข้า `can` ใน AppShell
+     เพราะไฟล์นั้นอยู่ในก้อนที่ทุกหน้าของคลังโหลดร่วมกัน */
+  const maySettle = actor.perms.includes("branch.settle");
+  const [editing, setEditing] = useState<SettlementRow | null>(null);
+
+  /* ตัวกรองชุดเดียว ใช้ทั้งตาราง การ์ดสรุป และไฟล์ Excel — ไฟล์ที่นับของคนละก้อน
+     กับจอคือไฟล์ที่เอาไปเทียบแล้วเลขไม่ตรง */
+  const period = span === "all" ? { from: "", to: "" } : range;
+  const filter = { status: "pending", branch, q: applied, from: period.from, to: period.to };
 
   const branches = useApi<{ branches: BranchRow[] }>(allowed ? "/branches" : null);
-  const list = useApi<List>(
-    allowed
-      ? `/settlements${qs({ status: "pending", branch, q: applied, sort, dir, page })}`
-      : null,
-  );
+  const list = useApi<List>(allowed ? `/settlements${qs({ ...filter, sort, dir, page })}` : null);
 
   function refine(fn: () => void) {
     fn();
     setPage(1);
   }
 
+  function choose(next: Span) {
+    refine(() => {
+      setSpan(next);
+      if (next === "this") setRange(monthOf(0));
+      if (next === "last") setRange(monthOf(-1));
+    });
+  }
+
   const pick = (c: SortKey) => sortBy(c, () => setPage(1));
+
+  const branchName =
+    branch === "" || branches.status !== "ready"
+      ? null
+      : (branches.data.branches.find((b) => String(b.id) === branch)?.name ?? null);
+
+  /**
+   * ทุกใบที่ตรงกับตัวกรอง ลงเป็นไฟล์ Excel — ไม่ใช่แค่ 25 แถวของหน้าที่เปิดอยู่
+   *
+   * ExcelJS ถูกโหลดตอนกดเท่านั้น ก้อนนั้นใหญ่กว่าทั้งหน้านี้หลายเท่า และคนส่วนใหญ่ที่
+   * เปิดหน้านี้มาดูตัวเลขไม่ได้กดส่งออก
+   */
+  async function exportExcel() {
+    setSaving(true);
+    try {
+      const all = await api.get<List>(`/settlements${qs({ ...filter, sort, dir, all: 1 })}`);
+      const { download } = await import("@/stockmod/lib/workbook");
+      const scope = { branchName, from: period.from || null, to: period.to || null };
+      await download(settlementFileName(scope), settlementTitle(scope), settlementSheets(all.rows));
+    } catch (e) {
+      toast.error({
+        text: "สร้างไฟล์ Excel ไม่สำเร็จ",
+        detail: e instanceof Error ? e.message : "ลองกดอีกครั้ง",
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
 
   if (!allowed) {
     return (
@@ -82,6 +164,8 @@ export default function SettlementsPage() {
       </main>
     );
   }
+
+  const filtered = branch !== "" || applied !== "" || span !== "all";
 
   return (
     <main className="work-main">
@@ -111,6 +195,15 @@ export default function SettlementsPage() {
             ค้นหา
           </button>
         </form>
+        <button
+          type="button"
+          className="btn"
+          onClick={exportExcel}
+          disabled={saving || list.status !== "ready" || list.data.total === 0}
+          title="ทุกใบที่ตรงกับตัวกรองตอนนี้ แยกตามสาขา พร้อมชื่อสินค้าและหมายเหตุ"
+        >
+          {saving ? "กำลังสร้างไฟล์…" : "Export Excel"}
+        </button>
         <Link href="/stock/branches" className="btn">
           จัดการสาขา
         </Link>
@@ -160,6 +253,35 @@ export default function SettlementsPage() {
           />
         </div>
 
+        <div className="chips chips--tight" role="group" aria-label="ช่วงวันที่เบิก">
+          {SPANS.map((s) => (
+            <button
+              key={s.key}
+              type="button"
+              className="chip chip--flat"
+              aria-current={span === s.key ? "true" : undefined}
+              onClick={() => choose(s.key)}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+
+        {span !== "all" ? (
+          <DateRangeField
+            split
+            id="s-range"
+            from={range.from}
+            to={range.to}
+            onApply={(r) =>
+              refine(() => {
+                setRange(r);
+                setSpan("custom");
+              })
+            }
+          />
+        ) : null}
+
         <div className="listtools__end">
           <SortBar id="settle" columns={SORTS} sort={sort} dir={dir} onSort={pick} />
         </div>
@@ -178,15 +300,22 @@ export default function SettlementsPage() {
       ) : null}
 
       {list.status === "ready" && list.data.rows.length === 0 ? (
-        <div className="empty">
-          <p className="empty__title">ยังไม่มีสาขาไหนเบิกของ</p>
-          <p className="empty__body">
-            รายการจะมาโผล่ที่นี่เมื่อมีสาขาอื่นมาเบิกของ — ทำได้ที่{" "}
-            <Link href="/stock" className="grid__link">
-              หน้าเบิก/ตัดสต็อก
-            </Link>
-          </p>
-        </div>
+        filtered ? (
+          <div className="empty">
+            <p className="empty__title">ไม่มีใบเบิกที่ตรงกับตัวกรองนี้</p>
+            <p className="empty__body">ลองเลือกทุกสาขา ขยายช่วงวันที่ หรือล้างคำค้น</p>
+          </div>
+        ) : (
+          <div className="empty">
+            <p className="empty__title">ยังไม่มีสาขาไหนเบิกของ</p>
+            <p className="empty__body">
+              รายการจะมาโผล่ที่นี่เมื่อมีสาขาอื่นมาเบิกของ — ทำได้ที่{" "}
+              <Link href="/stock" className="grid__link">
+                หน้าเบิก/ตัดสต็อก
+              </Link>
+            </p>
+          </div>
+        )
       ) : null}
 
       {list.status === "ready" && list.data.rows.length > 0 ? (
@@ -213,8 +342,16 @@ export default function SettlementsPage() {
                   { label: "สาขา", value: r.branchName ?? "—" },
                   r.takenBy ? { label: "ผู้รับของ", value: r.takenBy } : null,
                   { label: "เบิกเมื่อ", value: date(r.issuedAt) },
+                  r.note ? { label: "หมายเหตุ", value: r.note } : null,
                   r.issuedByName ? { label: "บันทึกโดย", value: r.issuedByName } : null,
                 ]}
+                actions={
+                  maySettle ? (
+                    <button type="button" className="btn btn--small" onClick={() => setEditing(r)}>
+                      แก้ไข / ยกเลิก
+                    </button>
+                  ) : undefined
+                }
               />
             ))}
           </CardList>
@@ -229,6 +366,11 @@ export default function SettlementsPage() {
                   <SortHead label="สาขา / ผู้รับของ" col="branch" sort={sort} dir={dir} onSort={pick} />
                   <SortHead label="สินค้า / จำนวน" col="product" sort={sort} dir={dir} onSort={pick} />
                   <SortHead label="ต้นทุน" col="cost" sort={sort} dir={dir} onSort={pick} num />
+                  {maySettle ? (
+                    <th scope="col">
+                      <span className="sr-only">แก้ไข</span>
+                    </th>
+                  ) : null}
                 </tr>
               </thead>
               <tbody>
@@ -246,6 +388,9 @@ export default function SettlementsPage() {
                       <span className="grid__sub">
                         {r.sku} · {count(r.quantity)} ชิ้น
                       </span>
+                      {/* หมายเหตุคือเลขบิลหรือสิ่งที่พนักงานพิมพ์ไว้ตอนเบิก — บรรทัดเดียวกับ
+                          ที่ออกไปอยู่ในไฟล์ Excel คนเทียบจอกับไฟล์จะได้เจอของเดียวกัน */}
+                      {r.note ? <span className="grid__sub">หมายเหตุ: {r.note}</span> : null}
                     </td>
                     <td className="grid__num">
                       {money(r.costTotal)}
@@ -255,6 +400,13 @@ export default function SettlementsPage() {
                         </span>
                       ) : null}
                     </td>
+                    {maySettle ? (
+                      <td className="grid__act">
+                        <button type="button" className="btn btn--small" onClick={() => setEditing(r)}>
+                          แก้ไข / ยกเลิก
+                        </button>
+                      </td>
+                    ) : null}
                   </tr>
                 ))}
               </tbody>
@@ -269,6 +421,17 @@ export default function SettlementsPage() {
             label="รายการ"
           />
         </>
+      ) : null}
+
+      {/* ยกเลิกแล้วใบหายจากรายการนี้ (หน้านี้แสดงเฉพาะใบที่ยังใช้อยู่) และของกลับเข้าล็อต
+          เดิม · หน้าความเคลื่อนไหวยังมีแถว "รับคืน" พร้อมเหตุผลให้ตามย้อนหลังได้ */}
+      {editing && branches.status === "ready" ? (
+        <SettlementEditDialog
+          row={editing}
+          branches={branches.data.branches}
+          onClose={() => setEditing(null)}
+          onSaved={list.reload}
+        />
       ) : null}
     </main>
   );

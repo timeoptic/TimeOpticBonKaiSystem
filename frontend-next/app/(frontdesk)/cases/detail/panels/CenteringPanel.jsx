@@ -42,15 +42,18 @@ function frameSizeParts(size) {
 }
 
 /** one measurement box, with its unit sitting inside the field */
-function Measure({ label, unit, value, onChange, placeholder, hint, readOnly = false }) {
+/* `text` = ช่องที่ร้านกรอกได้ทั้งตัวเลขและข้อความ (เช่น Cor. ที่บางทีจดเป็นชื่อรุ่นหรือ "สั้น")
+   คอลัมน์เป็น varchar(20) อยู่แล้ว ฝั่ง API ไม่ได้บังคับว่าต้องเป็นตัวเลข */
+function Measure({ label, unit, value, onChange, placeholder, hint, readOnly = false, text = false }) {
   return (
     <div className={`measure ${readOnly ? 'readonly' : ''}`}>
       <label>{label}</label>
       <div className="measure-input">
         <input
-          type={readOnly ? 'text' : 'number'}
-          step="0.1"
-          inputMode="decimal"
+          type={readOnly || text ? 'text' : 'number'}
+          step={text ? undefined : '0.1'}
+          inputMode={text ? undefined : 'decimal'}
+          maxLength={text ? 20 : undefined}
           value={value ?? ''}
           placeholder={placeholder}
           readOnly={readOnly}
@@ -128,7 +131,8 @@ export function CenteringPanel({ c, reload }) {
     ok('เติมค่าจากข้อมูลกรอบแล้ว — แก้ตามที่วัดจริงได้');
   };
 
-  const saveDraft = async () => {
+  /* quiet = เรียกจาก beforeComplete — ไม่ขึ้น toast ไม่ reload เพราะการยืนยันที่ตามมาทำให้เอง */
+  const saveDraft = async ({ quiet = false } = {}) => {
     const centering = await api.post('/api/centerings', {
       ...form,
       pd_total: pdTotal,
@@ -145,17 +149,30 @@ export function CenteringPanel({ c, reload }) {
       performed_by: form.performed_by || null,
       recorded_by: form.recorded_by || null,
     });
-    ok('บันทึกค่า Center แล้ว');
-    reload();
+    if (!quiet) {
+      ok('บันทึกค่า Center แล้ว');
+      reload();
+    }
     return centering;
   };
 
+  /* ✓ ยืนยันค่า Center บันทึกค่าที่กรอกก่อนเสมอ — เดิมปุ่มนี้แค่ยืนยันขั้นตอน แล้ว reload ล้างฟอร์ม
+     กลับเป็นค่าที่เก็บไว้ ค่าที่พิมพ์แต่ยังไม่ได้กด "บันทึก Draft" หายหมด (ร้านเจอ 15 ก.ย. 2026
+     เคส CASE-2026-00001) · บันทึกไม่ผ่าน = throw → ProcessShell ไม่ยืนยัน ฟอร์มยังอยู่ครบ */
+  const beforeComplete = async () => {
+    await saveDraft({ quiet: true });
+    return true;
+  };
+
   const fns = useRef({});
-  fns.current = { saveDraft };
+  fns.current = { saveDraft, beforeComplete };
   const register = actions?.register;
   useEffect(() => {
     if (!register) return undefined;
-    register({ saveDraft: () => fns.current.saveDraft() });
+    register({
+      saveDraft: () => fns.current.saveDraft(),
+      beforeComplete: () => fns.current.beforeComplete(),
+    });
     return () => register({});
   }, [register]);
 
@@ -194,7 +211,7 @@ export function CenteringPanel({ c, reload }) {
           <Group icon="eye" title="FH" cols={3} optional>
             <Measure label="FH ขวา (R)" unit="mm" value={form.r_height} onChange={set('r_height')} placeholder="18.5" />
             <Measure label="FH ซ้าย (L)" unit="mm" value={form.l_height} onChange={set('l_height')} placeholder="18.5" />
-            <Measure label="Cor." unit="mm" value={form.corridor} onChange={set('corridor')} placeholder="14.0" hint="Corridor · เลนส์โปรเกรสซีฟ" />
+            <Measure label="Cor." unit="mm" text value={form.corridor} onChange={set('corridor')} placeholder="14" hint="Corridor · เลนส์โปรเกรสซีฟ" />
           </Group>
 
           <Group icon="glasses" title="FRAME BOX" cols={4} optional>

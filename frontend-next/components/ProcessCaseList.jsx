@@ -33,6 +33,7 @@ import { PAGE_SIZES } from '../lib/pager.js';
 import { StatusChip } from './StatusChip.jsx';
 import { Icon } from './Icon.jsx';
 import { CaseTags } from './CaseTags.jsx';
+import { RxLensBadge } from './RxLensBadge.jsx';
 import { custName, fmtDate, money } from '../lib/format.js';
 import { Select } from './Selects.jsx';
 
@@ -92,6 +93,7 @@ export function ProcessCaseList({ stage, icon, title, subtitle }) {
           <small className="cell-tags">
             {`รับ: ${fmtDate(r.opened_at)}`}
             <CaseTags row={r} />
+            <RxLensBadge row={r} />
           </small>
         </div>
       ),

@@ -36,6 +36,7 @@ import { Icon } from '../../../../../components/Icon.jsx';
 import { DateTimeField } from '../../../../../components/DateTimeField.jsx';
 import { Lightbox } from '../../../../../components/Lightbox.jsx';
 import { isPreviewable } from '../../../../../lib/lightbox.js';
+import { isUnpaidRow } from '../../../../../lib/paymentUnpaid.js';
 
 /* ไอคอนต่อวิธีจ่าย — ชุดเดียวกับขั้น "ชำระเงิน" ตัวเลือกจริงมาจาก meta.lists.pay_type
    ไม่ได้พิมพ์รายการไว้เอง ร้านเพิ่มช่องทางใหม่แล้วที่นี่ขึ้นตาม */
@@ -298,17 +299,27 @@ export function DeliveryPanel({ c, reload }) {
           {payments.map((p) => (
             <li className={`pay-ev ${p.cancelled_at ? 'cancelled' : ''}`} key={p.id}>
               <span className={`pay-ev-dot ${p.cancelled_at ? 'off' : ''}`}>
-                <Icon name={METHOD_ICON[p.method] || 'coins'} />
+                <Icon name={isUnpaidRow(p) ? 'hourglass' : METHOD_ICON[p.method] || 'coins'} />
               </span>
               <div className="pay-ev-body">
                 <div className="pay-ev-head">
-                  <b>{money(p.amount)}</b>
-                  <span className="muted">{methodLabel[p.method] || p.method}</span>
+                  {/* รายการ 0 บาทจากขั้นชำระเงิน — บอกว่าตกลงให้มาจ่ายตอนนี้ ไม่ใช่เงินที่รับไปแล้ว */}
+                  {isUnpaidRow(p) ? (
+                    <>
+                      <Badge kind="warn">ยังไม่ชำระ</Badge>
+                      <span className="muted">บันทึกไว้ที่ขั้นชำระเงิน</span>
+                    </>
+                  ) : (
+                    <>
+                      <b>{money(p.amount)}</b>
+                      <span className="muted">{methodLabel[p.method] || p.method}</span>
+                    </>
+                  )}
                   {p.cancelled_at ? <Badge kind="danger">ยกเลิกแล้ว</Badge> : null}
                 </div>
                 <div className="pay-ev-when muted">
                   {fmtDateTime(p.paid_at)}
-                  {p.received_by_name ? ` · ผู้รับเงิน ${p.received_by_name}` : ''}
+                  {p.received_by_name ? ` · ${isUnpaidRow(p) ? 'ผู้บันทึก' : 'ผู้รับเงิน'} ${p.received_by_name}` : ''}
                   {p.notes ? ` · ${p.notes}` : ''}
                 </div>
                 {slipsOf(p.id).length > 0 && (

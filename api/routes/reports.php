@@ -38,6 +38,7 @@ GET('/api/reports/daily-closed', function (array $req) {
            LEFT JOIN custom_orders o ON o.id = p.order_id
            LEFT JOIN employees e     ON e.id = p.received_by
           WHERE DATE(p.paid_at) BETWEEN ? AND ? AND p.cancelled_at IS NULL
+            AND p.kind <> \'unpaid\'
           ORDER BY p.paid_at',
         $from, $to
     );

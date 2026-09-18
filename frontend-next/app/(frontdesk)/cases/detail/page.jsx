@@ -31,11 +31,13 @@ import { ProcessShell } from '../../../../components/ProcessShell.jsx';
 import { ACTION_LABEL } from '../../../../lib/constants.js';
 import { SEND_EVENT_LABEL } from '../../../../lib/centeringSend.js';
 import { CUSTOMER_EVENT_LABEL } from '../../../../lib/caseCustomer.js';
+import { useAuth } from '../../../../contexts/AuthContext.jsx';
+import { inSystemZone } from '../../../../lib/roles.js';
 import {
   CASE_PROCESSES, eventNote, paymentStatusOf, processInfo,
 } from '../../../../lib/caseProcesses.js';
 import { custName, fmtDate, fmtDateTime, money, moneyShort } from '../../../../lib/format.js';
-import { ageText, birthWithAge } from '../../../../lib/customerAge.js';
+import { ageTextOf, birthOrAge } from '../../../../lib/customerAge.js';
 
 import { ReceptionPanel } from './panels/ReceptionPanel.jsx';
 import { ExamPanel } from './panels/ExamPanel.jsx';
@@ -46,6 +48,7 @@ import { DeliveryPanel } from './panels/DeliveryPanel.jsx';
 import { Icon } from '../../../../components/Icon.jsx';
 import { NotifyPanel } from './panels/NotifyPanel.jsx';
 import { TimelinePanel } from './panels/TimelinePanel.jsx';
+import { ChangeCustomerDialog } from './panels/ChangeCustomerDialog.jsx';
 
 /** one panel per process — ids come from lib/caseProcesses.js */
 const PROCESS_PANELS = {
@@ -159,7 +162,11 @@ function OverviewTab({ c, showTab }) {
 
       <Card title="สถานะแต่ละขั้นตอน">
         <div className="process-summary">
-          {CASE_PROCESSES.map((p) => {
+          {/* ขั้นที่เคสใบนี้มี มาจาก server (`process_list` — กฎอยู่ที่
+              Lookups::CASE_TYPE_PROCESSES ที่เดียว) ส่วนค่าคงที่ฝั่งนี้เหลือหน้าที่
+              บอกป้าย สี ไอคอน และลำดับเท่านั้น · เคสที่ server ยังไม่ส่งรายการมา
+              (คำตอบเก่าที่ค้างอยู่) ให้แสดงครบเหมือนเดิม ไม่ใช่หายทั้งแถบ */}
+          {CASE_PROCESSES.filter((p) => !c.process_list || c.process_list.includes(p.id)).map((p) => {
             const st = (c.processes || {})[p.id] || {};
             const reasons = [...(st.blocking || []), ...(st.missing || [])];
             return (
@@ -197,7 +204,7 @@ function OverviewTab({ c, showTab }) {
               ['โทร', c.phone || '—'],
               ['LINE / WhatsApp', c.line_id || '—'],
               ['อีเมล', c.email || '—'],
-              ['วันเกิด', birthWithAge(c.birth_date, fmtDate) || '—'],
+              ['วันเกิด', birthOrAge(c, fmtDate) || '—'],
             ]}
           />
         </Card>
@@ -297,6 +304,9 @@ function CaseDetailInner() {
   const [pending, setPending] = useState(null);   // the step waiting behind the guard
   const [savingNav, setSavingNav] = useState(false);
   const panelActions = useRef({});                // what the open panel registered
+  /* ปุ่ม "เปลี่ยนลูกค้า" — แอดมิน/เจ้าของร้านเท่านั้น (API ตรวจซ้ำเอง) */
+  const { actor } = useAuth();
+  const [changingCustomer, setChangingCustomer] = useState(false);
 
   useEffect(() => { dirty.current = false; dirtyForm.current = null; }, [c]);
 
@@ -334,10 +344,16 @@ function CaseDetailInner() {
   if (!c) return <Loading />;
 
   const processes = c.processes || {};
+  /* ลิงก์เก่าอาจชี้ไปขั้นที่เคสประเภทนี้ไม่มี (เช่น ?step=sales ของเคสตรวจสายตา)
+     ตกกลับไปหน้าภาพรวม ดีกว่าวาดแผงของขั้นที่เคสใบนี้ไม่มีอยู่จริง ซึ่งกดยืนยัน
+     แล้วจะโดน API ปฏิเสธอยู่ดี · เคสที่ server ยังไม่ส่ง process_list มา ให้ผ่านหมด */
+  const view = (!isProcess(step) || !c.process_list || c.process_list.includes(step))
+    ? step
+    : 'overview';
   const panelProps = { c, reload, actorId: () => null };
-  const ProcessPanel = PROCESS_PANELS[step];
-  const ExtraPanel = EXTRA_PANELS[step];
-  const info = isProcess(step) ? processInfo(step) : null;
+  const ProcessPanel = PROCESS_PANELS[view];
+  const ExtraPanel = EXTRA_PANELS[view];
+  const info = isProcess(view) ? processInfo(view) : null;
   const pay = paymentStatusOf(c);
 
   const saveAndGo = async () => {
@@ -363,16 +379,29 @@ function CaseDetailInner() {
         title={c.case_code}
         /* อายุอยู่บนหัวเคสที่ค้างอยู่ทุกขั้น — วัดสายตา (ค่า ADD) กับเลือกเลนส์ต้องใช้
            ไม่มีวันเกิดหรือวันเกิดผิด = ชื่ออย่างเดียว ไม่ขึ้น "— ปี" */
-        subtitle={[custName(c), ageText(c.birth_date)].filter(Boolean).join(' · ')}
+        subtitle={[custName(c), ageTextOf(c)].filter(Boolean).join(' · ')}
         actions={(
           <>
             <Link className="btn btn-ghost" href={'/customers/detail?id=' + c.customer_id}><Icon name="user" /> ข้อมูลลูกค้า</Link>
+            {inSystemZone(actor) && (
+              <button type="button" className="btn btn-ghost" onClick={() => setChangingCustomer(true)}>
+                <Icon name="users" /> เปลี่ยนลูกค้า
+              </button>
+            )}
             {c.order && <Link className="btn btn-ghost" href={'/orders/detail?id=' + c.order.id}><Icon name="glasses" /> ออเดอร์</Link>}
             {c.order && <Link className="btn btn-ghost" href={'/print/order?id=' + c.order.id}><Icon name="printer" /> ใบสั่ง</Link>}
             {c.order && <Link className="btn btn-ghost" href={'/print/receipt?order=' + c.order.id}><Icon name="receipt" /> ใบเสร็จ</Link>}
           </>
         )}
       />
+
+      {changingCustomer && (
+        <ChangeCustomerDialog
+          c={c}
+          onClose={() => setChangingCustomer(false)}
+          onSaved={() => { setChangingCustomer(false); reload(); }}
+        />
+      )}
 
       <div className="card">
         <div className="card-body">
@@ -388,7 +417,9 @@ function CaseDetailInner() {
             {c.phone ? <span className="muted"><Icon name="phone" /> {c.phone}</span> : null}
           </Row>
 
-          <CaseStepper processes={processes} viewing={step} onView={requestStep} />
+          {/* `view` ไม่ใช่ `step` — ลิงก์เก่าที่ชี้ไปขั้นที่เคสนี้ไม่มี ถูกพาไปหน้าภาพรวมแล้ว
+              จุดบนแถบจึงต้องไม่ไปไฮไลต์ขั้นที่ไม่ได้ถูกวาดอยู่จริง */}
+          <CaseStepper processes={processes} list={c.process_list} viewing={view} onView={requestStep} />
 
           <p className="hint" style={{ margin: '0 0 12px', textAlign: 'center' }}>
             กดขั้นตอนเพื่อเปิดดูเท่านั้น — สถานะจะเปลี่ยนเมื่อกดปุ่มยืนยันในขั้นตอนนั้น

@@ -94,6 +94,35 @@ final class Inventory
         OR (" . self::LOW_STOCK . ")
     )";
 
+    /**
+     * สินค้ารอสั่ง · มุม "แจ้งเตือนล่าสุด" — ร้านขอไว้ 14 ก.ย. 2026
+     *
+     * ของที่ `LowStock` เตือนเข้า Telegram ไปแล้ว (`low_stock_notified_at`) และยังเป็นของที่
+     * ต้องสั่งอยู่ · ธงถูกล้างตอนของกลับขึ้นพ้นขั้นต่ำ แต่ล้างเฉพาะตอนสินค้าถูกแตะ — ร้านแก้
+     * ขั้นต่ำลงโดยไม่มีของเคลื่อน ธงจะค้าง · ต่อ `BACKORDER` ไว้ด้วยจึงไม่โชว์ของที่พ้นเส้นแล้ว
+     */
+    private const ALERTED = "(p.low_stock_notified_at IS NOT NULL AND " . self::BACKORDER . ")";
+
+    /**
+     * สินค้ารอสั่ง · มุม "ต่ำกว่าขั้นต่ำทั้งหมด" — ร้านขอไว้ 14 ก.ย. 2026
+     *
+     * `BACKORDER` ลบของที่ไม่ได้ตั้งขั้นต่ำและแค่เหลือศูนย์ · ขั้นต่ำ 0 แปลว่า "เตือนเมื่อหมด"
+     * ซึ่งยังถูกสำหรับการเตือน แต่บนรายการที่ต้องสั่ง มันคือเลนส์ทุกค่าสายตาที่ร้านไม่เคย
+     * สต็อก — บนเครื่องจริงพันกว่าแถวที่กลบของที่ต้องสั่งจริง · ยอดติดลบยังนับเสมอ เพราะคือ
+     * ของที่ขายไปแล้ว
+     */
+    private const ORDERING = "(
+        (p.is_custom_made = 0
+         AND (SELECT COALESCE(SUM(l2.remaining_qty), 0)
+              FROM stock_lots l2 WHERE l2.product_id = p.id) < 0)
+        OR (p.min_stock > 0 AND " . self::LOW_STOCK . ")
+    )";
+
+    /**
+     * ธงเตือนก่อน 2026-09-12 06:36:14 UTC ลงเป็น UTC — ดู `thaiStamp()`
+     */
+    private const TZ_PINNED_AT = '2026-09-12 06:36:14';
+
     public const ACTION_LABEL = [
         'IN'       => 'รับเข้า',
         'OUT'      => 'จ่ายออก',
@@ -161,8 +190,32 @@ final class Inventory
      */
     public static function products(array $filter = [], bool $money = false): array
     {
+        $filter = self::searchScope($filter);
         [$clause, $args] = self::productWhere($filter);
         return self::productPage($clause, $args, $filter, $money);
+    }
+
+    /**
+     * คำค้นหลายคำที่ไม่มีสินค้าตัวไหนตรงครบ — ถอยไปขึ้นตัวที่ตรงบางคำแทนรายการว่าง
+     *
+     * แบบเดียวกับหน้าขาย (GET /api/stock) · รายการ ชิปสถานะ และตัวกรองเลนส์ต้องถอย
+     * พร้อมกัน ไม่งั้นชิปบอก 0 เหนือรายการที่มีของ จึงตัดสินที่นี่จากตัวกรองชุดเต็ม
+     * แล้วส่ง `any` ต่อไปให้ productWhere · `any` ไม่ได้มาจาก query string
+     *
+     * @param array<string,mixed> $filter
+     * @return array<string,mixed>
+     */
+    private static function searchScope(array $filter): array
+    {
+        unset($filter['any']);
+        if (count(ProductSearch::tokens((string) ($filter['q'] ?? ''))) < 2) {
+            return $filter;
+        }
+        [$clause, $args] = self::productWhere($filter);
+        if ((int) Db::value("SELECT COUNT(*) FROM products p WHERE {$clause}", $args) === 0) {
+            $filter['any'] = true;
+        }
+        return $filter;
     }
 
     /**
@@ -182,15 +235,12 @@ final class Inventory
         $where = ['1=1'];
         $args = [];
 
-        if (!empty($filter['q'])) {
-            // Coating is in the search too: "Crizal Sapphire" is how an optician
-            // asks for a lens, and it lives in `attributes` rather than in the
-            // name of every product that carries it. Six more filter chips would
-            // have bought the same thing at the cost of a wall of buttons.
-            $where[] = '(p.sku LIKE ? OR p.name LIKE ? OR p.brand LIKE ? OR '
-                . self::attr('coating') . ' LIKE ?)';
-            $like = '%' . $filter['q'] . '%';
-            array_push($args, $like, $like, $like, $like);
+        // ค้นแบบหน้าขาย: ตัดเป็นคำ ต้องเจอครบทุกคำ แต่ละคำเจอที่ชื่อ แบรนด์ SKU หรือ
+        // สเปกใน `attributes` ก็ได้ — กติกาทั้งหมดกับเหตุผลอยู่ที่ ProductSearch
+        [$search, $searchArgs] = ProductSearch::where((string) ($filter['q'] ?? ''), !empty($filter['any']));
+        if ($search !== '') {
+            $where[] = $search;
+            array_push($args, ...$searchArgs);
         }
         if (($filter['eye'] ?? null) === 'left' || ($filter['eye'] ?? null) === 'right') {
             $where[] = self::EYE_SIDE . ' = ?';
@@ -278,6 +328,10 @@ final class Inventory
             $where[] = self::LOW_STOCK;
         } elseif ($state === 'backorder') {
             $where[] = self::BACKORDER;
+        } elseif ($state === 'alerted') {
+            $where[] = self::ALERTED;
+        } elseif ($state === 'ordering') {
+            $where[] = self::ORDERING;
         }
 
         return [implode(' AND ', $where), $args];
@@ -292,14 +346,36 @@ final class Inventory
      */
     private static function productPage(string $clause, array $args, array $filter, bool $money): array
     {
-        $total = (int) Db::value("SELECT COUNT(*) FROM products p WHERE {$clause}", $args);
         $per = self::perPage($filter['per'] ?? null);
-        [$page, $offset] = self::pageOf($filter['page'] ?? 1, $total, $per);
-        array_push($args, $per, $offset);
+        $term = trim((string) ($filter['q'] ?? ''));
+
+        if ($term !== '' && in_array($filter['sort'] ?? null, [null, '', 'match'], true)) {
+            // มีคำค้นและไม่ได้กดเรียงตามคอลัมน์ไหน — ตัวที่ตรงที่สุดขึ้นก่อน
+            // จัดอันดับทั้งชุดก่อนแล้วค่อยตัดเป็นหน้า ตัดก่อนแล้วตัวที่ตรงที่สุดตกไปหน้าหลัง
+            $pool = Db::all(
+                'SELECT ' . ProductSearch::rankColumns() . " FROM products p WHERE {$clause}
+                 ORDER BY p.id DESC LIMIT " . ProductSearch::RANK_POOL,
+                $args,
+            );
+            $ids = array_map('intval', array_column(ProductSearch::rank($pool, $term), 'id'));
+            $total = count($ids);
+            [$page, $offset] = self::pageOf($filter['page'] ?? 1, $total, $per);
+            // id มาจากฐานเป็นเลขล้วน ต่อเข้า SQL ตรง ๆ ได้ · หน้าว่างใช้ 0 ซึ่งไม่มีสินค้า
+            $list = implode(',', array_slice($ids, $offset, $per) ?: [0]);
+            $where = "p.id IN ({$list})";
+            $tail = "FIELD(p.id, {$list})";
+            $args = [];
+        } else {
+            $total = (int) Db::value("SELECT COUNT(*) FROM products p WHERE {$clause}", $args);
+            [$page, $offset] = self::pageOf($filter['page'] ?? 1, $total, $per);
+            $where = $clause;
+            $tail = self::productOrder($filter['sort'] ?? null, $filter['dir'] ?? null) . ' LIMIT ? OFFSET ?';
+            array_push($args, $per, $offset);
+        }
 
         $rows = Db::all(
             'SELECT p.id, p.sku, p.name, p.brand, p.product_type, p.category_id,
-                    p.base_selling_price, p.min_stock, p.is_custom_made,
+                    p.base_selling_price, p.min_stock, p.is_custom_made, p.low_stock_notified_at,
                     ' . self::EYE_SIDE . ' AS eye_side,
                     ' . self::attr('model') . '       AS model,
                     ' . self::attr('lens_design') . ' AS lens_design,
@@ -331,9 +407,8 @@ final class Inventory
                FROM stock_lots l
                GROUP BY l.product_id
              ) s ON s.product_id = p.id
-             WHERE ' . $clause . '
-             ORDER BY ' . self::productOrder($filter['sort'] ?? null, $filter['dir'] ?? null) . '
-             LIMIT ? OFFSET ?',
+             WHERE ' . $where . '
+             ORDER BY ' . $tail,
             $args,
         );
 
@@ -371,7 +446,11 @@ final class Inventory
             'SELECT g.id, g.action_type, g.quantity, g.unit_cost, g.reference_doc,
                     g.notes, g.created_at, g.created_by, g.created_by_kind,
                     l.lot_number, a.display_name AS actor_name,
-                    g.issued_to_admin_id, who.display_name AS issued_to_name,
+                    g.issued_to_admin_id, who.display_name AS issued_to_name, g.scrap_by,
+                    EXISTS (SELECT 1 FROM inventory_logs rv WHERE rv.reverses_log_id = g.id) AS returned,
+                    (SELECT cs.case_id FROM case_stock_issues cs
+                      WHERE g.reference_doc IS NOT NULL AND cs.reference_doc = g.reference_doc
+                      ORDER BY cs.id DESC LIMIT 1) AS case_id,
                     g.branch_issue_id, bi.taken_by, bi.status AS branch_status,
                     bi.settled_amount, bi.settled_at, bi.cost_total, br.name AS branch_name
              FROM inventory_logs g
@@ -414,6 +493,7 @@ final class Inventory
             ...self::lensKeys($attributes),
             'attributes'   => $attributes,
             'onHand'       => $onHand,
+            'lowStockNotifiedAt' => self::thaiStamp($p['low_stock_notified_at'] ?? null),
             'stockValue'   => $money ? round($value, 2) : null,
             'lots'         => array_map(static fn(array $r): array => self::shapeLot($r, $money), $lots),
             'logs'         => array_map(static fn(array $r): array => self::shapeLog($r, $money), $logs),
@@ -536,9 +616,10 @@ final class Inventory
 
         if (!empty($filter['q'])) {
             $where[] = '(g.reference_doc LIKE ? OR p.sku LIKE ? OR p.name LIKE ? OR l.lot_number LIKE ?
-                         OR g.notes LIKE ? OR who.display_name LIKE ? OR bi.taken_by LIKE ? OR br.name LIKE ?)';
+                         OR g.notes LIKE ? OR who.display_name LIKE ? OR bi.taken_by LIKE ? OR br.name LIKE ?
+                         OR g.scrap_by LIKE ?)';
             $like = '%' . $filter['q'] . '%';
-            array_push($args, $like, $like, $like, $like, $like, $like, $like, $like);
+            array_push($args, $like, $like, $like, $like, $like, $like, $like, $like, $like);
         }
 
         // `< to + 1 day` rather than `<= to 23:59:59` — the latter drops anything
@@ -572,7 +653,11 @@ final class Inventory
                     g.product_id, p.sku, p.name AS product_name,
                     p.base_selling_price,
                     l.lot_number, a.display_name AS actor_name, a.job_title AS actor_job,
-                    g.issued_to_admin_id, who.display_name AS issued_to_name,
+                    g.issued_to_admin_id, who.display_name AS issued_to_name, g.scrap_by,
+                    EXISTS (SELECT 1 FROM inventory_logs rv WHERE rv.reverses_log_id = g.id) AS returned,
+                    (SELECT cs.case_id FROM case_stock_issues cs
+                      WHERE g.reference_doc IS NOT NULL AND cs.reference_doc = g.reference_doc
+                      ORDER BY cs.id DESC LIMIT 1) AS case_id,
                     g.branch_issue_id, bi.taken_by, bi.status AS branch_status,
                     bi.settled_amount, bi.settled_at, bi.cost_total, br.name AS branch_name
              {$joins}
@@ -667,6 +752,9 @@ final class Inventory
             'coating' => self::attr('coating'),
             'sph'    => self::attrNum('sph'),
             'cyl'    => self::attrNum('cyl'),
+            // มุม "แจ้งเตือนล่าสุด" ของหน้าสินค้ารอสั่ง — ไม่อยู่ในรายการเรียงตามธรรมชาติ
+            // จึงเปิดมาเป็นล่าสุดก่อน
+            'alerted' => 'p.low_stock_notified_at',
             // "เพิ่มล่าสุด" is the default, so an unrecognised sort lands on the same
             // order the screens open in rather than on a column nobody asked for.
             default  => 'p.id',
@@ -798,6 +886,9 @@ final class Inventory
      */
     public static function lensOptions(array $filter = []): array
     {
+        // ถอยไปตรงบางคำพร้อมกับรายการ ไม่งั้นตัวเลือก index ว่างเหนือรายการที่มีเลนส์
+        $filter = self::searchScope($filter);
+
         /**
          * A facet is counted under the list's own conditions, minus its own
          * choice. Keeping its own choice would leave every other chip on that
@@ -960,6 +1051,8 @@ final class Inventory
      */
     public static function stockStateCounts(array $filter): array
     {
+        // ถอยไปตรงบางคำหรือไม่ ตัดสินจากตัวกรองชุดเดียวกับรายการ — ก่อนทิ้งสถานะ
+        $filter = self::searchScope($filter);
         unset($filter['state']);
         [$clause, $args] = self::productWhere($filter);
 
@@ -985,6 +1078,8 @@ final class Inventory
                               WHERE l2.product_id = p.id AND l2.remaining_qty > 0)'),
             'low' => $of(self::LOW_STOCK),
             'backorder' => $of(self::BACKORDER),
+            'alerted' => $of(self::ALERTED),
+            'ordering' => $of(self::ORDERING),
         ];
     }
 
@@ -1064,7 +1159,29 @@ final class Inventory
             'lotsMissingCost' => (int) $r['lots_missing_cost'],
             // null means the next lot out has no invoice yet — not that it is free.
             'nextCost'        => $money && $r['next_cost'] !== null ? (float) $r['next_cost'] : null,
+            'lowStockNotifiedAt' => self::thaiStamp($r['low_stock_notified_at'] ?? null),
         ];
+    }
+
+    /**
+     * เวลาที่เตือนของใกล้หมด เป็นเวลาไทยเสมอ
+     *
+     * ก่อน 2026-09-12 06:36:14 UTC (13:36 น.) PDO ของเว็บยังไม่ได้ตั้งเขตเวลา `NOW()` บน
+     * เซิร์ฟเวอร์จริงจึงลงเป็น UTC · ธงนี้ตั้งจากคำขอบนเว็บเท่านั้น (`LowStock::flush`) ค่าที่เก่า
+     * กว่าเส้นนั้นจึงเป็น UTC ทั้งหมด บวกเจ็ดชั่วโมง · ค่าหลังจากนั้นเป็นเวลาไทยซึ่งเร็วที่สุดคือ
+     * 13:36 น. ของวันเดียวกัน จึงไม่มีทางปนกับค่า UTC ที่ช้าที่สุด (06:36)
+     */
+    private static function thaiStamp(?string $at): ?string
+    {
+        if ($at === null || $at === '') {
+            return null;
+        }
+        if ($at >= self::TZ_PINNED_AT) {
+            return $at;
+        }
+        return (new \DateTimeImmutable($at, new \DateTimeZone('UTC')))
+            ->setTimezone(new \DateTimeZone('Asia/Bangkok'))
+            ->format('Y-m-d H:i:s');
     }
 
     /**
@@ -1193,6 +1310,12 @@ final class Inventory
                 ? (int) $r['issued_to_admin_id']
                 : null,
             'issuedToName'  => $r['issued_to_name'] ?? null,
+            // ชื่อคนที่ทำของเสียที่พิมพ์ไว้ตอนตัด (034) — คนละคนกับ actorName ที่คีย์
+            'scrapBy'       => $r['scrap_by'] ?? null,
+            // แถวจ่ายออกนี้ถูกยกเลิก (คืนของ) ไปแล้วหรือยัง — 035 · ShopIssue::cancel
+            'returned'      => (bool) ($r['returned'] ?? false),
+            // เคสหน้าร้านที่ตัดของรายการนี้ — แถวแบบนี้แก้ที่หน้าเคส ไม่ใช่ที่คลัง
+            'caseId'        => isset($r['case_id']) && $r['case_id'] !== null ? (int) $r['case_id'] : null,
             'branchIssueId' => isset($r['branch_issue_id']) && $r['branch_issue_id'] !== null
                 ? (int) $r['branch_issue_id']
                 : null,

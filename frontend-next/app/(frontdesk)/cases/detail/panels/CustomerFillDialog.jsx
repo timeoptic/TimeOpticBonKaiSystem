@@ -2,7 +2,7 @@
 /**
  * เติมข้อมูลลูกค้า — popup จากขั้นรับลูกค้า (ร้านขอ 15 ก.ย. 2026)
  *
- * ให้กรอกเฉพาะช่องที่ลูกค้ายังว่าง (วันเกิด เบอร์โทร LINE อีเมล เพศ) · ค่าที่มีอยู่แล้ว
+ * ให้กรอกเฉพาะช่องที่ลูกค้ายังว่าง (วันเกิด/อายุ เบอร์โทร LINE อีเมล เพศ) · ค่าที่มีอยู่แล้ว
  * แก้ที่นี่ไม่ได้ ต้องไปหน้าแก้ไขข้อมูลลูกค้า · API ตรวจซ้ำและปฏิเสธการเขียนทับ
  * (POST /api/customers/:id/fill — ไม่ใช่ PUT ที่เขียนทับทั้งสิบช่อง)
  *
@@ -104,6 +104,25 @@ export function CustomerFillDialog({ c, onClose, onSaved }) {
                 return (
                   <Field key={f.key} label={label} hint="พิมพ์ วว/ดด/ปปปป ได้ (รับปี พ.ศ.)">
                     <DateField value={values.birth_date || ''} onChange={set('birth_date')} />
+                  </Field>
+                );
+              }
+              /* กรอกช่องนี้เมื่อลูกค้าบอกมาแค่อายุ — ระบบเก็บวันที่ถามไว้ด้วย จะได้คิดปีต่อ ๆ ไปถูก
+                 กรอกพร้อมวันเกิดไม่ได้ (fillProblems เตือน) เพราะฐานเก็บได้คำตอบเดียว */
+              if (f.key === 'age_years') {
+                return (
+                  <Field key={f.key} label={label} hint="กรอกเมื่อลูกค้าไม่ทราบวันเกิด">
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min="0"
+                      max="120"
+                      step="1"
+                      placeholder="เช่น 45"
+                      autoComplete="off"
+                      value={values.age_years || ''}
+                      onChange={(e) => set('age_years')(e.target.value)}
+                    />
                   </Field>
                 );
               }

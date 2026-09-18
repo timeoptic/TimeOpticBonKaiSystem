@@ -571,8 +571,8 @@ final class Stock
                 'INSERT INTO inventory_logs
                    (product_id, lot_id, action_type, quantity, unit_cost,
                     reference_doc, notes, created_by, created_by_kind,
-                    issued_to_admin_id, branch_issue_id, created_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, \'user\', ?, ?, NOW())'
+                    issued_to_admin_id, scrap_by, branch_issue_id, created_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, \'user\', ?, ?, ?, NOW())'
             )->execute([
                 $p['id'],
                 $lot['id'],
@@ -583,6 +583,7 @@ final class Stock
                 $note,
                 $actor,
                 $issuedTo,
+                $to['scrap_by'] ?? null,
                 $branchIssueId,
             ]);
 
@@ -613,8 +614,8 @@ final class Stock
                 'INSERT INTO inventory_logs
                    (product_id, lot_id, action_type, quantity, unit_cost,
                     reference_doc, notes, created_by, created_by_kind,
-                    issued_to_admin_id, branch_issue_id, created_at)
-                 VALUES (?, ?, ?, ?, NULL, ?, ?, ?, \'user\', ?, ?, NOW())'
+                    issued_to_admin_id, scrap_by, branch_issue_id, created_at)
+                 VALUES (?, ?, ?, ?, NULL, ?, ?, ?, \'user\', ?, ?, ?, NOW())'
             )->execute([
                 $p['id'],
                 $short['id'],
@@ -624,6 +625,7 @@ final class Stock
                 trim((string) $note . ' · ขายเกินของที่มี ค้างส่ง ' . $left . ' ชิ้น'),
                 $actor,
                 $issuedTo,
+                $to['scrap_by'] ?? null,
                 $branchIssueId,
             ]);
 
@@ -1164,11 +1166,27 @@ final class Stock
      * Exactly one answer is allowed. Someone on staff took it, or a branch did;
      * both at once would leave the ledger unable to say whose it was.
      *
+     * ของเสียมีคำตอบของตัวเองอีกช่อง — `scrap_by` ชื่อคนที่ทำเสีย พิมพ์เอง บังคับกรอก
+     * (ร้านขอไว้ 12 ก.ย. 2026) · คนทำเสียมักเป็นเด็กฝึกงานที่ไม่มีบัญชี และไม่ควรต้องมี
+     * การเดาเป็นคนที่คีย์อยู่คือการกล่าวหาคนผิด จึงไม่มีค่าตั้งต้นให้
+     *
      * @param array<string,mixed> $req
-     * @return array{admin_id:?int,branch_id:?int,taken_by:?string}
+     * @return array{admin_id:?int,branch_id:?int,taken_by:?string,scrap_by:?string}
      */
     private static function recipient(string $action, array $req): array
     {
+        $scrapBy = null;
+        if ($action === 'SCRAP') {
+            $raw = $req['scrap_by'] ?? null;
+            $scrapBy = is_string($raw) ? trim($raw) : '';
+            if ($scrapBy === '') {
+                throw ApiError::badRequest('กรอกชื่อคนที่ทำของเสียก่อน', 'missing_scrap_by');
+            }
+            if (mb_strlen($scrapBy) > 120) {
+                throw ApiError::badRequest('ชื่อคนที่ทำของเสียยาวเกิน 120 ตัวอักษร', 'bad_scrap_by');
+            }
+        }
+
         $adminId  = self::optionalId($req, 'issued_to_admin_id');
         $branchId = self::optionalId($req, 'branch_id');
         $takenBy  = self::optional($req, 'taken_by', 120);
@@ -1195,7 +1213,7 @@ final class Stock
             // which reads back a month later exactly like a real answer.
         }
 
-        return ['admin_id' => $adminId, 'branch_id' => $branchId, 'taken_by' => $takenBy];
+        return ['admin_id' => $adminId, 'branch_id' => $branchId, 'taken_by' => $takenBy, 'scrap_by' => $scrapBy];
     }
 
     /** @param array<string,mixed> $req */

@@ -27,6 +27,7 @@ import {
 import { Picker } from '../../../components/Picker.jsx';
 import { StockPicker, stockLabel } from '../../../components/StockPicker.jsx';
 import { RxSets } from '../../../components/RxSets.jsx';
+import { RxArrival } from '../../../components/RxLensBadge.jsx';
 import { EyewearHistory } from '../../../components/EyewearHistory.jsx';
 import { EmployeeSelect, ListSelect } from '../../../components/Selects.jsx';
 import { StockEmbedModal } from '../../../components/StockEmbedModal.jsx';
@@ -38,6 +39,9 @@ import { Icon } from '../../../components/Icon.jsx';
 import { pairDisplay, pairPrice, splitPairPrice } from '../../../lib/pricing.js';
 
 const n = (v) => Number(v || 0);
+
+/** บรรทัดรองของการ์ดเลนส์สั่งตัด — รูปเดียวกับบรรทัดรองของเลนส์ที่เลือกจากสต็อก */
+const rxSub = (rx) => ['สั่งตัด RX', rx.sku ? 'SKU ' + rx.sku : null].filter(Boolean).join(' · ');
 
 /** compact display line for a picked stock item, with a way to clear it */
 /**
@@ -206,6 +210,10 @@ export function OrderFormView({
   const [rxFor, setRxFor] = useState(null);
   /** ใบสั่งตัดที่เพิ่งเปิดในหน้านี้ แยกตามข้าง — ไม่มีล็อตให้ผูก จึงเก็บเอง */
   const [rxLens, setRxLens] = useState({});
+  /** ข้างที่กำลังถามยืนยันยกเลิกใบสั่งตัด ('r' | 'l') — ถามในการ์ดเลย ไม่เปิดกล่องซ้อน */
+  const [asking, setAsking] = useState(null);
+  /** ข้างที่กำลังยกเลิกใบสั่งตัดอยู่ กันกดซ้ำระหว่างรอ API */
+  const [dropping, setDropping] = useState(null);
 
   /* ประวัติแว่นเดิม — ยิงแยกจากตัวออเดอร์เพราะลูกค้าเปลี่ยนได้ทีหลัง เมื่อคนขายเลือก
      จาก Picker ในโหมดออเดอร์ลอย (ไม่มีเคส) ต้องโหลดประวัติของคนใหม่ตามไปด้วย
@@ -301,6 +309,43 @@ export function OrderFormView({
      ห้ามใช้บล็อกการบันทึก ไม่งั้นออเดอร์นั้นจะแก้อะไรไม่ได้เลย */
   const discountTooHigh = n(p.discount) > total;
 
+  /* ใบสั่งตัด RX ของแต่ละข้าง — ที่เพิ่งเปิดในหน้านี้ชนะของที่บันทึกไว้ในออเดอร์
+     `rxLens[side]` เป็น null แปลว่ากดล้างไปแล้ว ไม่ใช่ยังไม่มีใครแตะ */
+  const rxOf = (side) => {
+    if (rxLens[side] !== undefined) return rxLens[side];
+    const logId = Number(o[`lens_${side}_rx_id`]) || null;
+    return logId
+      ? {
+        id: logId,
+        referenceDoc: o[`lens_${side}_rx_doc`] || '',
+        name: o[`lens_${side}_name`] || '',
+        sku: o[`lens_${side}_sku`] || '',
+        /* คลังติ๊กว่าเลนส์มาถึงเมื่อไร (orderDetail) — ใบที่เพิ่งเปิดในหน้านี้ยังไม่มีทางมาถึง */
+        arrivedAt: o[`lens_${side}_rx_arrived_at`] || null,
+      }
+      : null;
+  };
+
+  /* "ล้าง" บนการ์ดสั่งตัด = ยกเลิกใบสั่งตัวจริงในคลังด้วย ไม่ใช่แค่เอาชื่อออกจากฟอร์ม
+     ใบที่ยังไม่มีตัวเลขเงินถูกลบทิ้ง ใบที่ลงราคา/ต้นทุนแล้วถูกยกเลิกพร้อมเหตุผล (ดู
+     Rx::remove ฝั่งคลัง) · ใบที่ถูกลบหรือยกเลิกไปก่อนแล้วที่หน้าคลัง แค่เอาออกจากฟอร์ม */
+  const dropRx = async (side, rx) => {
+    setAsking(null);
+    setDropping(side);
+    try {
+      await api.post(`/stock-api/rx/${rx.id}/delete`, { note: 'ล้างเลนส์ออกจากออเดอร์ที่หน้าเคส' });
+      ok(`ยกเลิกใบสั่ง ${rx.referenceDoc} แล้ว — กดบันทึกออเดอร์เพื่อเก็บการเปลี่ยนแปลง`);
+    } catch (ex) {
+      if (ex.status !== 404 && ex.reason !== 'already_cancelled') {
+        err(ex);
+        setDropping(null);
+        return;
+      }
+    }
+    setDropping(null);
+    setRxLens((m) => ({ ...m, [side]: null }));
+  };
+
   const chooseCustomer = async (r) => {
     try {
       const full = await api.get('/api/customers/' + r.id);
@@ -354,6 +399,18 @@ export function OrderFormView({
     fill('lens_r_sku', picked.lensOd?.sku);
     fill('lens_l_name', picked.lensOs ? stockLabel(picked.lensOs) : '');
     fill('lens_l_sku', picked.lensOs?.sku);
+
+    /* ใบสั่งตัด RX ผูกไว้กับออเดอร์ — เปิดกลับมาจะได้การ์ดเดิม และปุ่มล้างรู้ว่าต้อง
+       ยกเลิกใบไหน · ช่องชื่อกับ SKU ถูกซ่อนตอนมีการ์ด จึงเติมจากใบสั่งให้เอง */
+    for (const side of ['r', 'l']) {
+      const rx = rxOf(side);
+      body[`lens_${side}_rx_id`] = rx?.id ?? null;
+      body[`lens_${side}_rx_doc`] = rx?.referenceDoc || null;
+      if (rx) {
+        fill(`lens_${side}_name`, rx.name);
+        fill(`lens_${side}_sku`, rx.sku);
+      }
+    }
 
     /* lens_* ชุดเดิม (ชื่อรวม ยี่ห้อ index coating) ยังเขียนอยู่เพื่อไม่ให้หน้าอื่น
        ที่อ่านฟิลด์เหล่านี้พังไป — ยึดข้างขวาเป็นตัวแทนเมื่อมีทั้งสองข้าง */
@@ -608,29 +665,75 @@ export function OrderFormView({
               ['lensOs', 'l', 'เลนส์ซ้าย (L)', 'lens_os_price', 'lens_l_name', 'lens_l_sku', o.lens_l_name, o.lens_l_sku],
             ].map(([slot, side, legend, priceKey, nameKey, skuKey, savedName, savedSku]) => {
               const item = picked[slot];
+              const rx = item ? null : rxOf(side);
+              const cleared = rxLens[side] === null;
               return (
                 <Fieldset key={slot} legend={legend}>
-                  <StockPicker
-                    type="Lens"
-                    picked={item}
-                    onPick={(r) => setPicked({ [slot]: r })}
-                    onClear={() => setItems({ ...picked, [slot]: null })}
-                    selectedId={item?.id ?? null}
-                  />
-                  {/* เลนส์สั่งตัดไม่มีของบนชั้นให้เลือก จึงไม่ได้อยู่ในรายการ
-                      ข้างบน — ปุ่มนี้เปิดใบสั่งจากค่าสายตาที่เพิ่งวัดได้เลย
-                      ผลที่ได้คือชื่อกับ SKU ไม่ใช่ล็อต ตอนยืนยันการขายจึงไม่มี
-                      อะไรถูกตัดจากคลังซ้ำอีกรอบ */}
-                  {!item ? (
-                    <button
-                      type="button"
-                      className="btn btn-light btn-sm"
-                      style={{ marginBottom: 10 }}
-                      onClick={() => setRxFor(side)}
-                    >
-                      <Icon name="glasses" /> สั่งตัดเลนส์ RX ({side.toUpperCase()})
-                    </button>
-                  ) : null}
+                  {/* สั่งตัดแล้วขึ้นการ์ดแบบเดียวกับเลนส์ที่เลือกจากสต็อก — ช่องค้นหากับ
+                      ปุ่มสั่งตัดหายไปจนกว่าจะกดล้าง ข้างเดียวจะได้ไม่มีทั้งเลนส์สต็อก
+                      และใบสั่งตัดพร้อมกัน */}
+                  {rx ? (
+                    <div className="picked-item">
+                      <Icon name="glasses" />
+                      <b>{rx.name || 'เลนส์สั่งตัด RX'}</b>
+                      <span className="muted" title={rxSub(rx)}>
+                        {asking === side ? 'ยกเลิกใบสั่งนี้ในคลังด้วย?' : rxSub(rx)}
+                      </span>
+                      <span className="p-id">{rx.referenceDoc}</span>
+                      {asking === side ? null : <RxArrival arrivedAt={rx.arrivedAt} />}
+                      {asking === side ? (
+                        <>
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-danger"
+                            onClick={() => dropRx(side, rx)}
+                          >
+                            ยกเลิกใบสั่ง
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-light"
+                            onClick={() => setAsking(null)}
+                          >
+                            ไม่
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-light"
+                          onClick={() => setAsking(side)}
+                          disabled={dropping === side}
+                        >
+                          {dropping === side ? 'กำลังยกเลิก…' : 'ล้าง'}
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <>
+                      <StockPicker
+                        type="Lens"
+                        picked={item}
+                        onPick={(r) => setPicked({ [slot]: r })}
+                        onClear={() => setItems({ ...picked, [slot]: null })}
+                        selectedId={item?.id ?? null}
+                      />
+                      {/* เลนส์สั่งตัดไม่มีของบนชั้นให้เลือก จึงไม่ได้อยู่ในรายการ
+                          ข้างบน — ปุ่มนี้เปิดใบสั่งจากค่าสายตาที่เพิ่งวัดได้เลย
+                          ผลที่ได้คือชื่อกับ SKU ไม่ใช่ล็อต ตอนยืนยันการขายจึงไม่มี
+                          อะไรถูกตัดจากคลังซ้ำอีกรอบ */}
+                      {!item ? (
+                        <button
+                          type="button"
+                          className="btn btn-light btn-sm"
+                          style={{ marginBottom: 10 }}
+                          onClick={() => setRxFor(side)}
+                        >
+                          <Icon name="glasses" /> สั่งตัดเลนส์ RX ({side.toUpperCase()})
+                        </button>
+                      ) : null}
+                    </>
+                  )}
                   {/* ราคารายข้างเป็นของรองจากราคาคู่ — เงียบลงทั้งสีและขนาด ไม่ให้
                       แย่งสายตากับแถบสรุปราคาคู่ท้ายการ์ด แต่ยังกรอกทับได้ทุกเมื่อ
                       ป้ายสั้นลงเหลือแค่ข้าง เพราะคำว่า "ราคาขาย" เต็ม ๆ เป็นของแถบคู่ */}
@@ -653,33 +756,30 @@ export function OrderFormView({
                       ['คงเหลือในคลัง', item?.remaining_qty != null ? `${item.remaining_qty} ชิ้น` : '—'],
                     ]}
                   >
-                    <FormGrid>
-                      {/* ใบสั่งตัดที่เพิ่งเปิดชนะค่าที่บันทึกไว้ — `key` มีเลข
-                          ใบสั่งอยู่ด้วย ช่องจึงถูกวาดใหม่พร้อมค่าใหม่ ไม่ใช่ค้าง
-                          ค่าเดิมแบบที่ defaultValue เป็นตามปกติ */}
-                      <Field label={`ชื่อเลนส์ (${side.toUpperCase()})`}>
-                        <input
-                          key={`ln${side}${item?.id ?? rxLens[side]?.referenceDoc ?? '0'}`}
-                          name={nameKey}
-                          defaultValue={
-                            item ? stockLabel(item) : (rxLens[side]?.name || savedName || '')
-                          }
-                          placeholder="เช่น Crizal Easy Pro 1.56"
-                        />
-                      </Field>
-                      <Field label={`SKU (${side.toUpperCase()})`}>
-                        <input
-                          key={`lk${side}${item?.id ?? rxLens[side]?.referenceDoc ?? '0'}`}
-                          name={skuKey}
-                          defaultValue={item?.sku || rxLens[side]?.sku || savedSku || ''}
-                        />
-                      </Field>
-                    </FormGrid>
-                    {rxLens[side] ? (
-                      <p className="hint">
-                        เปิดใบสั่งตัดแล้ว — {rxLens[side].referenceDoc} · เลนส์นี้ไม่ถูกตัดจากคลัง
-                      </p>
-                    ) : null}
+                    {rx ? null : (
+                      <FormGrid>
+                        {/* กดล้างใบสั่งตัดแล้วช่องต้องว่าง ไม่ใช่กลับไปเป็นชื่อเลนส์ที่
+                            เพิ่งยกเลิก — `key` เปลี่ยนตาม ช่องจึงถูกวาดใหม่ ไม่ค้างค่าเดิม
+                            แบบที่ defaultValue เป็นตามปกติ */}
+                        <Field label={`ชื่อเลนส์ (${side.toUpperCase()})`}>
+                          <input
+                            key={`ln${side}${item?.id ?? (cleared ? 'x' : '0')}`}
+                            name={nameKey}
+                            defaultValue={
+                              item ? stockLabel(item) : (cleared ? '' : (savedName || ''))
+                            }
+                            placeholder="เช่น Crizal Easy Pro 1.56"
+                          />
+                        </Field>
+                        <Field label={`SKU (${side.toUpperCase()})`}>
+                          <input
+                            key={`lk${side}${item?.id ?? (cleared ? 'x' : '0')}`}
+                            name={skuKey}
+                            defaultValue={item?.sku || (cleared ? '' : (savedSku || ''))}
+                          />
+                        </Field>
+                      </FormGrid>
+                    )}
                   </ItemDetails>
                 </Fieldset>
               );
@@ -699,6 +799,7 @@ export function OrderFormView({
         {rxFor ? (
           <StockEmbedModal
             what="rx"
+            side={rxFor}
             title={`สั่งตัดเลนส์ ${rxFor === 'r' ? 'ขวา (R)' : 'ซ้าย (L)'}`}
             onClose={() => setRxFor(null)}
             onRx={(order) => {

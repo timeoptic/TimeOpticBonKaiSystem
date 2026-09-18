@@ -80,27 +80,33 @@ function stockCategoryId(string $type): int
     return (int) $cat['id'];
 }
 
-GET('/api/stock', function (array $req) {
-    $q     = $req['query'];
+/**
+ * ล็อตที่คำค้นนี้เจอ พร้อมที่วางของกับชื่อผู้ขาย
+ *
+ * คำค้นถูกตัดเป็นคำ ๆ แล้วต้องเจอครบทุกคำ — คนขายพิมพ์ "MC 1.6" ไม่ได้พิมพ์
+ * ชื่อสินค้า · $any = ตรงคำใดคำหนึ่งก็พอ · กฎทั้งหมดกับเหตุผลอยู่ที่ core/StockSearch.php
+ * $lens = ตัวกรองเลนส์ Coating/SPH/CYL จาก stockLensFilter() — AND กับคำค้นเสมอ
+ */
+function stockLotRows(string $term, string $type, bool $any = false, array $lens = ['', []]): array
+{
     $where = [];
     $args  = [];
-
-    /* คำค้นถูกตัดเป็นคำ ๆ แล้วต้องเจอครบทุกคำ — คนขายพิมพ์ "MC 1.6" ไม่ได้พิมพ์
-       ชื่อสินค้า · กฎทั้งหมดกับเหตุผลอยู่ที่ core/StockSearch.php */
-    if ($term = str_or($q['q'] ?? null)) {
-        [$search, $searchArgs] = stockSearch($term);
-        if ($search !== '') {
-            $where[] = $search;
-            $args    = [...$args, ...$searchArgs];
-        }
+    [$search, $searchArgs] = stockSearch($term, $any);
+    if ($search !== '') {
+        $where[] = $search;
+        $args    = [...$args, ...$searchArgs];
     }
-    if ($type = str_or($q['type'] ?? null)) {
+    if ($type !== '') {
         $where[] = 's.product_type = ?';
         $args[]  = $type;
     }
+    if ($lens[0] !== '') {
+        $where[] = $lens[0];
+        $args    = [...$args, ...$lens[1]];
+    }
     $sqlWhere = $where ? 'WHERE ' . implode(' AND ', $where) : '';
 
-    $lots = Db::all(
+    return Db::all(
         "SELECT s.*, l.location, sup.name AS supplier_name
            FROM v_stock_lot s
            LEFT JOIN product_locations l ON l.product_name = s.product_name
@@ -109,83 +115,147 @@ GET('/api/stock', function (array $req) {
           ORDER BY s.id DESC",
         ...$args
     );
+}
+
+/**
+ * group=product: the product named ONCE, with everything left across all of
+ * its batches. Picking one returns the oldest batch that still has stock
+ * (FIFO), which is the lot the shop should be selling anyway — staff should
+ * not have to choose between two identical lines to do that.
+ *
+ * ของหมดแล้วก็ยังต้องเลือกได้
+ *
+ * เดิมข้ามล็อตที่ยอดไม่เป็นบวก สินค้าที่ขายหมดจึงหายไปจากรายการทั้งตัว
+ * คนขายที่ลูกค้าสั่งเลนส์รุ่นเดิมซ้ำจึงหาไม่เจอ แล้วต้องสร้างสินค้าใหม่
+ * ชื่อซ้ำกับของเดิม · ตอนนี้ขายเกินของที่มีได้ (ยอดติดลบเป็นค้างส่ง)
+ * รายการจึงต้องแสดงต่อ พร้อมยอดจริงซึ่งอาจเป็นศูนย์หรือติดลบ
+ *
+ * ล็อตค้างส่ง (`SHORT-`) นับรวมในยอด แต่ไม่ถูกเลือกเป็นตัวแทน — มันไม่ใช่
+ * กล่องที่หยิบได้ · ตัวแทนคือล็อตเก่าสุดที่ยังมีของ ถ้าไม่มีเลยก็ใช้ล็อต
+ * จริงใบใดใบหนึ่ง เพื่อให้ออเดอร์มีอะไรให้ชี้
+ *
+ * สินค้าที่ยังไม่เคยรับของเข้าสักล็อตต่อท้าย ต้องเลือกได้เหมือนของที่ขายหมด — แถวพวกนี้
+ * id เป็น null หน้าเว็บขอเปิดล็อตค้างส่งก่อน (POST /api/stock/backorder-lot)
+ * ที่วางของของแถวพวกนี้ยังไม่เติม — stockFillLocations() เติมหลังตัดเหลือแถวที่จะส่งจริง
+ */
+function stockProductRows(array $lots, string $term, string $type, int $noLotLimit, bool $any, array $lens = ['', []]): array
+{
+    $byProduct = [];
+    foreach ($lots as $l) {
+        $left = (int) $l['remaining_qty'];
+        $isShort = str_starts_with((string) ($l['lot_number'] ?? ''), 'SHORT-');
+        $key = $l['product_id'] ?? ('name:' . $l['product_name']);
+
+        if (!isset($byProduct[$key])) {
+            if ($isShort) {
+                continue; // รอเจอล็อตจริงก่อน ค่อยเอายอดค้างไปรวม
+            }
+            $byProduct[$key] = $l + ['lot_count' => 0, 'sold' => 0];
+            $byProduct[$key]['remaining_qty'] = 0;
+            $byProduct[$key]['pick_id'] = null;
+        }
+
+        $byProduct[$key]['remaining_qty'] += $left;
+        if ($isShort) {
+            continue;
+        }
+        if ($left > 0) {
+            $byProduct[$key]['lot_count'] += 1;
+            /* oldest lot still holding stock wins — smaller id = received earlier */
+            if ($byProduct[$key]['pick_id'] === null || (int) $l['id'] < (int) $byProduct[$key]['pick_id']) {
+                $byProduct[$key]['pick_id'] = $l['id'];
+            }
+        }
+        /* ไม่มีล็อตไหนเหลือของเลย — ชี้ไปที่ล็อตจริงใบล่าสุดไว้ก่อน */
+        if ($byProduct[$key]['pick_id'] === null) {
+            $byProduct[$key]['id'] = $l['id'];
+        }
+    }
+    foreach ($byProduct as &$row) {
+        if ($row['pick_id'] !== null) {
+            $row['id'] = $row['pick_id'];
+        }
+        unset($row['pick_id']);
+    }
+    unset($row);
+    $rows = array_values($byProduct);
+
+    foreach (stockProductsWithoutLots($term, $type ?: null, $noLotLimit, $any, $lens) as $p) {
+        $rows[] = $p + ['location' => null, 'supplier_name' => null, 'lot_count' => 0];
+    }
+    return $rows;
+}
+
+/**
+ * ที่วางของของสินค้าที่ยังไม่มีล็อต — ถามทีเดียวเฉพาะแถวที่จะส่งกลับจริง
+ *
+ * เดิมถามทีละชื่อก่อนตัดแถว ซึ่งพอต้องดึงทั้งกองมาจัดอันดับ (หลายพันแถว) จะกลาย
+ * เป็นหลายพันคำถามต่อการพิมพ์หนึ่งครั้ง
+ */
+function stockFillLocations(array $rows): array
+{
+    $names = array_values(array_unique(array_map(
+        fn($r) => (string) $r['product_name'],
+        array_filter($rows, fn($r) => $r['id'] === null)
+    )));
+    if ($names === []) {
+        return $rows;
+    }
+    $found = array_column(
+        Db::all(
+            'SELECT product_name, location FROM product_locations WHERE product_name IN ('
+                . implode(',', array_fill(0, count($names), '?')) . ')',
+            ...$names
+        ),
+        'location',
+        'product_name'
+    );
+    foreach ($rows as &$r) {
+        if ($r['id'] === null) {
+            $r['location'] = $found[(string) $r['product_name']] ?? null;
+        }
+    }
+    unset($r);
+    return $rows;
+}
+
+GET('/api/stock', function (array $req) {
+    $q    = $req['query'];
+    $term = str_or($q['q'] ?? null);
+    $type = str_or($q['type'] ?? null);
+
+    /* ตัวกรองเลนส์ Coating/SPH/CYL — ตรงทุกค่าที่กรอก AND กับคำค้น · กติกาอยู่ที่ stockLensFilter() */
+    $lens = stockLensFilter($q);
+    $lots = stockLotRows($term, $type, false, $lens);
 
     $sold = str_or($q['sold'] ?? null);
 
     $group = str_or($q['group'] ?? null);
 
-    /* group=product: the product named ONCE, with everything left across all of
-       its batches. Picking one returns the oldest batch that still has stock
-       (FIFO), which is the lot the shop should be selling anyway — staff should
-       not have to choose between two identical lines to do that.
-       group=lot keeps one row per receiving batch, for when the batch matters. */
+    /* group=lot keeps one row per receiving batch, for when the batch matters.
+       group=product — ดู stockProductRows() */
     if ($group === 'product') {
-        /*
-         * ของหมดแล้วก็ยังต้องเลือกได้
-         *
-         * เดิมข้ามล็อตที่ยอดไม่เป็นบวก สินค้าที่ขายหมดจึงหายไปจากรายการทั้งตัว
-         * คนขายที่ลูกค้าสั่งเลนส์รุ่นเดิมซ้ำจึงหาไม่เจอ แล้วต้องสร้างสินค้าใหม่
-         * ชื่อซ้ำกับของเดิม · ตอนนี้ขายเกินของที่มีได้ (ยอดติดลบเป็นค้างส่ง)
-         * รายการจึงต้องแสดงต่อ พร้อมยอดจริงซึ่งอาจเป็นศูนย์หรือติดลบ
-         *
-         * ล็อตค้างส่ง (`SHORT-`) นับรวมในยอด แต่ไม่ถูกเลือกเป็นตัวแทน — มันไม่ใช่
-         * กล่องที่หยิบได้ · ตัวแทนคือล็อตเก่าสุดที่ยังมีของ ถ้าไม่มีเลยก็ใช้ล็อต
-         * จริงใบใดใบหนึ่ง เพื่อให้ออเดอร์มีอะไรให้ชี้
-         */
-        $byProduct = [];
-        foreach ($lots as $l) {
-            $left = (int) $l['remaining_qty'];
-            $isShort = str_starts_with((string) ($l['lot_number'] ?? ''), 'SHORT-');
-            $key = $l['product_id'] ?? ('name:' . $l['product_name']);
-
-            if (!isset($byProduct[$key])) {
-                if ($isShort) {
-                    continue; // รอเจอล็อตจริงก่อน ค่อยเอายอดค้างไปรวม
-                }
-                $byProduct[$key] = $l + ['lot_count' => 0, 'sold' => 0];
-                $byProduct[$key]['remaining_qty'] = 0;
-                $byProduct[$key]['pick_id'] = null;
-            }
-
-            $byProduct[$key]['remaining_qty'] += $left;
-            if ($isShort) {
-                continue;
-            }
-            if ($left > 0) {
-                $byProduct[$key]['lot_count'] += 1;
-                /* oldest lot still holding stock wins — smaller id = received earlier */
-                if ($byProduct[$key]['pick_id'] === null || (int) $l['id'] < (int) $byProduct[$key]['pick_id']) {
-                    $byProduct[$key]['pick_id'] = $l['id'];
-                }
-            }
-            /* ไม่มีล็อตไหนเหลือของเลย — ชี้ไปที่ล็อตจริงใบล่าสุดไว้ก่อน */
-            if ($byProduct[$key]['pick_id'] === null) {
-                $byProduct[$key]['id'] = $l['id'];
-            }
-        }
-        foreach ($byProduct as &$row) {
-            if ($row['pick_id'] !== null) {
-                $row['id'] = $row['pick_id'];
-            }
-            unset($row['pick_id']);
-        }
-        unset($row);
-        $rows = array_values($byProduct);
-
-        /* สินค้าที่ยังไม่เคยรับของเข้าสักล็อต ต้องเลือกได้เหมือนของที่ขายหมด — แถวพวกนี้
-           id เป็น null หน้าเว็บขอเปิดล็อตค้างส่งก่อน (POST /api/stock/backorder-lot) */
         $limit = min(int_or($q['limit'] ?? null, 300), 2000);
-        $locations = [];
-        foreach (stockProductsWithoutLots((string) $term, $type ?: null, $limit) as $p) {
-            $name = (string) $p['product_name'];
-            if (!array_key_exists($name, $locations)) {
-                $locations[$name] = Db::get('SELECT location FROM product_locations WHERE product_name = ?', $name)['location'] ?? null;
-            }
-            $rows[] = $p + ['location' => $locations[$name], 'supplier_name' => null, 'lot_count' => 0];
+
+        if ($term === '') {
+            $rows = stockProductRows($lots, '', $type, $limit, false, $lens);
+            usort($rows, fn($a, $b) => strcmp((string) $a['product_name'], (string) $b['product_name']));
+            return stockFillLocations(array_slice($rows, 0, $limit));
         }
 
-        usort($rows, fn($a, $b) => strcmp((string) $a['product_name'], (string) $b['product_name']));
-        return array_slice($rows, 0, $limit);
+        /* มีคำค้น: ดึงทุกตัวที่ตรงมาจัดอันดับก่อน แล้วค่อยตัดเหลือ $limit — ตัดก่อน
+           เรียงคือที่มาของ "G Blue 1.5" ได้ G Auto-Blue ทั้งจอ (ดู STOCK_SEARCH_RANK_POOL) */
+        $rows = stockProductRows($lots, $term, $type, STOCK_SEARCH_RANK_POOL, false, $lens);
+
+        /* ไม่มีตัวไหนตรงครบทุกคำ — ถอยไปโชว์ตัวที่ตรงบางคำ ดีกว่ากล่อง "ไม่พบข้อมูล"
+           ที่ทำให้คนขายไปกดสร้างสินค้าซ้ำ · มีคำเดียวไม่ต้องถอย ผลก็เหมือนเดิม
+           ตัวที่ตรงครบยังชนะเสมอ — "G Auto Blue" ที่มี Auto อยู่จะไม่เห็นตัวที่ไม่มี Auto
+           มีตัวกรองเลนส์อยู่ไม่ถอย — พนักงานต้องการของที่ตรงทุกเงื่อนไข ไม่ใช่ตรงบางคำ */
+        if ($rows === [] && $lens[0] === '' && count(stockSearchTokens($term)) > 1) {
+            $rows = stockProductRows(stockLotRows($term, $type, true), $term, $type, STOCK_SEARCH_RANK_POOL, true);
+        }
+
+        return stockFillLocations(array_slice(stockSearchRank($rows, $term), 0, $limit));
     }
 
     /* group=lot: one row per received batch, carrying how many are left.

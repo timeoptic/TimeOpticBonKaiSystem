@@ -23,13 +23,15 @@ import { useToast } from './Toast.jsx';
 
 const EMBED_MESSAGE = 'timeoptic:embed';
 
-export function StockEmbedModal({ what, type, title, onClose, onProduct, onRx }) {
+export function StockEmbedModal({ what, type, side, title, onClose, onProduct, onRx }) {
   const { err } = useToast();
   const [ready, setReady] = useState(false);
   const busy = useRef(false);
 
+  /* `side` ('r' | 'l') — ข้างที่หน้าเคสกำลังสั่งตัดให้ ส่งต่อให้ใบสั่งบันทึกข้างตาไว้ด้วย
+     (ร้านขอไว้ 14 ก.ย. 2026 · เดิมหัวกล่องบอกข้าง แต่ใบสั่งไม่ได้เก็บ) */
   const src = what === 'rx'
-    ? '/stock/embed/rx/'
+    ? `/stock/embed/rx/${side ? `?side=${encodeURIComponent(side)}` : ''}`
     : `/stock/embed/new-product/${type ? `?type=${encodeURIComponent(type)}` : ''}`;
 
   useEffect(() => {

@@ -34,6 +34,7 @@ final class Xlsx
     public const MUTED      = 8;
     public const INT        = 9;
     public const INT_BOLD   = 10;
+    public const TIME       = 11;
 
     public const DECL   = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
     public const REL_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
@@ -73,6 +74,21 @@ final class Xlsx
         return $serial === null
             ? ['k' => 'blank', 'v' => null, 's' => $style]
             : ['k' => 'n', 'v' => $serial, 's' => $style];
+    }
+
+    /**
+     * เวลาของวันจาก 'YYYY-MM-DD HH:MM[:SS]' หรือ 'HH:MM[:SS]' — ว่างได้
+     *
+     * Excel เก็บเวลาเป็นเศษส่วนของวัน (12:00 = 0.5) · เก็บแบบนั้นแล้วเรียงหรือกรอง
+     * ช่วงเวลาในไฟล์ได้ ต่างจากข้อความ "10:15" ที่เรียงได้แค่ตามตัวอักษร
+     */
+    public static function time(?string $v, int $style = self::TIME): array
+    {
+        if (preg_match('/(\d{1,2}):(\d{2})(?::(\d{2}))?\s*$/', trim((string) $v), $m) !== 1) {
+            return ['k' => 'blank', 'v' => null, 's' => $style];
+        }
+        $seconds = (int) $m[1] * 3600 + (int) $m[2] * 60 + (int) ($m[3] ?? 0);
+        return ['k' => 'n', 'v' => $seconds / 86400, 's' => $style];
     }
 
     /**
@@ -251,11 +267,12 @@ final class Xlsx
      */
     private function styles(): string
     {
-        $numFmts = '<numFmts count="4">'
+        $numFmts = '<numFmts count="5">'
             . '<numFmt numFmtId="164" formatCode="#,##0.00"/>'
             . '<numFmt numFmtId="165" formatCode="dd/mm/yyyy"/>'
             . '<numFmt numFmtId="166" formatCode="0.0&quot;%&quot;"/>'
             . '<numFmt numFmtId="167" formatCode="#,##0"/>'
+            . '<numFmt numFmtId="168" formatCode="hh:mm"/>'
             . '</numFmts>';
         $fonts = '<fonts count="4">'
             . '<font><sz val="11"/><name val="Tahoma"/></font>'
@@ -290,6 +307,7 @@ final class Xlsx
             /* INT        */ '<xf numFmtId="167" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>',
             /* INT_BOLD   */ '<xf numFmtId="167" fontId="1" fillId="0" borderId="0" xfId="0"'
                 . ' applyNumberFormat="1" applyFont="1"/>',
+            /* TIME       */ '<xf numFmtId="168" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>',
         ];
         return self::DECL
             . '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'

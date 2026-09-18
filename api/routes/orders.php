@@ -13,18 +13,73 @@ const ORDER_COLS = ['case_id', 'customer_id', 'employee_id', 'recorded_by',
     'frame_color', 'frame_size', 'frame_sku', 'frame_type', 'lens_product_id', 'right_lens_product_id',
     'lens_name', 'lens_brand', 'lens_design', 'lens_index', 'lens_coating', 'lens_tint',
     'lens_addons', 'lens_r_name', 'lens_r_sku', 'lens_l_name', 'lens_l_sku',
+    'lens_r_rx_id', 'lens_r_rx_doc', 'lens_l_rx_id', 'lens_l_rx_doc',
     'frame_price', 'lens_od_price', 'lens_os_price', 'options_price',
     'total_price', 'discount', 'deposit', 'deposit_pay_type',
     'marketing', 'notes'];
 
 const INT_ORDER_COLS = ['case_id', 'customer_id', 'employee_id', 'recorded_by',
-    'final_prescription_id', 'frame_product_id', 'lens_product_id', 'right_lens_product_id'];
+    'final_prescription_id', 'frame_product_id', 'lens_product_id', 'right_lens_product_id',
+    'lens_r_rx_id', 'lens_l_rx_id'];
 
 const MONEY_ORDER_COLS = ['frame_price', 'lens_od_price', 'lens_os_price', 'options_price',
     'total_price', 'discount', 'deposit'];
 
+/**
+ * เลนส์สั่งตัด RX — ยี่ห้อ/ดีไซน์/index/โค้ตติ้ง ของออเดอร์เอามาจากรุ่นในคลัง
+ *
+ * เลนส์สต็อกได้สี่ช่องนี้จากชิ้นที่เลือกในฟอร์ม แต่การ์ดสั่งตัด RX ได้กลับมาแค่ชื่อกับ SKU
+ * ออเดอร์ RX จึงเคยบันทึกสี่ช่องนี้ว่าง แล้วใบสั่งซื้อพิมพ์ Type กับ Lens ไม่ขึ้น
+ * (ออเดอร์ 10467, 14 ก.ย. 2026)
+ *
+ * รุ่นในคลังเป็นตัวจริง เขียนทับค่าที่ส่งมา เพราะตอนแก้ออเดอร์ฟอร์มส่งสเปกเดิมกลับมาทุกครั้ง
+ * เปลี่ยนรุ่น RX แล้วของเก่าจะได้ไม่ค้าง · ยึดข้างขวาเป็นตัวแทนเหมือนเลนส์สต็อก
+ * ออเดอร์ที่มีล็อตเลนส์สต็อกอยู่ด้วยไม่แตะ ฟอร์มเติมจากชิ้นสต็อกไปแล้ว
+ */
+function rxLensSpec(array $b): array
+{
+    $p = rxLensProduct($b);
+    if (!$p) {
+        return $b;
+    }
+    $b['lens_brand']   = $p['brand'];
+    $b['lens_design']  = (string) ($p['attrs']['lens_design'] ?? '');
+    $b['lens_index']   = (string) ($p['attrs']['lens_index'] ?? '');
+    $b['lens_coating'] = (string) ($p['attrs']['coating'] ?? '');
+    return $b;
+}
+
+/**
+ * รุ่นในคลังของเลนส์สั่งตัด RX ที่ออเดอร์ใช้ — ข้างขวาก่อน ไม่มีค่อยข้างซ้าย
+ *
+ * null เมื่อออเดอร์มีล็อตเลนส์สต็อก ไม่มีใบสั่งตัด หรือหา SKU ในคลังไม่เจอ
+ * ใช้ทั้งตอนบันทึก (rxLensSpec) และตอนอ่าน (orderDetail ส่งรุ่นให้ใบสั่งซื้อ)
+ *
+ * @return array{brand:string, attrs:array<string,mixed>}|null
+ */
+function rxLensProduct(array $o): ?array
+{
+    if (int_or($o['lens_product_id'] ?? null) || int_or($o['right_lens_product_id'] ?? null)) {
+        return null;
+    }
+    foreach (['r', 'l'] as $side) {
+        $sku = trim((string) ($o["lens_{$side}_sku"] ?? ''));
+        if (!int_or($o["lens_{$side}_rx_id"] ?? null) || $sku === '') {
+            continue;
+        }
+        $p = Db::get('SELECT brand, attributes FROM products WHERE sku = ?', $sku);
+        if (!$p) {
+            continue;
+        }
+        $attrs = json_decode((string) ($p['attributes'] ?? ''), true);
+        return ['brand' => (string) ($p['brand'] ?? ''), 'attrs' => is_array($attrs) ? $attrs : []];
+    }
+    return null;
+}
+
 function orderVals(array $b): array
 {
+    $b = rxLensSpec($b);
     $hasBreakdown = array_key_exists('frame_price', $b) || array_key_exists('lens_od_price', $b)
         || array_key_exists('lens_os_price', $b) || array_key_exists('options_price', $b);
     if ($hasBreakdown) {
@@ -124,6 +179,19 @@ function orderDetail(?int $id): array
     $o['left_lens']  = $item($o['lens_product_id']);
     $o['right_lens'] = $item($o['right_lens_product_id']);
     $o['frame']      = $item($o['frame_product_id']);
+    /* รุ่นของเลนส์สั่งตัด RX — custom_orders ไม่มีคอลัมน์รุ่น เลนส์สต็อกได้รุ่นจากล็อตข้างบน
+       RX ไม่มีล็อตจึงอ่านจากสินค้าในคลังตาม SKU · ใบสั่งซื้อพิมพ์ "Zeiss · Digital lenses …" */
+    $o['lens_model'] = (string) (rxLensProduct($o)['attrs']['model'] ?? '') ?: null;
+
+    /* เลนส์สั่งตัดแต่ละข้างมาถึงร้านเมื่อไร — คลังติ๊กบนหน้าใบสั่งตัด (ร้านขอไว้ 14 ก.ย. 2026)
+       การ์ดเลนส์ในหน้าเคสขึ้น "เลนส์เข้าแล้ว" หรือ "รอเลนส์" จากช่องนี้ · null = ยังไม่มา
+       หรือข้างนั้นไม่ได้สั่งตัด */
+    foreach (['r', 'l'] as $side) {
+        $rxId = (int) ($o["lens_{$side}_rx_id"] ?? 0);
+        $o["lens_{$side}_rx_arrived_at"] = $rxId
+            ? (Db::get('SELECT arrived_at FROM rx_orders WHERE log_id = ?', $rxId)['arrived_at'] ?? null)
+            : null;
+    }
 
     $o['payment_rows'] = Db::all(
         'SELECT p.*, e.employee_name AS received_by_name FROM payments p
@@ -162,10 +230,11 @@ GET('/api/orders', function (array $req) {
     }
     if ($term = str_or($q['q'] ?? null)) {
         $p = like($term);
+        /* ตารางโชว์เลขเคสแทน INV แล้ว (15 ก.ย. 2026) — พิมพ์เลขที่เห็นต้องเจอ · INV ยังค้นได้เผื่อเลขเก่า */
         $where[] = '(c.first_name LIKE ? OR c.last_name LIKE ? OR c.phone LIKE ?
-                  OR o.invoice_code LIKE ? OR o.lens_name LIKE ? OR o.frame_name LIKE ?
+                  OR cs.case_code LIKE ? OR o.invoice_code LIKE ? OR o.lens_name LIKE ? OR o.frame_name LIKE ?
                   OR CAST(o.id AS CHAR) = ?)';
-        array_push($args, $p, $p, $p, $p, $p, $p, $term);
+        array_push($args, $p, $p, $p, $p, $p, $p, $p, $term);
     }
     if ($fromDate = str_or($q['from'] ?? null)) {
         $where[] = 'DATE(o.order_date) >= ?';

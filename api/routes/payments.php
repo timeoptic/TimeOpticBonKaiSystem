@@ -47,8 +47,16 @@ const PAYMENT_DUPLICATE_MINUTES = 10;
 
 POST('/api/payments', function (array $req) {
     $body   = $req['body'];
-    $amount = num($body['amount'] ?? null);
-    if (!($amount > 0)) {
+    /* "ยังไม่ชำระ" = รายการ 0 บาทที่บอกว่าลูกค้าจะมาจ่ายตอนรับของ (ร้านขอ 14 ก.ย. 2026) ·
+       ยอดเป็น 0 เสมอไม่ว่าหน้าเว็บส่งอะไรมา และไม่มีวิธีชำระ เพราะยังไม่มีเงินผ่านมือใคร */
+    $unpaid = str_or($body['kind'] ?? null) === 'unpaid';
+    $amount = $unpaid ? 0.0 : num($body['amount'] ?? null);
+    /* 0 บาทได้เฉพาะออเดอร์ที่ยอดสุทธิเป็น 0 — เคสเคลมที่ร้านไม่คิดเงิน (ร้านขอ 14 ก.ย. 2026)
+       ยอดของออเดอร์ตรวจข้างล่างหลังล็อกแถว · ช่องว่างไม่นับเป็น 0 ต้องพิมพ์ 0 เอง */
+    if (!$unpaid && !is_numeric(trim((string) ($body['amount'] ?? '')))) {
+        bad('กรุณาใส่จำนวนเงิน');
+    }
+    if (!$unpaid && ($amount < 0 || (!($amount > 0) && !int_or($body['order_id'] ?? null)))) {
         bad('จำนวนเงินต้องมากกว่า 0');
     }
     /* ทุกก้อนที่รับเข้ามาต้องมีชื่อคนรับติดอยู่ — ตอนยอดไม่ตรงตอนปิดร้าน คำถามแรก
@@ -58,13 +66,16 @@ POST('/api/payments', function (array $req) {
         bad('กรุณาเลือกผู้รับเงิน');
     }
     $kindIn = str_or($body['kind'] ?? null);
-    $kind   = in_array($kindIn, ['deposit', 'partial', 'full', 'final'], true) ? $kindIn : 'partial';
-    $method = str_or($body['method'] ?? null, 'Cash') ?: 'Cash';
+    $kind   = in_array($kindIn, ['deposit', 'partial', 'full', 'final', 'unpaid'], true) ? $kindIn : 'partial';
+    $method = $unpaid ? '' : (str_or($body['method'] ?? null, 'Cash') ?: 'Cash');
 
     $orderId = int_or($body['order_id'] ?? null);
     $caseId  = int_or($body['case_id'] ?? null);
+    if ($unpaid && !$orderId) {
+        bad('บันทึก "ยังไม่ชำระ" ต้องผูกกับออเดอร์');
+    }
 
-    $id = Db::tx(function (Tx $q) use ($body, $amount, $kind, $method, $receivedBy, $orderId, $caseId) {
+    $id = Db::tx(function (Tx $q) use ($body, $amount, $kind, $method, $receivedBy, $orderId, $caseId, $unpaid) {
         /* ด่านกันบันทึกเงินผิด — เหตุการณ์จริง 11 ก.ย. 2026 ออเดอร์ 10459 ถูกบันทึก
            ฿2,900 สามครั้งห่างกันไม่กี่วินาที · หน้าเว็บกันแล้วก็จริง แต่แท็บที่สองหรือ
            เครื่องที่สองไม่รู้เรื่องนั้น ด่านจริงจึงต้องอยู่ที่นี่
@@ -82,6 +93,28 @@ POST('/api/payments', function (array $req) {
                 $orderId
             )['s']);
             $balance = round2(max(0, $net - $paid));
+            /* 0 บาท = ไม่คิดเงิน ใช้ได้เฉพาะออเดอร์ยอดสุทธิ 0 · ออเดอร์ที่มียอดต้องจ่ายแล้วลูกค้ายังไม่จ่าย
+               คือ "ยังไม่ชำระ" ไม่ใช่รับเงิน 0 บาท */
+            if (!$unpaid && !($amount > 0) && $net > 0.001) {
+                bad('จำนวนเงินต้องมากกว่า 0 — ลูกค้ายังไม่จ่าย ให้เลือก "ยังไม่ชำระ"');
+            }
+            /* "ยังไม่ชำระ" มีความหมายเฉพาะเมื่อยังมียอดให้จ่าย และมีได้รายการเดียวต่อออเดอร์ —
+               สองรายการบอกเรื่องเดียวกันซ้ำ แล้วยกเลิกไปรายการเดียวขั้นชำระเงินก็ยังผ่านอยู่ */
+            if ($unpaid) {
+                if (!($balance > 0.001)) {
+                    throw new HttpError(400, 'ออเดอร์นี้ไม่มียอดค้าง บันทึก "ยังไม่ชำระ" ไม่ได้', ['reason' => 'nothing_due']);
+                }
+                if ($q->get(
+                    "SELECT id FROM payments WHERE order_id = ? AND kind = 'unpaid' AND cancelled_at IS NULL LIMIT 1",
+                    $orderId
+                )) {
+                    throw new HttpError(
+                        400,
+                        'บันทึกว่ายังไม่ชำระไว้แล้ว — ถ้าจะบันทึกใหม่ให้ลบรายการเดิมก่อน',
+                        ['reason' => 'unpaid_exists']
+                    );
+                }
+            }
             /* รับเกินยอดไม่ได้เลย ไม่มีทางยืนยันข้าม (ร้านตัดสินไว้) · ยอด 0 คือยังไม่ใส่
                ราคา ไม่มียอดให้เทียบ จึงรับมัดจำได้ */
             if ($net > 0 && $amount > $balance + 0.001) {
@@ -98,7 +131,7 @@ POST('/api/payments', function (array $req) {
         /* ยอดเท่ากันกับออเดอร์เดียวกัน (ไม่มีออเดอร์ = เคสเดียวกัน) ภายในไม่กี่นาที =
            น่าจะกดซ้ำ · ถามก่อน ไม่ได้ห้าม — ลูกค้าจ่ายสองก้อนเท่ากันจริงก็มี
            เทียบเวลาด้วย NOW() ของฐานข้อมูลเอง เพราะ created_at ก็มาจากนาฬิกาเดียวกัน */
-        if (($orderId || $caseId) && !boolInt($body['confirm_duplicate'] ?? null)) {
+        if (!$unpaid && ($orderId || $caseId) && !boolInt($body['confirm_duplicate'] ?? null)) {
             $dup = $q->get(
                 'SELECT p.id, p.amount, TIMESTAMPDIFF(SECOND, p.created_at, NOW()) AS seconds_ago,
                         e.employee_name
@@ -158,7 +191,7 @@ POST('/api/payments', function (array $req) {
             'entity'      => 'payment',
             'entity_id'   => $r['insertId'],
             'employee_id' => $receivedBy,
-            'note'        => "$kind $amount ($method)",
+            'note'        => $unpaid ? 'ยังไม่ชำระ — ลูกค้าจะชำระตอนรับของ' : "$kind $amount ($method)",
         ]);
         return $r['insertId'];
     });
@@ -167,7 +200,10 @@ POST('/api/payments', function (array $req) {
 });
 
 /** ป้ายประเภทการรับเงิน สำหรับข้อความในไทม์ไลน์ — ตรงกับ KIND_LABEL ของ PaymentPanel */
-const PAYMENT_KIND_TH = ['deposit' => 'มัดจำ', 'partial' => 'จ่ายบางส่วน', 'full' => 'ชำระเต็ม', 'final' => 'ชำระส่วนที่เหลือ'];
+const PAYMENT_KIND_TH = [
+    'deposit' => 'มัดจำ', 'partial' => 'จ่ายบางส่วน', 'full' => 'ชำระเต็ม', 'final' => 'ชำระส่วนที่เหลือ',
+    'unpaid'  => 'ยังไม่ชำระ',
+];
 
 /**
  * แก้ไขรายการรับเงิน — แอดมิน เจ้าของร้าน ผู้ดูแลระบบ เท่านั้น (ร้านขอ 11 ก.ย. 2026)
@@ -193,13 +229,31 @@ PUT('/api/payments/:id', function (array $req) {
         if ($p['cancelled_at']) {
             bad('รายการนี้ถูกยกเลิกไปแล้ว แก้ไขไม่ได้');
         }
+        /* "ยังไม่ชำระ" ไม่ใช่เงิน — แก้เป็นเงินจริงจะกลายเป็นรับเงินที่ไม่ผ่านด่านรับซ้ำ และแก้
+           เงินจริงเป็น "ยังไม่ชำระ" คือลบเงินออกจากบัญชีโดยไม่มีร่องรอยการยกเลิก · ผิดให้ลบแล้วบันทึกใหม่ */
+        if ($p['kind'] === 'unpaid' || ($body['kind'] ?? null) === 'unpaid') {
+            throw new HttpError(
+                400,
+                'รายการ "ยังไม่ชำระ" แก้ไขไม่ได้ — ให้ลบแล้วบันทึกใหม่',
+                ['reason' => 'unpaid_locked']
+            );
+        }
         $reason = trim((string) ($body['reason'] ?? ''));
         if ($reason === '') {
             bad('กรุณาใส่เหตุผลที่แก้ไข');
         }
         $amount = num($body['amount'] ?? null);
-        if (!($amount > 0)) {
+        if (!is_numeric(trim((string) ($body['amount'] ?? ''))) || $amount < 0) {
             bad('จำนวนเงินต้องมากกว่า 0');
+        }
+        /* 0 บาทได้เฉพาะรายการของออเดอร์ยอดสุทธิ 0 (เคลมไม่คิดเงิน) — กติกาเดียวกับตอนรับเงิน */
+        if (!($amount > 0)) {
+            $o = $p['order_id']
+                ? $q->get('SELECT total_price - discount AS net FROM custom_orders WHERE id = ?', $p['order_id'])
+                : null;
+            if (!$o || (float) $o['net'] > 0.001) {
+                bad('จำนวนเงินต้องมากกว่า 0');
+            }
         }
         $receivedBy = int_or($body['received_by'] ?? null);
         $receiver   = $receivedBy ? $q->get('SELECT employee_name FROM employees WHERE id = ?', $receivedBy) : null;

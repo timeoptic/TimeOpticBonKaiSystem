@@ -30,6 +30,7 @@ import { DateField } from '../../../../../components/DateField.jsx';
 import { DateTimeField } from '../../../../../components/DateTimeField.jsx';
 import { Lightbox } from '../../../../../components/Lightbox.jsx';
 import { isPreviewable } from '../../../../../lib/lightbox.js';
+import { UNPAID, isUnpaidRow, unpaidBlockedReason } from '../../../../../lib/paymentUnpaid.js';
 
 /* "จ่ายบางส่วน" ออกแล้ว — มันกับ "มัดจำ" ตอบคำถามเดียวกัน (จ่ายมาไม่ครบ) ต่างกันแค่
    ว่าเป็นก้อนแรกหรือไม่ ซึ่งระบบดูจากประวัติเองได้ ตัวเลือกที่ต้องหยุดคิดว่าจะเลือก
@@ -37,8 +38,11 @@ import { isPreviewable } from '../../../../../lib/lightbox.js';
 const KINDS = [
   ['deposit', 'มัดจำ'], ['final', 'ชำระส่วนที่เหลือ'], ['full', 'ชำระเต็ม'],
 ];
-const KIND_LABEL = { ...Object.fromEntries(KINDS), partial: 'จ่ายบางส่วน' };
-const KIND_BADGE = { deposit: 'blue', partial: 'warn', final: 'ok', full: 'ok' };
+/* "ยังไม่ชำระ" (ร้านขอ 14 ก.ย. 2026) อยู่เฉพาะฟอร์มรับเงินใหม่ ไม่อยู่ในกล่องแก้ไข — API ไม่ให้
+   แก้ไปมาระหว่างเงินจริงกับรายการ 0 บาท ผิดให้ลบแล้วบันทึกใหม่ */
+const NEW_KINDS = [...KINDS, [UNPAID, 'ยังไม่ชำระ']];
+const KIND_LABEL = { ...Object.fromEntries(NEW_KINDS), partial: 'จ่ายบางส่วน' };
+const KIND_BADGE = { deposit: 'blue', partial: 'warn', final: 'ok', full: 'ok', unpaid: 'warn' };
 
 const METHOD_ICON = {
   Cash: 'banknote', Transfer: 'coins', QR: 'chart', Credit: 'card',
@@ -312,7 +316,9 @@ function PaymentEditDialog({ p, c, onClose, onSaved }) {
     ['รับเมื่อ', fmtDateTime(p.paid_at), fmtDateTime(stampOf(paidAt)), stampOf(p.paid_at) !== stampOf(paidAt)],
   ];
   const changes = rows.filter((r) => r[3]);
-  const blocked = entered <= 0
+  /* 0 บาทได้เฉพาะรายการของออเดอร์ยอด 0 (เคลมไม่คิดเงิน) — กติกาเดียวกับ PUT /api/payments/:id */
+  const freeOrder = !!c.order && net <= 0;
+  const blocked = amount.trim() === '' || entered < 0 || (entered === 0 && !freeOrder)
     ? 'จำนวนเงินต้องมากกว่า 0'
     : over
       ? `แก้เกินยอดคงเหลือไม่ได้ — รายการนี้แก้ได้ไม่เกิน ${money(max)}`
@@ -374,7 +380,7 @@ function PaymentEditDialog({ p, c, onClose, onSaved }) {
                   id="pe-amount"
                   type="number"
                   step="1"
-                  min="1"
+                  min={freeOrder ? 0 : 1}
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
                 />
@@ -514,6 +520,9 @@ export function PaymentPanel({ c, reload }) {
      after it — so the amount and what it leaves behind are shown together, and
      the types that mean "all of it" fill the amount in themselves. */
   const enteredAmount = Number(amount) || 0;
+  /* "ยังไม่ชำระ" — รายการ 0 บาท ลูกค้าจะมาจ่ายตอนรับของ · กติกาเดียวกับ API (lib/paymentUnpaid.js) */
+  const isUnpaid = kind === UNPAID;
+  const unpaidReason = unpaidBlockedReason({ hasOrder: !!c.order, left, payments });
   const afterThis = Math.max(0, left - enteredAmount);
   /* รับเกินยอดไม่ได้เลย (ร้านตัดสินไว้ · API กันซ้ำอีกชั้น) — เงื่อนไขเดิมเตือนเฉพาะตอน
      ยังมียอดค้าง พอยอดครบแล้วคำเตือนหายไป กดบันทึกซ้ำจึงผ่านไปเงียบ ๆ สามครั้ง
@@ -527,14 +536,20 @@ export function PaymentPanel({ c, reload }) {
      ผู้รับเงิน ปุ่มบันทึกจึงปิดไว้พร้อมบอกว่าขาดอะไร ดีกว่าให้กดแล้วค่อยเด้ง error */
   const missingBeforeSave = [
     c.order?.appointment_date ? null : 'วันนัดรับ',
-    receivedBy ? null : 'ผู้รับเงิน',
+    receivedBy ? null : (isUnpaid ? 'ผู้บันทึก' : 'ผู้รับเงิน'),
   ].filter(Boolean);
-  const blockedReason = fullyPaid
-    ? 'ออเดอร์นี้ชำระครบแล้ว'
-    : overpay ? `รับเกินยอดคงเหลือไม่ได้ — คงเหลือ ${money(left)}` : null;
+  const blockedReason = isUnpaid
+    ? unpaidReason
+    : fullyPaid
+      ? 'ออเดอร์นี้ชำระครบแล้ว'
+      : overpay ? `รับเกินยอดคงเหลือไม่ได้ — คงเหลือ ${money(left)}` : null;
 
   const chooseKind = (v) => {
     setKind(v);
+    if (v === UNPAID) {
+      setAmount('0');
+      return;
+    }
     if ((v === 'full' || v === 'final') && left > 0) setAmount(String(left));
     if (v === 'deposit' && (!enteredAmount || enteredAmount === left)) setAmount('');
   };
@@ -560,17 +575,23 @@ export function PaymentPanel({ c, reload }) {
     const body = readForm(form);
     const employeeName = (meta.employees || [])
       .find((x) => String(x.id) === String(receivedBy))?.employee_name || '—';
-    const rows = [
-      ['จำนวนเงิน', money(enteredAmount)],
-      ['ประเภท', KIND_LABEL[kind] || kind],
-      ['วิธีชำระ', methodLabel[method] || method],
-      ['ผู้รับเงิน', employeeName],
-      ['คงเหลือหลังรับ', priced ? money(afterThis) : 'ออเดอร์ยังไม่มีราคา'],
-    ];
-    if (body.reference) rows.push(['อ้างอิง', body.reference]);
-    if (slips.length) rows.push(['สลิป', `${slips.length} ไฟล์`]);
+    const rows = isUnpaid
+      ? [
+        ['ประเภท', 'ยังไม่ชำระ — ชำระตอนรับของ'],
+        ['ยอดค้าง', money(left)],
+        ['ผู้บันทึก', employeeName],
+      ]
+      : [
+        ['จำนวนเงิน', money(enteredAmount)],
+        ['ประเภท', KIND_LABEL[kind] || kind],
+        ['วิธีชำระ', methodLabel[method] || method],
+        ['ผู้รับเงิน', employeeName],
+        ['คงเหลือหลังรับ', priced ? money(afterThis) : 'ออเดอร์ยังไม่มีราคา'],
+      ];
+    if (!isUnpaid && body.reference) rows.push(['อ้างอิง', body.reference]);
+    if (!isUnpaid && slips.length) rows.push(['สลิป', `${slips.length} ไฟล์`]);
 
-    const confirmed = await confirm('ยืนยันบันทึกการรับเงิน', (
+    const confirmed = await confirm(isUnpaid ? 'ยืนยันบันทึกว่ายังไม่ชำระ' : 'ยืนยันบันทึกการรับเงิน', (
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <tbody>
           {rows.map(([k, v]) => (
@@ -581,14 +602,14 @@ export function PaymentPanel({ c, reload }) {
           ))}
         </tbody>
       </table>
-    ), { confirmText: `ยืนยันบันทึก ${money(enteredAmount)}` });
+    ), { confirmText: isUnpaid ? 'ยืนยัน — ลูกค้ายังไม่ชำระ' : `ยืนยันบันทึก ${money(enteredAmount)}` });
     if (!confirmed) return;
 
     const payload = {
       ...body,
       kind,
-      method,
-      amount,
+      method: isUnpaid ? '' : method,
+      amount: isUnpaid ? 0 : amount,
       paid_at: toStamp(body.paid_at),
       case_id: c.id,
       order_id: c.order?.id,
@@ -607,9 +628,13 @@ export function PaymentPanel({ c, reload }) {
         saved = await api.post('/api/payments', { ...payload, confirm_duplicate: true });
       }
       for (const file of slips) await sendSlip(file, saved.id);
-      ok(slips.length ? `บันทึกการรับเงินและแนบสลิป ${slips.length} ไฟล์แล้ว` : 'บันทึกการรับเงินแล้ว');
+      ok(isUnpaid
+        ? 'บันทึกว่ายังไม่ชำระแล้ว'
+        : slips.length ? `บันทึกการรับเงินและแนบสลิป ${slips.length} ไฟล์แล้ว` : 'บันทึกการรับเงินแล้ว');
       setSlips([]);
       setAmount('');
+      /* บันทึก "ยังไม่ชำระ" ได้ครั้งเดียว — ค้างประเภทนี้ไว้ ปุ่มจะขึ้นเหตุผลว่าบันทึกไปแล้วทันที */
+      if (isUnpaid) setKind(Number(c.paid) > 0 ? 'final' : 'deposit');
       form.reset();
       reload();
       reloadFiles();
@@ -647,7 +672,8 @@ export function PaymentPanel({ c, reload }) {
   };
 
   const remove = async (p) => {
-    if (!await confirm('ลบรายการรับเงิน', `ลบ ${money(p.amount)} (${KIND_LABEL[p.kind] || p.kind})?`,
+    const what = isUnpaidRow(p) ? 'ลบรายการ "ยังไม่ชำระ"?' : `ลบ ${money(p.amount)} (${KIND_LABEL[p.kind] || p.kind})?`;
+    if (!await confirm('ลบรายการรับเงิน', what,
       { confirmText: 'ลบ', danger: true })) return;
     try {
       await api.del('/api/payments/' + p.id);
@@ -675,14 +701,16 @@ export function PaymentPanel({ c, reload }) {
                 <input
                   type="number"
                   step="1"
-                  min="1"
+                  /* ออเดอร์ยอด 0 (เคลมที่ไม่คิดเงิน) บันทึก 0 บาทได้ — API ตรวจยอดของออเดอร์ซ้ำ */
+                  min={isUnpaid || (c.order && !priced) ? 0 : 1}
                   required
+                  disabled={isUnpaid}
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
                   placeholder="0"
                 />
               </div>
-              {left > 0 && (
+              {left > 0 && !isUnpaid && (
                 <Row style={{ gap: 6, marginTop: 6 }}>
                   <button type="button" className="chip-btn" onClick={() => setAmount(String(left))}>
                     ทั้งหมด {money(left)}
@@ -692,11 +720,17 @@ export function PaymentPanel({ c, reload }) {
                   </button>
                 </Row>
               )}
-              <div className={`pay-after ${overpay ? 'over' : afterThis === 0 && enteredAmount > 0 ? 'clear' : ''}`}>
-                {fullyPaid ? (
+              <div className={`pay-after ${(isUnpaid ? !!unpaidReason : overpay) ? 'over' : afterThis === 0 && enteredAmount > 0 ? 'clear' : ''}`}>
+                {isUnpaid ? (
+                  unpaidReason
+                    ? <b>{unpaidReason}</b>
+                    : <>ลูกค้ายังไม่ชำระ — ยอดค้าง <b>{money(left)}</b> ไปเก็บตอนส่งมอบ</>
+                ) : fullyPaid ? (
                   <><b>ชำระครบแล้ว</b> — ไม่มียอดคงเหลือให้รับเพิ่ม</>
                 ) : !priced ? (
-                  <>ออเดอร์ยังไม่มีราคา — รับเป็น <b>มัดจำ</b> ได้</>
+                  c.order
+                    ? <>ออเดอร์ยังไม่มีราคา — รับเป็น <b>มัดจำ</b> ได้ · เคลมที่ไม่คิดเงิน ใส่ <b>0</b> แล้วบันทึก</>
+                    : <>ออเดอร์ยังไม่มีราคา — รับเป็น <b>มัดจำ</b> ได้</>
                 ) : enteredAmount > 0 ? (
                   overpay
                     ? <>รับ {money(enteredAmount)} — <b>เกินยอดคงเหลือ {money(enteredAmount - left)} รับไม่ได้</b></>
@@ -711,39 +745,45 @@ export function PaymentPanel({ c, reload }) {
               <div>
                 <label>ประเภท</label>
                 <Row style={{ gap: 6 }}>
-                  {KINDS.map(([v, label]) => (
+                  {NEW_KINDS.map(([v, label]) => (
                     <button
                       type="button"
                       key={v}
                       className={`chip-btn ${kind === v ? 'active' : ''}`}
                       onClick={() => chooseKind(v)}
+                      /* ไม่ปิดปุ่มเมื่อบันทึกไม่ได้ — ปุ่มเทาที่บอกเหตุผลแค่ใน tooltip อ่านไม่ออกบน iPad
+                         (ร้านเจอ 14 ก.ย. 2026) · กดแล้วเหตุผลขึ้นใต้จำนวนเงิน และปุ่มบันทึกล็อกแทน */
+                      title={v === UNPAID ? unpaidReason || 'ลูกค้าจะมาชำระตอนรับของ' : undefined}
                     >
                       {label}
                     </button>
                   ))}
                 </Row>
               </div>
-              <div>
-                <label>วิธีชำระ</label>
-                <Row style={{ gap: 6 }}>
-                  {methods.map((v) => (
-                    <button
-                      type="button"
-                      key={v}
-                      className={`chip-btn ${method === v ? 'active' : ''}`}
-                      onClick={() => setMethod(v)}
-                    >
-                      <Icon name={METHOD_ICON[v] || 'coins'} /> {methodLabel[v] || v}
-                    </button>
-                  ))}
-                </Row>
-              </div>
+              {/* ยังไม่ชำระ = ยังไม่มีเงินผ่านมือใคร จึงไม่มีวิธีชำระให้เลือก */}
+              {isUnpaid ? null : (
+                <div>
+                  <label>วิธีชำระ</label>
+                  <Row style={{ gap: 6 }}>
+                    {methods.map((v) => (
+                      <button
+                        type="button"
+                        key={v}
+                        className={`chip-btn ${method === v ? 'active' : ''}`}
+                        onClick={() => setMethod(v)}
+                      >
+                        <Icon name={METHOD_ICON[v] || 'coins'} /> {methodLabel[v] || v}
+                      </button>
+                    ))}
+                  </Row>
+                </div>
+              )}
             </div>
           </div>
 
           <FormGrid>
-            <Field label="อ้างอิง (เลขที่โอน / เลขอนุมัติ)"><input name="reference" /></Field>
-            <Field label="ผู้รับเงิน *">
+            {isUnpaid ? null : <Field label="อ้างอิง (เลขที่โอน / เลขอนุมัติ)"><input name="reference" /></Field>}
+            <Field label={isUnpaid ? 'ผู้บันทึก *' : 'ผู้รับเงิน *'}>
               <EmployeeSelect
                 name="received_by"
                 value={receivedBy}
@@ -760,7 +800,7 @@ export function PaymentPanel({ c, reload }) {
             </Field>
           </FormGrid>
 
-          <SlipDropCard files={slips} onChange={setSlips} />
+          {isUnpaid ? null : <SlipDropCard files={slips} onChange={setSlips} />}
 
           <div className="pay-actions">
             {blockedReason ? (
@@ -778,7 +818,8 @@ export function PaymentPanel({ c, reload }) {
               <Icon name="check" />
               {saving
                 ? ' กำลังบันทึก…'
-                : fullyPaid ? ' ชำระครบแล้ว' : ` บันทึกการรับเงิน ${amount ? money(amount) : ''}`}
+                : isUnpaid ? ' บันทึกว่ายังไม่ชำระ'
+                  : fullyPaid ? ' ชำระครบแล้ว' : ` บันทึกการรับเงิน ${amount ? money(amount) : ''}`}
             </button>
           </div>
         </form>
@@ -797,18 +838,21 @@ export function PaymentPanel({ c, reload }) {
             {payments.map((p) => (
               <li className={`pay-ev ${p.cancelled_at ? 'cancelled' : ''}`} key={p.id}>
                 <span className={`pay-ev-dot ${p.cancelled_at ? 'off' : ''}`}>
-                  <Icon name={METHOD_ICON[p.method] || 'coins'} />
+                  <Icon name={isUnpaidRow(p) ? 'hourglass' : METHOD_ICON[p.method] || 'coins'} />
                 </span>
                 <div className="pay-ev-body">
                   <div className="pay-ev-head">
-                    <b>{money(p.amount)}</b>
+                    {/* "ยังไม่ชำระ" ไม่โชว์ ฿0 — ป้ายบอกความหมายอยู่แล้ว ตัวเลขศูนย์อ่านเหมือนรับเงินพลาด */}
+                    {isUnpaidRow(p) ? null : <b>{money(p.amount)}</b>}
                     <Badge kind={KIND_BADGE[p.kind] || 'gray'}>{KIND_LABEL[p.kind] || p.kind}</Badge>
-                    <span className="muted">{methodLabel[p.method] || p.method}</span>
+                    <span className="muted">
+                      {isUnpaidRow(p) ? 'ลูกค้าจะชำระตอนรับของ' : methodLabel[p.method] || p.method}
+                    </span>
                     {p.cancelled_at ? <Badge kind="danger">ยกเลิกแล้ว</Badge> : null}
                   </div>
                   <div className="pay-ev-when muted">
                     {fmtDateTime(p.paid_at)}
-                    {p.received_by_name ? ` · รับโดย ${p.received_by_name}` : ''}
+                    {p.received_by_name ? ` · ${isUnpaidRow(p) ? 'บันทึกโดย' : 'รับโดย'} ${p.received_by_name}` : ''}
                     {p.reference ? ` · อ้างอิง ${p.reference}` : ''}
                     {p.notes ? ` · ${p.notes}` : ''}
                   </div>
@@ -847,14 +891,16 @@ export function PaymentPanel({ c, reload }) {
                         onClose={() => setSlipView(null)}
                       />
                     ) : null}
-                    {mayEdit && !p.cancelled_at ? (
+                    {mayEdit && !p.cancelled_at && !isUnpaidRow(p) ? (
                       <button type="button" className="btn btn-sm btn-light" onClick={() => setEditing(p)}>
                         <Icon name="pencil" /> แก้ไข
                       </button>
                     ) : null}
-                    <button type="button" className="btn btn-sm btn-light" onClick={() => attachToRow(p)}>
-                      <Icon name="camera" /> แนบสลิป
-                    </button>
+                    {isUnpaidRow(p) ? null : (
+                      <button type="button" className="btn btn-sm btn-light" onClick={() => attachToRow(p)}>
+                        <Icon name="camera" /> แนบสลิป
+                      </button>
+                    )}
                     <button type="button" className="btn btn-sm btn-light" onClick={() => remove(p)}>
                       <Icon name="trash" />
                     </button>

@@ -6,6 +6,7 @@ import { useToast } from "@/stockmod/components/Toaster";
 import TaskDialog from "@/stockmod/components/TaskDialog";
 import Paginator from "@/stockmod/components/Paginator";
 import Select from "@/stockmod/components/Select";
+import DateRangeField from "@/stockmod/components/DateRangeField";
 import InlineEdit from "@/stockmod/components/InlineEdit";
 import NewProductDialog from "@/stockmod/components/NewProductDialog";
 import { IconTrash } from "@/stockmod/components/Icon";
@@ -21,7 +22,7 @@ import {
   type RxOrderRow,
 } from "@/stockmod/lib/api";
 import { qs, useApi } from "@/stockmod/lib/useApi";
-import { date, diopter, money } from "@/stockmod/lib/format";
+import { dateTime, diopter, money } from "@/stockmod/lib/format";
 import {
   ADD_LADDER,
   AXIS_LADDER,
@@ -45,15 +46,150 @@ type Order = RxOrderRow;
 /** Where a power starts before anyone has read one: no correction at all. */
 const PLANO = "0.00";
 
-/** The prescription as one readable line, or nothing when none was recorded. */
+/**
+ * The prescription as one readable line, or nothing when none was recorded.
+ *
+ * ข้างตาไม่อยู่ในบรรทัดนี้แล้ว — มีป้าย `EyeTag` ของตัวเอง (ร้านขอไว้ 14 ก.ย. 2026) · ใบที่
+ * เปิดจากหน้าเคสมีข้างตาแต่ไม่มีค่าสายตา บรรทัดนี้จะได้ไม่เหลือแค่ "R" ตัวเดียว
+ */
 function rxLine(o: Order): string | null {
   const parts: string[] = [];
-  if (o.eyeSide) parts.push(o.eyeSide === "left" ? "L" : "R");
   if (o.sph !== null) parts.push(`SPH ${diopter(o.sph)}`);
   if (o.cyl !== null) parts.push(`CYL ${diopter(o.cyl)}`);
   if (o.axis !== null) parts.push(`AXIS ${o.axis}`);
   if (o.add) parts.push(`ADD ${o.add}`);
   return parts.length > 0 ? parts.join(" · ") : null;
+}
+
+/** ตัวกรองสถานะใบสั่ง — ต้นทุนเป็นเรื่องของบัญชี เลนส์มาถึงเป็นเรื่องของหน้าร้าน */
+type Only = "all" | "pending" | "waiting" | "arrived";
+
+/**
+ * ช่วงวันที่เปิดใบสั่ง — ร้านขอไว้ 14 ก.ย. 2026 · ชุดเดียวกับหน้าการเบิกจากสาขา
+ *
+ * ช่องเลือกวันที่ขึ้นเฉพาะตอนมีช่วงจริง เพราะช่องที่แสดงวันที่ทั้งที่รายการกำลังนับทุกใบ
+ * คือช่องที่โกหก
+ */
+type Span = "all" | "today" | "this" | "last" | "custom";
+const SPANS: readonly { key: Span; label: string }[] = [
+  { key: "all", label: "ทุกช่วงเวลา" },
+  { key: "today", label: "วันนี้" },
+  { key: "this", label: "เดือนนี้" },
+  { key: "last", label: "เดือนที่แล้ว" },
+  { key: "custom", label: "กำหนดเอง" },
+];
+
+/** `2026-09-04` ตามเวลาท้องถิ่น — toISOString ให้วันของ UTC ซึ่งเป็นเมื่อวานก่อนเจ็ดโมงเช้า */
+const iso = (d: Date): string =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+/** เดือนนี้ (0) ถึงวันนี้ หรือเดือนก่อน ๆ (-1) ทั้งเดือน */
+function monthOf(offset: number): { from: string; to: string } {
+  const now = new Date();
+  const first = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+  const last = offset === 0 ? now : new Date(now.getFullYear(), now.getMonth() + offset + 1, 0);
+  return { from: iso(first), to: iso(last) };
+}
+
+/** ข้างตาของเลนส์ในใบสั่ง — ใบที่เปิดจากหน้าเคสได้ข้างตาจากช่องขวา/ซ้ายของออเดอร์ */
+function EyeTag({ side }: { side: Order["eyeSide"] }) {
+  if (!side) return null;
+  return <span className="tag tag--rx-order">{side === "right" ? "ขวา (R)" : "ซ้าย (L)"}</span>;
+}
+
+/**
+ * เลขเคสหน้าร้านที่เปิดใบนี้ — กดแล้วเปิดหน้าเคส
+ *
+ * ลิงก์ธรรมดา ไม่ใช่ Link ของ Next — หน้าเคสอยู่อีกฝั่งที่ใช้ CSS คนละชุด ต้องโหลดหน้าใหม่
+ */
+function CaseLink({ row }: { row: Order }) {
+  if (row.caseId === null) return null;
+  return (
+    <a href={`/cases/detail/?id=${row.caseId}`} className="grid__sub grid__link">
+      {row.caseCode ?? `เคส #${row.caseId}`}
+    </a>
+  );
+}
+
+/**
+ * ผู้ขายของเคส กับบัญชีที่กดสั่ง — สองคนนี้ไม่ใช่คนเดียวกันเสมอ
+ *
+ * ร้านเจอ 14 ก.ย. 2026: เครื่องหน้าร้านล็อกอินบัญชีคนคลังอยู่ ใบสั่งจึงขึ้นชื่อคนคลังเป็นคน
+ * บันทึก ทั้งที่คนขายเป็นอีกคน · เขียนกำกับทั้งคู่ ไม่ให้ชื่อบัญชีอ่านเป็นชื่อคนขาย
+ */
+function whoLine(o: Order): string {
+  return [
+    o.salesName ? `ผู้ขาย ${o.salesName}` : null,
+    o.actorName ? `บันทึกโดย ${o.actorName}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+/**
+ * ติ๊กว่าเลนส์มาถึงร้านแล้ว — ร้านขอไว้ 14 ก.ย. 2026
+ *
+ * ใครเข้าฝั่งคลังได้ก็ติ๊กได้ เพราะคนรับของคือคนที่รู้ · หน้าเคสกับกระดานงานเห็นเอง และเมื่อ
+ * เลนส์ของเคสมาครบทุกข้าง ระบบแจ้ง Telegram · ติ๊กผิดเอาออกได้ ติ๊กซ้ำไม่ทับเวลาเดิม
+ */
+function ArrivedCheck({ row, onDone }: { row: Order; onDone: () => void }) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const arrived = row.arrivedAt !== null;
+  /* ค่าที่เพิ่งกด — ติ๊กขึ้นทันทีที่กด ไม่ต้องรอรายการโหลดใหม่ (ช่องที่กดแล้วนิ่งอ่านว่า
+     กดไม่ติด แล้วคนจะกดซ้ำ) · ล้างเมื่อแถวที่โหลดกลับมาตรงกันแล้ว หรือบันทึกไม่สำเร็จ */
+  const [pending, setPending] = useState<boolean | null>(null);
+  const shown = pending ?? arrived;
+  const id = `rx-arrived-${row.id}`;
+
+  useEffect(() => {
+    if (pending !== null && arrived === pending) setPending(null);
+  }, [arrived, pending]);
+
+  async function toggle(next: boolean) {
+    setPending(next);
+    setBusy(true);
+    try {
+      await api.post(`/rx/${row.id}/arrived`, { arrived: next });
+      toast.success({
+        text: next
+          ? `เลนส์ ${row.referenceDoc ?? row.sku} มาถึงแล้ว`
+          : `เอาติ๊กเลนส์ ${row.referenceDoc ?? row.sku} ออกแล้ว`,
+        detail: row.caseCode ? `เคส ${row.caseCode}` : row.name,
+      });
+      onDone();
+    } catch (e) {
+      setPending(null);
+      toast.error({ text: "บันทึกไม่สำเร็จ", detail: ApiError.is(e) ? e.message : "ลองใหม่อีกครั้ง" });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <span>
+      <label
+        htmlFor={id}
+        style={{ display: "inline-flex", alignItems: "center", gap: 8, cursor: busy ? "progress" : "pointer" }}
+      >
+        <input
+          id={id}
+          type="checkbox"
+          checked={shown}
+          disabled={busy}
+          onChange={(e) => void toggle(e.target.checked)}
+          style={{ inlineSize: 20, blockSize: 20 }}
+        />
+        <span className={shown ? "grid__name" : "grid__muted"}>{shown ? "มาถึงแล้ว" : "รอเลนส์"}</span>
+      </label>
+      {arrived ? (
+        <span className="grid__sub">
+          {dateTime(row.arrivedAt)}
+          {row.arrivedByName ? ` · ${row.arrivedByName}` : ""}
+        </span>
+      ) : null}
+    </span>
+  );
 }
 
 /**
@@ -76,11 +212,21 @@ export default function RxPage() {
   const [q, setQ] = useState("");
   const [applied, setApplied] = useState("");
   const [page, setPage] = useState(1);
-  const [only, setOnly] = useState<"all" | "pending">("all");
+  const [only, setOnly] = useState<Only>("all");
+  const [span, setSpan] = useState<Span>("all");
+  const [range, setRange] = useState(() => monthOf(0));
   const [creating, setCreating] = useState(false);
 
+  const period = span === "all" ? { from: "", to: "" } : range;
   const book = useApi<Page<Order>>(
-    `/rx/orders${qs({ q: applied, pending: only === "pending" ? "1" : "", page })}`,
+    `/rx/orders${qs({
+      q: applied,
+      pending: only === "pending" ? "1" : "",
+      lens: only === "waiting" || only === "arrived" ? only : "",
+      from: period.from,
+      to: period.to,
+      page,
+    })}`,
   );
 
   // Only for the count on the chip; the list itself comes from the book above.
@@ -96,6 +242,14 @@ export default function RxPage() {
   function search(e: React.FormEvent) {
     e.preventDefault();
     setApplied(q.trim());
+    setPage(1);
+  }
+
+  function chooseSpan(next: Span) {
+    setSpan(next);
+    if (next === "today") setRange({ from: iso(new Date()), to: iso(new Date()) });
+    if (next === "this") setRange(monthOf(0));
+    if (next === "last") setRange(monthOf(-1));
     setPage(1);
   }
 
@@ -135,7 +289,7 @@ export default function RxPage() {
             label="สถานะใบสั่ง"
             value={only}
             onChange={(v) => {
-              setOnly(v as "all" | "pending");
+              setOnly(v as Only);
               setPage(1);
             }}
             options={[
@@ -153,10 +307,55 @@ export default function RxPage() {
                   pending.status === "ready" ? pending.data.rows.length : undefined,
                 ),
               },
+              /* เลนส์มาถึงร้านหรือยัง — ร้านขอไว้ 14 ก.ย. 2026 */
+              {
+                value: "waiting",
+                label: withCount(
+                  "รอเลนส์",
+                  book.status === "ready" && only === "waiting" ? book.data.total : undefined,
+                ),
+              },
+              {
+                value: "arrived",
+                label: withCount(
+                  "เลนส์มาถึงแล้ว",
+                  book.status === "ready" && only === "arrived" ? book.data.total : undefined,
+                ),
+              },
             ]}
           />
         </FilterBar>
       </WorkHead>
+
+      {/* ช่วงวันที่เปิดใบสั่ง — แถวเดียวกับที่หน้าการเบิกจากสาขาใช้ */}
+      <div className="listtools">
+        <div className="chips chips--tight" role="group" aria-label="วันที่เปิดใบสั่ง">
+          {SPANS.map((s) => (
+            <button
+              key={s.key}
+              type="button"
+              className="chip chip--flat"
+              aria-current={span === s.key ? "true" : undefined}
+              onClick={() => chooseSpan(s.key)}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+        {span !== "all" ? (
+          <DateRangeField
+            split
+            id="rx-range"
+            from={range.from}
+            to={range.to}
+            onApply={(r) => {
+              setRange(r);
+              setSpan("custom");
+              setPage(1);
+            }}
+          />
+        ) : null}
+      </div>
 
       {/* แถบ "ส่วนที่กำลังดู" ถูกถอดออก — มันเหลือชิปเดียวตั้งแต่วันที่หน้าร้านขอ
           ให้เอา "รุ่นเลนส์ที่สั่งได้" ออก และชิปเดียวที่กดแล้วได้สิ่งที่เห็นอยู่แล้ว
@@ -178,7 +377,13 @@ export default function RxPage() {
             ? `ไม่พบใบสั่งที่ตรงกับ “${applied}”`
             : only === "pending"
               ? "ไม่มีใบสั่งที่ค้างต้นทุน"
-              : "ยังไม่เคยเปิดใบสั่ง RX — กด เปิดใบสั่งใหม่ ด้านบน"}
+              : only === "waiting"
+                ? "ไม่มีใบสั่งที่รอเลนส์"
+                : only === "arrived"
+                  ? "ยังไม่มีใบสั่งที่เลนส์มาถึง"
+                  : span !== "all"
+                    ? "ไม่มีใบสั่งที่เปิดในช่วงวันที่นี้"
+                    : "ยังไม่เคยเปิดใบสั่ง RX — กด เปิดใบสั่งใหม่ ด้านบน"}
         </p>
       ) : null}
 
@@ -197,9 +402,10 @@ export default function RxPage() {
               <caption className="sr-only">ใบสั่งตัด RX เรียงจากใบล่าสุดไปเก่าสุด</caption>
               <thead>
                 <tr>
-                  <th scope="col">ใบสั่ง</th>
-                  <th scope="col">เลนส์ / ค่าสายตา</th>
-                  <th scope="col">เปิดเมื่อ</th>
+                  <th scope="col">ใบสั่ง / เคส</th>
+                  <th scope="col">เลนส์ / ข้างตา</th>
+                  <th scope="col">เปิดเมื่อ / ผู้ขาย</th>
+                  <th scope="col">เลนส์มาถึง</th>
                   <th scope="col">ต้นทุน</th>
                   <th scope="col">ราคาขาย</th>
                   <th scope="col"><span className="sr-only">แก้ไข</span></th>
@@ -496,8 +702,13 @@ function OrderCard({
         title={row.name}
         sub={[row.referenceDoc ?? "—", row.branch ?? "TimeOptic"].join(" · ")}
         fields={[
+          row.caseId !== null ? { label: "เคส", value: <CaseLink row={row} /> } : null,
+          row.eyeSide ? { label: "ข้างตา", value: <EyeTag side={row.eyeSide} /> } : null,
           rx ? { label: "ค่าสายตา", value: <span className="grid__rx">{rx}</span> } : null,
-          { label: "เปิดเมื่อ", value: `${date(row.createdAt)}${row.actorName ? ` · ${row.actorName}` : ""}` },
+          { label: "เปิดเมื่อ", value: dateTime(row.createdAt) },
+          row.salesName ? { label: "ผู้ขาย", value: row.salesName } : null,
+          row.actorName ? { label: "บันทึกโดย", value: row.actorName } : null,
+          { label: "เลนส์มาถึง", value: <ArrivedCheck row={row} onDone={onDone} /> },
           mayCost && !c.waiting
             ? { label: "ต้นทุน", value: money(row.unitCost as number) }
             : null,
@@ -678,17 +889,22 @@ function OrderRow({
     <tr className={waiting ? "grid__row grid__row--pending" : "grid__row"}>
       <th scope="row" className="grid__lot">
         {row.referenceDoc ?? "—"}
+        <CaseLink row={row} />
         {/* ทุกแถวบอกว่าใครสั่ง — ใบที่ไม่มีสาขาคือ TimeOptic สั่งเอง · เขียนให้ครบ
             ทุกแถวเพราะคอลัมน์ที่ว่างบ้างไม่ว่างบ้าง อ่านเหมือนข้อมูลหาย */}
         <span className="grid__sub">{row.branch ?? "TimeOptic"}</span>
       </th>
       <td>
+        <EyeTag side={row.eyeSide} />
         <span className="grid__name">{row.name}</span>
         <span className="grid__sub grid__rx">{rx ?? "ไม่ได้บันทึกค่าสายตา"}</span>
       </td>
       <td className="grid__muted grid__when">
-        {date(row.createdAt)}
-        {row.actorName ? ` · ${row.actorName}` : ""}
+        {dateTime(row.createdAt)}
+        {whoLine(row) ? <span className="grid__sub">{whoLine(row)}</span> : null}
+      </td>
+      <td>
+        <ArrivedCheck row={row} onDone={onDone} />
       </td>
       <td>
         {!mayCost ? (
@@ -873,15 +1089,25 @@ function OrderRow({
  */
 export function NewOrderDialog({
   lensOnly = false,
+  eyeSide = null,
   mayCost,
   onClose,
   onSaved,
 }: {
   /** Ask for the lens only and open the order from the first stop. */
   lensOnly?: boolean;
+  /**
+   * ข้างตาที่หน้าเคสกำลังสั่งให้ — ส่งไปกับใบสั่งแม้กล่องแบบเลนส์อย่างเดียวจะไม่ถามข้างตา
+   * (ร้านขอไว้ 14 ก.ย. 2026: หน้าใบสั่งตัดต้องบอกได้ว่าเลนส์ข้างไหน)
+   */
+  eyeSide?: "right" | "left" | null;
   mayCost: boolean;
   onClose: () => void;
-  onSaved: (referenceDoc: string, awaitingCost: boolean) => void;
+  onSaved: (
+    referenceDoc: string,
+    awaitingCost: boolean,
+    order: { id: number; sku: string; name: string },
+  ) => void;
 }) {
   /**
    * Which lens model this order is for — a catalogue id, never a typed name.
@@ -1100,12 +1326,12 @@ export function NewOrderDialog({
     // boxes, and plano is where the powers start, so on the lens-only sheet
     // they would otherwise file a price and a 0.00 nobody entered.
     const sheet = lensOnly
-      ? { branch: "", eye: "", sph: "", cyl: "", axis: "", add: "", cost: "", price: "", note: "" }
+      ? { branch: "", eye: eyeSide ?? "", sph: "", cyl: "", axis: "", add: "", cost: "", price: "", note: "" }
       : { branch, eye, sph, cyl, axis, add, cost, price, note };
 
     try {
       const { order } = await api.post<{
-        order: { referenceDoc: string; awaitingCost: boolean };
+        order: { id: number; sku: string; name: string; referenceDoc: string; awaitingCost: boolean };
       }>("/rx", {
         // The lens as written on this sheet. The API files the model once and
         // reuses it every time the same lens is written out again, matching on
@@ -1126,7 +1352,7 @@ export function NewOrderDialog({
         note: sheet.note.trim() || null,
       });
 
-      onSaved(order.referenceDoc, order.awaitingCost);
+      onSaved(order.referenceDoc, order.awaitingCost, order);
     } catch (err) {
       setProblem(ApiError.is(err) ? err.message : "เปิดใบสั่งไม่สำเร็จ");
       setBusy(false);

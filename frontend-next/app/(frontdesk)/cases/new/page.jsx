@@ -34,7 +34,7 @@ import { Picker } from '../../../../components/Picker.jsx';
 import { EmployeeSelect, ListSelect, NationalitySelect } from '../../../../components/Selects.jsx';
 import { custName, fmtDate } from '../../../../lib/format.js';
 import { Icon } from '../../../../components/Icon.jsx';
-import { DateField } from '../../../../components/DateField.jsx';
+import { BirthAgeFields } from '../../../../components/BirthAgeFields.jsx';
 
 /** ลูกค้าที่ระบบสงสัยว่าเป็นคนเดียวกัน — เลือกใช้ใบเดิม หรือยืนยันว่าคนละคน */
 function DuplicateWarning({ matches, onUse, onForce, onEdit, busy }) {
@@ -139,7 +139,7 @@ function NewCustomerForm({ onCreated }) {
           <input name="line_id" placeholder="LINE ID หรือเบอร์ WhatsApp" />
         </Field>
         <Field label="เพศ / Sex"><ListSelect name="sex" kind="sex" defaultValue="" blank="—" /></Field>
-        <Field label="วันเกิด / Birth date"><DateField name="birth_date" /></Field>
+        <BirthAgeFields />
         <Field label="สัญชาติ / Nationality"><NationalitySelect name="nationality" /></Field>
         <Field label="อีเมล / Email"><input name="email" type="email" /></Field>
       </FormGrid>
@@ -284,7 +284,10 @@ function CaseFormInner() {
             <Field label="พนักงานผู้รับเรื่อง" hint="ผู้รับลูกค้าในเคสนี้ ตรวจย้อนหลังได้จากไทม์ไลน์">
               <EmployeeSelect name="received_by" defaultValue="" />
             </Field>
-            <Field label="ประเภทงาน / Case Type" hint="งานชิ้นนี้คืองานอะไร">
+            <Field
+              label="ประเภทงาน / Case Type"
+              hint="งานชิ้นนี้คืองานอะไร — เลือก “ตรวจสายตา” แล้วเคสจะมีแค่ รับลูกค้า → วัดสายตา และจบเองเมื่อยืนยันผลวัด"
+            >
               <ListSelect name="case_type" kind="case_type" defaultValue="" blank="— เลือกประเภทงาน —" />
             </Field>
             <Field label="ประเภทลูกค้า / Customer Category" hint="ใช้แยกสมุดงานบนกระดาน">
@@ -295,17 +298,24 @@ function CaseFormInner() {
                 blank="— เลือกประเภทลูกค้า —"
               />
             </Field>
-            {/* เลือก "อื่นๆ" แล้วจบตรงนั้น ไม่มีช่องให้กรอกต่อ — ค่า other บันทึกได้เลย
+            {/* ถามเฉพาะลูกค้าใหม่ — คนที่มาครั้งที่สอง "รู้จักร้าน" ไปตั้งแต่ครั้งแรกแล้ว
+                ถามซ้ำได้คำตอบที่ขัดกันเองของคนคนเดียว ซึ่งทำให้รายงานช่องทางอ่านไม่ได้
+                เคสของลูกค้าเก่าไม่ได้ปล่อยว่าง — POST /api/cases เติม 'returning' ให้เอง
+                เมื่อลูกค้ารายนั้นมีเคสเก่าอยู่จริง (ไม่ได้ดูจากปุ่มที่กดตรงนี้)
+
+                เลือก "อื่นๆ" แล้วจบตรงนั้น ไม่มีช่องให้กรอกต่อ — ค่า other บันทึกได้เลย
                 คอลัมน์ referral_note ยังอยู่และยังโชว์ที่แท็บภาพรวมของเคส แต่ไม่มี
                 ฟอร์มไหนกรอกแล้ว รายการเก่าที่เคยกรอกไว้จึงยังอ่านออกเหมือนเดิม */}
-            <Field label="รู้จักเราจากช่องทางไหน / Customer Source" hint="ช่องทางที่ลูกค้ารู้จักร้าน">
-              <ListSelect
-                name="referral_source"
-                kind="referral_source"
-                defaultValue=""
-                blank="— ไม่ระบุ —"
-              />
-            </Field>
+            {mode !== 'existing' && (
+              <Field label="รู้จักเราจากช่องทางไหน / Customer Source" hint="ช่องทางที่ลูกค้ารู้จักร้าน">
+                <ListSelect
+                  name="referral_source"
+                  kind="referral_source"
+                  defaultValue=""
+                  blank="— ไม่ระบุ —"
+                />
+              </Field>
+            )}
             {/* เคสใหม่เริ่มที่ "รับลูกค้า / ลงข้อมูล" เสมอ (ค่า default ของ POST /api/cases)
                 ของเดิมให้เลือกได้ 30 สถานะ แต่ในทางปฏิบัติไม่มีใครเลือกอย่างอื่น
                 จะข้ามขั้นก็กดเลื่อนที่แถบขั้นตอนของเคสนั้นได้อยู่แล้ว

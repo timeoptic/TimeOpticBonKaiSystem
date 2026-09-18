@@ -85,8 +85,9 @@ GET('/api/dashboard', function () {
             )['n'] ?? 0),
             'stock_on_hand' => (int) ($one('SELECT COALESCE(SUM(remaining_qty),0) n FROM stock_lots')['n'] ?? 0),
             'received_today' => $one(
-                'SELECT COUNT(*) n, COALESCE(SUM(amount),0) amount FROM payments
-                  WHERE DATE(paid_at) = ? AND cancelled_at IS NULL',
+                /* "ยังไม่ชำระ" เป็นรายการ 0 บาท ไม่ใช่เงินที่รับ — นับรวมแล้วจำนวนครั้งเกินจริง */
+                "SELECT COUNT(*) n, COALESCE(SUM(amount),0) amount FROM payments
+                  WHERE DATE(paid_at) = ? AND cancelled_at IS NULL AND kind <> 'unpaid'",
                 $d
             ),
             'sales_today' => $one(

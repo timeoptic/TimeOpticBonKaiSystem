@@ -15,7 +15,13 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 
 import { useAsync } from '../../../lib/hooks.js';
-import { money, todayISO } from '../../../lib/format.js';
+import { custName, cylPower, fmtDate, money, roundGlassesUse, sphPower, todayISO } from '../../../lib/format.js';
+import { api } from '../../../lib/apiClient.js';
+import { eyeRefText } from '../../../lib/pos/rxRef.js';
+import { GlassesUseTag } from '../../../components/RxSets.jsx';
+import { Picker } from '../../../components/Picker.jsx';
+import { PosExamDialog } from '../../../components/pos/PosExamDialog.jsx';
+import { PosNewCustomer } from '../../../components/pos/PosNewCustomer.jsx';
 import { useAuth } from '../../../contexts/AuthContext.jsx';
 import { inSystemZone } from '../../../lib/roles.js';
 import { Card, Loading } from '../../../components/ui.jsx';
@@ -48,6 +54,11 @@ const blankForm = () => ({
 
 /* คีย์กันบันทึกซ้ำ หนึ่งค่าต่อหนึ่งตะกร้า — ออกตั้งแต่เปิดตะกร้า ไม่ใช่ตอนกดปุ่ม
    ถ้าออกตอนกดปุ่ม การกดสองครั้งจะได้สองคีย์ ซึ่งกันอะไรไม่ได้เลย */
+/* "รายการนี้เป็นคอนแทคเลนส์ไหม" — ถามจากนิยามช่องกรอกของสินค้า ไม่ใช่จากหมวดหรือ
+   ชื่อ SKU · ของที่ถามค่าสายตาคือของที่ต้องผูกใบวัด และนิยามนั้นอยู่ในฐานข้อมูลที่
+   ร้านแก้เองได้ เพิ่มยี่ห้อใหม่จึงไม่ต้องกลับมาไล่แก้โค้ด */
+const hasPower = (it) => (it.pos_fields || []).some((f) => f.key === 'power');
+
 const newRef = () => (globalThis.crypto?.randomUUID
   ? globalThis.crypto.randomUUID()
   : `pos-${Date.now()}-${Math.random().toString(16).slice(2)}`);
@@ -68,6 +79,43 @@ export default function PosPage() {
   const [done, setDone] = useState(null);
   const clientRef = useRef(newRef());
 
+  /* ลูกค้าที่เลือกจากฐาน — คนละเรื่องกับช่องชื่อ/เบอร์ที่พิมพ์เอง ซึ่งยังอยู่สำหรับ
+     ลูกค้าขาจรที่ไม่มีแถวในระบบ · เลือกแล้วเติมชื่อ/เบอร์ให้ด้วย กฎมัดจำจะได้ผ่าน */
+  const [customer, setCustomer] = useState(null);
+  const [rx, setRx] = useState(null);          // ใบค่าสายตาที่แนบกับบิลนี้
+  const [rxFrom, setRxFrom] = useState('');    // มาจากไหน ใช้โชว์อย่างเดียว
+  const [examOpen, setExamOpen] = useState(false);
+  const [newCust, setNewCust] = useState(false);   // เปิดฟอร์มเพิ่มลูกค้าใหม่อยู่ไหม
+
+  /* ประวัติรอบวัดของลูกค้าคนที่เลือก — โหลดครั้งเดียวต่อคน ไม่ได้เลือกใครก็ไม่ยิง */
+  const { data: sessions, reload: reloadSessions } = useAsync(
+    (signal) => (customer ? api.get(`/api/customers/${customer.id}/exam-sessions`, {}, signal) : Promise.resolve([])),
+    [customer?.id],
+  );
+  /* ให้เลือกรอบเองจากประวัติ แบบเดียวกับ "เลือกจากประวัติ" ในขั้นวัดสายตาของเคส —
+     เดิมมีแค่ปุ่มใช้ผลวัดล่าสุด ซึ่งหยิบรอบที่เก่ากว่านั้นไม่ได้ (ร้านขอเปลี่ยน 17 ก.ย. 2026) */
+  const [pickHistory, setPickHistory] = useState(false);
+  const rounds = sessions || [];
+
+  const pickCustomer = (c) => {
+    setCustomer(c);
+    setPickHistory(false);
+    setRx(null);
+    setRxFrom('');
+    setForm((f) => ({
+      ...f,
+      customerName: custName(c),
+      customerPhone: c.phone || f.customerPhone,
+    }));
+  };
+
+  const clearCustomer = () => {
+    setCustomer(null);
+    setPickHistory(false);
+    setRx(null);
+    setRxFrom('');
+  };
+
   /**
    * ถามก่อนเอาสินค้าออกจากบิล
    *
@@ -82,6 +130,10 @@ export default function PosPage() {
 
   const set = useCallback((k, v) => setForm((f) => ({ ...f, [k]: v })), []);
   const sums = useMemo(() => totals(items), [items]);
+
+  /* แผงค่าสายตาโผล่เฉพาะตอนในบิลมีของที่ถามค่าสายตา — บิลขายน้ำยาหรือค่าประกอบแว่น
+     ต้องไม่มีอะไรงอกขึ้นมาให้พนักงานต้องอ่านผ่าน */
+  const needsRx = useMemo(() => items.some(hasPower), [items]);
 
   /* "ชำระเต็มจำนวน" ไม่ให้พิมพ์ยอดเอง — ยอดคือยอดสุทธิเสมอ ลดโอกาสพิมพ์ผิด
      ซึ่งเป็นเหตุผลเดียวกับที่ระบบเดิมมีช่องรูปแบบการชำระให้เลือก */
@@ -127,7 +179,14 @@ export default function PosPage() {
       const sale = await posApi.create({
         client_ref: clientRef.current,
         sale_date: saleDate,
-        items: toItemsPayload(items),
+        items: toItemsPayload(items).map((line, i) => (
+          /* ใบค่าสายตาผูกกับ "รายการ" ไม่ใช่ทั้งบิล — ซื้อสองกล่องคนละใบวัดในบิล
+             เดียวได้ ซึ่งเป็นเหตุผลที่ item_meta ถูกออกแบบให้อยู่ที่ item ตั้งแต่แรก */
+          rx && hasPower(items[i])
+            ? { ...line, item_meta: { ...line.item_meta, rx_id: rx.id } }
+            : line
+        )),
+        customer_id: customer?.id || null,
         customer_name: form.customerName.trim() || null,
         customer_phone: form.customerPhone.trim() || null,
         delivered: form.delivered,
@@ -178,9 +237,10 @@ export default function PosPage() {
               </div>
             </div>
             <button type="button" className="pos-btn primary" onClick={resetAll}><Icon name="bag" /> ขายรายการใหม่</button>
+            {/* หน้าพิมพ์ใบเสร็จเดียวกับปุ่ม 🧾 ใบเสร็จ ในหน้ารายละเอียดใบขาย — ออกเลขใบเสร็จให้เองตอนเปิด */}
+            <Link className="pos-btn link" href={`/print/receipt?sale=${done.id}`}><Icon name="receipt" /> พิมพ์ใบเสร็จ</Link>
             <Link className="pos-btn link" href={`/pos/detail/?id=${done.id}`}>ดูรายละเอียดใบนี้</Link>
             <Link className="pos-btn link" href="/pos/history/"><Icon name="refresh" /> ดูประวัติการขาย POS</Link>
-            {/* [พิมพ์ใบเสร็จ] จะมาลงตรงนี้ — เว้นที่ไว้แล้ว ยังไม่มีแบบใบเสร็จ */}
             <Link className="pos-btn back" href="/"><Icon name="arrowLeft" /> กลับไปหน้าระบบแว่นตา (Main)</Link>
           </div>
         </div>
@@ -332,6 +392,132 @@ export default function PosPage() {
               </PosField>
             </div>
 
+            {/* ─── คอนแทคเลนส์: ผูกลูกค้าจริงเพื่อให้ค่าสายตาเป็นประวัติของคนคนนั้น ───
+                โผล่เฉพาะตอนในบิลมีของที่ถามค่าสายตา · บิลทั่วไปไม่เห็นอะไรเพิ่มเลย */}
+            {needsRx && (
+              <div className="pos-row one">
+                {/* ไม่ส่ง icon ให้ตัวห่อ — .pos-f วางไอคอนแบบ absolute กึ่งกลางแนวตั้ง
+                    ของกล่องแม่ ซึ่งถูกสำหรับช่องกรอกบรรทัดเดียว แต่แผงนี้สูงหลายบรรทัด
+                    ไอคอนจะไปลอยทับช่องกรอกที่อยู่กลางแผง · ไอคอนรูปตาอยู่ที่ปุ่มแล้ว */}
+                <PosField label="ค่าสายตาสำหรับคอนแทคเลนส์">
+                  <div className="pos-rx">
+                    {rx ? (
+                      <div className="pos-rx-on">
+                        <b>แนบค่าสายตาแล้ว</b>
+                        <span className="muted">{rxFrom}</span>
+                        <span className="pos-rx-vals">{eyeRefText(rx, 'RL')}</span>
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-light"
+                          onClick={() => { setRx(null); setRxFrom(''); }}
+                        >
+                          ไม่แนบค่าสายตา
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        {/* สองปุ่มนี้ต้องเห็นตั้งแต่วินาทีที่มีคอนแทคเลนส์ในบิล — เคยซ่อนไว้
+                            หลังการเลือกลูกค้า แล้วหาไม่เจอว่าจะไปวัดสายตาตรงไหน ปิดปุ่มไว้
+                            พร้อมบอกเหตุผล อ่านออกกว่าการไม่มีปุ่มให้เห็นเลย */}
+                        <div className="pos-rx-acts">
+                          <button
+                            type="button"
+                            className="btn btn-sm"
+                            disabled={!customer || !rounds.length}
+                            onClick={() => setPickHistory((v) => !v)}
+                          >
+                            {pickHistory ? 'ปิดรายการ' : <><Icon name="download" /> เลือกจากประวัติ</>}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-sm"
+                            disabled={!customer}
+                            onClick={() => setExamOpen(true)}
+                          >
+                            <Icon name="eye" /> วัดสายตาใหม่
+                          </button>
+                        </div>
+
+                        {customer && pickHistory && (
+                          <div className="rx-history pos-rx-history">
+                            {rounds.map((r, i) => {
+                              /* รอบที่ยังไม่มีใบ final ใช้ค่าที่วัดได้ — ป้ายท้ายแถวบอกว่าเป็นแบบไหน */
+                              const src = r.final || r.measured;
+                              if (!src) return null;
+                              return (
+                                <button
+                                  type="button"
+                                  key={r.key}
+                                  className="rx-history-row"
+                                  onClick={() => {
+                                    setRx(src);
+                                    setRxFrom(`ผลวัด ${fmtDate(r.exam_date)}`
+                                      + (r.case_code ? ` · ${r.case_code}` : '')
+                                      + (r.final ? '' : ' · ค่าที่วัดได้'));
+                                    setPickHistory(false);
+                                  }}
+                                >
+                                  <b>{`${fmtDate(r.exam_date)}${r.case_code ? ` · ${r.case_code}` : ''}${i === 0 ? ' · ล่าสุด' : ''}`}</b>
+                                  <GlassesUseTag value={roundGlassesUse(r)} />
+                                  <span>{`R ${sphPower(src.r_sphere)} / ${cylPower(src.r_cylinder)} x ${src.r_axis || '—'}`}</span>
+                                  <span>{`L ${sphPower(src.l_sphere)} / ${cylPower(src.l_cylinder)} x ${src.l_axis || '—'}`}</span>
+                                  <span className="muted">{r.final ? 'ค่าที่ใช้จริง' : 'ค่าที่วัดได้'}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {customer ? (
+                          <p className="pos-rx-hint">
+                            <b>{custName(customer)}</b>
+                            {customer.phone ? <span className="muted">{customer.phone}</span> : null}
+                            {!rounds.length ? <span className="muted">ยังไม่มีผลวัดเดิมในระบบ</span> : null}
+                            <button type="button" className="btn btn-sm btn-light" onClick={clearCustomer}>
+                              เปลี่ยนลูกค้า
+                            </button>
+                          </p>
+                        ) : (
+                          <>
+                            <p className="pos-rx-hint">
+                              เลือกลูกค้าก่อน จึงจะกดสองปุ่มด้านบนได้ — หรือขายโดยไม่แนบค่าสายตาก็ได้
+                            </p>
+                            {newCust ? (
+                              /* ลูกค้าหน้าใหม่ที่ยังไม่มีในระบบ — ต้องสร้างก่อนถึงจะวัดสายตาได้
+                                 เพราะใบค่าสายตาต้องมีเจ้าของเสมอ (customer_id เป็น NOT NULL) */
+                              <PosNewCustomer
+                                onCreated={(c) => { pickCustomer(c); setNewCust(false); }}
+                                onPickExisting={(c) => { pickCustomer(c); setNewCust(false); }}
+                                onCancel={() => setNewCust(false)}
+                              />
+                            ) : (
+                              <>
+                                <Picker
+                                  placeholder="ค้นชื่อ / เบอร์โทรลูกค้า"
+                                  fetcher={(q) => api.get('/api/customers', { q, limit: 40 })}
+                                  label={(c) => custName(c)}
+                                  sub={(c) => c.phone || ''}
+                                  onPick={pickCustomer}
+                                  autoLoad={false}
+                                />
+                                <button
+                                  type="button"
+                                  className="btn btn-sm btn-light"
+                                  onClick={() => setNewCust(true)}
+                                >
+                                  <Icon name="user" /> ลูกค้าใหม่ — ยังไม่มีในระบบ
+                                </button>
+                              </>
+                            )}
+                          </>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </PosField>
+              </div>
+            )}
+
             <div className="pos-row one">
               <PosField label="หมายเหตุ" icon="clipboard">
                 <textarea
@@ -373,6 +559,21 @@ export default function PosPage() {
           </div>
         </aside>
       </div>
+
+      {examOpen && customer && (
+        <PosExamDialog
+          customer={customer}
+          onClose={() => setExamOpen(false)}
+          onSaved={(row) => {
+            setRx(row);
+            setRxFrom(`วัดที่หน้าร้าน ${fmtDate(row.test_date)}`);
+            setExamOpen(false);
+            setPickHistory(false);
+            reloadSessions();
+            toast.ok('บันทึกผลวัดสายตาแล้ว — เข้าประวัติของลูกค้าเรียบร้อย');
+          }}
+        />
+      )}
 
       {confirming && (
         <ConfirmSaleModal

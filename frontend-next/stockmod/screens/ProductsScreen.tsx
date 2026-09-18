@@ -4,7 +4,7 @@ import { useState } from "react";
 import { can, useActor, WorkHead } from "@/stockmod/components/AppShell";
 import { useToast } from "@/stockmod/components/Toaster";
 import Paginator from "@/stockmod/components/Paginator";
-import SortHead, { SortBar, useSort } from "@/stockmod/components/SortHead";
+import SortHead, { MATCH_SORT, SortBar, useSort } from "@/stockmod/components/SortHead";
 import LensFilters from "@/stockmod/components/LensFilters";
 import { Filter, FilterBar, withCount } from "@/stockmod/components/FilterBar";
 import RecordCard, { CardList } from "@/stockmod/components/RecordCard";
@@ -14,10 +14,8 @@ import ProductCell from "@/stockmod/components/ProductCell";
 import NewProductDialog from "@/stockmod/components/NewProductDialog";
 import StockDrawer from "@/stockmod/components/StockDrawer";
 import StockLines from "@/stockmod/components/StockLines";
-import InlineEdit from "@/stockmod/components/InlineEdit";
-import { api, ApiError } from "@/stockmod/lib/api";
 import { qs, useApi } from "@/stockmod/lib/useApi";
-import { count, money } from "@/stockmod/lib/format";
+import { count, dateTime, money } from "@/stockmod/lib/format";
 import {
   PRODUCT_TYPES,
   PRODUCT_TYPE_LABEL,
@@ -72,9 +70,9 @@ type StateCounts = Record<string, number>;
 
 type SortKey =
   | "added" | "sku" | "name" | "brand" | "onhand" | "price" | "type" | "eye"
-  | "index" | "design" | "coating" | "sph";
+  | "index" | "design" | "coating" | "sph" | "match" | "alerted";
 const NATURAL_ASC: readonly SortKey[] = [
-  "sku", "name", "brand", "type", "eye", "index", "design", "coating", "sph",
+  "sku", "name", "brand", "type", "eye", "index", "design", "coating", "sph", "match",
 ];
 
 /** The same columns the table headers offer, named for the toolbar chooser.
@@ -96,6 +94,9 @@ const SORTS: readonly { col: SortKey; label: string }[] = [
   { col: "onhand", label: "คงเหลือ" },
   { col: "price", label: "ราคาขาย" },
 ];
+
+/** "แจ้งเตือนล่าสุด" — มีความหมายเฉพาะมุมมองของที่ถูกเตือน จึงโผล่ในตัวเลือกเฉพาะตอนนั้น */
+const ALERTED_SORT = { col: "alerted", label: "แจ้งเตือนล่าสุด" } as const;
 
 /**
  * The catalogue's five drawers, as a filter.
@@ -124,9 +125,10 @@ const TYPES = [
 export default function ProductsScreen({
   lockState = "",
   title = "สินค้าและสต็อก",
-  lede = "กดที่แถวสินค้าเพื่อดูล็อตของมัน — แก้จำนวน ลงต้นทุน หรือรับของเข้าล็อตใหม่ได้ตรงนั้น",
+  lede = "กดที่แถวสินค้าเพื่อดูล็อตและรับของเข้า — แก้คงเหลือ ต้นทุน ราคาขาย และขั้นต่ำ ได้ที่ \"รายละเอียดสินค้า · ประวัติ\"",
   empty,
   canAdd = true,
+  views,
 }: {
   /**
    * สถานะที่หน้านี้ล็อกไว้ตายตัว — หน้า "สินค้ารอสั่ง" ส่ง `backorder` มา
@@ -149,6 +151,12 @@ export default function ProductsScreen({
    * ซึ่งอ่านเหมือนบันทึกไม่สำเร็จ · หน้าสินค้าและสต็อกเต็มยังมีปุ่มนี้เหมือนเดิม
    */
   canAdd?: boolean;
+  /**
+   * มุมมองที่สลับได้บนหน้าที่ล็อกสถานะไว้ — หน้า "สินค้ารอสั่ง" มีสองมุม (ร้านขอไว้ 14 ก.ย. 2026)
+   *
+   * ตัวแรกคือมุมที่เปิดมาเจอ และต้องตรงกับ `lockState` · `sort` คือการเรียงที่มุมนั้นเปิดมา
+   */
+  views?: readonly { key: string; label: string; sort?: SortKey; empty?: string }[];
 } = {}) {
   const [q, setQ] = useState("");
   const [applied, setApplied] = useState("");
@@ -158,7 +166,7 @@ export default function ProductsScreen({
   const [design, setDesign] = useState("");
   const [coating, setCoating] = useState("");
   const [page, setPage] = useState(1);
-  const { sort, dir, sortBy } = useSort<SortKey>("added", NATURAL_ASC);
+  const { sort, dir, sortBy, sortTo } = useSort<SortKey>(views?.[0]?.sort ?? "added", NATURAL_ASC);
   const [openId, setOpenId] = useState<number | null>(null);
 
   /** Which product's lots are unfolded. One at a time — this is a table. */
@@ -223,6 +231,9 @@ export default function ProductsScreen({
    */
   const lensCols = ptype === "Lens";
   const lensFilters = ptype === "Lens";
+  /** มุมมองที่เปิดอยู่ (ถ้าหน้านี้มี) · คอลัมน์ "แจ้งเตือนเมื่อ" มีเฉพาะมุมของที่ถูกเตือน */
+  const view = views?.find((v) => v.key === state);
+  const alertedCol = state === "alerted";
 
   /**
  * แถวสินค้าหนึ่งใบ บนมือถือ
@@ -238,12 +249,14 @@ function ProductRowCard({
   row,
   money: showCost,
   mayEdit,
+  alerted,
   onOpen,
   onChanged,
 }: {
   row: ProductRow;
   money: boolean;
   mayEdit: boolean;
+  alerted: boolean;
   onOpen: () => void;
   onChanged: () => void;
 }) {
@@ -288,6 +301,7 @@ function ProductRowCard({
       title={row.name}
       sub={[row.sku, row.brand].filter(Boolean).join(" · ")}
       fields={[
+        alerted ? { label: "แจ้งเตือนเมื่อ", value: dateTime(row.lowStockNotifiedAt) } : null,
         { label: "ชนิด", value: PRODUCT_TYPE_LABEL[row.productType] ?? row.productType },
         spec ? { label: "สเปกเลนส์", value: spec } : null,
         power ? { label: "ค่าสายตา", value: <span className="grid__rx">{power}</span> } : null,
@@ -351,7 +365,16 @@ function ProductRowCard({
   );
 }
 
-/** Leaving the lens aisle takes the lens filters with it, rather than leaving
+/** สลับมุมมอง — มุมที่มีการเรียงของตัวเองพาการเรียงไปด้วย ออกจากมุมนั้นแล้วกลับไปเพิ่มล่าสุด */
+  function chooseView(next: { key: string; sort?: SortKey }) {
+    refine(() => {
+      setState(next.key);
+      if (next.sort) sortTo(next.sort);
+      else if (sort === "alerted") sortTo("added");
+    });
+  }
+
+  /** Leaving the lens aisle takes the lens filters with it, rather than leaving
    *  an invisible narrowing on a list that no longer offers a way to see it. */
   function chooseType(next: string) {
     refine(() => {
@@ -371,7 +394,13 @@ function ProductRowCard({
           className="toolsearch"
           onSubmit={(e) => {
             e.preventDefault();
-            refine(() => setApplied(q.trim()));
+            const next = q.trim();
+            refine(() => {
+              setApplied(next);
+              // มีคำค้น = ตัวที่ตรงที่สุดขึ้นก่อน เหมือนหน้าขาย · ล้างคำค้นแล้วกลับไปเพิ่มล่าสุด
+              if (next) sortTo("match");
+              else if (sort === "match") sortTo("added");
+            });
           }}
         >
           <label className="sr-only" htmlFor="p-q">
@@ -441,7 +470,28 @@ function ProductRowCard({
           {/* Left and right stopped being a filter here when the made-to-order
               lenses moved to the RX screen: a side belongs to a customer’s job,
               and nothing this screen lists has one. */}
-          <SortBar id="prod" columns={SORTS} sort={sort} dir={dir} onSort={pick} />
+          {views ? (
+            <div className="chips chips--tight" role="group" aria-label="มุมมอง">
+              {views.map((v) => (
+                <button
+                  key={v.key}
+                  type="button"
+                  className="chip chip--flat"
+                  aria-current={state === v.key ? "true" : undefined}
+                  onClick={() => chooseView(v)}
+                >
+                  {withCount(v.label, counts?.[v.key])}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          <SortBar
+            id="prod"
+            columns={[...(applied ? [MATCH_SORT] : []), ...(alertedCol ? [ALERTED_SORT] : []), ...SORTS]}
+            sort={sort}
+            dir={dir}
+            onSort={pick}
+          />
         </div>
 
         {/* ตัวกรองทั้งหมดอยู่แถวเดียว เป็นดรอปดาวน์
@@ -505,7 +555,7 @@ function ProductRowCard({
 
       {list.status === "ready" && list.data.rows.length === 0 ? (
         <div className="empty">
-          <p className="empty__title">{empty ?? "ไม่มีสินค้าที่ตรงกับเงื่อนไขนี้"}</p>
+          <p className="empty__title">{view?.empty ?? empty ?? "ไม่มีสินค้าที่ตรงกับเงื่อนไขนี้"}</p>
           <p className="empty__body">
             ลองล้างตัวกรอง แล้วค้นด้วยชื่อหรือ SKU แทน
           </p>
@@ -516,6 +566,7 @@ function ProductRowCard({
               refine(() => {
                 setQ("");
                 setApplied("");
+                if (sort === "match") sortTo("added");
                 setPtype("");
                 setLindex("");
                 setDesign("");
@@ -541,6 +592,7 @@ function ProductRowCard({
                 row={r}
                 money={money$}
                 mayEdit={can.editCatalog(actor)}
+                alerted={alertedCol}
                 onOpen={() => setOpenId(r.id)}
                 onChanged={reload}
               />
@@ -564,12 +616,13 @@ function ProductRowCard({
                       <SortHead label="ค่าสายตา" col="sph" sort={sort} dir={dir} onSort={pick} />
                     </>
                   ) : null}
+                  {alertedCol ? (
+                    <SortHead label="แจ้งเตือนเมื่อ" col="alerted" sort={sort} dir={dir} onSort={pick} />
+                  ) : null}
                   <SortHead label="คงเหลือ" col="onhand" sort={sort} dir={dir} onSort={pick} num />
-                  {/* Its own column rather than a second line under คงเหลือ.
-                      Stacked there it was either clutter on thirty rows or, once
-                      hidden until hovered, a control nobody could find. A column
-                      is neither: one number per row, headed, and editable where
-                      it is read. */}
+                  {/* Its own column rather than a second line under คงเหลือ —
+                      stacked there it was clutter on thirty rows. Read-only since
+                      14 ก.ย. 2026 (ร้านบอกว่าดินสอรก) · แก้ที่ลิ้นชักสินค้า */}
                   <th scope="col" className="grid__num">ขั้นต่ำ</th>
                   {money$ ? <th scope="col" className="grid__num">ต้นทุนถัดไป</th> : null}
                   <SortHead label="ราคาขาย" col="price" sort={sort} dir={dir} onSort={pick} num />
@@ -584,8 +637,9 @@ function ProductRowCard({
                     money={money$}
                     lens={lensCols}
                     inlineSpec={!lensCols}
+                    alerted={alertedCol}
                     open={openRow === r.id}
-                    columns={3 + (lensCols ? 2 : 0) + (money$ ? 1 : 0) + 2}
+                    columns={3 + (lensCols ? 2 : 0) + (alertedCol ? 1 : 0) + (money$ ? 1 : 0) + 2}
                     startReceiving={receiveInto === r.id}
                     onToggle={() => {
                       setReceiveInto(null);
@@ -657,6 +711,7 @@ function Row({
   money: showCost,
   lens,
   inlineSpec,
+  alerted,
   open,
   columns,
   startReceiving,
@@ -670,6 +725,8 @@ function Row({
   lens: boolean;
   /** No lens columns on screen, so a lens carries its spec under its name. */
   inlineSpec: boolean;
+  /** มุมมองของที่ถูกเตือน — มีคอลัมน์เวลาที่เตือน */
+  alerted: boolean;
   /** Whether this row's lots are unfolded underneath it. */
   open: boolean;
   /** How wide the fold has to be to sit under the whole row. */
@@ -680,41 +737,11 @@ function Row({
   onOpen: () => void;
   onChanged: () => void;
 }) {
-  const actor = useActor();
-  const toast = useToast();
-  const mayEdit = can.editCatalog(actor);
   const rx = row.isCustomMade;
   const pending = row.lotsMissingCost > 0;
   const tint = pending ? " grid__row--pending" : rx ? " grid__row--rx" : "";
   /** At or below the level its owner set — 0 means "tell me when it runs out" (owner's rule, 2026-09-10). */
   const low = !rx && row.onHand <= row.minStock;
-
-  /**
-   * A figure on this row, corrected where it is read.
-   *
-   * The whole product form is still one click away for the rest of it; this is
-   * for the two fields that change on their own — the price, and the level the
-   * shop wants to keep. Both send the row's own facts and no `attributes`,
-   * which the API reads as "not my subject" and leaves the spec alone.
-   */
-  async function patch(field: Record<string, string>, wrong: string) {
-    try {
-      await api.post(`/products/${row.id}/update`, {
-        sku: row.sku,
-        name: row.name,
-        product_type: row.productType,
-        category_id: row.categoryId,
-        base_selling_price: String(row.basePrice),
-        brand: row.brand,
-        is_custom_made: row.isCustomMade,
-        ...field,
-      });
-      toast.success({ text: `แก้ ${row.sku} แล้ว`, detail: row.name });
-      onChanged();
-    } catch (e) {
-      throw new Error(ApiError.is(e) ? e.message : wrong);
-    }
-  }
 
   return (
     <>
@@ -739,6 +766,9 @@ function Row({
       <ProductCell row={row} spec={inlineSpec} />
       <td>{PRODUCT_TYPE_LABEL[row.productType] ?? row.productType}</td>
       {lens ? <LensCells row={row} /> : null}
+      {alerted ? (
+        <td className="grid__muted grid__when">{dateTime(row.lowStockNotifiedAt)}</td>
+      ) : null}
       <td className="grid__num">
         {rx ? (
           <span className="grid__muted">—</span>
@@ -747,30 +777,14 @@ function Row({
         )}
       </td>
 
-      {/* Clicks on the minimum stay in the cell — the row's own click folds it. */}
-      <td className="grid__num" onClick={(e) => e.stopPropagation()}>
+      {/* ขั้นต่ำกับราคาขายอ่านอย่างเดียว — แก้ที่ลิ้นชักสินค้า (ร้านขอไว้ 14 ก.ย. 2026:
+          ดินสอบนทุกแถวรกไป) · กดแถวกางล็อต แล้ว "รายละเอียดสินค้า · ประวัติ" */}
+      <td className="grid__num">
         {rx ? (
           // Made-to-order goods hold no stock, so there is no level to keep.
           <span className="grid__muted">—</span>
         ) : (
-          <>
-            {/* The level is set where the shortfall is read. Anywhere else and
-                nobody sets it: the moment you notice a drawer is nearly empty
-                is the moment you know what it should hold, and asking someone
-                to open a five-step form for one number is asking them not to. */}
-            <InlineEdit
-              label={`จำนวนขั้นต่ำของ ${row.name}`}
-              // "0" is a real setting now — it means "tell me when it runs out" —
-              // so the cell shows it rather than offering an empty box.
-              value={String(row.minStock)}
-              display={count(row.minStock)}
-              // A dash, because that is what every other column says for a
-              // figure nobody has entered. The pencil beside it is the offer.
-              empty="—"
-              disabled={!mayEdit}
-              onSave={(next) => patch({ min_stock: next }, "บันทึกจำนวนขั้นต่ำไม่สำเร็จ")}
-            />
-          </>
+          count(row.minStock)
         )}
       </td>
       {showCost ? (
@@ -786,21 +800,10 @@ function Row({
           )}
         </td>
       ) : null}
-      {/* Clicks inside the price stay there — the row's own click folds it. */}
-      <td className="grid__num" onClick={(e) => e.stopPropagation()}>
-        {/* 0 is how the column stores "not priced yet" — the price may be left
-            blank, because stock arrives before the price list does. Drawn as an
-            offer to set one rather than as a price of nothing. */}
-        <InlineEdit
-          label={`ราคาขายของ ${row.name}`}
-          value={row.basePrice > 0 ? String(row.basePrice) : ""}
-          display={money(row.basePrice)}
-          empty="ตั้งราคา"
-          disabled={!mayEdit}
-          onSave={(next) =>
-            patch({ base_selling_price: next }, "บันทึกราคาไม่สำเร็จ")
-          }
-        />
+      <td className="grid__num">
+        {/* 0 is how the column stores "not priced yet" — stock arrives before
+            the price list does — so it reads as not set, not as free. */}
+        {row.basePrice > 0 ? money(row.basePrice) : <span className="grid__muted">ยังไม่ตั้ง</span>}
       </td>
       <td>
         {rx ? (

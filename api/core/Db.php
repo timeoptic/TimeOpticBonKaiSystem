@@ -35,6 +35,13 @@ final class Db
             PDO::ATTR_EMULATE_PREPARES   => false,
             PDO::ATTR_STRINGIFY_FETCHES  => false,
         ]);
+        /* ฐานเก็บเวลาไทย — NOW() กับ DEFAULT CURRENT_TIMESTAMP ต้องเป็นนาฬิกาเดียวกับ
+           date() ของ PHP (Asia/Bangkok ใน index.php) · ห้ามพึ่งเวลาของเครื่องฐานข้อมูล:
+           MariaDB บน Hostinger เป็น UTC ทุกค่าที่ฐานเขียนเองจึงเคยช้า 7 ชั่วโมง ขณะที่
+           เครื่องพัฒนาเป็นเวลาไทยจึงไม่มีใครเห็น (12 ก.ย. 2026) · ระบบคลังยืมคอนเนกชัน
+           นี้ผ่าน StockModule ด้วย คำสั่งเดียวกันใน stock/api/src/Db.php จึงไม่ได้ทำงาน
+           บนเว็บจริง ที่นี่คือที่เดียวที่มีผล (api/tests/01-db-timezone.test.php) */
+        self::$pdo->exec("SET SESSION time_zone = '+07:00'");
         return self::$pdo;
     }
 

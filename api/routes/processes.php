@@ -24,6 +24,47 @@ const CASE_PROCESSES = ['reception', 'exam', 'sales', 'payment', 'centering', 'd
  */
 const GATED_PROCESSES = ['delivery'];
 
+/**
+ * ขั้นตอนของเคสใบนี้ ตามประเภทงานของมัน
+ *
+ * เคสตรวจสายตาอย่างเดียวมีแค่ รับลูกค้า → วัดสายตา · พอวัดสายตาเป็นขั้นสุดท้าย
+ * ของรายการ การยืนยันผลวัดจะทำให้ advanceCaseStatus() ไม่เหลือขั้นถัดไป แล้วเคส
+ * ก็ปิดตัวเองผ่าน setStatus() (ซึ่งเซ็ต closed_at ให้เมื่อสถานะปลายทาง is_terminal)
+ * — ไม่ต้องมีปุ่มปิดเคสแยก และไม่ต้องเพิ่มกลไกใหม่
+ *
+ * ประเภทที่ไม่รู้จักคืนครบ 6 ขั้นเสมอ ดู Lookups::CASE_TYPE_PROCESSES
+ */
+function processesFor(?string $caseType): array
+{
+    $key = trim((string) $caseType);
+    return Lookups::CASE_TYPE_PROCESSES[$key] ?? CASE_PROCESSES;
+}
+
+/** ขั้นตอนของเคสจากแถวเคส (อ่าน case_type ให้เอง) */
+function caseProcessList(array $c): array
+{
+    return processesFor($c['case_type'] ?? null);
+}
+
+/**
+ * ขั้นตอนนี้เป็นของเคสใบนี้จริงไหม
+ *
+ * หน้าเว็บไม่แสดงปุ่มของขั้นที่เคสไม่มีอยู่แล้ว แต่ API เป็นด่านจริง — ไม่งั้นลิงก์เก่า
+ * หรือการยิงตรงจะสร้างแถว case_processes ของขั้น "ขาย" ให้เคสตรวจสายตาได้ ทั้งที่
+ * เคสนั้นไม่มีขั้นขาย แล้วกระดานกับรายงานจะนับเคสใบนั้นผิดไปตลอด
+ *
+ * เคสที่ไม่มีอยู่จริงปล่อยผ่านด่านนี้ไป ให้ caseDetail() เป็นคนตอบ 404 ตามเดิม
+ * ลำดับข้อความผิดพลาดจะได้ไม่เปลี่ยนจากของเดิม
+ */
+function assertProcessOfCase(int $caseId, string $process): string
+{
+    $row = Db::get('SELECT case_type FROM cases WHERE id = ?', $caseId);
+    if ($row && !in_array($process, processesFor($row['case_type'] ?? null), true)) {
+        bad("เคสประเภท \"" . ($row['case_type'] ?: 'ไม่ระบุ') . "\" ไม่มีขั้นตอนนี้");
+    }
+    return $process;
+}
+
 function assertProcess(string $p): string
 {
     if (!in_array($p, CASE_PROCESSES, true)) {
@@ -78,11 +119,13 @@ function processMissing(array $c): array
 
     $m['exam'] = $hasFinalRx ? [] : ['ค่าสายตาที่ยืนยันแล้ว'];
 
+    /* ราคาไม่ใช่เงื่อนไขของขั้นขาย — ราคา 0 (เคลม/ไม่คิดเงิน) ยืนยันขายได้เลย ขั้นขายมาก่อนขั้นชำระเงิน
+       จะรอรับเงิน 0 บาทก่อนไม่ได้ (ร้านขอ 15 ก.ย. 2026 เคส 10459) · ขั้นชำระเงินยังต้องมีรายการรับเงิน
+       · เกณฑ์เดียวกับ caseStageMap() */
     $m['sales'] = array_values(array_filter([
         !$order ? 'ออเดอร์' : null,
         $order && empty($order['frame_name']) ? 'กรอบแว่น' : null,
         $order && !orderHasLens($order) ? 'เลนส์' : null,
-        $order && (float) ($order['total_price'] ?? 0) <= 0 ? 'ราคารวม' : null,
     ]));
 
     /* PD อย่างเดียวที่บังคับ — เลนส์สั่งตัดไม่ได้ถ้าไม่รู้ระยะรูม่านตา
@@ -95,9 +138,17 @@ function processMissing(array $c): array
 
     /* วันนัดรับบังคับที่ขั้นนี้ — คนที่จ่ายเงินคือคนที่ถามว่า "มารับได้วันไหน"
        ถ้าปล่อยให้ข้าม เคสจะไปถึงขั้นส่งมอบโดยไม่มีวันนัดให้ใครตามงาน */
+    /* "ยังไม่ชำระ" (รายการ 0 บาท ที่ยังไม่ยกเลิก) = ร้านตกลงให้ไปจ่ายตอนรับของ ยอดค้างจึงไม่กัน
+       ขั้นนี้ · ยกเลิกรายการนั้นเมื่อไหร่ กลับมาต้องจ่ายครบ · เกณฑ์เดียวกับ caseStageMap() */
+    $deferred = false;
+    foreach ($c['payments'] ?? [] as $p) {
+        if (($p['kind'] ?? '') === 'unpaid' && empty($p['cancelled_at'])) {
+            $deferred = true;
+        }
+    }
     $m['payment'] = array_values(array_filter([
         !count($c['payments'] ?? []) ? 'การรับเงิน' : null,
-        $balance !== null && (float) $balance > 0
+        !$deferred && $balance !== null && (float) $balance > 0
             ? 'ยอดคงเหลือ ' . round2($balance) : null,
         empty($order['appointment_date']) ? 'วันนัดรับ' : null,
     ]));
@@ -138,7 +189,7 @@ function processDerived(array $c, array $missing): array
     $order = $c['order'] ?? null;
     $out   = [];
 
-    foreach (CASE_PROCESSES as $p) {
+    foreach (caseProcessList($c) as $p) {
         $done = !count($missing[$p] ?? []);
         $out[$p] = $done ? 'completed' : 'not_started';
     }
@@ -177,7 +228,7 @@ function caseProcessStates(array $c): array
     $derived  = processDerived($c, $missing);
 
     $out = [];
-    foreach (CASE_PROCESSES as $p) {
+    foreach (caseProcessList($c) as $p) {
         $row    = $byId[$p] ?? null;
         $status = $row['status'] ?? $derived[$p];
         $locked = $status === 'not_started'
@@ -252,7 +303,7 @@ function advanceCaseStatus(Tx $q, array $c, array $states): void
     /* same reading as the board: the case is at the furthest step anything has
        happened on — not the first gap, which would drag a case back to ชำระเงิน
        the moment it takes a deposit instead of the full amount */
-    $order = CASE_PROCESSES;
+    $order = caseProcessList($c);
     $furthest = 0;
     foreach ($order as $idx => $p) {
         if (($states[$p]['status'] ?? 'not_started') !== 'not_started') {
@@ -288,7 +339,7 @@ function advanceCaseStatus(Tx $q, array $c, array $states): void
 /** เริ่มทำขั้นตอนนี้ */
 POST('/api/cases/:id/processes/:process/start', function (array $req) {
     $id      = int_or($req['params']['id']);
-    $process = assertProcess((string) $req['params']['process']);
+    $process = assertProcessOfCase($id, assertProcess((string) $req['params']['process']));
     caseDetail($id); // 404s if the case is gone
 
     Db::tx(function (Tx $q) use ($id, $process) {
@@ -303,7 +354,7 @@ POST('/api/cases/:id/processes/:process/start', function (array $req) {
 /** ✓ ยืนยันว่าขั้นตอนนี้เสร็จแล้ว — ตรวจ requirement ก่อนเสมอ */
 POST('/api/cases/:id/processes/:process/complete', function (array $req) {
     $id      = int_or($req['params']['id']);
-    $process = assertProcess((string) $req['params']['process']);
+    $process = assertProcessOfCase($id, assertProcess((string) $req['params']['process']));
     $c       = caseDetail($id);
     $missing = processMissing($c)[$process];
     if ($missing) {
@@ -380,7 +431,7 @@ POST('/api/cases/:id/processes/:process/complete', function (array $req) {
 /** เปิดขั้นตอนที่ยืนยันไปแล้วกลับมาแก้ไข */
 POST('/api/cases/:id/processes/:process/reopen', function (array $req) {
     $id      = int_or($req['params']['id']);
-    $process = assertProcess((string) $req['params']['process']);
+    $process = assertProcessOfCase($id, assertProcess((string) $req['params']['process']));
     caseDetail($id);
     $note = nul($req['body']['note'] ?? null);
 
@@ -406,7 +457,7 @@ POST('/api/cases/:id/processes/:process/reopen', function (array $req) {
 /** ตั้งสถานะพิเศษ (รอ / มีปัญหา / ยังไม่เริ่ม) */
 POST('/api/cases/:id/processes/:process/state', function (array $req) {
     $id      = int_or($req['params']['id']);
-    $process = assertProcess((string) $req['params']['process']);
+    $process = assertProcessOfCase($id, assertProcess((string) $req['params']['process']));
     $status  = str_or($req['body']['status'] ?? null);
     if (!in_array($status, ['not_started', 'in_progress', 'waiting', 'problem'], true)) {
         bad('สถานะไม่ถูกต้อง');
@@ -468,8 +519,7 @@ function caseStageMap(array $caseIds): array
                 MAX(o.frame_name IS NOT NULL AND o.frame_name <> ''
                     AND (COALESCE(o.lens_name, '') <> ''
                          OR COALESCE(o.lens_r_name, '') <> ''
-                         OR COALESCE(o.lens_l_name, '') <> '')
-                    AND o.total_price > 0) AS filled,
+                         OR COALESCE(o.lens_l_name, '') <> '')) AS filled,   -- ไม่ถามราคา: ราคา 0 ยืนยันขายได้ — เกณฑ์เดียวกับ processMissing()
                 SUM(o.total_price - o.discount) AS net,
                 MAX(o.appointment_date IS NOT NULL) AS has_appt,
                 COUNT(*) AS n
@@ -485,7 +535,8 @@ function caseStageMap(array $caseIds): array
         ...$ids
     ));
     $pay = $flat(Db::all(
-        "SELECT case_id, SUM(amount) AS paid, COUNT(*) AS n
+        "SELECT case_id, SUM(amount) AS paid, COUNT(*) AS n, MAX(kind = 'unpaid') AS deferred,
+                MAX(amount = 0 AND kind <> 'unpaid') AS free
            FROM payments WHERE case_id IN ($in) AND cancelled_at IS NULL GROUP BY case_id",
         ...$ids
     ));
@@ -499,7 +550,9 @@ function caseStageMap(array $caseIds): array
         $stored[(int) $r['case_id']][$r['process']] = $r['status'];
     }
     $terminal = $flat(Db::all(
-        "SELECT c.id AS case_id, s.is_terminal
+        /* case_type ติดมากับ query นี้เลย — มันอ่านตาราง cases อยู่แล้ว การเพิ่ม
+           query ใหม่เพื่อถามคอลัมน์เดียวคือการยิงฐานเพิ่มฟรี ๆ ต่อการโหลดกระดานหนึ่งครั้ง */
+        "SELECT c.id AS case_id, c.case_type, s.is_terminal
            FROM cases c JOIN case_statuses s ON s.code = c.status
           WHERE c.id IN ($in)",
         ...$ids
@@ -513,7 +566,8 @@ function caseStageMap(array $caseIds): array
             'reception' => true,                                     // the case exists
             'exam'      => !empty($rx[$id]['has_final']),
             'sales'     => !empty($orders[$id]['filled']),
-            'payment'   => !empty($pay[$id]['n']) && $net > 0 && $paid >= $net - 0.001
+            'payment'   => !empty($pay[$id]['n']) && ($net > 0 || !empty($pay[$id]['free']))   // เคลมไม่คิดเงิน
+                           && ($paid >= $net - 0.001 || !empty($pay[$id]['deferred']))   // "ยังไม่ชำระ"
                            && !empty($orders[$id]['has_appt']),   // เกณฑ์เดียวกับ processMissing()
             'centering' => !empty($centering[$id]['done']),
             'delivery'  => !empty($dlv[$id]['delivered']),
@@ -564,9 +618,15 @@ function caseStageMap(array $caseIds): array
         if ((int) ($terminal[$id]['is_terminal'] ?? 0) === 1) {
             $stage = 'done';
         }
+        /* นับเฉพาะขั้นที่เคสใบนี้มีจริง และบอกจำนวนขั้นทั้งหมดของมันไปด้วย —
+           การ์ดบนกระดานเคยหารด้วยค่าคงที่ 6 เสมอ เคสตรวจสายตาที่ทำครบแล้วจึงอ่านว่า
+           "2/6 ขั้น" เหมือนงานค้าง ทั้งที่จบและปิดไปแล้ว · เคสตัดแว่นได้ครบ 6 ขั้น
+           เหมือนเดิมทุกใบ ตัวเลขจึงไม่เปลี่ยนสำหรับงานหลักของร้าน */
+        $list = processesFor($terminal[$id]['case_type'] ?? null);
         $out[$id] = [
             'process_stage' => $stage,
-            'process_done'  => count(array_filter($done)),
+            'process_done'  => count(array_filter(array_intersect_key($done, array_flip($list)))),
+            'process_total' => count($list),
         ];
     }
     return $out;

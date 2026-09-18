@@ -429,7 +429,7 @@ test('ตัดเสียบันทึกเป็น SCRAP ไม่ใช�
         $sku = skuWithLots(1);
         $doc = 'SCR-TEST-' . random_int(1000, 9999);
 
-        $out = Stock::scrap(issueReq($sku, 1, idem('scrap'), [
+        $out = Stock::scrap(issueReq($sku, 1, idem('scrap'), ['scrap_by' => 'คนทดสอบ',
             'reference_doc' => $doc,
             'note'          => 'ขอบบิ่นตอนเจียร',
         ]));
@@ -447,7 +447,7 @@ test('ของเสียก็ลดสต็อกจริงเหมื�
         $sku = skuWithLots(1);
         $before = Stock::availability($sku)['on_hand'];
 
-        Stock::scrap(issueReq($sku, 1, idem('scrapqty')));
+        Stock::scrap(issueReq($sku, 1, idem('scrapqty'), ['scrap_by' => 'คนทดสอบ']));
 
         eq(Stock::availability($sku)['on_hand'], $before - 1, 'ยอดต้องลด');
     });
@@ -459,7 +459,7 @@ test('ของเสียแยกออกจากต้นทุนขา�
         $doc = 'MIX-' . random_int(1000, 9999);
 
         Stock::issue(issueReq($sku, 1, idem('m1'), ['reference_doc' => $doc . '-OUT']));
-        Stock::scrap(issueReq($sku, 1, idem('m2'), ['reference_doc' => $doc . '-SCR']));
+        Stock::scrap(issueReq($sku, 1, idem('m2'), ['scrap_by' => 'คนทดสอบ', 'reference_doc' => $doc . '-SCR']));
 
         $out   = Db::value('SELECT action_type FROM inventory_logs WHERE reference_doc = ?', [$doc . '-OUT']);
         $scrap = Db::value('SELECT action_type FROM inventory_logs WHERE reference_doc = ?', [$doc . '-SCR']);
@@ -555,7 +555,7 @@ test('หลังตัด ขาย เสีย และคืน สมุ�
         $k = idem('mix-issue');
 
         Stock::issue(issueReq($sku, 1, $k));
-        Stock::scrap(issueReq($sku, 1, idem('mix-scrap')));
+        Stock::scrap(issueReq($sku, 1, idem('mix-scrap'), ['scrap_by' => 'คนทดสอบ']));
         Stock::returnStock([
             'source' => 'test', 'idem_key' => idem('mix-ret'), 'reverses_key' => $k, 'actor_id' => 1,
         ]);

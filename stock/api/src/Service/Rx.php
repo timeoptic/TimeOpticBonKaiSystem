@@ -522,12 +522,13 @@ final class Rx
             'SELECT g.id, g.reference_doc, g.created_at, g.unit_cost, g.notes,
                     p.sku, p.name, a.display_name AS actor_name,
                     r.eye_side, r.sph, r.cyl, r.axis, r.add_power, r.sale_price,
-                    r.branch_id, b.name AS branch_name
+                    r.branch_id, b.name AS branch_name, ' . self::CASE_COLUMNS . '
              FROM inventory_logs g
              JOIN products p ON p.id = g.product_id
              LEFT JOIN rx_orders r ON r.log_id = g.id
              LEFT JOIN admins a ON a.id = g.created_by
                  LEFT JOIN branches b ON b.id = r.branch_id
+             ' . self::CASE_LINK . '
              WHERE g.id = ?',
             [$logId],
         );
@@ -667,6 +668,7 @@ final class Rx
         int $page,
         int $per,
         bool $money = false,
+        array $filter = [],
     ): array
     {
         /* ใบที่ยกเลิกแล้วไม่อยู่ในสมุด — สมุดใบสั่งตอบคำถาม "มีงานอะไรเดินอยู่"
@@ -678,16 +680,38 @@ final class Rx
         if ($pendingOnly) {
             $where[] = 'g.unit_cost IS NULL';
         }
+
+        /* เลนส์มาถึงร้านแล้วหรือยัง (036) — ร้านขอไว้ 14 ก.ย. 2026 */
+        $lens = $filter['lens'] ?? null;
+        if ($lens === 'waiting') {
+            $where[] = 'r.arrived_at IS NULL';
+        } elseif ($lens === 'arrived') {
+            $where[] = 'r.arrived_at IS NOT NULL';
+        }
+
+        /* ช่วงวันที่เปิดใบสั่ง · created_at เป็น DATETIME ขอบบนจึงเป็น "ก่อนเที่ยงคืนของวัน
+           ถัดไป" ไม่ใช่ `<= วันนั้น` ซึ่งทิ้งใบที่เปิดบ่ายวันสุดท้าย · วันที่ที่อ่านไม่ออกไม่ถูกใช้ */
+        $isYmd = static fn(mixed $d): bool => is_string($d) && (bool) preg_match('/^\d{4}-\d{2}-\d{2}$/', $d);
+        if ($isYmd($filter['from'] ?? null)) {
+            $where[] = 'g.created_at >= ?';
+            $args[] = $filter['from'];
+        }
+        if ($isYmd($filter['to'] ?? null)) {
+            $where[] = 'g.created_at < DATE_ADD(?, INTERVAL 1 DAY)';
+            $args[] = $filter['to'];
+        }
+
         if ($q !== null && trim($q) !== '') {
             $like = '%' . trim($q) . '%';
-            $where[] = '(g.reference_doc LIKE ? OR p.sku LIKE ? OR p.name LIKE ? OR g.notes LIKE ?)';
-            array_push($args, $like, $like, $like, $like);
+            $where[] = '(g.reference_doc LIKE ? OR p.sku LIKE ? OR p.name LIKE ? OR g.notes LIKE ? OR cs.case_code LIKE ?)';
+            array_push($args, $like, $like, $like, $like, $like);
         }
         $sql = ' FROM inventory_logs g
                  JOIN products p ON p.id = g.product_id
                  LEFT JOIN rx_orders r ON r.log_id = g.id
                  LEFT JOIN admins a ON a.id = g.created_by
                  LEFT JOIN branches b ON b.id = r.branch_id
+                 ' . self::CASE_LINK . '
                  WHERE ' . implode(' AND ', $where);
 
         $total = (int) Db::value('SELECT COUNT(*)' . $sql, $args);
@@ -698,7 +722,7 @@ final class Rx
             'SELECT g.id, g.reference_doc, g.created_at, g.unit_cost, g.notes,
                     p.sku, p.name, a.display_name AS actor_name,
                     r.eye_side, r.sph, r.cyl, r.axis, r.add_power, r.sale_price,
-                    r.branch_id, b.name AS branch_name' . $sql .
+                    r.branch_id, b.name AS branch_name, ' . self::CASE_COLUMNS . $sql .
             ' ORDER BY g.created_at DESC, g.id DESC LIMIT ' . $per . ' OFFSET ' . (($page - 1) * $per),
             $args,
         );
@@ -749,7 +773,149 @@ final class Rx
             // สาขาที่สั่ง — null คือร้านนี้สั่งเอง ไม่ใช่ "ยังไม่ได้กรอก"
             'branchId'     => isset($r['branch_id']) && $r['branch_id'] !== null ? (int) $r['branch_id'] : null,
             'branch'       => $r['branch_name'] ?? null,
+            /* ข้างตาที่กรอกบนใบสั่งชนะเสมอ · ใบที่เปิดจากหน้าเคสไม่เคยได้ข้างตามา (กล่องสั่งตัด
+               ในหน้าเคสไม่ได้ส่ง) จึงอ่านจากช่องของออเดอร์ที่ผูกใบนี้ไว้แทน — ช่องขวาคือขวา */
+            'eyeSide'      => $r['eye_side'] ?? ($r['link_slot'] ?? null),
+            // เคสหน้าร้านที่เปิดใบนี้ — null คือใบที่เปิดจากหน้าคลังเอง
+            'caseId'       => isset($r['link_case_id']) && $r['link_case_id'] !== null ? (int) $r['link_case_id'] : null,
+            'caseCode'     => $r['case_code'] ?? null,
+            /* พนักงานผู้ขายของเคส — คนละคนกับ `actorName` ซึ่งคือบัญชีที่ล็อกอินอยู่ตอนกดสั่ง
+               (ร้านเจอ 14 ก.ย. 2026: เครื่องหน้าร้านล็อกอินบัญชีคนคลัง ชื่อบนใบสั่งจึงเป็นคนคลัง) */
+            'salesName'    => self::personName($r['emp_name'] ?? null, $r['emp_first'] ?? null, $r['emp_last'] ?? null),
+            // เลนส์มาถึงร้านเมื่อไร และใครติ๊ก (036) — null คือยังไม่มา
+            'arrivedAt'    => $r['arrived_at'] ?? null,
+            'arrivedByName' => $r['arrived_by_name'] ?? null,
         ];
+    }
+
+    /**
+     * ใบสั่งตัดกับช่องเลนส์ในออเดอร์หน้าร้านที่ผูกมันไว้
+     *
+     * หน้าเคสเก็บ id แถว RX_ORDER ไว้ที่ `custom_orders.lens_r_rx_id / lens_l_rx_id` · อ่าน
+     * ทางนี้ทางเดียวได้ทั้งเลขเคส ข้างตา และพนักงานผู้ขาย โดยไม่ต้องให้ใครกรอกซ้ำ · หนึ่งใบ
+     * สั่งอยู่ในช่องเดียวของออเดอร์เดียว — หน้าเคสเปิดใบใหม่ทุกครั้งที่สั่ง ไม่เอาใบเดิมไปผูกซ้ำ
+     */
+    private const CASE_LINK = "LEFT JOIN (
+                     SELECT lens_r_rx_id AS rx_id, 'right' AS slot, case_id, employee_id
+                       FROM custom_orders WHERE lens_r_rx_id IS NOT NULL
+                     UNION ALL
+                     SELECT lens_l_rx_id, 'left', case_id, employee_id
+                       FROM custom_orders WHERE lens_l_rx_id IS NOT NULL
+                 ) lk ON lk.rx_id = g.id
+                 LEFT JOIN cases cs ON cs.id = lk.case_id
+                 LEFT JOIN employees e ON e.id = lk.employee_id
+                 LEFT JOIN admins arr ON arr.id = r.arrived_by";
+
+    private const CASE_COLUMNS = 'lk.slot AS link_slot, lk.case_id AS link_case_id, cs.case_code,
+                    e.employee_name AS emp_name, e.first_name AS emp_first, e.last_name AS emp_last,
+                    r.arrived_at, arr.display_name AS arrived_by_name';
+
+    /** ชื่อพนักงาน — ชื่อที่ร้านเรียกก่อน ไม่มีค่อยใช้ชื่อจริงนามสกุล · ไม่มีอะไรเลยคือ null */
+    private static function personName(?string $name, ?string $first, ?string $last): ?string
+    {
+        $name = trim((string) $name);
+        if ($name !== '') {
+            return $name;
+        }
+        $full = trim(trim((string) $first) . ' ' . trim((string) $last));
+        return $full === '' ? null : $full;
+    }
+
+    /**
+     * ติ๊กว่าเลนส์ของใบสั่งนี้มาถึงร้านแล้ว หรือเอาติ๊กออก — ร้านขอไว้ 14 ก.ย. 2026
+     *
+     * ใครใช้ฝั่งคลังได้ก็ติ๊กได้ (`stock.use`) เพราะคนรับของคือคนที่รู้ · ติ๊กซ้ำไม่ทับเวลาเดิม
+     * — "มาถึงเมื่อไร" คือคำตอบที่หน้าร้านเอาไปนัดลูกค้า · เอาติ๊กออกล้างทั้งเวลาและคนติ๊ก
+     *
+     * `notice` คือข้อความ Telegram เมื่อการติ๊กครั้งนี้ทำให้เลนส์ของเคสมาครบทุกข้าง ·
+     * คืนข้อความ ไม่ได้ส่งเอง — เส้น API เป็นคนส่ง เทสต์จึงไม่ยิงเข้ากลุ่มจริง
+     *
+     * @param list<string> $roles
+     * @return array{id:int,arrivedAt:?string,arrivedByName:?string,notice:?string}
+     */
+    public static function setArrived(int $logId, bool $arrived, array $roles, int $actorId): array
+    {
+        Roles::require(Roles::useStock($roles), 'ติ๊กว่าเลนส์มาถึงแล้ว');
+        self::liveOrder($logId);
+
+        $changed = Db::tx(static function (PDO $pdo) use ($logId, $arrived, $actorId): bool {
+            self::ensureDetail($pdo, $logId);
+            $st = $pdo->prepare('SELECT arrived_at FROM rx_orders WHERE log_id = ? FOR UPDATE');
+            $st->execute([$logId]);
+            $had = !in_array($st->fetchColumn(), [null, false], true);
+            if ($had === $arrived) {
+                return false;
+            }
+            if ($arrived) {
+                $pdo->prepare('UPDATE rx_orders SET arrived_at = NOW(), arrived_by = ? WHERE log_id = ?')
+                    ->execute([$actorId, $logId]);
+            } else {
+                $pdo->prepare('UPDATE rx_orders SET arrived_at = NULL, arrived_by = NULL WHERE log_id = ?')
+                    ->execute([$logId]);
+            }
+            return true;
+        });
+
+        $now = Db::one(
+            'SELECT r.arrived_at, a.display_name FROM rx_orders r LEFT JOIN admins a ON a.id = r.arrived_by WHERE r.log_id = ?',
+            [$logId],
+        );
+
+        return [
+            'id'            => $logId,
+            'arrivedAt'     => $now['arrived_at'] ?? null,
+            'arrivedByName' => $now['display_name'] ?? null,
+            'notice'        => $changed && $arrived ? self::arrivalNotice($logId) : null,
+        ];
+    }
+
+    /**
+     * ข้อความ Telegram เมื่อเลนส์สั่งตัดของเคสมาครบทุกข้าง
+     *
+     * null เมื่อยังไม่ครบ หรือใบนี้ไม่ได้เปิดจากเคส (ไม่มีใครหน้าร้านรออยู่) · ข้างที่ยกเลิก
+     * ใบสั่งไปแล้วไม่นับ · ไม่ใส่ชื่อลูกค้า — ข้อความออกไปอยู่ในกลุ่มแชต เลขเคสพอให้หน้าร้านเปิดหาได้
+     */
+    public static function arrivalNotice(int $logId): ?string
+    {
+        $order = Db::one(
+            'SELECT o.lens_r_rx_id, o.lens_l_rx_id, cs.case_code
+               FROM custom_orders o
+               LEFT JOIN cases cs ON cs.id = o.case_id
+              WHERE o.lens_r_rx_id = ? OR o.lens_l_rx_id = ?
+              ORDER BY o.id DESC LIMIT 1',
+            [$logId, $logId],
+        );
+        if ($order === null || $order['case_code'] === null) {
+            return null;
+        }
+
+        $esc = static fn(string $s): string => htmlspecialchars($s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $lines = [];
+        foreach (['lens_r_rx_id' => 'ขวา (R)', 'lens_l_rx_id' => 'ซ้าย (L)'] as $col => $label) {
+            if ($order[$col] === null) {
+                continue;
+            }
+            $rx = Db::one(
+                'SELECT g.reference_doc, p.name, r.arrived_at, r.cancelled_at
+                   FROM inventory_logs g
+                   JOIN products p ON p.id = g.product_id
+                   LEFT JOIN rx_orders r ON r.log_id = g.id
+                  WHERE g.id = ?',
+                [(int) $order[$col]],
+            );
+            if ($rx === null || $rx['cancelled_at'] !== null) {
+                continue;
+            }
+            if ($rx['arrived_at'] === null) {
+                return null;
+            }
+            $lines[] = sprintf('• %s — %s · %s', $label, $esc((string) $rx['reference_doc']), $esc((string) $rx['name']));
+        }
+        if ($lines === []) {
+            return null;
+        }
+
+        return '<b>เลนส์สั่งตัดมาครบแล้ว</b> — ' . $esc((string) $order['case_code']) . "\n\n" . implode("\n", $lines);
     }
 
     /**

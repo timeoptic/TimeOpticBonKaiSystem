@@ -13,8 +13,8 @@
  */
 import { useState } from 'react';
 import { Picker } from './Picker.jsx';
+import { LensPicker } from './LensPicker.jsx';
 import { Icon } from './Icon.jsx';
-import { StockEmbedModal } from './StockEmbedModal.jsx';
 import { useToast } from './Toast.jsx';
 import { api } from '../lib/apiClient.js';
 
@@ -41,20 +41,22 @@ const stockSub = (r) => [
   r.location || null,
 ].filter(Boolean).join(' · ');
 
+/* ช่องคงเหลือของตารางเลนส์ (LensPicker) — ข้อมูลเดียวกับ stockSub แต่ SKU มีคอลัมน์ของตัวเอง */
+const lensStock = (r) => {
+  if (r.id == null) return { text: 'ยังไม่เคยรับของเข้า', tone: 'new' };
+  const left = Number(r.remaining_qty);
+  const text = [
+    left ? `เหลือ ${r.remaining_qty} ชิ้น` : 'หมดสต็อก',
+    Number(r.lot_count) > 1 ? `${r.lot_count} ล็อต` : null,
+    r.location || null,
+  ].filter(Boolean).join(' · ');
+  return { text, tone: left > 0 ? 'ok' : 'out' };
+};
+
 export function StockPicker({ type, onPick, selectedId = null, picked = null, onClear = null }) {
   const { err } = useToast();
   const [open, setOpen] = useState(false);
-  const [adding, setAdding] = useState(false);
   const [opening, setOpening] = useState(false);
-  /* บังคับให้ Picker โหลดรายการใหม่หลังเพิ่มสินค้า ไม่งั้นของที่เพิ่งลงคลังจะไม่โผล่
-     จนกว่าจะพิมพ์ค้นหาใหม่ */
-  const [listNonce, setListNonce] = useState(0);
-
-  const afterCreate = (row) => {
-    setAdding(false);
-    setListNonce((v) => v + 1);
-    if (row) { setOpen(false); onPick(row); }
-  };
 
   /* ออเดอร์เก็บ id ของล็อต สินค้าที่ยังไม่เคยรับของเข้าจึงต้องให้ฝั่งคลังเปิดล็อตค้างส่ง
      (ยอดศูนย์) ก่อน — ใบเดียวกับที่ยอดติดลบจะไปลงตอนยืนยันการขาย */
@@ -96,45 +98,44 @@ export function StockPicker({ type, onPick, selectedId = null, picked = null, on
   /* บอกวิธีพิมพ์ที่คนขายใช้จริง — พิมพ์หลายคำได้ ("MC 1.6") ไม่ต้องพิมพ์ชื่อ
      สินค้าให้ตรง · ฝั่ง API เป็นคนตัดคำให้ (api/core/StockSearch.php) */
   const placeholder = type === 'Lens'
-    ? 'ค้นหาเลนส์ — เช่น MC 1.6 / Blue 1.6 / ชื่อ / SKU'
+    ? 'ชื่อเลนส์ / ยี่ห้อ / SKU'
     : `ค้นหาสินค้า${type ? ' (' + type + ')' : ''} — ชื่อ / ยี่ห้อ / รุ่น / สี / SKU`;
 
   return (
     <>
-      <Picker
-        key={listNonce}
-        placeholder={placeholder}
-        fetcher={(term) => api.get('/api/stock', {
-          q: term, type: type || undefined, sold: 0, group: 'product', limit: 30,
-        })}
-        label={stockLabel}
-        sub={stockSub}
-        onPick={choose}
-        selectedId={selectedId}
-      />
-      <div className="pick-actions">
-        {/* ของที่เพิ่งมาถึงร้านยังไม่มีใครลงคลัง แต่ลูกค้ายืนรออยู่ — ลงตรงนี้ได้เลย
-            ไม่ต้องทิ้งออเดอร์ที่กรอกค้างไว้ไปเปิดหน้าสต็อก */}
-        <button type="button" className="btn btn-sm btn-light" onClick={() => setAdding(true)}>
-          <Icon name="sparkle" /> ไม่พบสินค้า? เพิ่มใหม่
-        </button>
-        {picked && (
+      {/* เลนส์มีตัวกรอง Coating / SPH / CYL เพิ่ม — มีตัวกรองอยู่ขอ 200 แถว เพราะคือการหา
+          ค่าสายตาเดียวให้ครบทุก index ทุกยี่ห้อ ไม่ใช่ 30 ตัวแรกของ Coating ที่มีเป็นพันรุ่น */}
+      {type === 'Lens' ? (
+        <LensPicker
+          placeholder={placeholder}
+          fetcher={(term, filters) => api.get('/api/stock', {
+            q: term, type, sold: 0, group: 'product',
+            limit: Object.keys(filters).length ? 200 : 30, ...filters,
+          })}
+          label={stockLabel}
+          stock={lensStock}
+          onPick={choose}
+          selectedId={selectedId}
+        />
+      ) : (
+        <Picker
+          placeholder={placeholder}
+          fetcher={(term) => api.get('/api/stock', {
+            q: term, type: type || undefined, sold: 0, group: 'product', limit: 30,
+          })}
+          label={stockLabel}
+          sub={stockSub}
+          onPick={choose}
+          selectedId={selectedId}
+        />
+      )}
+      {/* ปุ่ม "ไม่พบสินค้า? เพิ่มใหม่" ถูกเอาออกตามที่ร้านขอ 17 ก.ย. 2026 — เพิ่มสินค้าเข้าคลังทำที่หน้าสต็อก */}
+      {picked && (
+        <div className="pick-actions">
           <button type="button" className="btn btn-sm btn-light" onClick={() => setOpen(false)}>
             ยกเลิกการเปลี่ยน
           </button>
-        )}
-      </div>
-
-      {/* ฟอร์มตัวจริงของฝั่งคลัง ฝังมาเป็น iframe — ฟอร์มเดียวกับที่หน้ารับของ
-          ใช้ ไม่ใช่ของที่หน้าตาคล้ายกัน · เหตุผลที่ต้องฝังอยู่ใน StockEmbedModal */}
-      {adding && (
-        <StockEmbedModal
-          what="product"
-          type={type || 'Frame'}
-          title={type === 'Lens' ? 'เพิ่มเลนส์เข้าคลัง' : 'เพิ่มสินค้าเข้าคลัง'}
-          onClose={() => setAdding(false)}
-          onProduct={afterCreate}
-        />
+        </div>
       )}
     </>
   );

@@ -146,8 +146,16 @@ export function validateCart(items) {
       errs.push({ key: it.key, message: `${label} (${name}): ราคาติดลบไม่ได้` });
     }
     (it.pos_fields || []).forEach((f) => {
-      if (f.required && !String(it.item_meta?.[f.key] ?? '').trim()) {
+      const v = String(it.item_meta?.[f.key] ?? '').trim();
+      if (f.required && !v) {
         errs.push({ key: it.key, message: `${label} (${name}): ต้องระบุ${f.label || f.key}` });
+        return;
+      }
+      /* ช่องแบบตัวเลือก (เช่น "ข้าง" ของคอนแทคเลนส์): ว่าง/ไม่ว่าง ไม่พอ — ค่าที่ไม่ได้
+         อยู่ในรายการแปลว่าไม่มีใครรู้ว่าลูกค้าได้กล่องข้างไหน ซึ่งเป็นสิ่งเดียวที่ช่องนี้
+         มีไว้ตอบ · ค่าแบบนั้นมาได้จากบิลเก่าที่นิยามช่องเปลี่ยนไปแล้ว หรือจากการแก้ DOM */
+      if (v && f.type === 'choice' && !(f.options || []).some(([code]) => code === v)) {
+        errs.push({ key: it.key, message: `${label} (${name}): ${f.label || f.key}ไม่ถูกต้อง` });
       }
     });
   });

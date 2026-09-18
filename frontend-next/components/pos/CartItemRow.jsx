@@ -61,15 +61,44 @@ export function CartItemRow({ item, bad, onQty, onBump, onPrice, onMeta, onCusto
           ผูกกับแถวนี้แถวเดียว ไม่ใช่ช่องกลางของทั้งใบ */}
       {(item.pos_fields || []).length > 0 && (
         <div className="pos-meta">
-          {item.pos_fields.map((f) => (
-            <label key={f.key}>
-              {f.label}{f.required ? ' *' : ''}
-              <input
-                value={item.item_meta?.[f.key] ?? ''}
-                onChange={(e) => onMeta(f.key, e.target.value)}
-              />
-            </label>
-          ))}
+          {item.pos_fields.map((f) => {
+            /* ช่องแบบตัวเลือกเป็นปุ่ม ไม่ใช่ dropdown — คอนแทคเลนส์ขายแยกข้าง ปุ่มที่
+               เห็นค่าทั้งหมดพร้อมกันกดถูกกว่าบนแท็บเล็ตที่หน้าร้านใช้ และอ่านย้อนได้ว่า
+               เลือกอะไรไว้โดยไม่ต้องกางออกมาดู · กดตัวที่เลือกอยู่ซ้ำ = ล้างค่า เผื่อกดพลาด */
+            if (f.type === 'choice') {
+              const cur = String(item.item_meta?.[f.key] ?? '');
+              return (
+                <div className="pos-meta-choice" key={f.key} role="group" aria-label={f.label}>
+                  <span className="pos-lab">{f.label}{f.required ? ' *' : ''}</span>
+                  <div className="pos-meta-opts">
+                    {(f.options || []).map(([code, text]) => {
+                      const on = cur === code;
+                      return (
+                        <button
+                          type="button"
+                          key={code}
+                          className={`btn btn-sm${on ? '' : ' btn-light'}`}
+                          aria-pressed={on}
+                          onClick={() => onMeta(f.key, on ? '' : code)}
+                        >
+                          {text}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            }
+            return (
+              <label key={f.key}>
+                {f.label}{f.required ? ' *' : ''}
+                <input
+                  value={item.item_meta?.[f.key] ?? ''}
+                  onChange={(e) => onMeta(f.key, e.target.value)}
+                />
+              </label>
+            );
+          })}
         </div>
       )}
     </div>

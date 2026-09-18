@@ -21,6 +21,8 @@
  *
  * ที่มาของค่าแต่ละช่อง — คนละแหล่งกัน ห้ามรวมเป็นแหล่งเดียว:
  *   VA / SPH / CYL / AXIS / ADD   ใบ Final ของเคส (prescriptions.kind='final')
+ *   TestFor                       ใบเดียวกัน ช่อง "ใช้สำหรับ" (prescriptions.test_for = TestFor ของระบบเดิม)
+ *                                 แทนช่อง Type ที่เคยอ่านชนิดเลนส์ของออเดอร์ (ร้านขอ 14 ก.ย. 2026)
  *   PD                            ขั้น "วัด Center" (centerings.r_pd / l_pd)
  *   ราคา / เลนส์ / กรอบ / วันนัดรับ  ออเดอร์ (custom_orders)
  *   Deposit / PayType             ประวัติการรับเงินจริง (payments) ไม่ใช่ช่อง deposit
@@ -36,8 +38,9 @@ import { QueryParamPage } from '../../../../components/QueryParamPage.jsx';
 import { PaperView } from '../../../../components/PaperView.jsx';
 import { Icon } from '../../../../components/Icon.jsx';
 import {
-  addPower, custName, cylPower, dominantEyeLabel, fmtDate, money, rxNum, sphPower,
+  addPower, custName, cylPower, dominantEyeLabel, fmtDate, glassesUseOf, money, rxNum, sphPower,
 } from '../../../../lib/format.js';
+import { measureCells } from '../../../../lib/orderMeasures.js';
 
 const DASH = '—';
 
@@ -157,9 +160,6 @@ const frameLabel = (o) => o?.frame_name
   || [o?.frame_brand, o?.frame_model].filter(Boolean).join(' ')
   || '';
 
-/** ชนิดงาน — ออเดอร์เก่ากรอก lens_type ไว้ ใบใหม่อ่านจากดีไซน์ของเลนส์ที่เลือก */
-const workType = (o) => o?.lens_type || o?.lens_design || '';
-
 /**
  * เลนส์บนสำเนาลูกค้า — เอาแค่สี่อย่างที่ลูกค้าใช้เทียบของได้: ยี่ห้อ รุ่น โค้ตติ้ง ดัชนีหักเห
  *
@@ -168,8 +168,9 @@ const workType = (o) => o?.lens_type || o?.lens_design || '';
  * ตารางค่าสายตาในสำเนาร้านอยู่แล้ว
  *
  * สองแหล่ง เรียงตามความน่าเชื่อ: คอลัมน์ของออเดอร์เองมาก่อน (ออเดอร์เก่ากรอกมือไว้)
- * ไม่มีค่อยถอยไปอ่านจากล็อตสต๊อกที่ผูกไว้ — ยกเว้น "รุ่น" ที่มีอยู่ที่เดียวคือล็อต
- * (products.attributes.model) ตาราง custom_orders ไม่มีคอลัมน์ lens_model
+ * ไม่มีค่อยถอยไปอ่านจากล็อตสต๊อกที่ผูกไว้ — ยกเว้น "รุ่น" (products.attributes.model)
+ * ที่ตาราง custom_orders ไม่มีคอลัมน์: เลนส์สต็อกอ่านจากล็อต ส่วนเลนส์สั่งตัด RX ไม่มีล็อต
+ * API จึงส่ง lens_model ที่อ่านจากสินค้าตาม SKU มาให้ (orderDetail ใน api/routes/orders.php)
  *
  * ช่องไหนว่างก็หายไปทั้งช่อง ไม่ค้างคั่นกลางไว้ให้อ่านสะดุด
  */
@@ -177,7 +178,7 @@ const lensSpec = (o) => {
   const lot = o?.left_lens || o?.right_lens || null;
   return [
     o?.lens_brand || lot?.brand_name || lot?.brand,
-    lot?.model,
+    lot?.model || o?.lens_model,
     o?.lens_coating || lot?.coating,
     o?.lens_index || lot?.lens_index,
   ].map((v) => String(v ?? '').trim()).filter(Boolean).join(' · ');
@@ -279,6 +280,8 @@ function OrderSheet() {
 
   const { o, c, settings } = data;
   const ctr = c?.centering || null;
+  /* PD/FH/A/B/ED/DBL จากขั้นวัด Center — ช่องที่ยังไม่มีค่าว่างไว้ให้ช่างเขียนมือ */
+  const measures = measureCells(ctr, c?.frame_fitting);
   /* ใบ Final ของเคสคือตัวปัจจุบันเสมอ ส่วน o.prescription คือใบที่ผูกไว้ตอนเปิดออเดอร์
      ใบที่ผูกไว้มาก่อน ถ้าไม่มีค่อยไปหยิบใบ final ล่าสุดของเคส */
   const rx = o.prescription
@@ -352,7 +355,7 @@ function OrderSheet() {
             <div className="iv-cust-body">
               <div className="iv-col">
                 <F k="Name" v={name} />
-                <F k="Type" v={workType(o)} />
+                <F k="TestFor" v={glassesUseOf(rx)} />
                 <F k="Frame" v={frameLabel(o)} />
                 <F k="Lens" v={lensSpec(o)} />
               </div>
@@ -418,7 +421,7 @@ function OrderSheet() {
 
             <div className="iv-spec">
               <div className="iv-col">
-                <F k="Type" v={workType(o)} />
+                <F k="TestFor" v={glassesUseOf(rx)} />
                 <F k="Frame" v={frameLabel(o)} />
                 <F k="RightLen" v={o.lens_r_name} />
                 <F k="LeftLen" v={o.lens_l_name} />
@@ -439,7 +442,7 @@ function OrderSheet() {
               ))}
             </div>
 
-            {/* ค่าที่วัดหน้าลูกค้า + ขนาดกรอบ — ตารางช่องว่างให้ช่างกรอกมือ */}
+            {/* ค่าที่วัดหน้าลูกค้า + ขนาดกรอบ — พิมพ์ค่าจากขั้นวัด Center ช่องที่ยังไม่มีค่าเว้นให้กรอกมือ */}
             <table className="iv-meas">
               <thead>
                 <tr>
@@ -452,7 +455,7 @@ function OrderSheet() {
                 </tr>
               </thead>
               <tbody>
-                <tr>{MEASURES.map(([k]) => <td key={k} />)}</tr>
+                <tr>{MEASURES.map(([k]) => <td key={k}>{measures[k]}</td>)}</tr>
               </tbody>
             </table>
 
@@ -612,7 +615,7 @@ const sheetCss = `
 .iv-meas{width:100%;border-collapse:collapse;table-layout:fixed;margin:2.2mm 0 0}
 .iv-meas th,.iv-meas td{border:0.25mm solid var(--rule);text-align:center}
 .iv-meas th{padding:1mm 0.5mm;font-weight:700}
-.iv-meas td{height:8mm}
+.iv-meas td{height:8mm;color:var(--data);font-weight:600;white-space:nowrap}
 .iv-meas-fig{display:flex;align-items:center;justify-content:center;height:5mm}
 .iv-meas .iv-fig{height:4.6mm;width:auto;color:var(--ink)}
 .iv-meas-k{display:block;font-size:8.5pt;letter-spacing:.5px}

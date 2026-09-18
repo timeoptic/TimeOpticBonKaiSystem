@@ -351,6 +351,13 @@ POST('/api/pos/sales', function (array $req) {
             if ($key !== '' && !empty($f['required']) && str_or($meta[$key] ?? null) === '') {
                 bad("รายการที่ $n ($name): ต้องระบุ" . str_or($f['label'] ?? null, $key));
             }
+            /* ช่องแบบตัวเลือก (เช่น "ข้าง" ของคอนแทคเลนส์) รับได้แค่ค่าที่อยู่ใน options
+               หน้าเว็บวาดเป็นปุ่มอยู่แล้ว ด่านนี้กันการยิงตรงหรือหน้าเว็บรุ่นเก่า */
+            $val = str_or($meta[$key] ?? null);
+            if ($key !== '' && ($f['type'] ?? null) === 'choice' && $val !== ''
+                && !in_array($val, array_map(fn($o) => (string) ($o[0] ?? ''), $f['options'] ?? []), true)) {
+                bad("รายการที่ $n ($name): " . str_or($f['label'] ?? null, $key) . " ไม่ถูกต้อง");
+            }
         }
 
         $clean[] = [

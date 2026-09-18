@@ -2189,6 +2189,8 @@ table.doc td.lbl{background:var(--surface-alt);font-weight:700;text-align:left;w
 
 /* ---------------- Eye-exam workspace ---------------- */
 /* เป็น fieldset เพื่อให้ล็อกทั้งแผงได้ทีเดียวตอนยืนยันผลไปแล้ว */
+/* กล่องรูปอยู่นอก fieldset ที่ล็อกหลังยืนยัน จึงแบ่งเป็นสอง fieldset ในตัวครอบเดียว — gap เท่ากันทุกชั้น */
+.exam-ws-wrap{display:flex;flex-direction:column;gap:26px;min-width:0}
 .exam-ws{display:flex;flex-direction:column;gap:26px;border:0;padding:0;margin:0;min-width:0;background:transparent}
 
 .exam-ws[disabled] input,.exam-ws[disabled] .sel-trigger,.exam-ws[disabled] textarea{
@@ -2201,7 +2203,7 @@ table.doc td.lbl{background:var(--surface-alt);font-weight:700;text-align:left;w
    คือหนึ่งเส้นที่ตาต้องข้ามก่อนถึงข้อมูล */
 .ws-section{padding-top:6px}
 
-.exam-ws > .ws-section:first-child{padding-top:0}
+.exam-ws-wrap > .exam-ws:first-child > .ws-section:first-child{padding-top:0}
 
 .ws-head{display:flex;align-items:center;gap:10px;margin-bottom:8px}
 
@@ -3193,43 +3195,93 @@ table.doc td.lbl{background:var(--surface-alt);font-weight:700;text-align:left;w
    floating at the baseline of labelled inputs, so they get their own row
    and read as chips instead. */
 .board-filters{
-  display:flex;flex-direction:column;gap:10px;margin-bottom:14px;
-  padding:12px 14px;background:var(--card);
+  display:flex;flex-direction:column;gap:14px;margin-bottom:14px;
+  padding:16px 18px;background:var(--card);
   border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);
 }
 
-.bf-row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+.bf-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
 
-.bf-row .field{min-width:160px;margin:0}
+/* ป้าย "ค้นหา" ยืนข้างช่อง ไม่ได้ลอยอยู่เหนือช่อง — แถวบนสูงเท่าช่องเดียว */
+.bf-search{
+  display:inline-flex;align-items:center;gap:8px;padding-right:4px;
+  font-size:15px;font-weight:700;color:var(--ink);white-space:nowrap;cursor:pointer;
+}
 
-.bf-row .grow{flex:1;min-width:220px}
+.bf-search .ico{width:20px;height:20px}
 
-.bf-refresh{flex:0 0 auto}
+.bf-search-input{flex:1 1 220px;min-width:0;min-height:44px}
 
-.bf-chips{display:flex;gap:7px;flex-wrap:wrap;align-items:center}
+.bf-refresh{flex:0 0 auto;min-height:44px}
+
+/* ปุ่มล้างตัวกรองในแถวบนมีไว้ให้จอโทรศัพท์ — บนคอมใช้แถบยาวแถวล่าง
+   (สองคลาส ไม่งั้นแพ้ .btn{display:inline-flex} ที่ปุ่มตัวเดียวกันถืออยู่) */
+.board-filters .bf-clear{display:none}
+
+.bf-chips{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 
 /* ── กระดานงาน: ตัวกรองสี่กลุ่ม ────────────────────────────────────────
    ของเดิมคือชิปสี่อันเรียงติดกันในแถวเดียว หน้าตาเหมือนกันหมด ทั้งที่สามอันเป็น
    ตัวกรองเคสและอีกอันเป็นการตั้งค่าหน้าจอ · กดสะสมกันได้จนเหลือศูนย์เคสโดยไม่มี
    อะไรบอกว่าเพราะอะไร
 
-   ป้ายกำกับตัวเล็กเหนือแต่ละกลุ่มคือสิ่งที่ทำให้อ่านออกว่า "เลือกได้อันเดียวใน
-   กลุ่มนี้" — ถูกกว่าการอธิบายด้วยสีหรือกรอบ และบอกด้วยว่าสามกลุ่มแรกใช้ร่วมกัน */
-.bf-groups{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:flex-start}
+   แต่ละกลุ่มเป็นกล่องมีกรอบ มีไอคอนกับชื่อกลุ่มกำกับ — อ่านออกว่า "เลือกได้อันเดียว
+   ในกล่องนี้" และกล่องยืดเต็มแถวร่วมกัน ไม่เหลือหางว่างท้ายแถว */
+/* ขนาดทุกตัวข้างล่าง (ช่องไฟกล่อง ชิป ช่องวันที่ ช่องขั้นตอน) ตั้งให้สี่กล่องลงแถวเดียว
+   บนจอ 1920 ที่มีแถบข้างกับแถบเลื่อน — เหลือที่ราว 1,455px ใช้จริงราว 1,420px
+   · ขยายตัวไหนเพิ่มอีกนิด กล่อง "ช่วงวันที่" จะตกไปอยู่แถวของตัวเองคนเดียว */
+.bf-groups{display:flex;flex-wrap:wrap;gap:10px;align-items:stretch}
 
-.bf-group{display:flex;flex-direction:column;gap:6px;min-width:0}
-
-.bf-legend{
-  font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
-  color:var(--ink-faint);
+.bf-group{
+  display:flex;flex-direction:column;gap:10px;min-width:0;flex:1 1 auto;
+  padding:12px;border:1px solid var(--line);border-radius:var(--radius);
 }
 
-/* "การแสดงผล" ไปชิดขวา — มันเปลี่ยนวิธีดู ไม่ใช่ดูอะไร เหมือนที่ .bf-view เคยทำ */
-.bf-group-display{margin-left:auto;align-items:flex-end}
+.bf-legend{
+  display:inline-flex;align-items:center;gap:7px;
+  font-size:13.5px;font-weight:700;color:var(--ink);white-space:nowrap;
+}
 
-.bf-controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.bf-legend .ico{width:17px;height:17px;color:var(--ink-soft)}
 
-.bf-stage{min-width:150px}
+.bf-group .chip{min-height:40px;padding:6px 12px}
+
+.bf-group .seg.seg-sm button{min-height:34px;padding:5px 10px}
+
+.bf-group .sel-trigger,.bf-group .datef-input{min-height:42px}
+
+.bf-stage{min-width:140px}
+
+/* การแสดงผล — ป้ายมีไว้ในแผ่นของจอโทรศัพท์ บนคอมมันยืนข้างปุ่มล้างตัวกรอง ไม่ต้องมีชื่อ */
+.bf-display{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+
+.bf-display > .bf-legend{display:none}
+
+@media (min-width:640px){
+  /* แถวล่าง: ปุ่มล้างตัวกรองยาวเต็มที่ | เส้นตั้ง | สวิตช์ + การ์ด/ลิสต์
+     ปุ่มล้างคือปุ่มใน .fb-foot ของ FilterSheet ซึ่งบนคอมเป็น display:contents —
+     กริดจึงวางมันไว้แถวเดียวกับ .bf-display ได้โดยไม่ต้องวาดปุ่มซ้ำอีกตัว */
+  .board-filters{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:0}
+  .board-filters > .bf-row,.board-filters .bf-groups{grid-column:1 / -1}
+  .board-filters .bf-groups{padding-bottom:16px;border-bottom:1px solid var(--line-soft)}
+  .board-filters .fb-foot > .btn-light{
+    grid-row:3;grid-column:1;justify-content:center;min-height:46px;
+    border-radius:var(--radius-pill);
+  }
+  .board-filters .bf-display{
+    grid-row:3;grid-column:2;margin-left:18px;padding-left:18px;
+    border-left:1px solid var(--line-soft);
+  }
+}
+
+/* ช่วงวันที่ — ชนิดวัน + ตั้งแต่ – ถึง อยู่แถวเดียวกัน · ช่องวันที่ถูกห่อด้วย .datef
+   ขนาดจึงต้องตั้งที่กล่องห่อ (เหตุผลเดียวกับ .rf-date .datef) */
+.bf-dates{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.bf-dates .bf-date-field{min-width:118px}
+.bf-dates .datef{width:120px}
+/* ปุ่มปฏิทินย่อลงเท่าของหน้ารายงาน (.rf-date) — 120px ยังพอให้ "14/09/2569" ไม่ลอดใต้ไอคอน */
+.bf-dates .datef > .datef-input{width:100%;padding-right:30px}
+.bf-dates .datef .datef-open{width:26px}
 
 /* ซ่อนขั้นที่ว่าง — สวิตช์ ไม่ใช่ชิป เพราะมันไม่ได้กรองเคสออก มันซ่อนคอลัมน์
    คนที่เคยกดชิปนี้แล้วนึกว่าเคสหายไปเป็นเหตุผลทั้งหมดที่มันย้ายมาอยู่ตรงนี้ */
@@ -3256,10 +3308,6 @@ table.doc td.lbl{background:var(--surface-alt);font-weight:700;text-align:left;w
 .bf-switch input:checked + .track::after{transform:translateX(14px)}
 
 .bf-switch input:focus-visible + .track{outline:2px solid var(--accent);outline-offset:2px}
-
-@media (max-width:820px),(pointer:coarse){
-  .bf-group-display{margin-left:0}
-}
 
 /* สลับการ์ด/ลิสต์ — ตัวเดียวกับ .seg ด้านบน ย่อให้สูงเท่าชิปที่มันยืนแถวเดียวกัน
    และดันไปชิดขวา เพราะมันเปลี่ยน "วิธีดู" ไม่ใช่ "ดูอะไร" เหมือนชิปทางซ้าย */
@@ -3577,7 +3625,10 @@ table.doc td.lbl{background:var(--surface-alt);font-weight:700;text-align:left;w
 
 .search-field input{padding-left:39px;border-radius:999px}
 
-.filter-bar .sel{width:auto;min-width:186px}
+/* `:has(>.sel-trigger)` = กล่อง <Select> เท่านั้น — คลาส `sel` ยังเป็นสถานะ "ตัวที่เลือกอยู่"
+   ของวันในปฏิทิน ตัวเลือกเวลา และรายการตัวเลือกด้วย · ไม่เจาะจงแล้ววันที่เลือกในปฏิทินที่อยู่
+   ในแถบนี้โดน min-width ไปด้วย คอลัมน์ถ่างจนปฏิทินเบี้ยว (14 ก.ย. 2026 · lib/__tests__/selScope.test.js) */
+.filter-bar .sel:has(>.sel-trigger){width:auto;min-width:186px}
 .filter-bar .sel-trigger{border-radius:999px}
 
 .filter-bar .btn{margin-left:auto}
@@ -3644,7 +3695,7 @@ table.grid.data-grid tr.row-danger td:first-child{border-left-color:var(--danger
 
 .pager .pg-per{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:500;color:var(--ink-faint)}
 
-.pager .pg-per .sel{width:auto;min-width:72px}
+.pager .pg-per .sel:has(>.sel-trigger){width:auto;min-width:72px}
 .pager .pg-per .sel-trigger{padding:6px 22px 6px 10px;border-radius:10px;font-size:13px}
 .pager .pg-per .sel-caret{right:8px}
 
@@ -3658,7 +3709,7 @@ table.grid.data-grid tr.row-danger td:first-child{border-left-color:var(--danger
   .stat-ic{width:38px;height:38px;flex-basis:38px;border-radius:12px}
   .stat-value b{font-size:24px}
   .filter-bar{padding:10px;gap:8px}
-  .filter-bar .sel{min-width:100%}
+  .filter-bar .sel:has(>.sel-trigger){min-width:100%}
   .filter-bar .btn{margin-left:0;width:100%;justify-content:center}
   .pager{justify-content:center;gap:8px}
   .pager .pages{margin:0}
@@ -4707,7 +4758,7 @@ html,body{overflow-x:clip}
   }
 
   .fb-fields > *{width:100%}
-  .fb-fields .sel{width:100%;min-width:0}
+  .fb-fields .sel:has(>.sel-trigger){width:100%;min-width:0}
   .fb-fields .sel-trigger{min-height:46px;font-size:16px}
   .fb-fields input,.fb-fields select,.fb-fields textarea{min-height:46px;font-size:16px}
 
@@ -4738,7 +4789,7 @@ html,body{overflow-x:clip}
 
   /* กล่องเลือกที่นี่ไม่ต้องกว้าง 186px เท่าแถบค้นหาของหน้าอื่น — ค่ายาวสุดคือ
      "Main Process" ซึ่งพอดี 126px แล้วเหลือที่ให้ทั้งแถบอยู่บรรทัดเดียว */
-  .report-filter .sel{min-width:126px}
+  .report-filter .sel:has(>.sel-trigger){min-width:126px}
 
   /* ป้ายหน้าช่อง ("ช่องทาง" / "สถานะงาน") ห้ามตัดเป็นสองบรรทัด — พอตัดแล้ว
      แถบสูงขึ้นทั้งแถบเพราะทุกอย่างจัดกึ่งกลางตามตัวที่สูงที่สุด */
@@ -4881,10 +4932,18 @@ html,body{overflow-x:clip}
 @media (max-width:639.98px){
   /* ในแผ่น กลุ่มเรียงลงมาทีละกลุ่มเต็มความกว้าง ไม่ใช่ห่อบรรทัดปนกัน */
   .fb-fields .bf-groups{flex-direction:column;flex-wrap:nowrap;gap:14px}
-  .fb-fields .bf-group{width:100%;align-items:stretch;gap:5px}
-  .fb-fields .bf-group-display{margin-left:0;align-items:stretch}
+  .fb-fields .bf-group{width:100%;align-items:stretch;gap:5px;padding:0;border:0}
+  .fb-fields .bf-display{flex-direction:column;align-items:stretch;gap:8px}
+  .fb-fields .bf-display > .bf-legend{display:inline-flex}
   .fb-fields .bf-stage{width:100%;min-width:0}
   .fb-fields .bf-stage .sel-trigger{min-height:44px;font-size:16px}
+  /* ชนิดวันเต็มแถว แล้ว "ตั้งแต่ | ถึง" ครึ่งละช่อง — ขีดคั่นกลางไม่มีที่ยืนในตาราง */
+  .fb-fields .bf-dates{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .fb-fields .bf-dates .bf-date-field{grid-column:1 / -1;width:100%;min-width:0}
+  .fb-fields .bf-dates .bf-date-field .sel-trigger{min-height:44px;font-size:16px}
+  .fb-fields .bf-dates .datef{width:100%}
+  .fb-fields .bf-dates .datef > .datef-input{min-height:46px;font-size:16px}
+  .fb-fields .bf-dates-sep{display:none}
 
   /* ปุ่มกลุ่มแบบแบ่งช่อง (ทั้งหมด / SightFirst / ลูกค้าร้าน) กินเต็มความกว้าง
      แต่แบ่งช่องตามความยาวชื่อ ไม่ใช่หารสามเท่า ๆ กัน — หารเท่ากันแล้วช่อง
@@ -4904,8 +4963,6 @@ html,body{overflow-x:clip}
   .fb-fields .bf-chips{display:grid;grid-template-columns:1fr 1fr;gap:8px}
   .fb-fields .bf-chips .chip{min-height:40px;justify-content:center;padding:6px 10px}
 
-  .fb-fields .bf-controls{display:flex;flex-direction:column;gap:8px;align-items:stretch}
-
   /* สวิตช์กินเต็มแถวเหมือนช่อง "ขั้นตอน" ที่อยู่เหนือมัน — ชื่ออยู่ซ้าย ตัวสวิตช์
      ชิดขวา ไม่ใช่กองอยู่ซ้ายทั้งคู่แล้วปล่อยครึ่งแถวขวาว่าง (row-reverse เพราะ
      ในมาร์กอัป track มาก่อนตัวหนังสือ) */
@@ -4920,9 +4977,11 @@ html,body{overflow-x:clip}
   .fb-fields .bf-switch .track{background:var(--ink-dim)}
 
   /* แถวบนเหลือช่องค้นหาเต็มความกว้าง แล้วปุ่มเรียงกันแถวล่าง */
+  .board-filters{gap:10px;padding:12px 14px}
   .board-filters .bf-row{gap:8px}
-  .board-filters .bf-row .field.grow{flex:1 1 100%;min-width:0}
-  .board-filters .bf-row .field.grow input{min-height:46px}
+  .board-filters .bf-search{display:none}
+  .board-filters .bf-search-input{flex:1 1 100%;min-height:46px;font-size:16px}
+  .board-filters .bf-clear{display:inline-flex}
   .board-filters .bf-refresh{flex:1 1 auto;justify-content:center;min-height:44px}
   .board-filters .fb-toggle{flex:1 1 auto;justify-content:center}
 }

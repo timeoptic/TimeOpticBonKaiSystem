@@ -106,18 +106,18 @@ final class Reports
         );
 
         $people = Db::all(
-            "SELECT COALESCE(who.display_name, a.display_name) AS name,
+            "SELECT COALESCE(NULLIF(g.scrap_by, ''), who.display_name, a.display_name) AS name,
                     COALESCE(SUM(ABS(g.quantity)), 0) AS qty,
                     COUNT(*) AS rows_n
              FROM inventory_logs g{$joins}
              LEFT JOIN admins who ON who.id = g.issued_to_admin_id
              LEFT JOIN admins a ON a.id = g.created_by
              WHERE {$window} AND g.action_type IN ('OUT','SCRAP')
-               AND COALESCE(who.display_name, a.display_name) IS NOT NULL
+               AND COALESCE(NULLIF(g.scrap_by, ''), who.display_name, a.display_name) IS NOT NULL
              /* จัดกลุ่มด้วยนิพจน์เต็ม ไม่ใช่ชื่อ alias — ตาราง products ที่ join
                 เข้ามาให้ตัวกรองก็มีคอลัมน์ชื่อ name เหมือนกัน และ GROUP BY name
                 จะไปเกาะคอลัมน์นั้นแทน แล้วคนคนเดียวจะแตกเป็นหลายแถวตามชื่อสินค้า */
-             GROUP BY COALESCE(who.display_name, a.display_name)
+             GROUP BY COALESCE(NULLIF(g.scrap_by, ''), who.display_name, a.display_name)
              ORDER BY qty DESC
              LIMIT 10",
             $args,
@@ -131,19 +131,21 @@ final class Reports
          * อ่านคนละความหมาย รวมเป็นตัวเลขเดียวแล้วคนขายเก่งจะขึ้นหัวตารางเดียว
          * กับคนทำแตกบ่อย
          *
-         * ตกลงชื่อที่ `issued_to_admin_id` เท่านั้น ไม่ถอยไปใช้ `created_by`
-         * เหมือนตารางข้างบน — คนคีย์ไม่ใช่คนทำเสีย และการเดาแทนตรงนี้คือการ
-         * กล่าวหาคนผิด · แถวที่ยังไม่มีใครถูกระบุจะไม่ขึ้นในตารางนี้
+         * ชื่อมาจาก `scrap_by` ที่พิมพ์ตอนตัด (034) ก่อน แล้วค่อยตกไปที่บัญชีใน
+         * `issued_to_admin_id` ของแถวเก่าที่ระบุคนทำไว้แบบเดิม · ไม่ถอยไปใช้
+         * `created_by` เหมือนตารางข้างบน — คนคีย์ไม่ใช่คนทำเสีย และการเดาแทนตรงนี้
+         * คือการกล่าวหาคนผิด · แถวที่ไม่มีทั้งสองอย่างจะไม่ขึ้นในตารางนี้
          */
         $scrapPeople = Db::all(
-            "SELECT who.display_name AS name,
+            "SELECT COALESCE(NULLIF(g.scrap_by, ''), who.display_name) AS name,
                     COALESCE(SUM(ABS(g.quantity)), 0) AS qty,
                     COALESCE(SUM(ABS(g.quantity) * g.unit_cost), 0) AS cost,
                     COUNT(*) AS rows_n
              FROM inventory_logs g{$joins}
-             JOIN admins who ON who.id = g.issued_to_admin_id
+             LEFT JOIN admins who ON who.id = g.issued_to_admin_id
              WHERE {$window} AND g.action_type = 'SCRAP'
-             GROUP BY who.id, who.display_name
+               AND COALESCE(NULLIF(g.scrap_by, ''), who.display_name) IS NOT NULL
+             GROUP BY COALESCE(NULLIF(g.scrap_by, ''), who.display_name)
              ORDER BY qty DESC, rows_n DESC
              LIMIT 10",
             $args,

@@ -31,6 +31,9 @@ final class Settlement
 {
     public const PER_PAGE = 25;
 
+    /** เพดานของ `all` — ทุกใบในครั้งเดียวสำหรับไฟล์ Excel */
+    public const EXPORT_MAX = 10000;
+
     private const STATUS_LABEL = [
         'pending'     => 'ค้างรับ',
         'settled'     => 'รับเงินแล้ว',
@@ -75,7 +78,27 @@ final class Settlement
             array_push($args, $like, $like, $like, $like);
         }
 
+        // ช่วงวันที่เบิก — `< ถึง + 1 วัน` ไม่ใช่ `<= ถึง 23:59:59` ซึ่งทำใบที่เบิก
+        // วินาทีสุดท้ายของวันหล่นหาย · วันที่ผิดรูปแบบไม่ถูกใช้ ดีกว่าตอบ error ให้
+        // ลิงก์ที่พิมพ์ผิดแล้วหน้าว่างทั้งหน้า
+        if (self::isDay($filter['from'] ?? null)) {
+            $where[] = 'i.issued_at >= ?';
+            $args[] = $filter['from'];
+        }
+        if (self::isDay($filter['to'] ?? null)) {
+            $where[] = 'i.issued_at < DATE_ADD(?, INTERVAL 1 DAY)';
+            $args[] = $filter['to'];
+        }
+
         return [$where, $args];
+    }
+
+    /** 'YYYY-MM-DD' ที่เป็นวันที่มีจริง */
+    private static function isDay(mixed $v): bool
+    {
+        return is_string($v)
+            && preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $v, $m) === 1
+            && checkdate((int) $m[2], (int) $m[3], (int) $m[1]);
     }
 
     public static function list(array $filter, array $roles): array
@@ -100,8 +123,13 @@ final class Settlement
             $args,
         );
 
-        $page = self::page($filter['page'] ?? 1, $total);
-        $offset = ($page - 1) * self::PER_PAGE;
+        /* `all` = ไฟล์ Excel ขอทุกใบที่ตรงกับตัวกรองในครั้งเดียว — ไฟล์ที่มีแค่ 25 แถว
+           ของหน้าที่เปิดอยู่คือไฟล์ที่ขาดโดยไม่มีอะไรบอก · มีเพดานกันคำขอที่ลากทั้ง
+           ตารางไม่รู้จบ ซึ่งร้านนี้ยังห่างจากตัวเลขนั้นมาก */
+        $all = !empty($filter['all']);
+        $per = $all ? max(1, min($total, self::EXPORT_MAX)) : self::PER_PAGE;
+        $page = $all ? 1 : self::page($filter['page'] ?? 1, $total);
+        $offset = ($page - 1) * $per;
 
         // Anything still owed sorts to the top: this screen exists to get money
         // collected, and history is only there to check against.
@@ -116,14 +144,14 @@ final class Settlement
              WHERE {$clause}
              ORDER BY " . self::order($filter['sort'] ?? null, $filter['dir'] ?? null) . "
              LIMIT ? OFFSET ?",
-            [...$args, self::PER_PAGE, $offset],
+            [...$args, $per, $offset],
         );
 
         return [
             'rows'    => array_map(self::shape(...), $rows),
             'total'   => $total,
             'page'    => $page,
-            'perPage' => self::PER_PAGE,
+            'perPage' => $per,
         ];
     }
 

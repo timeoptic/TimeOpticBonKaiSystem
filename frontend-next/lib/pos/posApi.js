@@ -10,7 +10,7 @@ import { api } from '../apiClient.js';
 /** ช่องทางชำระที่ API รับ — ค่าต้องตรงกับ POS_METHODS ใน api/routes/pos.php */
 export const PAY_METHODS = [
   ['cash', 'เงินสด'],
-  ['transfer', 'โอนเงิน'],
+  ['transfer', 'BBL'], // ร้านรับโอนเข้าบัญชีกรุงเทพบัญชีเดียว — ค่าที่เก็บยังเป็น transfer
   ['credit', 'บัตรเครดิต'],
   ['thungngern', 'ถุงเงิน'],
 ];

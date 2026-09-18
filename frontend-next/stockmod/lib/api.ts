@@ -220,6 +220,11 @@ export type ProductRow = {
   stockValue: number | null;
   lotsMissingCost: number;
   nextCost: number | null;
+  /**
+   * เตือนต่ำกว่าขั้นต่ำเข้า Telegram ไปแล้วเมื่อไร — null คือยังไม่ได้เตือน หรือของกลับขึ้น
+   * ถึงขั้นต่ำแล้ว · เวลาไทยเสมอ (แถวเก่าที่ลงเป็น UTC ถูกแปลงให้แล้วที่ API)
+   */
+  lowStockNotifiedAt: string | null;
 };
 
 export type LotRow = {
@@ -254,6 +259,12 @@ export type MovementRow = {
   /** Who took the stock — regularly not the same person as `actorName`. */
   issuedToId: number | null;
   issuedToName: string | null;
+  /** ชื่อคนที่ทำของเสียที่พิมพ์ไว้ตอนตัด — เฉพาะแถว SCRAP · ไม่ใช่บัญชีผู้ใช้ */
+  scrapBy: string | null;
+  /** แถวจ่ายออกนี้ถูกยกเลิกและคืนของไปแล้ว */
+  returned: boolean;
+  /** เคสหน้าร้านที่ตัดของรายการนี้ — แก้ที่หน้าเคส ไม่ใช่ที่คลัง */
+  caseId: number | null;
   /** Set only when another branch took it, which makes the row a receivable. */
   branchIssueId: number | null;
   branchName: string | null;
@@ -351,6 +362,14 @@ export type RxOrderRow = {
   /** สาขาที่สั่งใบนี้ — null คือร้านนี้สั่งเอง ไม่ใช่ "ยังไม่ได้กรอก" */
   branchId: number | null;
   branch: string | null;
+  /** เคสหน้าร้านที่เปิดใบนี้ — null คือใบที่เปิดจากหน้าคลังเอง */
+  caseId: number | null;
+  caseCode: string | null;
+  /** พนักงานผู้ขายของเคส — คนละคนกับ `actorName` (บัญชีที่ล็อกอินตอนกดสั่ง) */
+  salesName: string | null;
+  /** เลนส์มาถึงร้านเมื่อไร — null คือยังไม่มา */
+  arrivedAt: string | null;
+  arrivedByName: string | null;
 };
 
 /**

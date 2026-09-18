@@ -229,28 +229,7 @@ GET('/api/reports/pos', function (array $req) {
  */
 GET('/api/reports/payments', function (array $req) {
     $r        = SalesReport::range($req['query']);
-    $receipts = SalesReport::receipts($r['from'], $r['to'], $r['channel'], $r['group']);
-
-    $byMethod  = [];
-    $byChannel = ['main' => 0.0, 'pos' => 0.0];
-    $total     = 0.0;
-    foreach ($receipts as $p) {
-        $m = $p['method'];
-        if (!isset($byMethod[$m])) {
-            $byMethod[$m] = ['method' => $m, 'amount' => 0.0, 'count' => 0];
-        }
-        $byMethod[$m]['amount'] += $p['amount'];
-        $byMethod[$m]['count']++;
-        $byChannel[$p['channel']] += $p['amount'];
-        $total += $p['amount'];
-    }
-    foreach ($byMethod as &$m) {
-        $m['amount'] = round2($m['amount']);
-        $m['share']  = $total > 0 ? round($m['amount'] / $total * 100, 1) : 0;
-    }
-    unset($m);
-    $methods = array_values($byMethod);
-    usort($methods, fn($a, $b) => $b['amount'] <=> $a['amount']);
+    $receipts = SalesReport::receipts($r['from'], $r['to'], $r['channel'], $r['group'], $r['status']);
 
     /* บิลที่ผ่อนอยู่ — จ่ายมาแล้วบางส่วน ยังไม่ครบ นับจากบิลที่เปิดในช่วงนี้ */
     $main = SalesReport::wantsMain($r['channel']) ? SalesReport::mainBills($r['from'], $r['to'], $r['status'], $r['group']) : [];
@@ -266,11 +245,8 @@ GET('/api/reports/payments', function (array $req) {
     $inst['balance'] = round2($inst['balance']);
     $inst['paid']    = round2($inst['paid']);
 
-    return reportMeta($r) + [
-        'total'       => round2($total),
-        'count'       => count($receipts),
-        'by_method'   => $methods,
-        'by_channel'  => ['main' => round2($byChannel['main']), 'pos' => round2($byChannel['pos'])],
+    /* total · count · by_method · by_channel มาจากตัวเดียวกับที่ไฟล์ Excel ใช้ */
+    return reportMeta($r) + SalesReport::receiptSummary($receipts) + [
         'installment' => $inst,
         'daily'       => (function () use ($r, $receipts) {
             /* รับเงินไม่ใช่บิล จึงยืมโครง daily() ไม่ได้ตรง ๆ — ห่อให้หน้าตา
@@ -282,6 +258,18 @@ GET('/api/reports/payments', function (array $req) {
             return SalesReport::daily($r['from'], $r['to'], ['amount' => [$asBills, 'paid_at']]);
         })(),
     ];
+});
+
+/**
+ * รายละเอียดรายการรับเงิน — ตารางใต้กราฟของหน้าการรับเงิน หนึ่งแถวต่อเงินหนึ่งก้อน
+ *
+ * แยกเส้นจาก `/api/reports/payments` ให้ Dashboard ไม่ต้องรอตารางที่ช่วงหลายปีมีเป็น
+ * หมื่นแถว และเส้นเดิมไม่ถูกแตะเลย · ตัวกรองชุดเดียวกัน อ่านเงินจาก receipts() ตัวเดียวกัน
+ * ยอดท้ายตารางจึงเท่ากับ "รับเงินรวม" ทุกบาท ดู `PaymentExport::transactions()`
+ */
+GET('/api/reports/payments/transactions', function (array $req) {
+    $r = SalesReport::range($req['query']);
+    return reportMeta($r) + PaymentExport::transactions($r['from'], $r['to'], $r['channel'], $r['status'], $r['group']);
 });
 
 /**
@@ -626,14 +614,35 @@ GET('/api/reports/channels', function (array $req) {
  * ที่ส่งไฟล์แนบใช้วิธีเดียวกัน)
  */
 GET('/api/reports/export.xlsx', function (array $req) {
-    $r     = SalesReport::range($req['query']);
-    $bytes = SalesExport::workbook($r['from'], $r['to'], $r['channel'], $r['status'], $r['group'])->toBytes();
-    $name  = SalesExport::fileName($r['from'], $r['to'], $r['group']);
+    $r = SalesReport::range($req['query']);
+    sendXlsx(
+        SalesExport::workbook($r['from'], $r['to'], $r['channel'], $r['status'], $r['group'])->toBytes(),
+        SalesExport::fileName($r['from'], $r['to'], $r['group']),
+        'sales-report-' . $r['from'] . '_' . $r['to'] . '.xlsx'
+    );
+});
 
+/**
+ * ส่งออกหน้าการรับเงินเป็นไฟล์ Excel — ชีทสรุป กับชีทรายการรับเงินทีละครั้ง
+ *
+ * ตัวกรองชุดเดียวกับ `/api/reports/payments` ทุกตัว (วันที่ · ช่องทาง · สถานะงาน ·
+ * ประเภทลูกค้า) — ไฟล์ที่ได้คือสิ่งที่อยู่บนหน้าจอตอนกดปุ่ม ดู `PaymentExport`
+ */
+GET('/api/reports/payments.xlsx', function (array $req) {
+    $r = SalesReport::range($req['query']);
+    sendXlsx(
+        PaymentExport::workbook($r['from'], $r['to'], $r['channel'], $r['status'], $r['group'])->toBytes(),
+        PaymentExport::fileName($r['from'], $r['to'], $r['group']),
+        'payment-report-' . $r['from'] . '_' . $r['to'] . '.xlsx'
+    );
+});
+
+/** ส่งไบต์ของไฟล์ .xlsx ออกไปพร้อมชื่อไฟล์ แล้วจบคำขอตรงนี้ (เหตุผลที่ต้อง exit อยู่บนเส้น export.xlsx) */
+function sendXlsx(string $bytes, string $name, string $ascii): never
+{
     /* ชื่อไฟล์ภาษาไทยต้องส่งเป็น filename* ตาม RFC 5987 · filename= ธรรมดาที่มี
        ไบต์นอก ASCII เบราว์เซอร์แต่ละตัวเดาการเข้ารหัสคนละแบบ บางตัวได้ชื่อเป็น
        ขยะ · ใส่ชื่อสำรองแบบ ASCII ไว้ให้ตัวที่ยังไม่รู้จัก filename* ด้วย */
-    $ascii = 'sales-report-' . $r['from'] . '_' . $r['to'] . '.xlsx';
     header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     header(sprintf(
         "Content-Disposition: attachment; filename=\"%s\"; filename*=UTF-8''%s",
@@ -647,4 +656,4 @@ GET('/api/reports/export.xlsx', function (array $req) {
     header('Cache-Control: no-store');
     echo $bytes;
     exit;
-});
+}

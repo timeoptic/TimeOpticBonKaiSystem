@@ -22,7 +22,7 @@ import {
 } from '../../../../../components/ui.jsx';
 import { EmployeeSelect, ListSelect } from '../../../../../components/Selects.jsx';
 import { custName, fmtDate } from '../../../../../lib/format.js';
-import { birthWithAge } from '../../../../../lib/customerAge.js';
+import { birthOrAge } from '../../../../../lib/customerAge.js';
 import { emptyFields, missingText } from '../../../../../lib/customerFill.js';
 import { Icon } from '../../../../../components/Icon.jsx';
 import { CustomerFillDialog } from './CustomerFillDialog.jsx';
@@ -64,8 +64,22 @@ export function ReceptionPanel({ c, reload }) {
               blank="— เลือกประเภทลูกค้า —"
             />
           </Field>
+          {/* 'returning' คือค่าที่ POST /api/cases ใส่ให้เองเมื่อเปิดเคสให้ลูกค้าที่มี
+              เคสเก่าอยู่แล้ว — จงใจไม่อยู่ใน Lookups::lists() เพื่อไม่ให้ใครติ๊กเองได้
+              ถ้าปล่อยให้มันลงมาที่ <ListSelect> ค่าจะไม่ตรงกับตัวเลือกไหนเลย แล้ว
+              <Select> จะตกกลับไปที่ตัวเลือกแรกคือ "— ไม่ระบุ —" ตามที่มันทำกับค่าแปลกปลอม
+              ทุกตัว · ผลคือแค่เปิดขั้นนี้แล้วกดบันทึก ป้าย "ลูกค้าเก่า" ก็หายเงียบ ๆ
+              จึงแสดงเป็นข้อความแทน และส่งค่าเดิมกลับไปทาง hidden input ให้ readForm
+              อ่านเจอ — ค่าเดินทางไป-กลับโดยไม่มีใครแก้ได้ */}
           <Field label="รู้จักเราจากช่องทางไหน / Customer Source">
-            <ListSelect name="referral_source" kind="referral_source" defaultValue={c.referral_source || ''} blank="— ไม่ระบุ —" />
+            {c.referral_source === 'returning' ? (
+              <>
+                <input type="hidden" name="referral_source" value="returning" />
+                <p className="muted">ลูกค้าเก่า — ระบบบันทึกให้ตอนเปิดเคส</p>
+              </>
+            ) : (
+              <ListSelect name="referral_source" kind="referral_source" defaultValue={c.referral_source || ''} blank="— ไม่ระบุ —" />
+            )}
           </Field>
         </FormGrid>
         <Field label="บันทึกการรับเรื่อง" className="full">
@@ -81,7 +95,7 @@ export function ReceptionPanel({ c, reload }) {
           ['ลูกค้า', <Link key="cust" href={'/customers/detail?id=' + c.customer_id}>{custName(c)}</Link>],
           ['โทร', c.phone || '—'],
           ['LINE / WhatsApp', c.line_id || '—'],
-          ['วันเกิด', birthWithAge(c.birth_date, fmtDate) || '—'],
+          ['วันเกิด', birthOrAge(c, fmtDate) || '—'],
           ['ตอนเปิดเคส', Number(c.is_new_customer) ? 'ลูกค้าใหม่' : 'ลูกค้าเก่า'],
         ]}
       />

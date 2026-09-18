@@ -1,0 +1,97 @@
+/* ตัวกรองเลนส์ในหน้าขาย (LensPicker.jsx)
+   แยกเป็น CSS module ไม่ใส่ globals.css — ไฟล์ CSS กลางที่ทุกหน้าโหลดร่วมกันจะได้ไม่เปลี่ยนชื่อ */
+
+.bar{
+  display:flex;flex-wrap:wrap;gap:10px 12px;align-items:flex-end;
+  /* พื้นขาว — ช่องกรอกของทั้งแอปเป็นพื้นเทา วางบนพื้นเทาแล้วช่องหายไปกับกล่อง */
+  padding:12px;border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff;
+}
+
+.label{display:block;font-size:12.5px;font-weight:600;color:var(--ink-soft);margin-bottom:5px}
+
+.coating{flex:1 1 140px;min-width:0}
+.coating :global(.sel){width:100%}
+
+.powers{flex:0 1 auto;min-width:0}
+.pair{display:flex;align-items:center;gap:6px}
+.power{width:78px;text-align:center;font-variant-numeric:tabular-nums}
+.power[aria-invalid="true"]{border-color:#E11D48;background:var(--danger-soft)}
+.slash{color:var(--ink-soft);font-weight:600}
+
+.search{flex:1 1 240px;min-width:0}
+.searchRow{display:flex;gap:8px}
+.term{position:relative;display:block;flex:1;min-width:0}
+.term :global(.ico){
+  position:absolute;left:10px;top:50%;transform:translateY(-50%);
+  width:16px;height:16px;color:var(--ink-soft);pointer-events:none;
+}
+.term input{width:100%;padding-left:34px}
+
+.badHint{margin:0;font-size:12.5px;color:#9F0F33}
+
+.chips{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center}
+.chip{
+  display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;
+  border:1px solid var(--green-edge);background:var(--green-tint);color:var(--green-deep);
+  font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;
+}
+.chip:hover{filter:brightness(.96)}
+.chip :global(.ico){width:12px;height:12px}
+.clearAll{
+  display:inline-flex;align-items:center;gap:5px;padding:4px 6px;border:0;background:none;
+  color:var(--accent-deep);font:inherit;font-size:12.5px;cursor:pointer;
+}
+.clearAll:hover{text-decoration:underline}
+.clearAll :global(.ico){width:14px;height:14px}
+
+/* รายการเลนส์ — ขวากับซ้ายอยู่คนละครึ่งการ์ด ความกว้างของกล่องจึงเป็นตัวตัดสินว่าจะเป็น
+   ตารางหรือสองบรรทัด ไม่ใช่ความกว้างของจอ (container query) */
+.list{
+  container-type:inline-size;
+  border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff;overflow:hidden;
+}
+
+.head,.row{
+  display:grid;grid-template-columns:18px minmax(0,1fr) 110px 92px 70px;
+  gap:10px;align-items:center;padding:8px 12px;
+}
+
+.head{font-size:12px;font-weight:600;color:var(--ink-soft);background:var(--surface-alt);border-bottom:1px solid var(--line)}
+
+.row{border-bottom:1px solid var(--line-soft);cursor:pointer;font-size:13.5px}
+.row:last-child{border-bottom:0}
+/* ชี้เฉย ๆ เป็นเทาอ่อน — สีเขียวเป็นของแถวที่เลือกอยู่ ไม่งั้นสองอย่างดูเหมือนกัน */
+.row:hover{background:var(--surface-alt)}
+.row:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.row.sel{background:var(--green-tint);box-shadow:inset 0 0 0 1px var(--green-edge)}
+
+.radio{width:16px;height:16px;box-sizing:border-box;border-radius:50%;border:1.5px solid #9AA3AF;background:#fff}
+.row.sel .radio{border:5px solid var(--accent)}
+
+.name{display:flex;flex-wrap:wrap;align-items:center;gap:3px 8px;min-width:0}
+.name b{font-weight:650;overflow-wrap:anywhere}
+
+.stock{font-size:12.5px;color:var(--ink-soft)}
+.ok{color:var(--green-deep)}
+.out{color:#9F0F33}
+.new{color:var(--ink-soft)}
+
+.sku{font-size:12.5px;overflow-wrap:anywhere}
+.id{font-family:var(--font-mono);font-size:12px;opacity:.72;text-align:right}
+
+.msg{display:flex;align-items:center;gap:8px;padding:10px 12px;font-size:13.5px}
+.empty{justify-content:space-between;flex-wrap:wrap}
+
+@container (max-width:520px){
+  .head{display:none}
+  .row{
+    grid-template-columns:18px auto auto minmax(0,1fr);
+    grid-template-areas:"radio name name name" "radio stock sku id";
+    row-gap:3px;
+  }
+  .radio{grid-area:radio}
+  .name{grid-area:name}
+  .stock{grid-area:stock}
+  .sku{grid-area:sku}
+  .id{grid-area:id}
+}

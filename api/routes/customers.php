@@ -241,6 +241,24 @@ GET('/api/customers/:id', function (array $req) {
     return $c;
 });
 
+/**
+ * อายุที่ลูกค้าบอก — คนละช่องกับวันเกิด และไม่ได้แปลงเป็นวันเกิดปลอม
+ *
+ * คืน null เมื่อไม่ได้กรอกมา · กรอกมาแล้วใช้ไม่ได้คือ 400 ไม่ใช่เงียบ ๆ ทิ้งค่า
+ * เพดาน 120 เท่ากับด่านของวันเกิด — เลขเดียวกันควรผ่าน/ไม่ผ่านเหมือนกันทั้งสองทาง
+ */
+function customerAge($v): ?int
+{
+    $s = trim((string) ($v ?? ''));
+    if ($s === '') {
+        return null;
+    }
+    if (preg_match('/^\d{1,3}$/', $s) !== 1 || (int) $s > 120) {
+        throw new HttpError(400, 'อายุต้องเป็นตัวเลข 0–120 ปี', ['reason' => 'bad_age']);
+    }
+    return (int) $s;
+}
+
 /** the writable columns, in insert order */
 function customerCols(array $b): array
 {
@@ -263,11 +281,15 @@ POST('/api/customers', function (array $req) {
     if (str_or($body['first_name'] ?? null) === '' && str_or($body['last_name'] ?? null) === '') {
         bad('กรุณากรอกชื่อลูกค้า');
     }
+    /* กรอกมาทั้งวันเกิดและอายุ = วันเกิดชนะ · ดูเหตุผลที่ PUT ข้างล่าง */
+    $age = trim((string) ($body['birth_date'] ?? '')) !== ''
+        ? null
+        : customerAge($body['age_years'] ?? null);
     $r = Db::run(
         'INSERT INTO customers (first_name, mid_name, last_name, sex, nationality,
-           email, phone, line_id, birth_date, notes)
-         VALUES (?,?,?,?,?,?,?,?,?,?)',
-        ...customerCols($body)
+           email, phone, line_id, birth_date, notes, age_years, age_recorded_on)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+        ...[...customerCols($body), $age, $age === null ? null : today()]
     );
     return Db::get('SELECT * FROM customers WHERE id = ?', $r['insertId']);
 });
@@ -277,10 +299,28 @@ PUT('/api/customers/:id', function (array $req) {
     if (!Db::get('SELECT id FROM customers WHERE id = ?', $id)) {
         missing();
     }
+    /* วันที่ถามอายุขยับเฉพาะตอนที่ "ตัวเลขอายุ" เปลี่ยนจริง — กดบันทึกหน้านี้ด้วยเรื่องอื่น
+       แล้วปล่อยให้วันที่เลื่อนมาเป็นวันนี้ เท่ากับอ้างว่าเพิ่งถามลูกค้าใหม่ ทั้งที่ไม่ได้ถาม
+       ผลคืออายุจะไม่ยอมโตสักที เพราะฐานนับหนึ่งใหม่ทุกครั้งที่มีคนเปิดหน้าแก้ไข */
+    $old = Db::get('SELECT age_years, age_recorded_on FROM customers WHERE id = ?', $id);
+    $age = customerAge($req['body']['age_years'] ?? null);
+    $was = $old['age_years'] === null ? null : (int) $old['age_years'];
+    /* มีวันเกิดแล้วอายุที่กรอกไว้ต้องหายไป ไม่ใช่นอนคู่กัน — วันเกิดคำนวณอายุได้แม่นกว่า
+       และค่าที่ไม่มีใครอ่านแต่ยังอยู่ในฐาน คือค่าที่วันหนึ่งจะมีคนอ่านแล้วได้เลขผิด */
+    if (trim((string) ($req['body']['birth_date'] ?? '')) !== '') {
+        $age = null;
+    }
+    if ($age === null) {
+        $recorded = null;
+    } elseif ($age === $was && $old['age_recorded_on'] !== null) {
+        $recorded = $old['age_recorded_on'];
+    } else {
+        $recorded = today();
+    }
     Db::run(
         'UPDATE customers SET first_name=?, mid_name=?, last_name=?, sex=?, nationality=?,
-           email=?, phone=?, line_id=?, birth_date=?, notes=? WHERE id=?',
-        ...[...customerCols($req['body']), $id]
+           email=?, phone=?, line_id=?, birth_date=?, notes=?, age_years=?, age_recorded_on=? WHERE id=?',
+        ...[...customerCols($req['body']), $age, $recorded, $id]
     );
     return Db::get('SELECT * FROM customers WHERE id = ?', $id);
 });
@@ -288,6 +328,9 @@ PUT('/api/customers/:id', function (array $req) {
 /** ช่องที่ "เติมข้อมูลลูกค้า" เขียนได้ ตามลำดับบนจอ — ป้ายใช้ในข้อความและไทม์ไลน์ */
 const CUSTOMER_FILL_FIELDS = [
     'birth_date' => 'วันเกิด',
+    /* ลูกค้าบางคนบอกมาแค่อายุ — ขั้นรับลูกค้าต้องจดได้โดยไม่ต้องเดาวันเกิดให้เขา
+       เติมช่องนี้แล้ว age_recorded_on ถูกตั้งเป็นวันนี้ไปด้วย (ดูใน tx ข้างล่าง) */
+    'age_years'  => 'อายุ',
     'phone'      => 'เบอร์โทร',
     'line_id'    => 'LINE / WhatsApp',
     'email'      => 'อีเมล',
@@ -341,6 +384,14 @@ POST('/api/customers/:id/fill', function (array $req) {
             throw new HttpError(400, 'วันเกิดไม่ถูกต้อง', ['reason' => 'bad_birth_date']);
         }
     }
+    if (isset($fill['age_years'])) {
+        /* โยน 400 เองด้วยข้อความเดียวกับหน้าเพิ่ม/แก้ไขลูกค้า — customerAge() เป็นด่านเดียว */
+        $fill['age_years'] = (string) customerAge($fill['age_years']);
+        /* กรอกมาทั้งคู่ในครั้งเดียว: วันเกิดชนะ ทิ้งอายุไปเลย ไม่ใช่เก็บทั้งสองแล้วค่อยเลือกทีหลัง */
+        if (isset($fill['birth_date'])) {
+            unset($fill['age_years']);
+        }
+    }
     /* ความยาวสูงสุดตามคอลัมน์บน production — phone varchar(40) · line_id varchar(80) · email varchar(120)
        ยาวเกินแล้วปล่อยลงฐานได้ 500 จาก MariaDB แทนข้อความที่คนกดอ่านรู้เรื่อง */
     if (isset($fill['phone']) && strlen(normPhone($fill['phone'])) < 9) {
@@ -381,8 +432,22 @@ POST('/api/customers/:id/fill', function (array $req) {
             );
         }
 
-        $sets = implode(', ', array_map(static fn(string $col) => "`$col` = ?", array_keys($fill)));
-        $q->run("UPDATE customers SET $sets WHERE id = ?", ...[...array_values($fill), $id]);
+        /* ลูกค้าที่มีวันเกิดอยู่แล้วไม่ต้องเติมอายุ — หน้าจอไม่เสนอช่องนี้ให้อยู่แล้ว
+           ด่านนี้กันคำขอที่ยิงตรงมา ไม่ให้ฐานมีสองคำตอบของคำถามเดียวกัน */
+        if (isset($fill['age_years']) && trim((string) ($c['birth_date'] ?? '')) !== '') {
+            throw new HttpError(
+                409,
+                'ลูกค้ามีวันเกิดอยู่แล้ว — อายุคิดจากวันเกิดให้เอง ไม่ต้องกรอก',
+                ['reason' => 'already_filled', 'fields' => ['birth_date']]
+            );
+        }
+
+        $write = $fill;
+        if (isset($write['age_years'])) {
+            $write['age_recorded_on'] = today();
+        }
+        $sets = implode(', ', array_map(static fn(string $col) => "`$col` = ?", array_keys($write)));
+        $q->run("UPDATE customers SET $sets WHERE id = ?", ...[...array_values($write), $id]);
 
         $actor  = StockModule::actor();
         $labels = array_map(static fn(string $col) => CUSTOMER_FILL_FIELDS[$col], array_keys($fill));

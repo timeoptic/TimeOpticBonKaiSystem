@@ -6,13 +6,20 @@
  * เท่ากับ "ยอดขาย" ในหน้าอื่นของช่วงเดียวกัน และนั่นถูกแล้ว — มัดจำที่รับเดือนนี้
  * มาจากบิลของเดือนที่แล้วได้ · คำอธิบายอยู่บนหน้าจอด้วย ไม่ใช่แค่ในคอมเมนต์
  */
-import { Card, Kpis } from '../../../../components/ui.jsx';
+import { useEffect, useState } from 'react';
+import { flushSync } from 'react-dom';
+import Link from 'next/link';
+import { Badge, Card, Kpis } from '../../../../components/ui.jsx';
 import { DataTable } from '../../../../components/DataTable.jsx';
+import { Pager } from '../../../../components/Pager.jsx';
 import { ExportButtons, ReportFilter, useReport } from '../../../../components/ReportFilter.jsx';
 import { DrillKpi, NoData, ReportState, bucketNote, toSeries } from '../../../../components/reports/bits.jsx';
 import { Bars, Donut, seriesColor } from '../../../../components/charts.jsx';
-import { count, money, moneyShort } from '../../../../lib/format.js';
-import { downloadCsv } from '../../../../lib/exportCsv.js';
+import { useToast } from '../../../../components/Toast.jsx';
+import { count, fmtDateTime, money, moneyShort } from '../../../../lib/format.js';
+import { api } from '../../../../lib/apiClient.js';
+import { SOURCES, openHref } from '../../../../lib/paymentTx.js';
+import { filterQuery } from '../../../../lib/reportRange.js';
 
 /**
  * ป้ายไทยของช่องทางชำระ
@@ -22,7 +29,7 @@ import { downloadCsv } from '../../../../lib/exportCsv.js';
  */
 const METHOD_LABEL = {
   cash: 'เงินสด',
-  transfer: 'โอนเงิน',
+  transfer: 'BBL',
   qr: 'QR Payment',
   credit: 'บัตรเครดิต',
   thungngern: 'ถุงเงิน',
@@ -30,25 +37,159 @@ const METHOD_LABEL = {
 };
 const label = (m) => METHOD_LABEL[m] || m;
 
+/** ตารางรายการรับเงินแบ่งหน้าชุดใหญ่กว่าทั้งแอป — ช่วงหนึ่งเดือนมีเป็นร้อยรายการ */
+const TX_PAGE_SIZES = [25, 50, 100];
+
+/** เลขอ้างอิง — กดเปิดเคส / ใบสั่ง / บิล POS · ขายสินค้าระบบเดิมไม่มีหน้าให้เปิด */
+function TxRef({ row }) {
+  const href = openHref(row.open);
+  const code = row.code || '—';
+  return (
+    <>
+      {href ? <Link href={href}>{code}</Link> : code}
+      {row.legacy ? <Badge kind="gray" style={{ marginLeft: 6 }}>ระบบเดิม</Badge> : null}
+    </>
+  );
+}
+
+const TX_COLUMNS = [
+  { label: 'วันที่/เวลา', sortKey: 'paid_at', render: (r) => fmtDateTime(r.paid_at), mobile: 'body' },
+  { label: 'เลขอ้างอิง', sortKey: 'code', render: (r) => <TxRef row={r} />, mobile: 'title' },
+  { label: 'แหล่งที่มา', sortKey: 'source_label', mobile: 'status', render: (r) => (
+    <Badge kind={r.source === 'main' ? 'blue' : 'gray'}>{r.source_label}</Badge>
+  ) },
+  { label: 'ลูกค้า', key: 'customer', mobile: 'subtitle' },
+  { label: 'รายการ/ประเภทงาน', sortKey: 'items', mobile: 'meta', render: (r) => (
+    <>
+      {r.items || <span className="muted">—</span>}
+      {r.kind ? <div className="muted sm">{r.kind}</div> : null}
+    </>
+  ) },
+  { label: 'ช่องทางชำระ', key: 'method', mobile: 'body' },
+  { label: 'จำนวนเงิน', cls: 'right', sortKey: 'amount', render: (r) => money(r.amount), mobile: 'body' },
+  { label: 'ผู้รับเงิน', key: 'employee', mobile: 'meta' },
+];
+
+/**
+ * กำลังสั่งพิมพ์อยู่หรือเปล่า — ตอนพิมพ์ตารางต้องมีครบทุกแถว ไม่ใช่แค่หน้าที่เปิดอยู่
+ *
+ * `flushSync` เพราะเบราว์เซอร์จับภาพหน้าไปพิมพ์ทันทีที่ beforeprint คืนค่า · setState
+ * ธรรมดาของ React รอ render รอบถัดไป ซึ่งช้าไปหนึ่งจังหวะ PDF จะได้แค่ 50 แถวแรก
+ */
+function usePrinting() {
+  const [printing, setPrinting] = useState(false);
+  useEffect(() => {
+    const before = () => flushSync(() => setPrinting(true));
+    const after = () => setPrinting(false);
+    window.addEventListener('beforeprint', before);
+    window.addEventListener('afterprint', after);
+    return () => {
+      window.removeEventListener('beforeprint', before);
+      window.removeEventListener('afterprint', after);
+    };
+  }, []);
+  return printing;
+}
+
+/**
+ * ตารางพิมพ์ยาวหลายหน้า — การ์ดทั่วไปของรายงานห้ามตัดข้ามหน้า (globals.css) ซึ่งกับตาราง
+ * ยาวแปลว่าหน้าว่างหนึ่งหน้าก่อนตาราง · วางไว้ในหน้านี้แทน globals.css เพราะใช้ที่นี่ที่เดียว
+ */
+const TX_PRINT_CSS = `@media print{
+  .pay-tx{break-inside:auto}
+  .pay-tx .table-wrap{overflow:visible}
+  .pay-tx thead{display:table-header-group}
+  .pay-tx tr{break-inside:avoid}
+  .pay-tx a{color:inherit;text-decoration:none}
+}`;
+
+/**
+ * รายละเอียดรายการรับเงิน — หนึ่งแถวต่อเงินหนึ่งก้อน ตอบว่ายอดบนการ์ดข้างบนมาจากไหน
+ *
+ * โหลดจากเส้นของตัวเอง (`payments/transactions`) ไม่ใช่ยัดรวมกับ Dashboard ช่วงหลายปี
+ * มีเป็นหมื่นแถว Dashboard ไม่ควรต้องรอ · ยอดท้ายตารางมาจาก API ซึ่งคิดจากเงินชุด
+ * เดียวกับ "รับเงินรวม" ไม่ใช่บวกแถวเองในเบราว์เซอร์
+ */
+function Transactions() {
+  const { data, error, loading } = useReport('payments/transactions');
+  const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(50);
+  const printing = usePrinting();
+
+  /* ตัวกรองเปลี่ยน (ได้ data ชุดใหม่) หรือเปลี่ยนจำนวนต่อหน้า กลับไปหน้า 1 */
+  useEffect(() => { setPage(1); }, [data, perPage]);
+
+  const rows = data?.rows || [];
+
+  return (
+    <Card
+      title="รายละเอียดรายการรับเงิน"
+      className="pay-tx"
+      tight
+      right={data ? <span className="muted">{`${count(data.count)} รายการ`}</span> : null}
+    >
+      <style>{TX_PRINT_CSS}</style>
+      <ReportState loading={loading} error={error} data={data}>
+        <DataTable
+          columns={TX_COLUMNS}
+          rows={rows}
+          rowKey={(r) => r.key}
+          sortable
+          defaultSort={{ key: 'paid_at', dir: 'desc' }}
+          page={printing ? 0 : page}
+          perPage={printing ? 0 : perPage}
+          empty="ช่วงนี้ยังไม่มีการรับเงิน"
+          footer={data ? (
+            <tr>
+              <th colSpan={6}>{`รวม ${count(data.count)} รายการ`}</th>
+              <th className="right">{money(data.total)}</th>
+              <th />
+            </tr>
+          ) : null}
+        />
+        <div className="no-print">
+          <Pager
+            total={rows.length}
+            page={page}
+            perPage={perPage}
+            onPage={setPage}
+            onPerPage={setPerPage}
+            sizes={TX_PAGE_SIZES}
+          />
+        </div>
+      </ReportState>
+    </Card>
+  );
+}
+
 export default function PaymentsReport() {
   const { filter, data, error, loading } = useReport('payments');
+  const { err } = useToast();
 
-  const csv = () => downloadCsv(
-    `รายงานการรับเงิน ${filter.from} ถึง ${filter.to}`,
-    [
-      { label: 'ช่องทาง', value: (r) => label(r.method) },
-      { label: 'จำนวนครั้ง', value: (r) => r.count },
-      { label: 'ยอดเงิน', value: (r) => r.amount },
-      { label: 'สัดส่วน %', value: (r) => r.share },
-    ],
-    data?.by_method || [],
-  );
+  /**
+   * ส่งออก Excel สองชีท — สรุป กับรายการรับเงินทีละครั้ง (หนึ่งแถวต่อเงินหนึ่งก้อน)
+   *
+   * ให้เซิร์ฟเวอร์สร้างไฟล์ เพราะรายการรับเงินทีละก้อนไม่ได้อยู่ในหน้านี้ หน้าจอได้มา
+   * แค่ยอดสรุป · ส่งตัวกรองทั้งชุดที่อยู่ใน URL ไปตรง ๆ ไฟล์จึงเป็นชุดเดียวกับที่เห็น
+   * ชื่อไฟล์ที่ส่งไปเป็นแค่ตัวสำรอง ปกติใช้ชื่อที่มากับหัว Content-Disposition
+   */
+  const excel = async () => {
+    try {
+      await api.download(
+        `/api/reports/payments.xlsx?${filterQuery(filter)}`,
+        `รายงานการรับเงิน ${filter.from} ถึง ${filter.to}.xlsx`,
+      );
+    } catch (e) {
+      err(e);
+    }
+  };
 
   return (
     <>
       <ReportFilter
-        actions={<ExportButtons onExcel={csv} disabled={!data?.by_method?.length} />}
-        statusNote="หน้านี้นับจากรายการรับเงิน ไม่ได้แยกตามสถานะงาน"
+        actions={<ExportButtons onExcel={excel} disabled={!data?.count} />}
+        channels={SOURCES}
+        channelLabel="แหล่งที่มา"
       />
 
       <ReportState loading={loading} error={error} data={data}>
@@ -136,6 +277,8 @@ export default function PaymentsReport() {
             <Card title={`เงินเข้า${bucketNote(data.daily) || ''}`}>
               <Bars data={toSeries(data.daily, (d) => d.amount)} />
             </Card>
+
+            <Transactions />
           </>
         ) : null}
       </ReportState>

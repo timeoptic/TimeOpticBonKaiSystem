@@ -200,7 +200,7 @@ test('ของเสียเบิกในนามสาขาไม่ไ�
 
         throwsReason(
             'branch_not_issuable',
-            fn() => Stock::scrap(issueReq($sku, 1, idem('scrapbranch'), [
+            fn() => Stock::scrap(issueReq($sku, 1, idem('scrapbranch'), ['scrap_by' => 'คนทดสอบ',
                 'branch_id' => $branch,
                 'taken_by'  => 'สมชาย',
             ])),

@@ -13,11 +13,16 @@
 import { CASE_PROCESSES, PROCESS_STATE_META, stateMeta } from '../lib/caseProcesses.js';
 import { Icon } from './Icon.jsx';
 
-export function CaseStepper({ processes = {}, viewing, onView }) {
+/**
+ * `list` = ขั้นที่เคสใบนี้มีจริง (มาจาก `caseDetail.process_list` ฝั่ง server ซึ่ง
+ * อ่านกฎจาก Lookups::CASE_TYPE_PROCESSES) — เคสตรวจสายตาอย่างเดียวมีแค่สองขั้น
+ * ไม่ส่งมา (หรือคำตอบเก่าที่ยังไม่มีคีย์นี้) = แสดงครบเหมือนเดิม ไม่ใช่หายทั้งแถบ
+ */
+export function CaseStepper({ processes = {}, list = null, viewing, onView }) {
   return (
     <>
       <div className="stepper">
-        {CASE_PROCESSES.map((p) => {
+        {CASE_PROCESSES.filter((p) => !list || list.includes(p.id)).map((p) => {
           const state = processes[p.id] || {};
           const sm = stateMeta(state.status);
           const reasons = [...(state.blocking || []), ...(state.missing || [])];

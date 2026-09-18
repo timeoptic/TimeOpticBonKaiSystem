@@ -39,6 +39,7 @@ import {
 import { Icon } from '../../../../../components/Icon.jsx';
 import { DateField } from '../../../../../components/DateField.jsx';
 import { DateTimeField } from '../../../../../components/DateTimeField.jsx';
+import { PhotoUpload } from '../../../../../components/PhotoUpload.jsx';
 
 const HEALTH = [
   ['health_diabetes', 'เบาหวาน'], ['health_bp', 'ความดัน'], ['health_heart', 'โรคหัวใจ'],
@@ -312,6 +313,32 @@ function legacyOldOf(measured) {
   };
 }
 
+/**
+ * ร่างของส่วน Final (เลือกชุดไหน · ค่าที่ปรับเอง · เหตุผล) เก็บในเบราว์เซอร์ต่อเคส
+ *
+ * "บันทึก Draft" เขียนได้แค่ใบ measured กับ old — ใบ final ในฐานเขียนตอนยืนยันเท่านั้น
+ * เพราะมีใบ final = ขั้นวัดสายตาเสร็จ (processes.php caseStageMap) และการยืนยันคือตัวที่
+ * คัดค่าไปลงออเดอร์ · เดิมส่วน Final จึงไม่ถูกเก็บเลย แล้ว reload หลังบันทึกเขียนทับด้วยใบ
+ * final เก่า ค่าที่ปรับหายทั้งชุด (ร้านเจอ 17 ก.ย. 2026 เคส id 6907)
+ *
+ * `base` = updated_at ของใบ final ตอนเก็บร่าง — ใบ final เปลี่ยนไปแล้ว (มีคนยืนยันใหม่)
+ * ร่างนั้นเก่ากว่าของจริง ทิ้ง ไม่เอามาทับ
+ */
+const finalDraftKey = (caseId) => `exam-final-draft:${caseId}`;
+function readFinalDraft(caseId, finalRow) {
+  try {
+    const d = JSON.parse(localStorage.getItem(finalDraftKey(caseId)) || 'null');
+    if (!d || (d.base || null) !== (finalRow?.updated_at || null)) return null;
+    return d;
+  } catch { return null; }
+}
+function writeFinalDraft(caseId, d) {
+  try { localStorage.setItem(finalDraftKey(caseId), JSON.stringify(d)); } catch { /* โหมดส่วนตัว */ }
+}
+function dropFinalDraft(caseId) {
+  try { localStorage.removeItem(finalDraftKey(caseId)); } catch { /* โหมดส่วนตัว */ }
+}
+
 export function ExamPanel({ c, reload }) {
   const { ok, err } = useToast();
   const confirm = useConfirm();
@@ -333,9 +360,9 @@ export function ExamPanel({ c, reload }) {
 
   const [form, setForm] = useState(() => tidyRx(draftRow));
   const [oldForm, setOldForm] = useState(() => tidyRx(oldRow || legacyOldOf(draftRow)));
-  const [finalSource, setFinalSource] = useState(() => finalSourceOf(finalRow));
-  const [finalRx, setFinalRx] = useState(() => ({ ...(finalRow || {}) }));
-  const [adjustReason, setAdjustReason] = useState(finalRow?.adjust_reason || '');
+  const [finalSource, setFinalSource] = useState(() => readFinalDraft(c.id, finalRow)?.finalSource || finalSourceOf(finalRow));
+  const [finalRx, setFinalRx] = useState(() => readFinalDraft(c.id, finalRow)?.finalRx || ({ ...(finalRow || {}) }));
+  const [adjustReason, setAdjustReason] = useState(() => readFinalDraft(c.id, finalRow)?.adjustReason ?? (finalRow?.adjust_reason || ''));
   const [pickHistory, setPickHistory] = useState(false);
   const started = useRef(false);
 
@@ -347,7 +374,13 @@ export function ExamPanel({ c, reload }) {
   useEffect(() => {
     setForm(tidyRx(draftRow));
     setOldForm(tidyRx(oldRow || legacyOldOf(draftRow)));
-    if (finalRow) {
+    /* ร่าง Final ที่ยังไม่ยืนยันชนะใบ final เก่าในฐาน — ไม่งั้นกดบันทึก Draft แล้วค่าที่ปรับหาย */
+    const draft = readFinalDraft(c.id, finalRow);
+    if (draft) {
+      setFinalRx(draft.finalRx || {});
+      setAdjustReason(draft.adjustReason || '');
+      setFinalSource(draft.finalSource || finalSourceOf(finalRow));
+    } else if (finalRow) {
       setFinalRx(tidyRx(finalRow));
       setAdjustReason(finalRow.adjust_reason || '');
       setFinalSource(finalSourceOf(finalRow));
@@ -472,6 +505,9 @@ export function ExamPanel({ c, reload }) {
   const missingFinal = useMemo(() => {
     const cells = {};
     const short = new Set();
+    /* "ใช้สำหรับ / Test For" บังคับ (ร้านขอ 14 ก.ย. 2026) — พิมพ์ลงใบสั่งตัด ห้องผลิตต้องรู้ว่า
+       เลนส์คู่นี้สั่งไว้ใช้ทำอะไร · API กันซ้ำที่ POST /api/prescriptions/:id/confirm */
+    if (String(form.test_for ?? '').trim() === '') short.add('กรุณาเลือก ใช้สำหรับ / Test For');
     for (const k of ['r', 'l']) {
       for (const [f, label] of FINAL_REQUIRED) {
         if (String(finalValues[k][f] ?? '').trim() === '') {
@@ -486,7 +522,7 @@ export function ExamPanel({ c, reload }) {
       }
     }
     return { cells, labels: [...short] };
-  }, [finalValues]);
+  }, [finalValues, form.test_for]);
 
   const saveDraft = async () => {
     const stamp = toStamp(form.test_date ? dtLocal(form.test_date) : nowLocal());
@@ -518,6 +554,9 @@ export function ExamPanel({ c, reload }) {
         ? await api.put('/api/prescriptions/' + oldRow.id, oldBody)
         : await api.post('/api/prescriptions', oldBody);
     }
+
+    /* ต้องเก็บก่อน reload() — reload คือจังหวะที่ส่วน Final ถูกตั้งค่าใหม่จากฐาน */
+    writeFinalDraft(c.id, { finalSource, finalRx, adjustReason, base: finalRow?.updated_at || null });
 
     if (actions?.state?.status === 'not_started') {
       await api.post(`/api/cases/${c.id}/processes/exam/start`, {});
@@ -588,6 +627,7 @@ export function ExamPanel({ c, reload }) {
       ? await api.put('/api/prescriptions/' + finalRow.id, body)
       : await api.post('/api/prescriptions', body);
     await api.post(`/api/prescriptions/${final.id}/confirm`, {});
+    dropFinalDraft(c.id);
     return true;
   };
 
@@ -620,302 +660,319 @@ export function ExamPanel({ c, reload }) {
   const compareRows = [['OLD GLASSES', 1], ['MEASURED', 2], ['FINAL', 3]];
 
   return (
-    <fieldset className="exam-ws" disabled={confirmed}>
-      <Section n="1" title="ค่าสายตาเปล่า / Visual Acuity" hint="ค่าการมองเห็นก่อนใส่แว่น และระยะที่ลูกค้าใช้สายตาเป็นประจำ">
-        {/* ตาเปล่าแยกซ้ายขวาเพราะสองตาเห็นไม่เท่ากัน ส่วนระยะที่ใช้สายตาเป็นระยะจาก
-            หน้าไปหนังสือหรือจอ — ตัวเดียวต่อคน ไม่ใช่ต่อตา จึงไม่แยก R / L */}
-        <div className="va-row">
-          <fieldset className="va-eyes">
-            <legend>ตาเปล่า</legend>
-            {field('va_naked_r', 'R', '20/40')}
-            {field('va_naked_l', 'L', '20/40')}
-          </fieldset>
-          <fieldset className="va-dist">
-            <legend>ระยะที่ใช้สายตา</legend>
-            <Field label="ระยะอ่านหนังสือ / Reading">
-              <div className="unit-input">
-                <input
-                  inputMode="decimal"
-                  value={readingDistance}
-                  placeholder="40"
-                  onChange={(e) => setWorkingDistance('dist_vertical', e.target.value)}
-                />
-                <span>CM</span>
-              </div>
-            </Field>
-            <Field label="ระยะคอมพิวเตอร์ / Computer">
-              <div className="unit-input">
-                <input
-                  inputMode="decimal"
-                  value={computerDistance}
-                  placeholder="60"
-                  onChange={(e) => setWorkingDistance('dist_monitor', e.target.value)}
-                />
-                <span>CM</span>
-              </div>
-            </Field>
-          </fieldset>
-        </div>
-      </Section>
-
-      <Section n="2" title="ประวัติสุขภาพ" hint="เลือกเฉพาะที่ลูกค้าแจ้งในเคสนี้ — ค่าที่เลือกถูกเก็บไว้กับรอบนี้ ไม่ได้อ่านจากโปรไฟล์ลูกค้าแบบสด">
-        <Field label="ที่ลูกค้าแจ้ง" className="full">
-          <MultiSelect
-            options={HEALTH}
-            value={healthPicked}
-            onChange={setHealth}
-            placeholder="— ไม่มีที่ต้องบันทึก —"
-          />
-        </Field>
-        <Field label="รายละเอียด" className="full">
-          <input value={form.health_note ?? ''} onChange={(e) => set('health_note', e.target.value)} />
-        </Field>
-      </Section>
-
-      <Section
-        n="3"
-        title="OLD GLASSES"
-        sub="ค่าสายตาเดิมที่ลูกค้าใช้อยู่ก่อนเคสนี้"
-        hint="ไม่บังคับ ข้ามได้ถ้าลูกค้าไม่มีแว่นเดิม — เก็บเป็นค่าของรอบนี้ ไม่ทับค่าที่วัดครั้งนี้"
-        right={oldSource ? <button type="button" className="btn btn-sm btn-light" onClick={() => void clearOld()}>ล้างค่าเดิม</button> : null}
-      >
-        <Row style={{ gap: 8, marginBottom: 10 }}>
-          {OLD_SOURCES.map(([v, label]) => (
-            <button
-              type="button"
-              key={v || 'none'}
-              className={`chip-btn ${oldSource === v ? 'active' : ''}`}
-              onClick={() => { if (v === '') void clearOld(); else { touch(); setOldForm((f) => ({ ...f, source: v })); } }}
-            >
-              {label}
-            </button>
-          ))}
-        </Row>
-
-        {oldSource === 'history' && (
-          <div className="ws-inset">
-            <Row style={{ justifyContent: 'space-between' }}>
-              <span className="muted">
-                {oldForm.based_on_id
-                  ? `คัดลอกมาจากใบ #${oldForm.based_on_id}${oldForm.source_case_code ? ` (${oldForm.source_case_code})` : ''} — ค่าถูกเก็บไว้ในรอบนี้แล้ว`
-                  : 'เลือกรอบการตรวจเก่าเพื่อคัดลอกค่ามาใช้'}
-              </span>
-              <button type="button" className="btn btn-sm btn-light" onClick={() => setPickHistory((v) => !v)}>
-                {pickHistory ? 'ปิดรายการ' : <><Icon name="download" /> เลือกจากประวัติ</>}
-              </button>
-            </Row>
-            {pickHistory && (
-              <div className="rx-history">
-                {otherRounds.map((s) => {
-                  const src = s.final || s.measured;
-                  return (
-                    <button type="button" key={s.key} className="rx-history-row" onClick={() => pullFrom(s)}>
-                      <b>{`${fmtDate(s.exam_date)}${s.case_code ? ` · ${s.case_code}` : ''}`}</b>
-                      <GlassesUseTag value={roundGlassesUse(s)} />
-                      <span>{`R ${sphPower(src?.r_sphere)} / ${cylPower(src?.r_cylinder)} x ${src?.r_axis || '—'}`}</span>
-                      <span>{`L ${sphPower(src?.l_sphere)} / ${cylPower(src?.l_cylinder)} x ${src?.l_axis || '—'}`}</span>
-                      <span className="muted">{s.final ? 'ค่าที่ใช้จริง' : 'ค่าที่วัดได้'}</span>
-                    </button>
-                  );
-                })}
-                {!otherRounds.length && <p className="muted">ลูกค้ารายนี้ยังไม่มีรอบการตรวจอื่น</p>}
-              </div>
-            )}
+    <div className="exam-ws-wrap">
+      <fieldset className="exam-ws" disabled={confirmed}>
+        <Section n="1" title="ค่าสายตาเปล่า / Visual Acuity" hint="ค่าการมองเห็นก่อนใส่แว่น และระยะที่ลูกค้าใช้สายตาเป็นประจำ">
+          {/* ตาเปล่าแยกซ้ายขวาเพราะสองตาเห็นไม่เท่ากัน ส่วนระยะที่ใช้สายตาเป็นระยะจาก
+              หน้าไปหนังสือหรือจอ — ตัวเดียวต่อคน ไม่ใช่ต่อตา จึงไม่แยก R / L */}
+          <div className="va-row">
+            <fieldset className="va-eyes">
+              <legend>ตาเปล่า</legend>
+              {field('va_naked_r', 'R', '20/40')}
+              {field('va_naked_l', 'L', '20/40')}
+            </fieldset>
+            <fieldset className="va-dist">
+              <legend>ระยะที่ใช้สายตา</legend>
+              <Field label="ระยะอ่านหนังสือ / Reading">
+                <div className="unit-input">
+                  <input
+                    inputMode="decimal"
+                    value={readingDistance}
+                    placeholder="40"
+                    onChange={(e) => setWorkingDistance('dist_vertical', e.target.value)}
+                  />
+                  <span>CM</span>
+                </div>
+              </Field>
+              <Field label="ระยะคอมพิวเตอร์ / Computer">
+                <div className="unit-input">
+                  <input
+                    inputMode="decimal"
+                    value={computerDistance}
+                    placeholder="60"
+                    onChange={(e) => setWorkingDistance('dist_monitor', e.target.value)}
+                  />
+                  <span>CM</span>
+                </div>
+              </Field>
+            </fieldset>
           </div>
-        )}
+        </Section>
 
-        {oldSource === 'external_rx' && (
-          <FormGrid>
-            <Field label="โรงพยาบาล / คลินิก / ร้าน">
-              <input value={oldForm.external_place ?? ''} onChange={(e) => setOld('external_place', e.target.value)} />
-            </Field>
-            <Field label="วันที่ในใบ Prescription">
-              <DateField
-                value={(oldForm.external_date || '').slice(0, 10)}
-                onChange={(v) => setOld('external_date', v)}
-              />
-            </Field>
-          </FormGrid>
-        )}
+        <Section n="2" title="ประวัติสุขภาพ" hint="เลือกเฉพาะที่ลูกค้าแจ้งในเคสนี้ — ค่าที่เลือกถูกเก็บไว้กับรอบนี้ ไม่ได้อ่านจากโปรไฟล์ลูกค้าแบบสด">
+          <Field label="ที่ลูกค้าแจ้ง" className="full">
+            <MultiSelect
+              options={HEALTH}
+              value={healthPicked}
+              onChange={setHealth}
+              placeholder="— ไม่มีที่ต้องบันทึก —"
+            />
+          </Field>
+          <Field label="รายละเอียด" className="full">
+            <input value={form.health_note ?? ''} onChange={(e) => set('health_note', e.target.value)} />
+          </Field>
+        </Section>
 
-        {oldSource ? (
-          <>
+        <Section
+          n="3"
+          title="OLD GLASSES"
+          sub="ค่าสายตาเดิมที่ลูกค้าใช้อยู่ก่อนเคสนี้"
+          hint="ไม่บังคับ ข้ามได้ถ้าลูกค้าไม่มีแว่นเดิม — เก็บเป็นค่าของรอบนี้ ไม่ทับค่าที่วัดครั้งนี้"
+          right={oldSource ? <button type="button" className="btn btn-sm btn-light" onClick={() => void clearOld()}>ล้างค่าเดิม</button> : null}
+        >
+          <Row style={{ gap: 8, marginBottom: 10 }}>
+            {OLD_SOURCES.map(([v, label]) => (
+              <button
+                type="button"
+                key={v || 'none'}
+                className={`chip-btn ${oldSource === v ? 'active' : ''}`}
+                onClick={() => { if (v === '') void clearOld(); else { touch(); setOldForm((f) => ({ ...f, source: v })); } }}
+              >
+                {label}
+              </button>
+            ))}
+          </Row>
+
+          {oldSource === 'history' && (
+            <div className="ws-inset">
+              <Row style={{ justifyContent: 'space-between' }}>
+                <span className="muted">
+                  {oldForm.based_on_id
+                    ? `คัดลอกมาจากใบ #${oldForm.based_on_id}${oldForm.source_case_code ? ` (${oldForm.source_case_code})` : ''} — ค่าถูกเก็บไว้ในรอบนี้แล้ว`
+                    : 'เลือกรอบการตรวจเก่าเพื่อคัดลอกค่ามาใช้'}
+                </span>
+                <button type="button" className="btn btn-sm btn-light" onClick={() => setPickHistory((v) => !v)}>
+                  {pickHistory ? 'ปิดรายการ' : <><Icon name="download" /> เลือกจากประวัติ</>}
+                </button>
+              </Row>
+              {pickHistory && (
+                <div className="rx-history">
+                  {otherRounds.map((s) => {
+                    const src = s.final || s.measured;
+                    return (
+                      <button type="button" key={s.key} className="rx-history-row" onClick={() => pullFrom(s)}>
+                        <b>{`${fmtDate(s.exam_date)}${s.case_code ? ` · ${s.case_code}` : ''}`}</b>
+                        <GlassesUseTag value={roundGlassesUse(s)} />
+                        <span>{`R ${sphPower(src?.r_sphere)} / ${cylPower(src?.r_cylinder)} x ${src?.r_axis || '—'}`}</span>
+                        <span>{`L ${sphPower(src?.l_sphere)} / ${cylPower(src?.l_cylinder)} x ${src?.l_axis || '—'}`}</span>
+                        <span className="muted">{s.final ? 'ค่าที่ใช้จริง' : 'ค่าที่วัดได้'}</span>
+                      </button>
+                    );
+                  })}
+                  {!otherRounds.length && <p className="muted">ลูกค้ารายนี้ยังไม่มีรอบการตรวจอื่น</p>}
+                </div>
+              )}
+            </div>
+          )}
+
+          {oldSource === 'external_rx' && (
             <FormGrid>
-              <Field label="แว่นเดิมเป็นแบบ">
-                <ListSelect
-                  name="old_glasses_type"
-                  kind="old_glasses_type"
-                  value={oldForm.old_glasses_type ?? ''}
-                  onChange={(e) => setOld('old_glasses_type', e.target.value)}
-                  blank="— เลือกแบบแว่นเดิม —"
+              <Field label="โรงพยาบาล / คลินิก / ร้าน">
+                <input value={oldForm.external_place ?? ''} onChange={(e) => setOld('external_place', e.target.value)} />
+              </Field>
+              <Field label="วันที่ในใบ Prescription">
+                <DateField
+                  value={(oldForm.external_date || '').slice(0, 10)}
+                  onChange={(v) => setOld('external_date', v)}
                 />
               </Field>
             </FormGrid>
-            <RxGrid
-              cols={OLD_COLS}
-              readOnly={readOnlyOld}
-              get={(k, f) => oldForm[`${k}_${f}`] ?? ''}
-              set={(k, f, v) => setOld(`${k}_${f}`, v)}
-            />
-            {readOnlyOld && <p className="hint">ค่าที่ดึงจากประวัติแก้ไม่ได้ ถ้าต้องการพิมพ์เอง ให้เลือก “วัดจากแว่นเดิม”</p>}
-          </>
-        ) : <p className="muted">— ไม่มีข้อมูลค่าสายตาเดิม</p>}
-      </Section>
+          )}
 
-      <Section n="4" title="MEASURED PRESCRIPTION" sub="ค่าที่วัดได้ในการตรวจครั้งนี้" hint="ค่าดิบที่วัดได้จริง — ถ้าจะใช้ค่าอื่นกับงาน ให้ไปปรับที่ Final ข้างล่าง ไม่ต้องแก้ตรงนี้">
-        {/* ไม่มี "ใช้สำหรับ / Test for" ตรงนี้แล้ว — ค่าที่เพิ่งวัดได้ยังไม่ได้ถูกสั่งให้ใช้
-            กับอะไร คำถามนั้นเป็นของ Final ข้างล่าง */}
-        <FormGrid>
-          <Field label="ผู้วัด">
-            <EmployeeSelect
-              name="performed_by"
-              value={form.performed_by ?? ''}
-              onChange={(e) => set('performed_by', e.target.value)}
+          {oldSource ? (
+            <>
+              <FormGrid>
+                <Field label="แว่นเดิมเป็นแบบ">
+                  <ListSelect
+                    name="old_glasses_type"
+                    kind="old_glasses_type"
+                    value={oldForm.old_glasses_type ?? ''}
+                    onChange={(e) => setOld('old_glasses_type', e.target.value)}
+                    blank="— เลือกแบบแว่นเดิม —"
+                  />
+                </Field>
+              </FormGrid>
+              <RxGrid
+                cols={OLD_COLS}
+                readOnly={readOnlyOld}
+                get={(k, f) => oldForm[`${k}_${f}`] ?? ''}
+                set={(k, f, v) => setOld(`${k}_${f}`, v)}
+              />
+              {readOnlyOld && <p className="hint">ค่าที่ดึงจากประวัติแก้ไม่ได้ ถ้าต้องการพิมพ์เอง ให้เลือก “วัดจากแว่นเดิม”</p>}
+            </>
+          ) : <p className="muted">— ไม่มีข้อมูลค่าสายตาเดิม</p>}
+        </Section>
+
+        <Section n="4" title="MEASURED PRESCRIPTION" sub="ค่าที่วัดได้ในการตรวจครั้งนี้" hint="ค่าดิบที่วัดได้จริง — ถ้าจะใช้ค่าอื่นกับงาน ให้ไปปรับที่ Final ข้างล่าง ไม่ต้องแก้ตรงนี้">
+          {/* ไม่มี "ใช้สำหรับ / Test for" ตรงนี้แล้ว — ค่าที่เพิ่งวัดได้ยังไม่ได้ถูกสั่งให้ใช้
+              กับอะไร คำถามนั้นเป็นของ Final ข้างล่าง */}
+          <FormGrid>
+            <Field label="ผู้วัด">
+              <EmployeeSelect
+                name="performed_by"
+                value={form.performed_by ?? ''}
+                onChange={(e) => set('performed_by', e.target.value)}
+              />
+            </Field>
+            {/* เวลาที่วัดเป็นของที่ระบบรู้เอง ไม่ใช่คำถามที่ต้องถามคนหน้าร้าน — ยังไม่บันทึก
+                ก็เดินตามนาฬิกาจริง บันทึกแล้วก็ค้างที่เวลาที่บันทึกไป แก้ไม่ได้ทั้งสองกรณี
+                (ใบที่ย้อนเวลาได้ ทำให้ตอบไม่ได้ว่าวัดจริงตอนไหน ซึ่งเป็นคำถามแรกเวลา
+                ค่าสายตาสองใบของลูกค้าคนเดียวกันไม่ตรงกัน) */}
+            <Field label="วันที่วัด" hint={form.test_date ? 'เวลาที่บันทึกไว้' : 'ระบบประทับเวลาให้ตอนกดบันทึก'}>
+              <DateTimeField readOnly value={dtLocal(form.test_date) || clockNow} />
+            </Field>
+            {/* ถามตรงนี้เพราะเป็นสิ่งที่รู้ตอนวัด ไม่ใช่ตอนตัดสินใจ — แต่ตอบที่ Final ก็ได้
+                เป็นช่องเดียวกัน กินเต็มแถวเพราะสามปุ่มไม่พอในคอลัมน์เดียวของกริดนี้ (240px) */}
+            <DominantEye
+              className="full"
+              value={form.dominant_eye ?? ''}
+              onPick={(v) => set('dominant_eye', v)}
             />
-          </Field>
-          {/* เวลาที่วัดเป็นของที่ระบบรู้เอง ไม่ใช่คำถามที่ต้องถามคนหน้าร้าน — ยังไม่บันทึก
-              ก็เดินตามนาฬิกาจริง บันทึกแล้วก็ค้างที่เวลาที่บันทึกไป แก้ไม่ได้ทั้งสองกรณี
-              (ใบที่ย้อนเวลาได้ ทำให้ตอบไม่ได้ว่าวัดจริงตอนไหน ซึ่งเป็นคำถามแรกเวลา
-              ค่าสายตาสองใบของลูกค้าคนเดียวกันไม่ตรงกัน) */}
-          <Field label="วันที่วัด" hint={form.test_date ? 'เวลาที่บันทึกไว้' : 'ระบบประทับเวลาให้ตอนกดบันทึก'}>
-            <DateTimeField readOnly value={dtLocal(form.test_date) || clockNow} />
-          </Field>
-          {/* ถามตรงนี้เพราะเป็นสิ่งที่รู้ตอนวัด ไม่ใช่ตอนตัดสินใจ — แต่ตอบที่ Final ก็ได้
-              เป็นช่องเดียวกัน กินเต็มแถวเพราะสามปุ่มไม่พอในคอลัมน์เดียวของกริดนี้ (240px) */}
-          <DominantEye
-            className="full"
-            value={form.dominant_eye ?? ''}
-            onPick={(v) => set('dominant_eye', v)}
+          </FormGrid>
+          {/* PD ไม่มีช่องรวมตรงนี้แล้ว — เป็นคอลัมน์ท้ายตาราง แยกตาม R / L และอ่านอย่างเดียว */}
+          <RxGrid
+            cols={SHOWN_COLS}
+            lockedCols={LOCKED_COLS}
+            get={(k, f) => (f === 'pd' ? pdOf(k) : form[`${k}_${f}`] ?? '')}
+            set={(k, f, v) => set(`${k}_${f}`, v)}
           />
-        </FormGrid>
-        {/* PD ไม่มีช่องรวมตรงนี้แล้ว — เป็นคอลัมน์ท้ายตาราง แยกตาม R / L และอ่านอย่างเดียว */}
-        <RxGrid
-          cols={SHOWN_COLS}
-          lockedCols={LOCKED_COLS}
-          get={(k, f) => (f === 'pd' ? pdOf(k) : form[`${k}_${f}`] ?? '')}
-          set={(k, f, v) => set(`${k}_${f}`, v)}
-        />
-      </Section>
+        </Section>
 
-      <Section n="5" title="FINAL PRESCRIPTION" sub="ค่าสายตาที่ใช้จริงในเคสนี้" hint="เลือกว่าจะใช้ค่าชุดไหน ระบบจะคัดลอกค่าเก็บเป็นของรอบนี้ — ปรับตรงนี้ไม่กระทบค่าที่วัดได้">
-        {/* "ใช้สำหรับ" อยู่ที่นี่ ไม่ใช่ที่ Measured — มันบอกว่าค่าชุดที่ตัดสินใจใช้แล้วนี้
-            ถูกสั่งไว้ให้ใช้ทำอะไร ซึ่งเป็นการตัดสินใจ ไม่ใช่ผลการวัด */}
-        {/* PD ไม่มีช่องรวมตรงนี้แล้ว — อยู่เป็นคอลัมน์ท้ายตารางข้างล่าง แยกตาม R / L */}
-        <FormGrid two>
-          <Field label="ใช้สำหรับ / Test For">
-            <ListSelect
-              name="test_for"
-              kind="test_for"
-              value={form.test_for ?? ''}
-              onChange={(e) => set('test_for', e.target.value)}
-              blank="— เลือกการใช้งาน —"
-            />
-          </Field>
-          {/* อ่านอย่างเดียว — ค่าเดียวกับข้อ 4 บอกไว้ให้เห็นว่าใบสั่งตัดจะติดป้ายข้างไหน
-              โดยไม่ต้องเลื่อนขึ้นไปดู แต่แก้ที่นี่ไม่ได้ */}
-          <DominantEye value={form.dominant_eye ?? ''} />
-        </FormGrid>
-
-        <Row style={{ gap: 8, marginBottom: 10 }}>
-          {FINAL_SOURCES.map(([v, label]) => (
-            <button
-              type="button"
-              key={v}
-              className={`chip-btn ${finalSource === v ? 'active' : ''}`}
-              onClick={() => {
-                touch();
-                if (v === 'adjusted') {
-                  const from = finalSource === 'old' ? oldForm : form;
-                  const next = {};
-                  for (const k of ['r', 'l']) {
-                    for (const [col] of FULL_COLS) next[`${k}_${col}`] = from[`${k}_${col}`] || '';
-                  }
-                  setFinalRx(next);
-                }
-                setFinalSource(v);
-              }}
+        <Section n="5" title="FINAL PRESCRIPTION" sub="ค่าสายตาที่ใช้จริงในเคสนี้" hint="เลือกว่าจะใช้ค่าชุดไหน ระบบจะคัดลอกค่าเก็บเป็นของรอบนี้ — ปรับตรงนี้ไม่กระทบค่าที่วัดได้">
+          {/* "ใช้สำหรับ" อยู่ที่นี่ ไม่ใช่ที่ Measured — มันบอกว่าค่าชุดที่ตัดสินใจใช้แล้วนี้
+              ถูกสั่งไว้ให้ใช้ทำอะไร ซึ่งเป็นการตัดสินใจ ไม่ใช่ผลการวัด */}
+          {/* PD ไม่มีช่องรวมตรงนี้แล้ว — อยู่เป็นคอลัมน์ท้ายตารางข้างล่าง แยกตาม R / L */}
+          <FormGrid two>
+            <Field
+              label="ใช้สำหรับ / Test For *"
+              hint={!confirmed && String(form.test_for ?? '').trim() === '' ? 'บังคับเลือกก่อนยืนยันผลวัดสายตา' : undefined}
             >
-              {label}
-            </button>
-          ))}
-        </Row>
+              <ListSelect
+                name="test_for"
+                kind="test_for"
+                value={form.test_for ?? ''}
+                onChange={(e) => set('test_for', e.target.value)}
+                blank="— เลือกการใช้งาน —"
+              />
+            </Field>
+            {/* อ่านอย่างเดียว — ค่าเดียวกับข้อ 4 บอกไว้ให้เห็นว่าใบสั่งตัดจะติดป้ายข้างไหน
+                โดยไม่ต้องเลื่อนขึ้นไปดู แต่แก้ที่นี่ไม่ได้ */}
+            <DominantEye value={form.dominant_eye ?? ''} />
+          </FormGrid>
 
-        <RxGrid
-          cols={SHOWN_COLS}
-          lockedCols={LOCKED_COLS}
-          readOnly={confirmed || finalSource !== 'adjusted'}
-          missing={confirmed ? null : missingFinal.cells}
-          get={(k, f) => (f === 'pd'
-            ? pdOf(k)
-            : confirmed
-              ? (shownFinal[k][f] || '')
-              : finalSource === 'adjusted' ? (finalRx[`${k}_${f}`] ?? '') : (finalValues[k][f] || ''))}
-          set={(k, f, v) => { touch(); setFinalRx((x) => ({ ...x, [`${k}_${f}`]: v })); }}
-        />
-
-        {!confirmed && missingFinal.labels.length > 0 && (
-          <p className="rx-missing-note">
-            <Icon name="warning" />
-            {` ยังยืนยันไม่ได้ — ${missingFinal.labels.join(' · ')}`}
-            {finalSource !== 'adjusted' ? ' (แก้ที่ชุดค่าที่เลือกไว้ หรือกด “ปรับค่าเอง”)' : ''}
-          </p>
-        )}
-
-        {finalSource === 'adjusted' && (
-          <Field label="เหตุผลที่ปรับค่าเอง" className="full">
-            <input
-              value={adjustReason}
-              placeholder="เช่น ลดกำลังเพื่อให้ใส่สบายขึ้น"
-              onChange={(e) => { touch(); setAdjustReason(e.target.value); }}
-            />
-          </Field>
-        )}
-
-        <div className="rx-grid-wrap" style={{ marginTop: 12 }}>
-          <table className="rx-grid compare">
-            <thead>
-              <tr>
-                <th />
-                {compareCols.map(([label]) => <th key={label}>{label}</th>)}
-              </tr>
-            </thead>
-            <tbody>
-              {compareRows.map(([label, i]) => (
-                <tr key={label}>
-                  <th scope="row">{label}</th>
-                  {compareCols.map((col) => (
-                    <td key={col[0]}>
-                      {i === 3 ? <b>{col[i] || '—'}</b> : (col[i] || '—')}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        {finalRow && (
-          <Row style={{ marginTop: 10 }}>
-            <Badge kind="ok">FINAL</Badge>
-            <span className="muted">{`บันทึกไว้เมื่อ ${fmtDateTime(finalRow.confirmed_at || finalRow.test_date)}`}</span>
-            <Link className="btn btn-sm btn-light" href={'/print/prescription?id=' + finalRow.id}><Icon name="printer" /> พิมพ์</Link>
+          <Row style={{ gap: 8, marginBottom: 10 }}>
+            {FINAL_SOURCES.map(([v, label]) => (
+              <button
+                type="button"
+                key={v}
+                className={`chip-btn ${finalSource === v ? 'active' : ''}`}
+                onClick={() => {
+                  touch();
+                  if (v === 'adjusted') {
+                    const from = finalSource === 'old' ? oldForm : form;
+                    const next = {};
+                    for (const k of ['r', 'l']) {
+                      for (const [col] of FULL_COLS) next[`${k}_${col}`] = from[`${k}_${col}`] || '';
+                    }
+                    setFinalRx(next);
+                  }
+                  setFinalSource(v);
+                }}
+              >
+                {label}
+              </button>
+            ))}
           </Row>
-        )}
+
+          <RxGrid
+            cols={SHOWN_COLS}
+            lockedCols={LOCKED_COLS}
+            readOnly={confirmed || finalSource !== 'adjusted'}
+            missing={confirmed ? null : missingFinal.cells}
+            get={(k, f) => (f === 'pd'
+              ? pdOf(k)
+              : confirmed
+                ? (shownFinal[k][f] || '')
+                : finalSource === 'adjusted' ? (finalRx[`${k}_${f}`] ?? '') : (finalValues[k][f] || ''))}
+            set={(k, f, v) => { touch(); setFinalRx((x) => ({ ...x, [`${k}_${f}`]: v })); }}
+          />
+
+          {!confirmed && missingFinal.labels.length > 0 && (
+            <p className="rx-missing-note">
+              <Icon name="warning" />
+              {` ยังยืนยันไม่ได้ — ${missingFinal.labels.join(' · ')}`}
+              {finalSource !== 'adjusted' && Object.keys(missingFinal.cells).length > 0
+                ? ' (แก้ที่ชุดค่าที่เลือกไว้ หรือกด “ปรับค่าเอง”)' : ''}
+            </p>
+          )}
+
+          {finalSource === 'adjusted' && (
+            <Field label="เหตุผลที่ปรับค่าเอง" className="full">
+              <input
+                value={adjustReason}
+                placeholder="เช่น ลดกำลังเพื่อให้ใส่สบายขึ้น"
+                onChange={(e) => { touch(); setAdjustReason(e.target.value); }}
+              />
+            </Field>
+          )}
+
+          <div className="rx-grid-wrap" style={{ marginTop: 12 }}>
+            <table className="rx-grid compare">
+              <thead>
+                <tr>
+                  <th />
+                  {compareCols.map(([label]) => <th key={label}>{label}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {compareRows.map(([label, i]) => (
+                  <tr key={label}>
+                    <th scope="row">{label}</th>
+                    {compareCols.map((col) => (
+                      <td key={col[0]}>
+                        {i === 3 ? <b>{col[i] || '—'}</b> : (col[i] || '—')}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {finalRow && (
+            <Row style={{ marginTop: 10 }}>
+              <Badge kind="ok">FINAL</Badge>
+              <span className="muted">{`บันทึกไว้เมื่อ ${fmtDateTime(finalRow.confirmed_at || finalRow.test_date)}`}</span>
+              <Link className="btn btn-sm btn-light" href={'/print/prescription?id=' + finalRow.id}><Icon name="printer" /> พิมพ์</Link>
+            </Row>
+          )}
+        </Section>
+      </fieldset>
+
+      {/* อยู่นอก fieldset ที่ล็อกหลังยืนยัน — fieldset disabled ปิดทุกปุ่มข้างใน รวมปุ่ม
+          กดดูรูปใหญ่ด้วย ถ้าวางไว้ข้างในรูปจะเปิดดูไม่ได้เลยหลังยืนยันผล
+          รูปอัปโหลดขึ้นเซิร์ฟเวอร์ทันทีเหมือนรูปขั้นวัด Center ไม่ผูกกับปุ่มบันทึก Draft
+          แนบเพิ่มหลังยืนยันได้ เพราะรูปไม่ได้เปลี่ยนค่าสายตาที่ยืนยันไว้
+          kind='exam' แยกจากรูปวัด Center และสลิป — กล่องดึงด้วย case_id + kind */}
+      <Section n="6" title="รูปภาพ / Photos" hint="ใบพิมพ์จากเครื่องวัด รูปแว่นเดิม หรือเอกสารที่ลูกค้านำมา — อัปโหลดทันที ไม่ต้องกดบันทึก Draft">
+        <PhotoUpload caseId={c.id} kind="exam" takenBy={form.performed_by || null} />
       </Section>
 
-      {/* ช่องเดียว — "บันทึกการตรวจ" กับ "หมายเหตุอื่น ๆ" เป็นคำถามเดียวกันถามสองครั้ง
-          คนกรอกต้องเดาทุกครั้งว่าอันไหนควรลงช่องไหน คอลัมน์ notes ยังอยู่และของเก่า
-          ยังอ่านออกที่ประวัติการตรวจ แค่ไม่มีที่พิมพ์ใหม่แล้ว */}
-      <Section n="6" title="หมายเหตุ / Note">
-        <Field label="บันทึกการตรวจ" className="full">
-          <textarea value={form.exam_note ?? ''} onChange={(e) => set('exam_note', e.target.value)} />
-        </Field>
-      </Section>
+      <fieldset className="exam-ws" disabled={confirmed}>
+        {/* ช่องเดียว — "บันทึกการตรวจ" กับ "หมายเหตุอื่น ๆ" เป็นคำถามเดียวกันถามสองครั้ง
+            คนกรอกต้องเดาทุกครั้งว่าอันไหนควรลงช่องไหน คอลัมน์ notes ยังอยู่และของเก่า
+            ยังอ่านออกที่ประวัติการตรวจ แค่ไม่มีที่พิมพ์ใหม่แล้ว */}
+        <Section n="7" title="หมายเหตุ / Note">
+          <Field label="บันทึกการตรวจ" className="full">
+            <textarea value={form.exam_note ?? ''} onChange={(e) => set('exam_note', e.target.value)} />
+          </Field>
+        </Section>
 
-      {/* ไม่มีหัวข้อ "ค่าสายตาที่บันทึกไว้ในรอบนี้" แล้ว — มันเคยมีเหตุผลตอนที่เป็นทาง
-          เดียวที่จะเข้าถึงใบดิบผ่านปุ่ม "แก้ไขทั้งใบ" พอปุ่มนั้นหายไป มันเหลือแค่พิมพ์
-          SPH/CYL/AXIS ซ้ำจากหัวข้อ 3/4/5 ที่แสดงครบทุกคอลัมน์อยู่แล้ว บวกตารางเทียบ
-          ท้ายหัวข้อ 5 ที่วางค่าทั้งสามชุดเรียงข้างกัน */}
-    </fieldset>
+        {/* ไม่มีหัวข้อ "ค่าสายตาที่บันทึกไว้ในรอบนี้" แล้ว — มันเคยมีเหตุผลตอนที่เป็นทาง
+            เดียวที่จะเข้าถึงใบดิบผ่านปุ่ม "แก้ไขทั้งใบ" พอปุ่มนั้นหายไป มันเหลือแค่พิมพ์
+            SPH/CYL/AXIS ซ้ำจากหัวข้อ 3/4/5 ที่แสดงครบทุกคอลัมน์อยู่แล้ว บวกตารางเทียบ
+            ท้ายหัวข้อ 5 ที่วางค่าทั้งสามชุดเรียงข้างกัน */}
+      </fieldset>
+    </div>
   );
 }

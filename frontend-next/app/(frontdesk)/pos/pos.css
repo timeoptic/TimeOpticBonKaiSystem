@@ -258,6 +258,78 @@
 
 .pos-meta input:focus{outline:none;background:var(--card);border-color:var(--green);box-shadow:0 0 0 3px var(--green-tint)}
 
+/* ช่องแบบตัวเลือก (ข้างของกล่องคอนแทคเลนส์) — ปุ่มเรียงกัน ไม่ใช่ dropdown
+   เห็นค่าทั้งหมดพร้อมกัน กดถูกกว่าบนแท็บเล็ตที่หน้าร้านใช้ */
+.pos-meta-choice{display:flex;flex-direction:column;gap:3px}
+
+.pos-meta-opts{display:flex;gap:6px;flex-wrap:wrap}
+
+/* ---- ค่าสายตาสำหรับคอนแทคเลนส์ (อยู่ในแผงเก็บเงิน) ---- */
+.pos-rx{display:flex;flex-direction:column;gap:8px}
+
+/* ปุ่มสองใบยาวเท่ากันและเต็มความกว้าง — เป็นทางเลือกคู่กัน ไม่ใช่ปุ่มหลักกับปุ่มรอง */
+.pos-rx-acts{display:flex;gap:8px;flex-wrap:wrap}
+
+.pos-rx-acts .btn{flex:1 1 150px;justify-content:center}
+
+.pos-rx-hint{
+  margin:0;font-size:var(--t-xs);color:var(--ink-faint);
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+}
+
+/* แนบแล้วเปลี่ยนเป็นกล่องเขียว — สถานะที่ต่างจาก "ยังไม่ได้แนบ" ต้องอ่านออกด้วยตา
+   ไม่ใช่ด้วยการไล่อ่านข้อความ ตอนเก็บเงินไม่มีใครอ่านทีละบรรทัด */
+.pos-rx-on{
+  display:flex;flex-direction:column;gap:6px;align-items:flex-start;
+  padding:10px 12px;background:var(--green-tint);
+  border:1px solid var(--green);border-radius:var(--radius-xs);
+}
+
+.pos-rx-on .pos-rx-vals{font-variant-numeric:tabular-nums;color:var(--ink)}
+
+/* เลือกจากประวัติ — แผงเก็บเงินแคบกว่าขั้นวัดสายตา วันที่จึงขึ้นบรรทัดของตัวเอง
+   และรายการยาวเลื่อนในกล่อง ไม่ดันปุ่มรับเงินลงไปไกล */
+.pos-rx-history{margin-top:0;max-height:320px;overflow-y:auto}
+.pos-rx-history .rx-history-row{gap:4px 10px}
+.pos-rx-history .rx-history-row b{flex-basis:100%;min-width:0}
+
+/* ---- เพิ่มลูกค้าใหม่จากหน้า POS ---- */
+.pos-newc{
+  display:flex;flex-direction:column;gap:8px;
+  padding:10px;background:var(--panel);
+  border:1px solid var(--line);border-radius:var(--radius-xs);
+}
+
+.pos-newc-row{display:flex;gap:6px;flex-wrap:wrap}
+
+.pos-newc-row input{
+  flex:1 1 110px;min-width:0;height:36px;padding:0 11px;
+  background:var(--card);border:1px solid var(--line);border-radius:var(--radius-xs);font:inherit;
+}
+
+.pos-newc-row input:focus{outline:none;border-color:var(--green);box-shadow:0 0 0 3px var(--green-tint)}
+
+.pos-newc-acts{display:flex;gap:8px;justify-content:flex-end}
+
+/* รายชื่อที่อาจซ้ำ — ต้องอ่านง่ายพอที่พนักงานจะตัดสินได้ว่า "ใช่คนเดิมไหม"
+   ก่อนกดสร้างใบใหม่ ซึ่งเป็นจุดที่ประวัติค่าสายตาแตกเป็นสองใบ */
+.pos-newc-dup{
+  display:flex;flex-direction:column;gap:4px;
+  padding:8px;background:var(--card);
+  border:1px solid var(--line-soft);border-radius:var(--radius-xs);
+  font-size:var(--t-xs);
+}
+
+.pos-newc-hit{
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+  width:100%;padding:7px 9px;border:1px solid var(--line-soft);border-radius:var(--radius-xs);
+  background:var(--card);text-align:left;font:inherit;cursor:pointer;color:var(--ink);
+}
+
+.pos-newc-hit:hover{background:var(--green-tint);border-color:var(--green)}
+
+.pos-newc-hit small{display:block;color:var(--ink-faint)}
+
 @media (max-width:640px){
   .pos-line-sum{margin-left:0;width:100%}
   .pos-price{flex:1 1 90px;width:auto}

@@ -25,6 +25,7 @@ use Optic\Service\Rx;
 use Optic\Service\Settlement;
 use Optic\Service\StockGate;
 use Optic\Service\Users;
+use Optic\Telegram;
 
 /* ------------------------------------------------------------------- auth */
 
@@ -380,7 +381,37 @@ Http::get('/api/rx/orders', static function () use ($maySeeCost): array {
         (int) (Http::query('page') ?? 1),
         (int) (Http::query('per') ?? 20),
         $maySeeCost($actor),
+        [
+            'from' => Http::query('from'),
+            'to'   => Http::query('to'),
+            'lens' => Http::query('lens'),
+        ],
     );
+});
+
+/**
+ * ติ๊กว่าเลนส์ของใบสั่งตัดมาถึงร้านแล้ว หรือเอาติ๊กออก — ร้านขอไว้ 14 ก.ย. 2026
+ *
+ * ครั้งที่ทำให้เลนส์ของเคสมาครบทุกข้าง ส่งข้อความเข้า Telegram หนึ่งใบ · ส่งไม่ออกไม่ทำให้
+ * การติ๊กพัง — ติ๊กบันทึกแล้ว ข้อความหายดีกว่าบอกคนกดว่าไม่สำเร็จทั้งที่สำเร็จ
+ */
+Http::post('/api/rx/{id}/arrived', static function (array $p): array {
+    $actor = Auth::require();
+    if (!ctype_digit($p['id'])) {
+        throw ApiError::badRequest('id ต้องเป็นตัวเลข');
+    }
+    $body = Http::body();
+    $arrived = filter_var($body['arrived'] ?? true, FILTER_VALIDATE_BOOLEAN);
+    $out = Rx::setArrived((int) $p['id'], $arrived, $actor['roles'], (int) $actor['id']);
+    if ($out['notice'] !== null) {
+        try {
+            Telegram::send($out['notice']);
+        } catch (\Throwable $e) {
+            error_log('แจ้งเลนส์มาครบไม่สำเร็จ: ' . $e->getMessage());
+        }
+    }
+    unset($out['notice']);
+    return ['order' => $out];
 });
 
 Http::get('/api/rx/awaiting-cost', static function (): array {
@@ -525,9 +556,13 @@ Http::get('/api/settlements', static function (): array {
         'status'    => Http::query('status'),
         'branch_id' => Http::query('branch') === null ? null : (int) Http::query('branch'),
         'q'         => Http::query('q'),
+        'from'      => Http::query('from'),
+        'to'        => Http::query('to'),
         'sort'      => Http::query('sort'),
         'dir'       => Http::query('dir'),
         'page'      => Http::query('page'),
+        // ปุ่ม Excel ขอทุกใบที่ตรงกับตัวกรองในครั้งเดียว ไม่ใช่ทีละ 25 แถว
+        'all'       => Http::query('all') === '1',
     ];
 
     return Settlement::list($filter, $actor['roles'])
@@ -573,6 +608,32 @@ Http::post('/api/settlements/{id}/cancel', static function (array $p): array {
         throw ApiError::badRequest('id ต้องเป็นตัวเลข');
     }
     return ['issue' => Settlement::cancel((int) $p['id'], Http::body(), $actor['roles'], $actor['id'])];
+});
+
+/* ------------------------------------------------------ shop's own issues */
+
+/**
+ * แก้การเบิกของร้านเอง (TimeOptic) — เลขเอกสาร หมายเหตุ ผู้เบิก · ของไม่ขยับ
+ *
+ * แถวของสาขาและแถวที่ตัดตามเคสถูกปฏิเสธ แต่ละอย่างมีที่แก้ของตัวเอง (ดู `ShopIssue`)
+ */
+Http::post('/api/movements/{id}/update', static function (array $p): array {
+    $actor = Auth::require();
+    if (!ctype_digit($p['id'])) {
+        throw ApiError::badRequest('id ต้องเป็นตัวเลข');
+    }
+    return ['log' => \Optic\Service\ShopIssue::edit((int) $p['id'], Http::body(), $actor['roles'], $actor['id'])];
+});
+
+/**
+ * ยกเลิกการเบิกของร้านเอง — ต้องมีเหตุผล ของกลับเข้าล็อตเดิม ยกเลิกซ้ำไม่ได้
+ */
+Http::post('/api/movements/{id}/cancel', static function (array $p): array {
+    $actor = Auth::require();
+    if (!ctype_digit($p['id'])) {
+        throw ApiError::badRequest('id ต้องเป็นตัวเลข');
+    }
+    return \Optic\Service\ShopIssue::cancel((int) $p['id'], Http::body(), $actor['roles'], $actor['id']);
 });
 
 /* ------------------------------------------------------------------ users */

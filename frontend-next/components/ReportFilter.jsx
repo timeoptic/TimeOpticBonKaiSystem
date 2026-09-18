@@ -48,11 +48,18 @@ export function useReport(name) {
 /**
  * `statusNote` = หน้านี้ไม่ได้กรองตามสถานะงาน ให้บอกเหตุผลไว้ตรงกล่อง
  *
- * หน้าการรับเงินนับจากรายการจ่ายเงิน และหน้าช่องทางลูกค้านับจากเคสทั้งหมดเพื่อ
- * คิดอัตราปิดการขาย — กล่องสถานะจึงไม่มีผลกับสองหน้านั้น · ปิดกล่องทิ้งพร้อม
- * บอกเหตุผล ดีกว่าปล่อยให้กดแล้วตัวเลขไม่ขยับ ซึ่งอ่านว่าระบบพัง
+ * หน้าช่องทางลูกค้านับจากเคสทั้งหมดเพื่อคิดอัตราปิดการขาย — กล่องสถานะจึงไม่มีผล
+ * กับหน้านั้น · ปิดกล่องทิ้งพร้อมบอกเหตุผล ดีกว่าปล่อยให้กดแล้วตัวเลขไม่ขยับ ซึ่ง
+ * อ่านว่าระบบพัง (หน้าการรับเงินเคยปิดไว้เหมือนกัน ตอนนี้กรองตามสถานะของบิลที่เงิน
+ * ก้อนนั้นผูกอยู่แล้ว)
+ *
+ * `channels` + `channelLabel` = ป้ายของช่องช่องทางสำหรับหน้าที่เรียกมันด้วยชื่ออื่น —
+ * หน้าการรับเงินเรียก "แหล่งที่มา" · คีย์ยังเป็นชุดเดียวกับ CHANNELS เสมอ อีกหกหน้า
+ * ไม่ส่งมาก็ได้ป้ายเดิม
  */
-export function ReportFilter({ actions = null, statusNote = '' }) {
+export function ReportFilter({
+  actions = null, statusNote = '', channels = CHANNELS, channelLabel = 'ช่องทาง',
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -122,8 +129,8 @@ export function ReportFilter({ actions = null, statusNote = '' }) {
       </div>
 
       <label className="rf-date">
-        <span>ช่องทาง</span>
-        <Select value={f.channel} onChange={(e) => go({ channel: e.target.value })} options={CHANNELS} />
+        <span>{channelLabel}</span>
+        <Select value={f.channel} onChange={(e) => go({ channel: e.target.value })} options={channels} />
       </label>
 
       <label className="rf-date" title={statusNote || 'งานที่จบแล้ว = ปิดการขาย / ลูกค้ารับของแล้ว'}>

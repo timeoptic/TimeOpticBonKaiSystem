@@ -35,6 +35,7 @@ require __DIR__ . '/services/DeliveryDigest.php';
 require __DIR__ . '/services/SalesReport.php';
 require __DIR__ . '/services/Xlsx.php';
 require __DIR__ . '/services/SalesExport.php';
+require __DIR__ . '/services/PaymentExport.php';
 require __DIR__ . '/services/CaseSource.php';
 require __DIR__ . '/services/ActivityLog.php';
 

@@ -318,10 +318,20 @@ final class SalesReport
      * เงินที่รับจริงในช่วงวันที่ — คนละรางกับยอดขาย นับด้วย paid_at
      *
      * คืนแถวหน้าตาเดียวกันจากสองตารางที่หน้าตาไม่เหมือนกัน ให้ผู้เรียกไม่ต้องรู้ว่า
-     * เงินก้อนไหนมาจากตารางไหน
+     * เงินก้อนไหนมาจากตารางไหน · `src` + `id` + ช่อง id ของบิล มีไว้ให้ไฟล์ Excel
+     * (`PaymentExport`) ตามไปเติมรายละเอียดของบิลได้โดยไม่ต้องกรองซ้ำเอง
+     *
+     * สถานะงานมาจากบิลที่เงินก้อนนั้นผูกอยู่ กติกาเดียวกับ mainBills()/posBills():
+     * ออเดอร์ดู `order_closed` · POS ดูว่าส่งของแล้วหรือยัง · ขายสินค้าระบบเดิมไม่มี
+     * สถานะ นับเป็นจบแล้วทุกใบ
      */
-    public static function receipts(string $from, string $to, string $channel, string $group = 'all'): array
-    {
+    public static function receipts(
+        string $from,
+        string $to,
+        string $channel,
+        string $group = 'all',
+        string $status = 'all'
+    ): array {
         $rows = [];
 
         if (self::wantsMain($channel) || self::wantsPos($channel)) {
@@ -332,15 +342,15 @@ final class SalesReport
                ประเภทลูกค้ามาจากเคสของออเดอร์ก่อน แล้วค่อยตกไปที่เคสที่เงินผูกตรง ๆ ·
                เงินที่ไม่มีเคสเลยได้ NULL และนับเป็นลูกค้าร้าน กติกาเดียวกับ groupSql() */
             foreach (Db::all(
-                "SELECT p.id, p.method, p.kind, p.amount, p.paid_at,
-                        p.order_id, p.sale_id, e.employee_name,
+                "SELECT p.id, p.method, p.kind, p.amount, p.paid_at, p.notes, p.reference,
+                        p.case_id, p.order_id, p.sale_id, e.employee_name, o.order_closed,
                         COALESCE(ko.customer_category, kp.customer_category) AS category
                    FROM payments p
                    LEFT JOIN employees e     ON e.id  = p.received_by
                    LEFT JOIN custom_orders o ON o.id  = p.order_id
                    LEFT JOIN cases ko        ON ko.id = o.case_id
                    LEFT JOIN cases kp        ON kp.id = p.case_id
-                  WHERE p.cancelled_at IS NULL AND DATE(p.paid_at) BETWEEN ? AND ?",
+                  WHERE p.cancelled_at IS NULL AND p.kind <> 'unpaid' AND DATE(p.paid_at) BETWEEN ? AND ?",
                 $from,
                 $to
             ) as $p) {
@@ -355,42 +365,104 @@ final class SalesReport
                 if (($group === 'sightfirst' && !$isSightFirst) || ($group === 'shop' && $isSightFirst)) {
                     continue;
                 }
+                $closed = $ch === 'pos' || (int) $p['order_closed'] === 1;
+                if (($status === 'closed' && !$closed) || ($status === 'open' && $closed)) {
+                    continue;
+                }
                 $rows[] = [
+                    'id'            => (int) $p['id'],
+                    'src'           => 'payments',
                     'method'        => self::payMethodKey((string) $p['method']),
                     'kind'          => (string) $p['kind'],
                     'amount'        => round2($p['amount']),
                     'paid_at'       => $p['paid_at'],
                     'channel'       => $ch,
                     'employee_name' => $p['employee_name'],
+                    'case_id'       => $p['case_id'] !== null ? (int) $p['case_id'] : null,
+                    'order_id'      => $p['order_id'] !== null ? (int) $p['order_id'] : null,
+                    'sale_id'       => $p['sale_id'] !== null ? (int) $p['sale_id'] : null,
+                    'category'      => $p['category'],
+                    'notes'         => $p['notes'],
+                    'reference'     => $p['reference'],
                 ];
             }
         }
 
         if (self::wantsPos($channel) && self::groupHasPos($group)) {
+            $onlyStatus = self::statusSql(
+                $status,
+                "s.fulfillment_status = 'delivered'",
+                "s.fulfillment_status <> 'delivered'"
+            );
             foreach (Db::all(
-                "SELECT pp.id, pp.payment_method, pp.amount, pp.paid_at,
+                "SELECT pp.id, pp.sale_id, pp.payment_method, pp.amount, pp.paid_at, pp.note,
                         e.employee_name
                    FROM pos_payments pp
                    JOIN pos_sales s      ON s.id = pp.sale_id AND s.status = 'active'
                    LEFT JOIN admins a    ON a.id = pp.created_by
                    LEFT JOIN employees e ON e.id = a.employee_id
-                  WHERE pp.cancelled_at IS NULL AND DATE(pp.paid_at) BETWEEN ? AND ?",
+                  WHERE pp.cancelled_at IS NULL AND DATE(pp.paid_at) BETWEEN ? AND ? $onlyStatus",
                 $from,
                 $to
             ) as $p) {
                 $rows[] = [
+                    'id'            => (int) $p['id'],
+                    'src'           => 'pos_payments',
                     'method'        => self::payMethodKey((string) $p['payment_method']),
                     'kind'          => 'pos',
                     'amount'        => round2($p['amount']),
                     'paid_at'       => $p['paid_at'],
                     'channel'       => 'pos',
                     'employee_name' => $p['employee_name'],
+                    'case_id'       => null,
+                    'order_id'      => null,
+                    'sale_id'       => (int) $p['sale_id'],
+                    'category'      => null,
+                    'notes'         => $p['note'],
+                    'reference'     => null,
                 ];
             }
         }
 
         usort($rows, fn($a, $b) => strcmp((string) $b['paid_at'], (string) $a['paid_at']));
         return $rows;
+    }
+
+    /**
+     * ยอดรวมของเงินที่รับชุดหนึ่ง — หน้าจอกับไฟล์ Excel เรียกตัวเดียวกัน
+     *
+     * ตัวเลขในชีทสรุปจึงเท่ากับหน้าจอโดยโครงสร้าง ไม่ใช่เพราะมีสองที่ที่บวกเลขเหมือนกัน
+     * · ช่องทางที่ไม่รู้จักไม่ถูกยุบรวม (ดู payMethodKey())
+     */
+    public static function receiptSummary(array $receipts): array
+    {
+        $byMethod  = [];
+        $byChannel = ['main' => 0.0, 'pos' => 0.0];
+        $total     = 0.0;
+        foreach ($receipts as $p) {
+            $m = $p['method'];
+            if (!isset($byMethod[$m])) {
+                $byMethod[$m] = ['method' => $m, 'amount' => 0.0, 'count' => 0];
+            }
+            $byMethod[$m]['amount'] += $p['amount'];
+            $byMethod[$m]['count']++;
+            $byChannel[$p['channel']] += $p['amount'];
+            $total += $p['amount'];
+        }
+        foreach ($byMethod as &$m) {
+            $m['amount'] = round2($m['amount']);
+            $m['share']  = $total > 0 ? round($m['amount'] / $total * 100, 1) : 0;
+        }
+        unset($m);
+        $methods = array_values($byMethod);
+        usort($methods, fn($a, $b) => $b['amount'] <=> $a['amount']);
+
+        return [
+            'total'      => round2($total),
+            'count'      => count($receipts),
+            'by_method'  => $methods,
+            'by_channel' => ['main' => round2($byChannel['main']), 'pos' => round2($byChannel['pos'])],
+        ];
     }
 
     /**
@@ -405,9 +477,11 @@ final class SalesReport
         $k = strtolower(trim($raw));
         return match ($k) {
             'cash', 'เงินสด'                => 'cash',
-            'transfer', 'โอน', 'โอนเงิน'     => 'transfer',
-            'qr', 'qrcode', 'qr payment'    => 'qr',
-            'credit', 'creditcard', 'card'  => 'credit',
+            /* 'bbl' กับ 'credit card' คือค่าที่งานตัดแว่นเก็บจาก list_pay_type — ร้านรับโอน
+               เข้าบัญชีกรุงเทพบัญชีเดียว ช่องเดียวกับ 'transfer' ของ POS (ป้าย "BBL") */
+            'transfer', 'โอน', 'โอนเงิน', 'bbl'           => 'transfer',
+            'qr', 'qrcode', 'qr payment'                => 'qr',
+            'credit', 'creditcard', 'card', 'credit card' => 'credit',
             'thungngern', 'ถุงเงิน'          => 'thungngern',
             ''                              => 'unknown',
             default                         => $k,
@@ -491,7 +565,17 @@ final class SalesReport
         'friend'   => 'Friend / ลูกค้าแนะนำ',
         'referral' => 'Friend / ลูกค้าแนะนำ',
         'janko'    => 'Janko',
+        /* ไลออนส์เพิ่งกลับเข้าตัวเลือกด้วยโค้ด `lions` แต่ของเก่าในฐานเก็บเป็น `Lions`
+           ตัวใหญ่ (1,255 เคสจากแอปเดิม) · ทั้งคู่ต้องได้ป้ายเดียวกัน ไม่งั้นรายงาน
+           จะขึ้นสองแท่งที่แปลว่าช่องทางเดียวกัน ซึ่งทำให้อ่านสัดส่วนผิด */
+        'lions'    => 'Lions',
+        'Lions'    => 'Lions',
+        'LIONS'    => 'Lions',
         'other'    => 'อื่นๆ',
+        /* ไม่ใช่ช่องทางที่ใครติ๊ก — routes/cases.php ใส่ให้เองเมื่อลูกค้ามีเคสเก่าอยู่
+           แล้ว · จงใจไม่อยู่ใน Lookups::lists() เพื่อไม่ให้พนักงานติ๊กเองได้ ไม่งั้น
+           ลูกค้าใหม่จะถูกติ๊กว่าเก่าแล้วตัวเลขทั้งรายงานเชื่อไม่ได้ */
+        'returning' => 'ลูกค้าเก่า',
     ];
 
     /** โค้ดเก่าที่ถูกยุบเข้ากลุ่มอื่น — หน้าเว็บใช้บอกผู้อ่านว่ามีการยุบ */

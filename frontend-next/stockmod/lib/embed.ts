@@ -14,7 +14,7 @@ export const EMBED_MESSAGE = "timeoptic:embed";
 
 export type EmbedResult =
   | { kind: "product"; productId: number; lotId: number | null }
-  | { kind: "rx"; referenceDoc: string; awaitingCost: boolean }
+  | { kind: "rx"; id: number; referenceDoc: string; awaitingCost: boolean; sku: string; name: string }
   | { kind: "cancel" };
 
 export function sendToParent(result: EmbedResult): void {

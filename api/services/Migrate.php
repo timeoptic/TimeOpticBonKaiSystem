@@ -498,6 +498,33 @@ final class Migrate
         );
     }
 
+    /**
+     * เติมค่าให้คอลัมน์ enum ที่มีอยู่แล้ว — ค่าเดิมอยู่ครบตามลำดับเดิม ไม่มีการลดค่าออก
+     *
+     * @return string[] "table.column+value" ที่เพิ่มในรอบนี้
+     */
+    private static function extendEnum(string $table, string $column, array $values, string $tail): array
+    {
+        $row = Db::get(
+            'SELECT COLUMN_TYPE t FROM information_schema.columns
+              WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?',
+            $table,
+            $column
+        );
+        if (!$row) {
+            return [];
+        }
+        preg_match_all("/'((?:[^']|'')*)'/", (string) $row['t'], $m);
+        $have    = array_map(fn($v) => str_replace("''", "'", $v), $m[1]);
+        $missing = array_values(array_diff($values, $have));
+        if (!$missing) {
+            return [];
+        }
+        $list = implode(',', array_map(fn($v) => "'" . str_replace("'", "''", $v) . "'", array_merge($have, $missing)));
+        Db::pdo()->exec("ALTER TABLE `$table` MODIFY COLUMN `$column` enum($list) $tail");
+        return array_map(fn($v) => "$table.$column+$v", $missing);
+    }
+
     /** @return string[] "table.column" names actually added this run */
     private static function addColumns(string $table, array $columns): array
     {
@@ -558,6 +585,13 @@ final class Migrate
                 'lens_l_sku'     => 'varchar(80) DEFAULT NULL',
                 /* ประเภทกรอบ — คำไทยจาก Lookups::FRAME_TYPES ออเดอร์เก่าเป็น NULL */
                 'frame_type'     => 'varchar(40) DEFAULT NULL',
+                /* ใบสั่งตัด RX ที่เปิดจากหน้าเคสให้เลนส์ข้างนี้ — id แถว RX_ORDER ในสมุด
+                   ฝั่งคลัง กับเลขที่ใบสั่ง · เปิดออเดอร์กลับมาจะได้การ์ดเลนส์เดิม และปุ่ม
+                   "ล้าง" รู้ว่าต้องยกเลิกใบไหน · ออเดอร์ที่ไม่ได้สั่งตัดเป็น NULL */
+                'lens_r_rx_id'   => 'int(10) unsigned DEFAULT NULL',
+                'lens_r_rx_doc'  => 'varchar(100) DEFAULT NULL',
+                'lens_l_rx_id'   => 'int(10) unsigned DEFAULT NULL',
+                'lens_l_rx_doc'  => 'varchar(100) DEFAULT NULL',
             ]),
             self::addColumns('frame_fittings', [
                 'frame_box_a' => 'decimal(6,2) DEFAULT NULL',
@@ -598,6 +632,20 @@ final class Migrate
                 'customer_category' => 'varchar(20) DEFAULT NULL',
                 /* ช่องทางที่รู้จักร้าน เลือก "อื่น ๆ" แล้วพิมพ์เองได้ */
                 'referral_note' => 'varchar(255) DEFAULT NULL',
+            ]),
+            /* อายุที่ลูกค้าบอกมา — สำหรับคนที่ไม่ทราบหรือไม่บอกวันเกิด
+             *
+             * ทำไมไม่แปลงเป็นวันเกิดปลอม (1 ม.ค. ของปีนั้น) แล้วเก็บช่องเดียว: ค่าที่เดา
+             * ขึ้นมาแยกไม่ออกจากวันเกิดจริงในภายหลัง และหน้าที่คิดค่า ADD จะเชื่อมันเต็ม ๆ
+             *
+             * ทำไมต้องมี age_recorded_on: อายุเป็นค่าที่หมดอายุ · เก็บแค่ "45" ไว้ อีกสามปี
+             * หน้าจอก็ยังอ่านว่า 45 · มีวันที่กำกับแล้วคำนวณปีที่ผ่านไปได้ และบอกผู้อ่านได้
+             * ด้วยว่าเลขนี้ถามไว้เมื่อไหร่
+             *
+             * วันเกิดชนะเสมอเมื่อมีทั้งคู่ — ดู lib/customerAge.js */
+            self::addColumns('customers', [
+                'age_years'       => 'tinyint(3) unsigned DEFAULT NULL',
+                'age_recorded_on' => 'date DEFAULT NULL',
             ]),
             /* ขั้นวัด Center บันทึกว่าเมื่อไหร่ และใครเป็นคนกรอก แยกจากใครเป็นคนวัด */
             /* ช่องทางที่เลิกใช้แล้วต้องหายจากตัวเลือก แต่ป้ายชื่อยังต้องอยู่
@@ -650,6 +698,10 @@ final class Migrate
                 'bill_party_id' => "int(10) unsigned DEFAULT NULL COMMENT 'bill_parties.id — ไม่ผูก FK โดยตั้งใจ'",
             ])
         );
+        /* "ยังไม่ชำระ" — รายการรับเงิน 0 บาท ลูกค้าจะมาจ่ายตอนรับของ (ร้านขอ 14 ก.ย. 2026)
+           บน Hostinger ไม่มีอะไรเรียก run() ต้องสั่งเพิ่มเอง — ดู deploy/README.md */
+        $added = array_merge($added, self::extendEnum('payments', 'kind', ['unpaid'], "NOT NULL DEFAULT 'deposit'"));
+
         /* Views come after addColumns, not before: v_case_board selects columns that
            addColumns() is what puts there, so on a database that has not seen this
            release yet, building the view first fails on its own migration. */

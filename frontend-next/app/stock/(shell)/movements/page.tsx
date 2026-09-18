@@ -7,9 +7,10 @@ import Paginator from "@/stockmod/components/Paginator";
 import SortHead, { SortBar, useSort } from "@/stockmod/components/SortHead";
 import { Filter, FilterBar, withCount } from "@/stockmod/components/FilterBar";
 import RecordCard, { CardList } from "@/stockmod/components/RecordCard";
+import ShopIssueDialog from "@/stockmod/components/ShopIssueDialog";
 import { qs, useApi } from "@/stockmod/lib/useApi";
-import { count, date, money } from "@/stockmod/lib/format";
-import type { MovementRow, Page } from "@/stockmod/lib/api";
+import { count, dateTime, money } from "@/stockmod/lib/format";
+import type { MovementRow, Page, Person } from "@/stockmod/lib/api";
 
 type Counts = Record<string, number>;
 type List = Page<MovementRow> & { counts: Counts };
@@ -75,6 +76,13 @@ export default function MovementsPage() {
 
   const actor = useActor();
   const money$ = can.seeCost(actor);
+  /* แก้ / ยกเลิกการเบิกของร้านเอง (TimeOptic) — สิทธิ์เดียวกับฝั่งสาขาที่ API ตรวจ
+     (`Roles::settleBranch`) ตามที่ร้านเลือกไว้ 12 ก.ย. 2026 · ถามชื่อสิทธิ์ตรง ๆ ไม่ได้เพิ่ม
+     เข้า `can` ใน AppShell เพราะไฟล์นั้นอยู่ในก้อนที่ทุกหน้าของคลังโหลดร่วมกัน */
+  const maySettle = actor.perms.includes("branch.settle");
+  const people = useApi<{ people: Person[] }>(maySettle ? "/people" : null);
+  const [editing, setEditing] = useState<MovementRow | null>(null);
+  const onEdit = maySettle ? setEditing : undefined;
   const list = useApi<List>(`/movements${qs({ type, q: applied, who, sort, dir, page })}`);
   const rows = list.status === "ready" ? list.data.rows : [];
   const counts: Counts = list.status === "ready" ? list.data.counts : {};
@@ -233,7 +241,7 @@ export default function MovementsPage() {
           {/* บนมือถือ แถวกลายเป็นการ์ด — ดู RecordCard ว่าทำไมไม่ใช่ตารางที่เลื่อนข้าง */}
           <CardList label="ความเคลื่อนไหวสต็อก">
             {rows.map((r) => (
-              <MovementCard key={r.id} row={r} money={money$} />
+              <MovementCard key={r.id} row={r} money={money$} onEdit={onEdit} />
             ))}
           </CardList>
 
@@ -258,11 +266,16 @@ export default function MovementsPage() {
                     <th scope="col" className="grid__num">ราคาขาย/ชิ้น</th>
                   )}
                   <th scope="col">ใครเบิก</th>
+                  {maySettle ? (
+                    <th scope="col">
+                      <span className="sr-only">แก้ไข</span>
+                    </th>
+                  ) : null}
                 </tr>
               </thead>
               <tbody>
                 {rows.map((r) => (
-<Row key={r.id} row={r} money={money$} />
+<Row key={r.id} row={r} money={money$} onEdit={onEdit} />
                 ))}
               </tbody>
             </table>
@@ -277,7 +290,58 @@ export default function MovementsPage() {
           />
         </>
       ) : null}
+
+      {editing && people.status === "ready" ? (
+        <ShopIssueDialog
+          row={editing}
+          people={people.data.people}
+          onClose={() => setEditing(null)}
+          onSaved={list.reload}
+        />
+      ) : null}
     </main>
+  );
+}
+
+/**
+ * ทางแก้ของแถวนี้ — ร้านถามไว้ 12 ก.ย. 2026 ว่าการเบิกของ TimeOptic เบิกผิดแล้วแก้ที่ไหน
+ *
+ * เฉพาะแถวจ่ายออก · ของสาขาแก้ที่หน้าการเบิกจากสาขา · ของที่ตัดตามเคสต้องแก้ที่หน้าเคส
+ * (คืนจากฝั่งคลังแล้วเคสจะยังเชื่อว่าของอยู่กับลูกค้า) · ที่เหลือคือของที่ร้านเบิกเอง
+ * แก้และยกเลิกได้ที่นี่ ยกเว้นแถวที่ยกเลิกไปแล้ว
+ *
+ * แถวตัดของเสียยกเลิกได้ด้วย (ร้านขอไว้ 14 ก.ย. 2026) — ของเสียไม่มีสาขาหรือเคส จึงไม่ต้อง
+ * ส่งไปแก้ที่อื่น
+ */
+function FixAction({ row: r, onEdit }: { row: MovementRow; onEdit: (r: MovementRow) => void }) {
+  if (r.actionType === "SCRAP") {
+    if (r.returned) return <span className="grid__muted">ยกเลิกแล้ว</span>;
+    return (
+      <button type="button" className="btn btn--small" onClick={() => onEdit(r)}>
+        ยกเลิก
+      </button>
+    );
+  }
+  if (r.actionType !== "OUT") return null;
+  if (r.branchIssueId !== null) {
+    return (
+      <Link href="/stock/settlements" className="grid__link">
+        แก้ที่หน้าการเบิกจากสาขา
+      </Link>
+    );
+  }
+  if (r.caseId !== null) {
+    return (
+      <a href={`/cases/detail?id=${r.caseId}`} className="grid__link">
+        แก้ที่หน้าเคส
+      </a>
+    );
+  }
+  if (r.returned) return <span className="grid__muted">คืนแล้ว</span>;
+  return (
+    <button type="button" className="btn btn--small" onClick={() => onEdit(r)}>
+      แก้ไข / ยกเลิก
+    </button>
   );
 }
 
@@ -291,13 +355,23 @@ export default function MovementsPage() {
  * ตัวเลขเงินยังเดินตามสิทธิ์ชุดเดิม — คนที่ไม่เห็นต้นทุนได้บรรทัดราคาขายบรรทัด
  * เดียว ไม่ใช่บรรทัดต้นทุนที่ว่างเปล่า
  */
-function MovementCard({ row: r, money: showMoney }: { row: MovementRow; money: boolean }) {
+function MovementCard({
+  row: r,
+  money: showMoney,
+  onEdit,
+}: {
+  row: MovementRow;
+  money: boolean;
+  onEdit?: (r: MovementRow) => void;
+}) {
   const awaitingRxCost = showMoney && r.actionType === "RX_ORDER" && r.unitCost === null;
   const owed = r.branchStatus === "pending";
 
-  const who = r.branchName
-    ? `${r.branchName}${r.takenBy ? ` · ${r.takenBy}` : ""}`
-    : (r.issuedToName ?? r.actorName ?? "—");
+  const who = r.scrapBy
+    ? r.scrapBy
+    : r.branchName
+      ? `${r.branchName}${r.takenBy ? ` · ${r.takenBy}` : ""}`
+      : (r.issuedToName ?? r.actorName ?? "—");
 
   return (
     <RecordCard
@@ -307,7 +381,7 @@ function MovementCard({ row: r, money: showMoney }: { row: MovementRow; money: b
           <span className={`tag tag--${r.actionType.toLowerCase().replace("_", "-")}`}>
             {r.actionLabel}
           </span>
-          <span className="reccard__when">{date(r.createdAt)}</span>
+          <span className="reccard__when">{dateTime(r.createdAt)}</span>
         </>
       }
       title={r.productName}
@@ -349,16 +423,25 @@ function MovementCard({ row: r, money: showMoney }: { row: MovementRow; money: b
           : r.basePrice === null
             ? null
             : { label: "ราคาตอนนี้", value: <span className="grid__muted">{money(r.basePrice)}</span> },
-        { label: "ใครเบิก", value: who },
+        { label: r.scrapBy ? "ทำเสียโดย" : "ใครเบิก", value: who },
         r.actorName ? { label: "บันทึกโดย", value: r.actorName } : null,
         r.referenceDoc ? { label: "เอกสาร", value: <span className="grid__doc">{r.referenceDoc}</span> } : null,
         r.notes ? { label: "หมายเหตุ", value: r.notes } : null,
       ]}
+      actions={onEdit ? <FixAction row={r} onEdit={onEdit} /> : undefined}
     />
   );
 }
 
-function Row({ row: r, money: showMoney }: { row: MovementRow; money: boolean }) {
+function Row({
+  row: r,
+  money: showMoney,
+  onEdit,
+}: {
+  row: MovementRow;
+  money: boolean;
+  onEdit?: (r: MovementRow) => void;
+}) {
   // Without permission to see costs, a null cost says nothing about whether an
   // invoice is outstanding — so it must not tint the row as if it did.
   const awaitingRxCost = showMoney && r.actionType === "RX_ORDER" && r.unitCost === null;
@@ -374,7 +457,7 @@ function Row({ row: r, money: showMoney }: { row: MovementRow; money: boolean })
   return (
     <tr className={cls}>
       <th scope="row" className="grid__muted grid__when">
-        {date(r.createdAt)}
+        {dateTime(r.createdAt)}
       </th>
 
       {/* The action, the paper that authorised it, and what the person keying it
@@ -450,7 +533,16 @@ function Row({ row: r, money: showMoney }: { row: MovementRow; money: boolean })
           smaller type, because on most rows they are not the same person and
           the ledger has to be able to say which is which. */}
       <td className="grid__muted">
-        {r.branchName ? (
+        {/* ของเสียบอกชื่อคนที่ทำเสียตามที่พิมพ์ไว้ตอนตัด (ร้านขอไว้ 12 ก.ย. 2026) —
+            คนละคนกับคนที่คีย์ ซึ่งอยู่บรรทัดล่าง */}
+        {r.scrapBy ? (
+          <>
+            <span className="grid__name">{r.scrapBy}</span>
+            <span className="grid__sub">
+              ทำเสีย{r.actorName ? ` · บันทึกโดย ${r.actorName}` : ""}
+            </span>
+          </>
+        ) : r.branchName ? (
           <>
             <span className="grid__name">{r.branchName}</span>
             <span className="grid__sub">
@@ -474,6 +566,11 @@ function Row({ row: r, money: showMoney }: { row: MovementRow; money: boolean })
           "—"
         )}
       </td>
+      {onEdit ? (
+        <td className="grid__act">
+          <FixAction row={r} onEdit={onEdit} />
+        </td>
+      ) : null}
     </tr>
   );
 }

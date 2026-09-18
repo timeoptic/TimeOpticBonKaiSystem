@@ -6,6 +6,13 @@ import Select from "./Select";
 export type Dir = "asc" | "desc";
 
 /**
+ * "ตรงคำค้นที่สุด" — the order the products API ranks a search into by itself
+ * (ProductSearch::rank). Offered in the chooser only while something is being
+ * searched for; with no search there is nothing for a row to match.
+ */
+export const MATCH_SORT = { col: "match", label: "ตรงคำค้นที่สุด" } as const;
+
+/**
  * A column header that sorts.
  *
  * `aria-sort` on the `<th>` is what makes this a sortable table to a screen
@@ -141,7 +148,13 @@ export function useSort<K extends string>(initial: K, naturalAsc: readonly K[]) 
     after?.();
   }
 
-  return { sort, dir, sortBy };
+  /** Lands on a column at its natural direction — never flips, whatever is chosen now. */
+  function sortTo(next: K) {
+    setSort(next);
+    setDir(dirFor(next));
+  }
+
+  return { sort, dir, sortBy, sortTo };
 }
 
 /**

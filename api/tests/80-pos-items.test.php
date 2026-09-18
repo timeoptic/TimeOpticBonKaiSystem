@@ -124,10 +124,15 @@ test('แต่ละแถวมีคีย์ครบตามที่ห�
               'category_code', 'category_name', 'pos_fields', 'pos_custom'] as $k) {
         ok(array_key_exists($k, $rows[0]), "ต้องมีคีย์ $k");
     }
+    /* ช่อง "ข้าง" ถูกเพิ่มให้คอนแทคเลนส์ทุกตัวเมื่อ 16 ก.ย. 2026 — ขายแยกข้างซ้าย/ขวา
+       ได้ต่อกล่อง จึงต้องรู้ว่ากล่องนี้เป็นของตาข้างไหน · อยู่ก่อน power เพราะเป็น
+       คำถามแรกที่พนักงานตอบ และเป็นช่องแบบตัวเลือก ไม่ใช่ช่องพิมพ์อิสระ */
     eq($bySku['CTM-0004']['pos_fields'], [
+        ['key' => 'eye', 'label' => 'ข้าง', 'type' => 'choice', 'required' => true,
+            'options' => [['R', 'ขวา (R)'], ['L', 'ซ้าย (L)'], ['RL', 'ทั้งสองข้าง']]],
         ['key' => 'power', 'label' => 'ค่าสายตา', 'required' => true],
         ['key' => 'color', 'label' => 'สี', 'required' => true],
-    ], 'Maxim color ถามค่าสายตากับสี');
+    ], 'Maxim color ถามข้าง ค่าสายตา และสี');
     eq($bySku['SRV-0001']['pos_fields'], [], 'ค่าประกอบแว่นไม่มีช่องกรอกเพิ่ม');
     eq($bySku['CST-0001']['pos_custom'], true, 'ช่องพิมพ์เองติดธง custom');
     eq($bySku['SRV-0001']['pos_custom'], false, 'สินค้าธรรมดาไม่ติดธง');
@@ -168,7 +173,7 @@ test('คอนแทคเลนส์ใส่ค่าสายตาแล�
     rollback(function (Tx $q) {
         $sale = posCall('POST', '/api/pos/sales', posPaidSale([
             ['product_id' => posItemId($q, 'CTA-0003'), 'quantity' => 2, 'unit_price' => 900,
-             'item_meta' => ['power' => '-2.50']],
+             'item_meta' => ['eye' => 'RL', 'power' => '-2.50']],
         ], 1800));
 
         eq((float) $sale['total_amount'], 1800.0, 'ยอดรวม');
@@ -177,12 +182,27 @@ test('คอนแทคเลนส์ใส่ค่าสายตาแล�
 
 test('คอนแทคเลนส์ไม่ใส่ค่าสายตา ขายไม่ได้', function () {
     rollback(function (Tx $q) {
+        /* ส่ง "ข้าง" มาครบ เพื่อให้เทสต์นี้วัดสิ่งที่มันตั้งใจวัดจริง ๆ คือ "ขาดค่าสายตา"
+           ไม่ใช่ไปสะดุดที่ช่องข้างซึ่งถูกตรวจก่อนตามลำดับช่องใน pos_fields */
         $e = posCallError('POST', '/api/pos/sales', posPaidSale([
-            ['product_id' => posItemId($q, 'CTA-0003'), 'quantity' => 1, 'unit_price' => 900],
+            ['product_id' => posItemId($q, 'CTA-0003'), 'quantity' => 1, 'unit_price' => 900,
+             'item_meta' => ['eye' => 'R']],
         ], 900));
 
         eq($e['status'], 400, 'ต้องเป็น 400');
         ok(str_contains($e['msg'], 'ต้องระบุค่าสายตา'), 'ข้อความต้องบอกว่าขาดค่าสายตา — ได้ ' . $e['msg']);
+    });
+});
+
+test('คอนแทคเลนส์ส่งข้างที่ไม่มีในตัวเลือก ขายไม่ได้', function () {
+    rollback(function (Tx $q) {
+        $e = posCallError('POST', '/api/pos/sales', posPaidSale([
+            ['product_id' => posItemId($q, 'CTA-0003'), 'quantity' => 1, 'unit_price' => 900,
+             'item_meta' => ['eye' => 'X', 'power' => '-2.50']],
+        ], 900));
+
+        eq($e['status'], 400, 'ต้องเป็น 400');
+        ok(str_contains($e['msg'], 'ข้าง ไม่ถูกต้อง'), 'ข้อความต้องบอกว่าข้างไม่ถูกต้อง — ได้ ' . $e['msg']);
     });
 });
 

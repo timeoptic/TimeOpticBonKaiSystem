@@ -149,6 +149,16 @@ POST('/api/prescriptions/:id/confirm', function (array $req) {
     if (!$rx) {
         missing();
     }
+    /* "ใช้สำหรับ / Test For" บังคับก่อนยืนยัน (ร้านขอ 14 ก.ย. 2026) — ค่านี้พิมพ์ลงใบสั่งตัด
+       ห้องผลิตต้องรู้ว่าเลนส์คู่นี้สั่งไว้ใช้ทำอะไร · หน้าวัดสายตาเตือนก่อนแล้ว ด่านจริงอยู่ที่นี่
+       ใบที่ยืนยันไปก่อนหน้านี้ไม่ย้อนบังคับ */
+    if (trim((string) ($rx['test_for'] ?? '')) === '') {
+        throw new HttpError(
+            400,
+            'ยังยืนยันค่าสายตาไม่ได้ — กรุณาเลือก ใช้สำหรับ / Test For',
+            ['reason' => 'test_for_required']
+        );
+    }
     Db::tx(function (Tx $q) use ($id, $rx, $body) {
         $q->run(
             "UPDATE prescriptions SET kind = 'final', confirmed_by = ?, confirmed_at = NOW()

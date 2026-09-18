@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { boardColumns, boardQuery, stageOptions } from '../caseBoard.js';
+import { boardColumns, boardQuery, dateFieldOptions, stageOptions } from '../caseBoard.js';
 import { STAGE_GROUPS } from '../constants.js';
 
 /* ยอดจริงจากฐานตอนเขียนเทสต์นี้ — คอลัมน์บนกระดานรวมได้ 1,173 เคสที่ยังทำไม่จบ */
@@ -96,6 +96,47 @@ test('ประเภทลูกค้ากับตัวกรองเค�
   assert.equal(q.rush, 1);
   assert.equal(q.stage, 'sales');
   assert.equal(q.q, 'ใจดี', 'ช่องว่างหัวท้ายต้องถูกตัด ไม่งั้นค้นหาไม่เจอ');
+});
+
+/* ─────────────────────────────────────────────────────────────────────────
+   ช่วงวันที่
+   ───────────────────────────────────────────────────────────────────────── */
+
+test('ไม่เลือกช่วงวันที่ ไม่ส่งเงื่อนไขวันที่ไปเลย', () => {
+  const q = boardQuery({ dateField: 'appointment' });
+  assert.equal(q.from, '');
+  assert.equal(q.to, '');
+  assert.equal(q.date_field, '', 'ไม่มีช่วงก็ไม่ต้องบอกว่ากรองด้วยวันไหน');
+});
+
+test('ช่วงวันที่ส่งไปพร้อมชนิดวันที่เลือก ใช้ร่วมกับตัวกรองอื่นได้', () => {
+  const q = boardQuery({
+    caseFilter: 'unpaid', dateField: 'appointment', from: '2026-09-01', to: '2026-09-14',
+  });
+  assert.deepEqual([q.date_field, q.from, q.to], ['appointment', '2026-09-01', '2026-09-14']);
+  assert.equal(q.unpaid, 1);
+});
+
+test('ใส่แค่ขอบเดียวก็กรองได้', () => {
+  assert.deepEqual(
+    [boardQuery({ from: '2026-09-01' }).from, boardQuery({ from: '2026-09-01' }).to],
+    ['2026-09-01', ''],
+  );
+  assert.equal(boardQuery({ to: '2026-09-14' }).date_field, 'opened');
+});
+
+test('ช่วงหัวกลับหางถูกสลับ ไม่ใช่คืนกระดานว่าง', () => {
+  const q = boardQuery({ from: '2026-09-14', to: '2026-09-01' });
+  assert.deepEqual([q.from, q.to], ['2026-09-01', '2026-09-14']);
+});
+
+/* "วันปิดเคส" ค้างอยู่หลังกดออกจากกองเคสที่จบแล้ว = เทียบกับ closed_at ที่เป็น NULL
+   ทุกใบ กระดานว่างเปล่า — ต้องตกกลับเป็นวันเปิดเคส */
+test('วันปิดเคสใช้ได้เฉพาะกองเคสที่จบแล้ว', () => {
+  assert.equal(boardQuery({ caseFilter: 'done', dateField: 'closed', from: '2026-09-01' }).date_field, 'closed');
+  assert.equal(boardQuery({ dateField: 'closed', from: '2026-09-01' }).date_field, 'opened');
+  assert.ok(!dateFieldOptions({}).some(([k]) => k === 'closed'));
+  assert.ok(dateFieldOptions({ caseFilter: 'done' }).some(([k]) => k === 'closed'));
 });
 
 /* ─────────────────────────────────────────────────────────────────────────

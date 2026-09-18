@@ -6,8 +6,8 @@ import {
 
 const FULL = { birth_date: '1981-03-12', phone: '0812345678', line_id: 'x', email: 'a@b.co', sex: 'Female' };
 
-test('FILL_FIELDS: ห้าช่องที่เติมได้ บังคับแค่วันเกิดกับเบอร์โทร', () => {
-  assert.deepEqual(FILL_FIELDS.map((f) => f.key), ['birth_date', 'phone', 'line_id', 'email', 'sex']);
+test('FILL_FIELDS: หกช่องที่เติมได้ บังคับแค่วันเกิดกับเบอร์โทร', () => {
+  assert.deepEqual(FILL_FIELDS.map((f) => f.key), ['birth_date', 'age_years', 'phone', 'line_id', 'email', 'sex']);
   assert.deepEqual(FILL_FIELDS.filter((f) => f.required).map((f) => f.key), ['birth_date', 'phone']);
 });
 
@@ -24,6 +24,35 @@ test('missingText: ข้อความป้าย · ครบแล้วไ
 test('emptyFields: ทุกช่องที่ยังว่าง (รวมช่องไม่บังคับ) เรียงตาม FILL_FIELDS', () => {
   assert.deepEqual(emptyFields({ ...FULL, email: '', sex: null }).map((f) => f.key), ['email', 'sex']);
   assert.deepEqual(emptyFields(FULL), []);
+});
+
+test('อายุแทนวันเกิดได้: มีอายุแล้วป้ายไม่ทวงวันเกิด', () => {
+  assert.deepEqual(missingRequired({ ...FULL, birth_date: null, age_years: 45 }), []);
+  assert.equal(missingText({ ...FULL, birth_date: null, age_years: 45 }), null);
+  /* อายุ 0 (เด็กไม่ถึงขวบ) ต้องนับว่าตอบแล้วเหมือนกัน ไม่ใช่ตกเป็นค่าว่าง */
+  assert.deepEqual(missingRequired({ ...FULL, birth_date: null, age_years: 0 }), []);
+  /* ยังไม่มีทั้งคู่ = ยังขาดวันเกิดอยู่ */
+  assert.deepEqual(missingRequired({ ...FULL, birth_date: null, age_years: null }), ['วันเกิด']);
+});
+
+test('emptyFields: มีวันเกิดแล้วไม่เสนอช่องอายุ · ไม่มีวันเกิดจึงเสนอ', () => {
+  assert.deepEqual(emptyFields({ ...FULL, age_years: null }).map((f) => f.key), []);
+  assert.deepEqual(
+    emptyFields({ ...FULL, birth_date: null, age_years: null }).map((f) => f.key),
+    ['birth_date', 'age_years'],
+  );
+});
+
+test('fillProblems: อายุนอกช่วง / ไม่ใช่ตัวเลข / กรอกคู่กับวันเกิด', () => {
+  const today = '2026-09-16';
+  assert.deepEqual(fillProblems({ age_years: '121' }, today), ['อายุต้องเป็นตัวเลข 0–120 ปี']);
+  assert.deepEqual(fillProblems({ age_years: 'สี่สิบ' }, today), ['อายุต้องเป็นตัวเลข 0–120 ปี']);
+  assert.deepEqual(fillProblems({ age_years: '45' }, today), []);
+  assert.deepEqual(fillProblems({ age_years: '0' }, today), []);
+  assert.deepEqual(
+    fillProblems({ birth_date: '1981-03-12', age_years: '45' }, today),
+    ['กรอกได้อย่างเดียว — มีวันเกิดแล้วระบบคิดอายุให้เอง'],
+  );
 });
 
 test('fillBody: ส่งเฉพาะช่องที่ว่างในลูกค้าและกรอกมา ตัดช่องว่าง พร้อม case_id', () => {

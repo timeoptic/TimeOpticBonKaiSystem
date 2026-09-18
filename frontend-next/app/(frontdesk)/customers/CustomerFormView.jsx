@@ -15,7 +15,7 @@ import { Card, Field, FormActions, FormGrid, Loading, PageHead } from '../../../
 import { ListSelect, NationalitySelect } from '../../../components/Selects.jsx';
 import { dateOnly } from '../../../lib/format.js';
 import { Icon } from '../../../components/Icon.jsx';
-import { DateField } from '../../../components/DateField.jsx';
+import { BirthAgeFields } from '../../../components/BirthAgeFields.jsx';
 
 // editing must always be passed explicitly by the caller (true or false) — if a future
 // page forgets it, editing becomes undefined (falsy), silently serving a *create* form
@@ -81,9 +81,11 @@ export function CustomerFormView({ editing }) {
             <Field label="สัญชาติ / Nationality">
               <NationalitySelect name="nationality" defaultValue={c.nationality || ''} />
             </Field>
-            <Field label="วันเกิด / Birth date">
-              <DateField name="birth_date" defaultValue={dateOnly(c.birth_date)} />
-            </Field>
+            <BirthAgeFields
+              birthDate={dateOnly(c.birth_date)}
+              ageYears={c.age_years ?? null}
+              ageRecordedOn={c.age_recorded_on ?? null}
+            />
             <Field label="เบอร์โทร / Phone">
               <input name="phone" defaultValue={c.phone || ''} />
             </Field>

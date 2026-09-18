@@ -30,7 +30,7 @@ import { QueryParamPage } from '../../../../components/QueryParamPage.jsx';
 import { PaperView } from '../../../../components/PaperView.jsx';
 import { Icon } from '../../../../components/Icon.jsx';
 import {
-  addPower, custName, cylPower, fmtDateTime, glassesUseOf, rxNum, sphPower,
+  addPower, custName, cylPower, fmtDateTime, glassesUseOf, lensModelName, rxNum, sphPower,
 } from '../../../../lib/format.js';
 
 const DASH = '—';
@@ -48,12 +48,18 @@ const RX_COLS = [
 
 const EYES = [['r', 'Right'], ['l', 'Left']];
 
-/** แถว Lens ที่จะพิมพ์ — สองข้างคนละรุ่นได้ ถ้าต่างกันต้องแยกบรรทัด ไม่ใช่ตัดทิ้ง */
+/**
+ * แถว Lens ที่จะพิมพ์ — สองข้างคนละตัวได้ ถ้าต่างกันต้องแยกบรรทัด ไม่ใช่ตัดทิ้ง
+ *
+ * พิมพ์แค่รุ่น ไม่มีค่าสายตาท้ายชื่อ (lensModelName) เพราะค่าอยู่ในตารางซ้ายแล้ว ·
+ * แยก R/L ตัดสินจากชื่อเต็ม — ค่าสายตาต่างกันก็ยังเป็น Lens R กับ Lens L สองบรรทัด
+ * แม้รุ่นจะเหมือนกัน (ร้านขอให้เห็นทั้งซ้ายและขวา)
+ */
 function lensRows(o) {
   const r = o?.lens_r_name || '';
   const l = o?.lens_l_name || '';
-  if (r && l && r !== l) return [['Lens R', r], ['Lens L', l]];
-  return [['Lens', o?.lens_name || r || l || DASH]];
+  if (r && l && r !== l) return [['Lens R', lensModelName(r)], ['Lens L', lensModelName(l)]];
+  return [['Lens', lensModelName(o?.lens_name || r || l) || DASH]];
 }
 
 const frameLabel = (o) => o?.frame_name
@@ -203,22 +209,23 @@ export default function PrintPrescriptionPage() {
   return <QueryParamPage><SlipInner /></QueryParamPage>;
 }
 
-/* สมมาตรทั้งสองแกน บนกระดาษ 5.5 x 18 ซม.
-   แนวนอน: 5 (ขอบ) + 12 (ป้าย) + 6*15 (ตัวเลข) + 6 (ร่อง) + 62 (บล็อกขวา) + 5 = 180
-            ป้ายขวา (Lens/Frame/Test for) กว้าง 16mm ไม่ใช่ 12 เท่าป้ายซ้าย — "Test for"
-            8 ตัวอักษร monospace 9pt ยาว ~15mm ใส่ 12mm ไม่พอ
-   แนวตั้ง: ตารางซ้ายยืดสูงเท่าบล็อกขวาพอดี — เส้นล่างสุดของตารางจึงอยู่ระดับเดียว
-            กับบรรทัด Test for แถวในตารางแบ่งความสูงนั้นเท่า ๆ กันเอง (3 แถว เทียบ 5 บรรทัด)
-            แล้ว .slip-mid ดันคู่นี้ลงไปชิดขอบล่าง ตัวเลขบนสุดอยู่ที่เดิมกับตอนที่มี 4 บรรทัด
-            (17 + 33 - 5*5.5 = 22.5mm) บรรทัดที่เพิ่มจึงยืดกรอบลงข้างล่าง ไม่ดันขึ้นไปหาชื่อ
-            safe = ถ้าชื่อเลนส์/กรอบขึ้นสองบรรทัดจนสูงเกิน ให้ล้นลงขอบล่าง ไม่ล้นขึ้นไปทับชื่อ
-   ตัวเลขชิดขวาเท่ากันทั้งหัวตารางและค่า สองแถวจึงตรงแนวกันเสมอ
-   padding ซ้าย 2mm คือช่องไฟ — ค่าที่ยาวเต็มช่อง เช่น -12.50 จะได้ไม่ไปติดคอลัมน์ข้าง ๆ */
+/* กรอบใบ 180 x 55 มม. เท่าเดิม — ย่อแค่ตารางกับตัวหนังสือข้างใน
+   (ร้านขอ 12 ก.ย. 2026: "ให้อยู่ในกรอบ 180 x 55 เหมือนเดิม ย่อขนาดตารางลงเพื่อให้มีพื้นที่")
+   แนวนอน: 5 (ขอบ) + 3 (--shift) + 11 (ป้าย) + 6*12.5 (ตัวเลข) + 5 (ร่อง) + บล็อกขวา 76 + 5 = 180
+            ตารางกว้าง 86mm · --shift ขยับตารางกับบล็อกขวาไปทางขวาด้วยกัน ชื่อลูกค้าอยู่ที่เดิม
+            ป้ายขวา (Lens/Frame/Test for) กว้าง 14mm — "Test for" 8 ตัวอักษร monospace 8pt ยาว ~13.5mm
+            ชื่อรุ่นเลนส์เหลือที่ ~60mm ≈ 35 ตัวอักษรต่อบรรทัด ยาวกว่านั้นขึ้นบรรทัดใหม่ (สูงสุด 3)
+   แนวตั้ง: ตารางกับบล็อกขวาชิดบนใต้แถบชื่อ ห่าง 2mm แถวบนสุดของตารางเสมอบรรทัด CASE
+            แถวตารางสูงคงที่ --trow 7mm (ตาราง 21mm) ไม่ยืดตามบล็อกขวา
+            บล็อกขวาที่ยาวเกิน (ชื่อเลนส์สองข้างสามบรรทัด) ล้นลงขอบล่าง ไม่ขึ้นไปทับชื่อ
+   padding ซ้าย/ขวา 1mm คือช่องไฟ — ค่าที่ยาวเต็มช่อง เช่น -12.50 จะได้ไม่ไปติดคอลัมน์ข้าง ๆ
+   (ร้านปรับ 12 ก.ย. 2026 รอบสอง: ตารางสูงขึ้น ขยับขวา/ขึ้น ตัวหนังสือใหญ่ขึ้น ชื่อเลนส์ขึ้นบรรทัดใหม่ได้) */
 const slipCss = (portrait) => `
 .slip{
-  --pad:5mm; --lbl:12mm; --mlbl:16mm; --num:15mm; --gap:6mm; --row:5.5mm;
+  --pad:5mm; --lbl:10.6mm; --mlbl:14mm; --num:11.85mm; --gap:5mm; --row:4.4mm; --trow:7mm; --shift:3mm;
+  /* ขอบขวาของตาราง = 5 + 3 + 10.6 + 6*11.85 = 89.7mm — ไม่เกินครึ่งใบ 90mm (ร้านขอ 12 ก.ย. 2026) */
   --rule:0.25mm solid #000;   /* เส้นตาราง — บางพอสำหรับเครื่องพิมพ์สลิป */
-  --name:14pt;    /* ชื่อลูกค้าใหญ่กว่าตัวอื่นบนใบ — คนหยิบใบต้องอ่านชื่อออกจากระยะไกล */
+  --name:13pt;    /* ชื่อลูกค้าใหญ่กว่าตัวอื่นบนใบ — คนหยิบใบต้องอ่านชื่อออกจากระยะไกล */
   --logo:38mm;    /* โซนโลโก้ TIMEOPTIC ที่พิมพ์มากับกระดาษ — ห้ามพิมพ์อะไรทับ */
   --logo-h:12mm;
   box-sizing:border-box;
@@ -226,11 +233,11 @@ const slipCss = (portrait) => `
   background:#fff; color:#000; overflow:hidden;
   display:flex; flex-direction:column;
   font-family:ui-monospace,"Cascadia Mono",Consolas,"DejaVu Sans Mono","Courier New",monospace;
-  font-size:9pt; line-height:var(--row); font-variant-numeric:tabular-nums;
+  font-size:8pt; line-height:var(--row); font-variant-numeric:tabular-nums;
 }
 .slip-head{flex:0 0 var(--logo-h);display:flex;align-items:flex-start}
-.slip-mid{flex:1 1 auto;display:flex;align-items:safe flex-end;min-height:0}
-.slip-name{display:flex;gap:4mm;align-items:baseline;
+.slip-mid{flex:1 1 auto;display:flex;align-items:flex-start;padding-top:2mm;min-height:0}
+.slip-name{display:flex;gap:4mm;align-items:baseline;padding-top:2.5mm;
   width:calc(100% - var(--logo));min-width:0}
 .slip-name .k{font-weight:700;letter-spacing:.4px;flex:0 0 auto}
 .slip-name .v{font-weight:700;font-size:var(--name);line-height:1.1;
@@ -240,34 +247,35 @@ const slipCss = (portrait) => `
   border:1px dashed #c9d6d5;border-radius:3px;color:#9bb0af;font-size:7pt}
 
 /* สองคอลัมน์ตายตัว — บล็อกขวาตกไปใต้ตารางไม่ได้ ไม่ว่าข้อความจะยาวแค่ไหน */
-/* stretch คือหัวใจของ "สูงพอดีกับ Frame" — ความสูงของแถวกริดมาจากบล็อกขวา
-   ตารางซ้ายยืดตามจนก้นเสมอกัน ไม่ต้องคำนวณจำนวนแถวเอง */
-.slip-body{width:100%;display:grid;grid-template-columns:max-content 1fr;column-gap:var(--gap);align-items:stretch}
+/* start = ตารางกับบล็อกขวาชิดบนทั้งคู่ แถวบนสุดของตารางเสมอบรรทัด CASE
+   ตารางไม่ยืดตามความสูงของบล็อกขวา — สูงเท่าแถวของมันเอง (3 x --trow)
+   padding ซ้าย --shift ขยับทั้งคู่ไปทางขวาด้วยกัน ร่องระหว่างตารางกับบล็อกขวาจึงเท่าเดิม */
+.slip-body{width:100%;box-sizing:border-box;padding-left:var(--shift);display:grid;
+  grid-template-columns:max-content 1fr;column-gap:var(--gap);align-items:start}
 
-.slip-rx{border-collapse:collapse;table-layout:fixed;height:100%}
+.slip-rx{border-collapse:collapse;table-layout:fixed}
+.slip-rx tr{height:var(--trow)}
 .slip-rx .c-eye{width:var(--lbl)}
 .slip-rx .c-num{width:var(--num)}
 /* ค่ากับหัวคอลัมน์อยู่กึ่งกลางช่องทั้งคู่ — คนละช่องกว้างเท่ากัน แกนกลางจึงตรงเป็นแนว */
-.slip-rx th,.slip-rx td{border:var(--rule);padding:0 1.5mm;text-align:center;
+.slip-rx th,.slip-rx td{border:var(--rule);padding:0 .6mm;text-align:center;
   vertical-align:middle;font-weight:400;white-space:nowrap}
 .slip-rx .rx-head th{font-weight:700;letter-spacing:.3px}
 .slip-rx tbody th[scope=row]{text-align:left;font-weight:700}
 
-/* บรรทัดแรกของทุกแถวอยู่ระดับเดียวกับแถวตาราง ชื่อเลนส์/กรอบที่ยาวขึ้นบรรทัดสองได้
-   — เห็นชื่อครบสำคัญกว่าจังหวะบรรทัดที่เท่ากันเป๊ะ ตารางซ้ายยืดตามความสูงให้เอง */
+/* ชื่อเลนส์/กรอบที่ยาวขึ้นบรรทัดสองได้ — เห็นชื่อครบสำคัญกว่าจังหวะบรรทัดที่เท่ากันเป๊ะ */
 .slip-meta{min-width:0}
 .slip-meta .m-row{min-height:var(--row);display:flex;gap:2mm;min-width:0}
 .slip-meta .m-solo{font-weight:700;white-space:nowrap}
 .slip-meta .m-k{flex:0 0 var(--mlbl);font-weight:700;white-space:nowrap}
-/* ยาวได้ 2 บรรทัด เกินนั้นค่อยตัด — 2 บรรทัดพอสำหรับชื่อรุ่นเต็ม ๆ ที่ร้านใช้จริง
-   และเป็นเพดานที่กันไม่ให้ใบล้นออกนอกกระดาษ 55mm */
-.slip-meta .m-v{flex:1 1 auto;min-width:0;overflow-wrap:anywhere;line-height:4.6mm;
-  display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
-/* เลนส์สองข้างคนละรุ่น = 5 แถว ถ้าแถวไหนขึ้นสองบรรทัดจะเกิน 55mm
-   ย่อลงหนึ่งขั้นเฉพาะกรณีนี้ — ตัวเล็กลงยังอ่านออก ดีกว่าชื่อหาย */
-.slip-meta.dense{font-size:8pt}
-.slip-meta.dense .m-row{min-height:4.8mm}
-.slip-meta.dense .m-v{line-height:4mm}
+/* ชื่อยาวขึ้นบรรทัดใหม่ได้ถึง 3 บรรทัด (ร้านขอ 12 ก.ย. 2026) เกินนั้นค่อยตัด —
+   3 บรรทัดพอสำหรับชื่อรุ่นเต็ม ๆ ที่ร้านใช้จริง และเป็นเพดานที่กันไม่ให้ใบล้นออกนอกกระดาษ 55mm */
+.slip-meta .m-v{flex:1 1 auto;min-width:0;overflow-wrap:anywhere;line-height:3.6mm;
+  display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden}
+/* เลนส์สองข้างคนละรุ่น = 6 แถว ย่อลงครึ่งขั้นเฉพาะกรณีนี้ — ตัวเล็กลงนิดเดียวยังอ่านออก ดีกว่าชื่อหาย */
+.slip-meta.dense{font-size:7.5pt}
+.slip-meta.dense .m-row{min-height:4mm}
+.slip-meta.dense .m-v{line-height:3.3mm}
 
 .slip-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
 .orient-pick{display:flex;align-items:center;gap:6px;padding:4px 10px;
@@ -296,8 +304,8 @@ const slipCss = (portrait) => `
      ไม่ใช้ position:fixed เพราะ Chrome วางมันไม่ตรงตอนกระดาษเป็นขนาดอื่น */
   .app,.main,.content{display:block!important;margin:0!important;padding:0!important;
     max-width:none!important;width:auto!important;min-height:0!important}
-  /* margin auto = กระดาษที่กว้างกว่าใบ (A4) จะเหลือช่องว่างซ้าย/ขวาเท่ากัน
-     บนกระดาษสลิป 180x55 ที่พอดีใบอยู่แล้ว auto ให้ผลเป็น 0 ทั้งสองข้าง ไม่กระทบ */
-  .slip{margin:0 auto;border:0;box-shadow:none;border-radius:0;break-inside:avoid;break-after:avoid}
+  /* A4 แนวตั้ง: ใบ 180x55 ชิดมุมซ้ายบนของกระดาษ (เดิมจัดกลาง เหลือขอบซ้าย 15 มม.) —
+     ตัวหนังสือเริ่มที่ขอบในของใบ 5 มม. · สลิป 180x55 พอดีใบอยู่แล้ว 0 กับ auto ได้ผลเท่ากัน */
+  .slip{margin:0;border:0;box-shadow:none;border-radius:0;break-inside:avoid;break-after:avoid}
 }
 `;

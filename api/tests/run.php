@@ -53,7 +53,10 @@ require __DIR__ . '/../services/DeliveryDigest.php';
 require __DIR__ . '/../core/StockModule.php';
 require __DIR__ . '/../services/SalesReport.php';
 require __DIR__ . '/../routes/pos.php';
-/* หน้ารายงาน (90-report-customer-group) — ยิงเส้น /api/reports/* ตัวจริง */
+/* หน้ารายงาน (90-report-customer-group) — ยิงเส้น /api/reports/* ตัวจริง
+   · ไฟล์ Excel ของหน้าการรับเงิน (91-payment-export) เปิดไฟล์ที่สร้างได้ออกมาตรวจ */
+require __DIR__ . '/../services/Xlsx.php';
+require __DIR__ . '/../services/PaymentExport.php';
 require __DIR__ . '/../routes/analytics.php';
 /* รับเงินของเคส (95-payment-guards) — ยิง POST /api/payments ตัวจริง */
 require __DIR__ . '/../routes/payments.php';

@@ -12,8 +12,8 @@ import ExcelJS from "exceljs";
  * ซึ่งบวกจากแถวที่เพิ่งเขียนลงไป จึงตรงกับสิ่งที่อยู่บนชีตเสมอ
  */
 
-/** ค่าหนึ่งช่อง — ตัวเลขลงเป็นตัวเลข ไม่ใช่ข้อความที่รวมไม่ได้ */
-export type Cell = string | number | null;
+/** ค่าหนึ่งช่อง — ตัวเลขลงเป็นตัวเลข ไม่ใช่ข้อความที่รวมไม่ได้ · วันที่ลงเป็น Date ที่เรียงได้ */
+export type Cell = string | number | Date | null;
 
 /** คอลัมน์หนึ่งของชีต */
 export type Column = {
@@ -24,6 +24,8 @@ export type Column = {
   money?: boolean;
   /** true = รวมยอดในแถวสุดท้าย · คอลัมน์ที่ไม่ใช่จำนวนไม่ควรถูกรวม */
   total?: boolean;
+  /** รูปแบบตัวเลขของ Excel เช่น "dd/mm/yyyy" หรือ "hh:mm" — ชนะ money และรูปแบบจำนวนเต็ม */
+  format?: string;
 };
 
 export type Sheet = {
@@ -167,7 +169,9 @@ function writeSheet(wb: ExcelJS.Workbook, title: string, sheet: Sheet): void {
     row.forEach((v, i) => {
       const cell = line.getCell(i + 1);
       cell.value = v;
-      if (sheet.columns[i]?.money) cell.numFmt = "#,##0.00";
+      const col = sheet.columns[i];
+      if (col?.format && v !== null) cell.numFmt = col.format;
+      else if (col?.money) cell.numFmt = "#,##0.00";
       else if (typeof v === "number") cell.numFmt = "#,##0";
     });
     write += 1;

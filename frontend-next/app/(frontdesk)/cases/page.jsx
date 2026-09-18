@@ -47,7 +47,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api } from '../../../lib/apiClient.js';
 import { useAsync, useDebounced } from '../../../lib/hooks.js';
-import { Badge, Card, Field, Loading, PageHead } from '../../../components/ui.jsx';
+import { Badge, Card, Loading, PageHead } from '../../../components/ui.jsx';
 import { QueryParamPage } from '../../../components/QueryParamPage.jsx';
 import { DataTable } from '../../../components/DataTable.jsx';
 import { FilterSheet } from '../../../components/FilterBar.jsx';
@@ -55,11 +55,13 @@ import { Pager } from '../../../components/Pager.jsx';
 import { BOARD_PAGE_SIZES } from '../../../lib/pager.js';
 import { STAGE_GROUPS, stageInfo } from '../../../lib/constants.js';
 import {
-  CARD_PAGE, CASE_FILTERS, boardColumns, boardQuery, stageOptions,
+  CARD_PAGE, CASE_FILTERS, boardColumns, boardQuery, dateFieldOptions, stageOptions,
 } from '../../../lib/caseBoard.js';
+import { DateField } from '../../../components/DateField.jsx';
 import { custName, fmtDate, moneyShort } from '../../../lib/format.js';
 import { Icon } from '../../../components/Icon.jsx';
 import { CaseTags, SIGHT_FIRST } from '../../../components/CaseTags.jsx';
+import { RxLensBadge } from '../../../components/RxLensBadge.jsx';
 import { Select } from '../../../components/Selects.jsx';
 
 /** the two books of work, plus everything at once */
@@ -72,7 +74,7 @@ const CLIENTS = [
 /** การ์ดคือกระดาน ลิสต์คือตาราง — ข้อมูลชุดเดียวกัน คนละวิธีกวาดตา */
 const VIEWS = [
   ['card', 'การ์ด', 'board'],
-  ['list', 'ลิสต์', 'clipboard'],
+  ['list', 'ลิสต์', 'menu'],
 ];
 
 function CaseCard({ c, onOpen }) {
@@ -91,12 +93,17 @@ function CaseCard({ c, onOpen }) {
       <div className="cc-status">
         <Icon name={stageInfo(c.process_stage || c.stage_group).icon} />
         {' '}{stageInfo(c.process_stage || c.stage_group).label}
-        <span className="muted">{` · ${c.process_done ?? 0}/${STAGE_GROUPS.length} ขั้น`}</span>
+        {/* ตัวหารมาจากเคสใบนั้น ไม่ใช่ค่าคงที่ของทั้งแอป — เคสตรวจสายตามีสองขั้น
+            ถ้าหารด้วย 6 การ์ดจะเขียนว่า "2/6 ขั้น" เหมือนงานค้าง ทั้งที่จบแล้ว
+            คำตอบเก่าที่ยังไม่มี process_total ให้ตกกลับไปใช้ค่าเดิม */}
+        <span className="muted">{` · ${c.process_done ?? 0}/${c.process_total ?? STAGE_GROUPS.length} ขั้น`}</span>
       </div>
       <div className="cc-sub muted">{`สถานะ: ${c.status_label_th}`}</div>
       {(c.lens_name || c.frame_name) && (
         <div className="cc-item">{[c.lens_name, c.frame_name].filter(Boolean).join(' / ')}</div>
       )}
+      {/* เลนส์สั่งตัดมาถึงร้านหรือยัง — คลังติ๊กบนหน้าใบสั่งตัด (ร้านขอไว้ 14 ก.ย. 2026) */}
+      {Number(c.rx_lens_total) ? <div className="cc-tags"><RxLensBadge row={c} /></div> : null}
       <div className="cc-foot">
         {c.appointment_date
           ? <span><Icon name="calendar" /> {fmtDate(c.appointment_date)}</span>
@@ -137,6 +144,7 @@ function CaseList({ rows, showDone, onOpen }) {
               <small className="cell-tags">
                 {`เปิด: ${fmtDate(c.opened_at)}`}
                 <CaseTags row={c} />
+                <RxLensBadge row={c} />
               </small>
             </div>
           ),
@@ -247,6 +255,10 @@ function CaseBoardInner() {
      useState('') เฉย ๆ ทุกชิปจึงพามาที่กระดานที่ไม่ถูกกรอง — เหมือนกันหมดทุกใบ */
   const [stage, setStage] = useState(params.get('stage') || '');
   const [caseFilter, setCaseFilter] = useState('');
+  /* ช่วงวันที่ อ่านจาก URL เหมือนตัวกรองข้างบน — ลิงก์ /cases?from=...&to=... ส่งต่อกันได้ */
+  const [dateField, setDateField] = useState(params.get('date_field') || 'opened');
+  const [from, setFrom] = useState(params.get('from') || '');
+  const [to, setTo] = useState(params.get('to') || '');
   const [view, setView] = useState('card');
   const [hideEmpty, setHideEmpty] = useState(true);
   const [page, setPage] = useState(1);
@@ -265,8 +277,8 @@ function CaseBoardInner() {
   /* ตัวกรองชุดเดียว ใช้ทั้งกับจำนวนเคสและกับรายการที่แสดง — เลขบนหัวคอลัมน์
      กับการ์ดในคอลัมน์นั้นจึงมาจากคำถามเดียวกันเสมอ (lib/caseBoard.js, มีเทสต์) */
   const filters = useMemo(
-    () => boardQuery({ q, client, stage, caseFilter }),
-    [q, client, stage, caseFilter],
+    () => boardQuery({ q, client, stage, caseFilter, dateField, from, to }),
+    [q, client, stage, caseFilter, dateField, from, to],
   );
 
   const { data, loading, error, reload } = useAsync(
@@ -337,16 +349,19 @@ function CaseBoardInner() {
 
   /* "ซ่อนขั้นที่ว่าง" ไม่นับเป็นตัวกรอง — มันเป็นการตั้งค่าการแสดงผล ปุ่มล้าง
      ตัวกรองจึงไม่แตะมัน คนที่ตั้งไว้ว่าไม่อยากเห็นคอลัมน์ว่างก็ยังไม่อยากเห็น */
-  const hasFilter = Boolean(term || client || stage || caseFilter);
+  const hasFilter = Boolean(term || client || stage || caseFilter || from || to);
   /* ตัวเลขบนปุ่ม "ตัวกรอง (N)" ของจอโทรศัพท์ — คำค้นไม่นับ มันอยู่นอกแผ่นและ
      เห็นได้ด้วยตาว่าพิมพ์อะไรค้างไว้ · "ซ่อนขั้นที่ว่าง" ก็ไม่นับ ด้วยเหตุผลเดียว
      กับที่ปุ่มล้างตัวกรองไม่แตะมัน (มันเป็นการตั้งค่าการแสดงผล) */
-  const activeFilters = [client, stage, caseFilter].filter(Boolean).length;
+  const activeFilters = [client, stage, caseFilter, from || to].filter(Boolean).length;
   const clearAll = () => {
     setTerm('');
     setClient('');
     setStage('');
     setCaseFilter('');
+    setDateField('opened');
+    setFrom('');
+    setTo('');
   };
 
   const pickCaseFilter = (key) => {
@@ -354,6 +369,8 @@ function CaseBoardInner() {
     /* สลับไป/กลับจาก "เคสที่จบแล้ว" แล้วขั้นตอนที่เลือกไว้ใช้ไม่ได้อีก — ล้างทิ้ง
        ไม่งั้นกระดานจะว่างเปล่าโดยที่คนกดไม่รู้ว่าเพราะตัวกรองที่ค้างอยู่ */
     if (key === 'done' || showDone) setStage('');
+    /* "วันปิดเคส" มีแต่ในกองที่จบแล้ว ออกจากกองนั้นก็กลับเป็นวันเปิดเคส */
+    if (key !== 'done' && dateField === 'closed') setDateField('opened');
   };
 
   return (
@@ -372,14 +389,17 @@ function CaseBoardInner() {
 
       <div className={`board-filters ${filterOpen ? 'fb-open' : ''}`.trim()}>
         <div className="bf-row">
-          <Field label="ค้นหา" className="grow">
-            <input
-              type="search"
-              placeholder="ค้นหา เคส / ลูกค้า / เบอร์ / Invoice"
-              value={term}
-              onChange={(e) => setTerm(e.target.value)}
-            />
-          </Field>
+          <label className="bf-search" htmlFor="case-search">
+            <Icon name="search" /> ค้นหา
+          </label>
+          <input
+            id="case-search"
+            className="bf-search-input"
+            type="search"
+            placeholder="ค้นหา เคส / ลูกค้า / เบอร์ / Invoice"
+            value={term}
+            onChange={(e) => setTerm(e.target.value)}
+          />
           {/* โผล่เฉพาะจอโทรศัพท์ (globals.css: .fb-toggle) — สี่กลุ่มตัวกรองข้างล่าง
               รวมกันสูงราวครึ่งจอ 360px ก่อนที่การ์ดเคสใบแรกจะได้โผล่ */}
           <button
@@ -394,8 +414,9 @@ function CaseBoardInner() {
           <button type="button" className="btn btn-light bf-refresh" onClick={reload}>
             <Icon name="refresh" /> รีเฟรช
           </button>
+          {/* จอโทรศัพท์เท่านั้น — บนคอมปุ่มล้างตัวกรองเป็นแถบยาวแถวล่าง (.fb-foot ของแผ่น) */}
           {hasFilter ? (
-            <button type="button" className="btn btn-light bf-refresh" onClick={clearAll}>
+            <button type="button" className="btn btn-light bf-refresh bf-clear" onClick={clearAll}>
               <Icon name="x" /> ล้างตัวกรอง
             </button>
           ) : null}
@@ -404,14 +425,16 @@ function CaseBoardInner() {
         <FilterSheet
           open={filterOpen}
           onClose={() => setFilterOpen(false)}
-          count={activeFilters}
+          /* นับคำค้นด้วย — ปุ่มล้างของแผ่นเป็นปุ่มล้างตัวเดียวบนคอม ถ้าไม่นับ พิมพ์ค้นหาไว้
+             อย่างเดียวแล้วปุ่มจะกดไม่ได้ */
+          count={activeFilters + (term ? 1 : 0)}
           resultCount={total}
           onReset={clearAll}
           resetLabel="ล้างตัวกรอง"
         >
         <div className="bf-groups">
           <div className="bf-group">
-            <span className="bf-legend">ประเภทลูกค้า</span>
+            <span className="bf-legend"><Icon name="users" /> ประเภทลูกค้า</span>
             <div className="seg seg-sm">
               {CLIENTS.map(([value, label, countKey]) => (
                 <button
@@ -429,7 +452,7 @@ function CaseBoardInner() {
           </div>
 
           <div className="bf-group">
-            <span className="bf-legend">ตัวกรองเคส</span>
+            <span className="bf-legend"><Icon name="filter" /> ตัวกรองเคส</span>
             <div className="bf-chips">
               {CASE_FILTERS.map(([key, label, icon]) => (
                 <button
@@ -446,7 +469,7 @@ function CaseBoardInner() {
           </div>
 
           <div className="bf-group">
-            <span className="bf-legend">ขั้นตอน</span>
+            <span className="bf-legend"><Icon name="chart" /> ขั้นตอน</span>
             <Select
               className="bf-stage"
               value={stage}
@@ -456,35 +479,52 @@ function CaseBoardInner() {
             />
           </div>
 
-          <div className="bf-group bf-group-display">
-            <span className="bf-legend">การแสดงผล</span>
-            <div className="bf-controls">
-              {/* ซ่อนคอลัมน์ ไม่ใช่กรองเคส — จึงเป็นสวิตช์ ไม่ใช่ชิปเหมือนตัวกรอง */}
-              {view === 'card' && !showDone ? (
-                <label className="bf-switch">
-                  <input
-                    type="checkbox"
-                    checked={hideEmpty}
-                    onChange={(e) => setHideEmpty(e.target.checked)}
-                  />
-                  <span className="track" aria-hidden="true" />
-                  ซ่อนขั้นที่ว่าง
-                </label>
-              ) : null}
-              <div className="seg seg-sm">
-                {VIEWS.map(([value, label, icon]) => (
-                  <button
-                    type="button"
-                    key={value}
-                    className={view === value ? 'active' : ''}
-                    aria-pressed={view === value}
-                    onClick={() => setView(value)}
-                  >
-                    <Icon name={icon} /> {label}
-                  </button>
-                ))}
-              </div>
+          <div className="bf-group">
+            <span className="bf-legend"><Icon name="calendar" /> ช่วงวันที่</span>
+            <div className="bf-dates">
+              <Select
+                className="bf-date-field"
+                value={dateField}
+                onChange={(e) => setDateField(e.target.value)}
+                options={dateFieldOptions({ caseFilter })}
+              />
+              <DateField value={from} max={to} placeholder="ตั้งแต่" onChange={setFrom} />
+              <span className="bf-dates-sep muted">–</span>
+              <DateField value={to} min={from} placeholder="ถึง" onChange={setTo} />
             </div>
+          </div>
+
+        </div>
+
+        {/* การแสดงผลไม่ใช่ตัวกรอง จึงอยู่นอกกล่องสี่กลุ่ม — บนคอมยืนแถวล่างคู่กับปุ่มล้างตัวกรอง
+            คั่นด้วยเส้นตั้ง · .fb-fields/.fb-foot เป็น display:contents ทั้งคู่ ปุ่มล้าง
+            กับกลุ่มนี้จึงเป็นลูกของกริด .board-filters ตัวเดียวกันได้ */}
+        <div className="bf-display">
+          <span className="bf-legend">การแสดงผล</span>
+          {/* ซ่อนคอลัมน์ ไม่ใช่กรองเคส — จึงเป็นสวิตช์ ไม่ใช่ชิปเหมือนตัวกรอง */}
+          {view === 'card' && !showDone ? (
+            <label className="bf-switch">
+              <input
+                type="checkbox"
+                checked={hideEmpty}
+                onChange={(e) => setHideEmpty(e.target.checked)}
+              />
+              <span className="track" aria-hidden="true" />
+              ซ่อนขั้นที่ว่าง
+            </label>
+          ) : null}
+          <div className="seg seg-sm">
+            {VIEWS.map(([value, label, icon]) => (
+              <button
+                type="button"
+                key={value}
+                className={view === value ? 'active' : ''}
+                aria-pressed={view === value}
+                onClick={() => setView(value)}
+              >
+                <Icon name={icon} /> {label}
+              </button>
+            ))}
           </div>
         </div>
         </FilterSheet>

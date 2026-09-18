@@ -18,6 +18,9 @@ import { ageYears } from './customerAge.js';
 /** @type {FillField[]} */
 export const FILL_FIELDS = [
   { key: 'birth_date', label: 'วันเกิด', required: true },
+  /* ลูกค้าที่บอกมาแค่อายุ — ไม่ใช่ช่องบังคับของตัวเอง แต่กรอกแล้วถือว่าตอบ "วันเกิด" แทนได้
+     (ดู missingRequired) เพราะทั้งสองช่องมีไว้ตอบคำถามเดียวกันคือ ลูกค้าอายุเท่าไหร่ */
+  { key: 'age_years', label: 'อายุ' },
   { key: 'phone', label: 'เบอร์โทร', required: true },
   { key: 'line_id', label: 'LINE / WhatsApp' },
   { key: 'email', label: 'อีเมล' },
@@ -29,6 +32,8 @@ const blank = (v) => v === null || v === undefined || String(v).trim() === '';
 /** ป้ายของช่องบังคับที่ยังว่าง เช่น ['วันเกิด', 'เบอร์โทร'] */
 export const missingRequired = (c) => FILL_FIELDS
   .filter((f) => f.required && blank(c?.[f.key]))
+  /* มีอายุแล้วไม่ต้องทวงวันเกิด — ป้ายที่ทวงของที่ร้านตอบไปแล้ว คือป้ายที่คนจะเลิกอ่าน */
+  .filter((f) => !(f.key === 'birth_date' && !blank(c?.age_years)))
   .map((f) => f.label);
 
 /** "ข้อมูลลูกค้ายังไม่ครบ: วันเกิด, เบอร์โทร" · ครบแล้ว null */
@@ -38,7 +43,10 @@ export function missingText(c) {
 }
 
 /** ทุกช่องที่ยังว่าง ทั้งบังคับและไม่บังคับ — ช่องที่ popup จะให้กรอก */
-export const emptyFields = (c) => FILL_FIELDS.filter((f) => blank(c?.[f.key]));
+export const emptyFields = (c) => FILL_FIELDS
+  .filter((f) => blank(c?.[f.key]))
+  /* มีวันเกิดแล้วอายุคิดเองได้ ไม่ต้องเสนอให้กรอก — และ API ก็ปฏิเสธด้วย 409 อยู่ดี */
+  .filter((f) => !(f.key === 'age_years' && !blank(c?.birth_date)));
 
 /**
  * body ของ POST /api/customers/:id/fill — เฉพาะช่องที่ว่างในลูกค้าและกรอกมาจริง
@@ -73,6 +81,10 @@ export function fillProblems(values, today) {
   const out = [];
   const birth = String(values?.birth_date ?? '').trim();
   if (birth && (!realDate(birth) || ageYears(birth, today) === null)) out.push('วันเกิดไม่ถูกต้อง');
+  const age = String(values?.age_years ?? '').trim();
+  if (age && (!/^\d{1,3}$/.test(age) || Number(age) > 120)) out.push('อายุต้องเป็นตัวเลข 0–120 ปี');
+  /* กรอกทั้งคู่มา API จะทิ้งอายุแล้วใช้วันเกิด — บอกตรงนี้ดีกว่าให้ค่าหายเงียบ ๆ ตอนบันทึก */
+  if (birth && age) out.push('กรอกได้อย่างเดียว — มีวันเกิดแล้วระบบคิดอายุให้เอง');
   const phone = String(values?.phone ?? '').trim();
   if (phone && phone.replace(/\D+/g, '').length < 9) out.push('เบอร์โทรต้องมีตัวเลขอย่างน้อย 9 หลัก');
   const email = String(values?.email ?? '').trim();

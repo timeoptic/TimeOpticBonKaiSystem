@@ -151,6 +151,14 @@ export default function IssuePage() {
   const [branchId, setBranchId] = useState("");
   const [doc, setDoc] = useState("");
   const [note, setNote] = useState("");
+  /**
+   * ชื่อคนที่ทำของเสีย — พิมพ์เอง บังคับกรอก ไม่ใช่บัญชีผู้ใช้
+   *
+   * ร้านขอไว้ 12 ก.ย. 2026: ผู้ดูแลคลังเป็นคนคีย์ แต่คนทำเสียมักเป็นเด็กฝึกงานที่มา
+   * ไม่นาน ไม่ควรต้องมีบัญชี · ช่องเดิมตั้งเป็นคนที่ล็อกอินอยู่ให้เอง ของเสียของน้อง
+   * จึงไปขึ้นชื่อผู้ดูแลคลัง · คนคีย์ยังถูกจดเป็นผู้บันทึกเองอยู่แล้ว ไม่ต้องถาม
+   */
+  const [scrapBy, setScrapBy] = useState("");
 
   /**
    * ตัวเลือกที่กดในดรอปดาวน์สาเหตุ — ของหน้าจอ ไม่ใช่ของสมุด
@@ -228,6 +236,8 @@ export default function IssuePage() {
     setDoc("");
     setNote("");
     setReason("");
+    // ล้างทุกครั้ง — ใบถัดไปอาจเป็นของเสียของอีกคน ชื่อที่ค้างอยู่คือชื่อที่ถูกกดผ่านไปโดยไม่ได้อ่าน
+    setScrapBy("");
     setBasket([]);
     setTyping({});
     setIdemKey(`web:${uuid()}`);
@@ -357,6 +367,11 @@ export default function IssuePage() {
       return;
     }
 
+    if (kind === "scrap" && scrapBy.trim() === "") {
+      setProblem({ message: "กรอกชื่อคนที่ทำของเสียก่อน" });
+      return;
+    }
+
     setBusy(true);
     setProblem(null);
 
@@ -368,10 +383,13 @@ export default function IssuePage() {
         items: going.map((l) => ({ sku: l.sku, quantity: l.qty })),
         reference_doc: doc.trim() || null,
         note: note.trim() || null,
-        // Exactly one of these two, which is what the API insists on.
-        ...(isBranch
-          ? { branch_id: Number(branchId) }
-          : { issued_to_admin_id: staffId === "" ? null : Number(staffId) }),
+        // Exactly one of these, which is what the API insists on. A scrap names
+        // the person by the name typed, never by an account.
+        ...(kind === "scrap"
+          ? { scrap_by: scrapBy.trim() }
+          : isBranch
+            ? { branch_id: Number(branchId) }
+            : { issued_to_admin_id: staffId === "" ? null : Number(staffId) }),
         },
       );
 
@@ -535,6 +553,7 @@ export default function IssuePage() {
         value={null}
         onPick={add}
         pickLabel="+ ใส่ตะกร้า"
+        pickByButton
         reserved={reserved}
         requireStock
         refresh={refresh}
@@ -731,11 +750,32 @@ export default function IssuePage() {
                 every time. So it is stated, not asked: the name comes off their
                 own account and the picker stays out of the way until someone
                 actually is drawing on behalf of a colleague. */}
-            {!isBranch ? (
+            {kind === "scrap" ? (
+              <div className="field">
+                <label className="field__label" htmlFor="if-scrap-by">
+                  คนที่ทำของเสีย
+                </label>
+                <input
+                  id="if-scrap-by"
+                  className="input"
+                  value={scrapBy}
+                  onChange={(e) => setScrapBy(e.target.value)}
+                  disabled={busy}
+                  maxLength={120}
+                  required
+                  autoComplete="off"
+                  placeholder="พิมพ์ชื่อ เช่น น้องมิว (ฝึกงาน)"
+                />
+                <span className="field__help">
+                  ต้องกรอกทุกครั้ง · ไม่ต้องมีบัญชีในระบบ · รายการนี้ขึ้นชื่อ {actor.displayName} เป็นผู้บันทึกเอง
+                  และชื่อที่พิมพ์จะไปรวมเป็นยอดของเสียรายคนในแดชบอร์ด
+                </span>
+              </div>
+            ) : !isBranch ? (
               forOther ? (
                 <div className="field">
                   <label className="field__label" htmlFor="if-who">
-                    {kind === "scrap" ? "คนที่ทำของเสีย" : "ผู้เบิก"}
+                    ผู้เบิก
                   </label>
                   <Select
                     id="if-who"
@@ -768,38 +808,29 @@ export default function IssuePage() {
                   </div>
                   <span className="field__help">
                     รายการนี้จะขึ้นชื่อ {actor.displayName} เป็นผู้บันทึกเสมอ ไม่ว่าเลือกใคร
-                    {kind === "scrap" ? "เป็นคนทำของเสีย" : "เป็นผู้เบิก"}
+                    เป็นผู้เบิก
                   </span>
-                  {kind === "scrap" ? (
-                    <span className="field__help">
-                      ชื่อที่เลือกจะไปรวมเป็นยอดของเสียรายคนในแดชบอร์ด
-                    </span>
-                  ) : null}
                 </div>
               ) : (
                 <div className="whois">
                   <span className="whois__what">
                     <span className="whois__label">
-                      {kind === "scrap" ? "คนที่ทำของเสีย" : "ผู้เบิก"}
+                      ผู้เบิก
                     </span>
                     <span className="whois__name">
                       {actor.displayName}
                       {actor.jobTitle ? ` · ${actor.jobTitle}` : ""}
                     </span>
                   </span>
-                  {/* On a scrap this button is an accusation, so only the owner
-                      gets it. Everyone else writes off what they broke under
-                      their own name, which needs no permission at all. */}
-                  {kind === "issue" || mayBlame ? (
-                    <button
-                      type="button"
-                      className="btn btn--quiet btn--small"
-                      disabled={busy}
-                      onClick={() => setForOther(true)}
-                    >
-                      {kind === "scrap" ? "คนอื่นเป็นคนทำ" : "เบิกแทนคนอื่น"}
-                    </button>
-                  ) : null}
+                  {/* เฉพาะใบเบิก — ของเสียพิมพ์ชื่อคนทำเองในช่องของมันด้านบน ไม่ผูกบัญชี */}
+                  <button
+                    type="button"
+                    className="btn btn--quiet btn--small"
+                    disabled={busy}
+                    onClick={() => setForOther(true)}
+                  >
+                    เบิกแทนคนอื่น
+                  </button>
                 </div>
               )
             ) : (

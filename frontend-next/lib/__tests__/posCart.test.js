@@ -146,6 +146,64 @@ test('validateCart: สินค้า custom ต้องมีชื่อ', (
   assert.deepEqual(validateCart(c), []);
 });
 
+/* คอนแทคเลนส์ขายแยกข้างได้ ช่อง "ข้าง" จึงเป็นช่องแบบตัวเลือก ไม่ใช่ช่องพิมพ์อิสระ
+   รูปแบบเดียวกับที่ pos_items.pos_fields เก็บจริงตั้งแต่ 16 ก.ย. 2026 */
+const ctl = {
+  id: 32,
+  sku: 'CTA-0009',
+  name: 'Acuvue 2',
+  base_selling_price: 800,
+  pos_fields: [
+    {
+      key: 'eye',
+      label: 'ข้าง',
+      type: 'choice',
+      required: true,
+      options: [['R', 'ขวา (R)'], ['L', 'ซ้าย (L)'], ['RL', 'ทั้งสองข้าง']],
+    },
+    { key: 'power', label: 'ค่าสายตา', required: true },
+  ],
+};
+
+/**
+ * ค่านอกรายการต้องไม่ผ่าน
+ *
+ * "ว่างหรือไม่ว่าง" ไม่พอสำหรับช่องแบบตัวเลือก — ค่าที่ไม่ใช่ R/L/RL แปลว่าไม่มีใคร
+ * รู้ว่าลูกค้าได้กล่องข้างไหน ซึ่งเป็นสิ่งเดียวที่ช่องนี้มีไว้ตอบ · ด่านจริงอยู่ฝั่ง
+ * server เสมอ ฝั่งนี้มีไว้บอกพนักงานทันทีโดยไม่ต้องรอ 400 กลับมา
+ */
+test('validateCart: ช่องตัวเลือก ค่าที่ไม่อยู่ในรายการไม่ผ่าน', () => {
+  const c = addItem([], ctl, { meta: { eye: 'X', power: '-2.00' } });
+  const e = validateCart(c);
+  assert.equal(e.length, 1);
+  assert.match(e[0].message, /ข้าง/);
+});
+
+test('validateCart: ช่องตัวเลือก ค่าที่อยู่ในรายการผ่าน', () => {
+  const c = addItem([], ctl, { meta: { eye: 'RL', power: '-2.00' } });
+  assert.deepEqual(validateCart(c), []);
+});
+
+/* ช่องตัวเลือกที่ไม่บังคับ เว้นว่างได้ แต่ถ้าเลือกแล้วก็ยังต้องเป็นค่าที่มีอยู่จริง */
+test('validateCart: ช่องตัวเลือกที่ไม่บังคับ ว่างได้ แต่ค่ามั่วไม่ได้', () => {
+  const tint = {
+    id: 99,
+    sku: 'CTX-0001',
+    name: 'เลนส์ทดสอบ',
+    base_selling_price: 100,
+    pos_fields: [{
+      key: 'tint',
+      label: 'สีเลนส์',
+      type: 'choice',
+      options: [['clear', 'ใส'], ['gray', 'เทา']],
+    }],
+  };
+  assert.deepEqual(validateCart(addItem([], tint)), []);
+  const bad = validateCart(addItem([], tint, { meta: { tint: 'ม่วง' } }));
+  assert.equal(bad.length, 1);
+  assert.match(bad[0].message, /สีเลนส์/);
+});
+
 test('validatePayment: จ่ายเต็มด้วยเงินสด รับเงินพอ', () => {
   assert.deepEqual(validatePayment({
     total: 1140, amount: 1140, method: 'cash', received: 1500, delivered: true,

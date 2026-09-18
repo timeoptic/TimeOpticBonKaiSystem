@@ -56,7 +56,8 @@ export default function Home() {
 
   const orderCols = [
     { label: 'วันที่สั่ง', render: (o) => fmtDateTime(o.order_date), cls: 'nowrap', mobile: 'body' },
-    { label: 'Invoice', key: 'invoice_code', cls: 'mono', mobile: 'title' },
+    /* เลขเคส ไม่ใช่ Invoice — ร้านอ้างงานกันด้วยเลขเคส INV ไม่ขึ้นที่ไหนให้คนจำ (ร้านขอ 15 ก.ย. 2026) */
+    { label: 'เลขเคส', render: (o) => o.case_code || '-', cls: 'mono', mobile: 'title' },
     { label: 'ลูกค้า', render: custName, mobile: 'subtitle' },
     { label: 'พนักงาน', render: (o) => o.employee_name || '-', mobile: 'meta' },
     { label: 'เลนส์', render: (o) => o.lens_name || '-', mobile: 'meta' },

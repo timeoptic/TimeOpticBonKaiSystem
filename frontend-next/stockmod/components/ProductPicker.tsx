@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Paginator from "./Paginator";
-import SortHead, { SortBar, useSort } from "./SortHead";
+import SortHead, { MATCH_SORT, SortBar, useSort } from "./SortHead";
 import LensFilters from "./LensFilters";
 import { Filter, FilterBar } from "./FilterBar";
 import LensCells from "./LensCells";
@@ -23,9 +23,9 @@ import { count, money } from "@/stockmod/lib/format";
 
 type SortKey =
   | "sku" | "name" | "brand" | "onhand" | "price" | "type" | "eye"
-  | "index" | "design" | "coating" | "sph";
+  | "index" | "design" | "coating" | "sph" | "match";
 const NATURAL_ASC: readonly SortKey[] = [
-  "sku", "name", "brand", "type", "eye", "index", "design", "coating", "sph",
+  "sku", "name", "brand", "type", "eye", "index", "design", "coating", "sph", "match",
 ];
 
 /** The same columns the table headers offer, named for the toolbar chooser. */
@@ -124,6 +124,7 @@ export default function ProductPicker({
   reserved = {},
   requireStock = false,
   sortSlotId,
+  pickByButton = false,
 }: {
   /**
    * What the button on each row says.
@@ -133,6 +134,14 @@ export default function ProductPicker({
    * is a button that lies about what it is about to do.
    */
   pickLabel?: string;
+  /**
+   * เลือกได้ทางปุ่มในแถวเท่านั้น — แตะแถว แตะการ์ด หรือกด Enter บนแถวไม่เลือก
+   *
+   * หน้าเบิก/ตัดสต็อกเปิดค่านี้ (เจ้าของร้านสั่ง 2026-09-12): การเลือกที่นั่นคือ
+   * หยิบของลงตะกร้า แถวทั้งแถวที่กดแล้วลงตะกร้าทำให้ของลงตะกร้าตอนแค่แตะดูหรือ
+   * ไถจอ · หน้ารับของเข้ายังแตะแถวเลือกได้ เพราะเลือกแล้วแค่เปิดฟอร์ม ปิดทิ้งได้
+   */
+  pickByButton?: boolean;
   value: ProductRow | null;
   onPick: (p: ProductRow | null) => void;
   only?: "all" | "ready" | "custom" | "rx";
@@ -192,7 +201,7 @@ export default function ProductPicker({
   const [design, setDesign] = useState("");
   const [coating, setCoating] = useState("");
   const [page, setPage] = useState(1);
-  const { sort, dir, sortBy } = useSort<SortKey>(defaultSort, NATURAL_ASC);
+  const { sort, dir, sortBy, sortTo } = useSort<SortKey>(defaultSort, NATURAL_ASC);
 
   /**
    * เคอร์เซอร์รออยู่ในช่องค้นหาให้เลย — เฉพาะจอกว้าง
@@ -253,6 +262,7 @@ export default function ProductPicker({
   }, [refresh, reload]);
 
   const pick = (c: SortKey) => sortBy(c, () => setPage(1));
+  const sorts = applied ? [MATCH_SORT, ...SORTS] : SORTS;
 
   /**
    * Whether the lens columns and the lens filters are worth their space.
@@ -320,7 +330,13 @@ export default function ProductPicker({
           className="toolsearch"
           onSubmit={(e) => {
             e.preventDefault();
-            refine(() => setApplied(q.trim()));
+            const next = q.trim();
+            refine(() => {
+              setApplied(next);
+              // มีคำค้น = ตัวที่ตรงที่สุดขึ้นก่อน เหมือนหน้าขาย · ล้างคำค้นแล้วกลับไปเรียงแบบเดิม
+              if (next) sortTo("match");
+              else if (sort === "match") sortTo(defaultSort);
+            });
           }}
         >
           <label className="sr-only" htmlFor="pick-q">
@@ -346,6 +362,7 @@ export default function ProductPicker({
                 refine(() => {
                   setQ("");
                   setApplied("");
+                  if (sort === "match") sortTo(defaultSort);
                 })
               }
             >
@@ -359,13 +376,13 @@ export default function ProductPicker({
             A page may ask for it up in its own header instead — see sortSlotId. */}
         {sortSlotId ? null : (
           <div className="listtools__end">
-            <SortBar id="pick" columns={SORTS} sort={sort} dir={dir} onSort={pick} />
+            <SortBar id="pick" columns={sorts} sort={sort} dir={dir} onSort={pick} />
           </div>
         )}
 
       {sortSlot
         ? createPortal(
-            <SortBar id="pick" columns={SORTS} sort={sort} dir={dir} onSort={pick} />,
+            <SortBar id="pick" columns={sorts} sort={sort} dir={dir} onSort={pick} />,
             sortSlot,
           )
         : null}
@@ -434,6 +451,7 @@ export default function ProductPicker({
                 refine(() => {
                   setQ("");
                   setApplied("");
+                  if (sort === "match") sortTo(defaultSort);
                   setEye("");
                   setPtype("");
                 })
@@ -466,7 +484,7 @@ export default function ProductPicker({
               return (
                 <RecordCard
                   key={r.id}
-                  onOpen={takeable ? () => onPick(r) : undefined}
+                  onOpen={takeable && !pickByButton ? () => onPick(r) : undefined}
                   tone={takeable ? undefined : "muted"}
                   head={
                     r.isCustomMade ? (
@@ -511,7 +529,9 @@ export default function ProductPicker({
 
           <div className="tablewrap wide-only">
             <table className="grid">
-              <caption className="sr-only">รายการสินค้าในคลัง — คลิกแถวเพื่อเลือก</caption>
+              <caption className="sr-only">
+                {pickByButton ? `รายการสินค้าในคลัง — กดปุ่ม ${pickLabel} ท้ายแถว` : "รายการสินค้าในคลัง — คลิกแถวเพื่อเลือก"}
+              </caption>
               <thead>
                 <tr>
                   {/* SKU, แบรนด์ and ข้าง are inside the สินค้า cell rather than
@@ -538,17 +558,19 @@ export default function ProductPicker({
                 {list.data.rows.map((r) => {
                   const left = Math.max(0, r.onHand - (reserved[r.sku] ?? 0));
                   const takeable = !requireStock || (!r.isCustomMade && left > 0);
+                  // แถวทั้งแถวกดเลือกได้ เว้นแต่หน้านั้นให้เลือกทางปุ่มเท่านั้น
+                  const rowPicks = takeable && !pickByButton;
 
                   return (
                   <tr
                     key={r.id}
-                    className={takeable ? "grid__row grid__row--clickable" : "grid__row"}
-                    onClick={takeable ? () => onPick(r) : undefined}
-                    tabIndex={takeable ? 0 : undefined}
-                    role={takeable ? "button" : undefined}
-                    aria-label={takeable ? `${pickLabel} ${r.name}` : undefined}
+                    className={rowPicks ? "grid__row grid__row--clickable" : "grid__row"}
+                    onClick={rowPicks ? () => onPick(r) : undefined}
+                    tabIndex={rowPicks ? 0 : undefined}
+                    role={rowPicks ? "button" : undefined}
+                    aria-label={rowPicks ? `${pickLabel} ${r.name}` : undefined}
                     onKeyDown={
-                      takeable
+                      rowPicks
                         ? (e) => {
                             if (e.key === "Enter" || e.key === " ") {
                               e.preventDefault();
@@ -588,7 +610,16 @@ export default function ProductPicker({
                       </td>
                     ) : null}
                     <td>
-                      {takeable ? (
+                      {takeable && pickByButton ? (
+                        <button
+                          type="button"
+                          className="btn btn--primary btn--small"
+                          onClick={() => onPick(r)}
+                          aria-label={`${pickLabel} ${r.name}`}
+                        >
+                          {pickLabel}
+                        </button>
+                      ) : takeable ? (
                         <span className="btn btn--small grid__pick" aria-hidden="true">
                           {pickLabel}
                         </span>

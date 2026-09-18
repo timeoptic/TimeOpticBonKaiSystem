@@ -222,12 +222,17 @@ php stock/api/bin/migrate.php
 - `custom_orders.frame_type` — ช่องประเภทกรอบในการ์ดกรอบแว่น (2026-09-10)
   **ต้องเพิ่มก่อนอัป `api/routes/orders.php`** — POST/PUT ออเดอร์เขียนทุกคอลัมน์ใน `ORDER_COLS`
   ถ้าโค้ดขึ้นก่อนคอลัมน์ บันทึกออเดอร์จะพังทุกใบ ไม่ใช่แค่ช่องนี้
+- `custom_orders.lens_r_rx_id` `lens_r_rx_doc` `lens_l_rx_id` `lens_l_rx_doc` — ใบสั่งตัด RX
+  ที่เปิดจากหน้าเคส ผูกกับเลนส์แต่ละข้าง (2026-09-11) · อยู่ใน `ORDER_COLS` เหมือนกัน
+  **ต้องเพิ่มก่อนอัป `api/routes/orders.php`**
 
 ```bash
 cd ~/domains/controlsystem-timeoptic.com/public_html
 php -r '$c=require "api/config.php"; $d=$c["db"];
   $p=new PDO("mysql:host={$d["host"]};dbname={$d["database"]};charset=utf8mb4",$d["user"],$d["password"]);
-  foreach ([["centerings","corridor","varchar(20) DEFAULT NULL"],["custom_orders","frame_type","varchar(40) DEFAULT NULL"]] as [$t,$col,$ddl]) {
+  foreach ([["centerings","corridor","varchar(20) DEFAULT NULL"],["custom_orders","frame_type","varchar(40) DEFAULT NULL"],
+    ["custom_orders","lens_r_rx_id","int(10) unsigned DEFAULT NULL"],["custom_orders","lens_r_rx_doc","varchar(100) DEFAULT NULL"],
+    ["custom_orders","lens_l_rx_id","int(10) unsigned DEFAULT NULL"],["custom_orders","lens_l_rx_doc","varchar(100) DEFAULT NULL"]] as [$t,$col,$ddl]) {
   $has=$p->query("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name=\"$t\" AND column_name=\"$col\"")->fetchColumn();
   if($has){echo "$t.$col มีอยู่แล้ว\n";}else{$p->exec("ALTER TABLE `$t` ADD COLUMN `$col` $ddl"); echo "เพิ่ม $t.$col แล้ว\n";}
   }'
