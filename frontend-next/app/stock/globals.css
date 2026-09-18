@@ -4543,3 +4543,10 @@ kbd {
 }
 .daterange__step--narrow { display: none; }
 @media (max-width: 40rem) { .daterange__step--narrow { display: inline-flex; } }
+
+/* SPH / CYL / ADD เป็นช่องค่าเดียวแล้ว — บนมือถือวางสองช่องต่อแถว ไม่ใช่ช่องละบรรทัด */
+@media (max-width: 40rem) {
+  .lensbar .filterbar__item--range { flex: 1 1 calc(50% - var(--space-xs)); }
+  .lensbar .filterbar__item--range .filterbar__label { flex: 0 0 2.4rem; }
+}
+.lensrange .combo { inline-size: 9rem; }

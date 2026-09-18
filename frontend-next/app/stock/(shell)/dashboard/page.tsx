@@ -734,6 +734,7 @@ export default function DashboardPage() {
               { header: "ทุน/ชิ้น", money: true },
               { header: "รวมทุน", money: true, total: true },
               { header: "ผู้เบิก / คนทำเสีย", width: 18 },
+              { header: "หมายเหตุ", width: 36 },
             ],
             rows: out.map((l) => [
               keyOf(l),
@@ -746,6 +747,7 @@ export default function DashboardPage() {
               cost$(l.unitCost),
               cost$(l.total),
               l.who,
+              l.note,
             ]),
           });
         }

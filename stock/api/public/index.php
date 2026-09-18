@@ -86,6 +86,8 @@ Http::get('/api/products', static function () use ($maySeeCost): array {
         'sph_to'      => Http::query('sph_to'),
         'cyl_from'    => Http::query('cyl_from'),
         'cyl_to'      => Http::query('cyl_to'),
+        'add_from'    => Http::query('add_from'),
+        'add_to'      => Http::query('add_to'),
         'received_from' => Http::query('from'),
         'received_to'   => Http::query('to'),
         'category_id' => Http::query('cat') === null ? null : (int) Http::query('cat'),
@@ -278,6 +280,8 @@ Http::get('/api/lens-options', static function (): array {
         'sph_to'   => Http::query('sph_to'),
         'cyl_from' => Http::query('cyl_from'),
         'cyl_to'   => Http::query('cyl_to'),
+        'add_from' => Http::query('add_from'),
+        'add_to'   => Http::query('add_to'),
         'received_from' => Http::query('from'),
         'received_to'   => Http::query('to'),
     ]);

@@ -336,7 +336,8 @@ final class Inventory
         // SPH / CYL as a range, compared as numbers so "-2" meets "-2.00".
         // Either end may be open; ends given the wrong way round are swapped
         // rather than returning nothing, since that is never what was meant.
-        foreach (['sph', 'cyl'] as $key) {
+        // ADD เข้ากติกาเดียวกัน (ร้านขอ 18 ก.ย. 2026) — เก็บเป็นข้อความ "+2.00" แต่ CAST เป็นตัวเลขได้
+        foreach (['sph', 'cyl', 'add'] as $key) {
             $from = self::power($filter["{$key}_from"] ?? null);
             $to   = self::power($filter["{$key}_to"] ?? null);
             if ($from !== null && $to !== null && $from > $to) {
@@ -1057,6 +1058,8 @@ final class Inventory
             'coatings' => $coatings,
             'sphs'     => $powers('sph'),
             'cyls'     => $powers('cyl'),
+            // ค่า ADD ที่มีของ — ว่างเมื่อรายการไม่มีเลนส์ที่มี ADD เลย หน้าจอไม่วาดช่องนี้
+            'adds'     => $powers('add'),
         ];
     }
 

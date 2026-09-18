@@ -15,8 +15,8 @@ import type { LensFacet, LensOptions } from "@/stockmod/lib/api";
  * ชิปที่ไม่มีของเลยถูกซ่อน (เว้นตัวที่เลือกอยู่) จึงเหลือแค่ของที่มีจริง ซึ่งสั้น
  * กว่ายี่สิบมาก
  *
- * SPH / CYL เป็นดรอปดาวน์ช่วง "ตั้งแต่–ถึง" — ค่าสายตามีหลายสิบค่า เป็นชิปไม่ได้
- * และคนถือค่าที่วัดมาแล้วอยากได้ "แถว ๆ นี้" มากกว่าค่าเดียวเป๊ะ
+ * SPH / CYL / ADD เป็นดรอปดาวน์ค่าเดียว (ร้านขอ 18 ก.ย. 2026 — แบบช่วงตั้งแต่–ถึงใช้ยาก)
+ * ค่าสายตามีหลายสิบค่า เป็นชิปไม่ได้ · พิมพ์ค้นในดรอปดาวน์ได้ · ADD โผล่เฉพาะตอนมีเลนส์ที่มี ADD
  *
  * ทุกค่าที่ให้เลือกมาจาก `/lens-options` — สเปกที่แคตตาล็อกมีอยู่จริง นับภายใต้
  * ตัวกรองอื่นที่ใช้อยู่ เลือกผิดจนตารางว่างจึงเป็นสิ่งที่ทำไม่ได้
@@ -29,14 +29,13 @@ export type LensPick = {
   index: string[];
   design: string[];
   coating: string[];
-  sphFrom: string;
-  sphTo: string;
-  cylFrom: string;
-  cylTo: string;
+  sph: string;
+  cyl: string;
+  add: string;
 };
 
 export const NO_LENS: LensPick = {
-  index: [], design: [], coating: [], sphFrom: "", sphTo: "", cylFrom: "", cylTo: "",
+  index: [], design: [], coating: [], sph: "", cyl: "", add: "",
 };
 
 /** หลายค่าในช่องเดียวส่งเป็น `1.56|1.60` — API อ่านแบบ "ตัวไหนก็ได้" */
@@ -44,10 +43,13 @@ export const lensParams = (l: LensPick) => ({
   index: l.index.join("|"),
   design: l.design.join("|"),
   coating: l.coating.join("|"),
-  sph_from: l.sphFrom,
-  sph_to: l.sphTo,
-  cyl_from: l.cylFrom,
-  cyl_to: l.cylTo,
+  // ค่าเดียว = ช่วงที่หัวกับท้ายเป็นค่าเดียวกัน — API ตัวเดิมรับแบบช่วงอยู่แล้ว
+  sph_from: l.sph,
+  sph_to: l.sph,
+  cyl_from: l.cyl,
+  cyl_to: l.cyl,
+  add_from: l.add,
+  add_to: l.add,
 });
 
 /** ค่าสายตาอย่างที่เขียนบนซอง — +1.00, 0.00, -2.25 */
@@ -85,7 +87,7 @@ export default function LensFilters({
   const data = last.current;
   if (data === null) return null;
 
-  const { indexes, designs, coatings, sphs = [], cyls = [] } = data;
+  const { indexes, designs, coatings, sphs = [], cyls = [], adds = [] } = data;
 
   const toggle = (key: "index" | "design" | "coating", v: string) => {
     const on = value[key];
@@ -103,51 +105,40 @@ export default function LensFilters({
     { key: "coating" as const, label: "Coating", facets: shown(coatings, value.coating) },
   ].filter((g) => g.facets.length > 0);
 
-  const range = (
-    key: "sph" | "cyl",
-    label: string,
-    facets: LensFacet[],
-  ) => {
-    const from = key === "sph" ? "sphFrom" : "cylFrom";
-    const to = key === "sph" ? "sphTo" : "cylTo";
-    // ค่าที่เลือกไว้แต่ไม่มีในลิสต์แล้ว (ตัวกรองอื่นเปลี่ยน) ยังต้องอ่านได้บนหน้าปุ่ม
-    const values = [...new Set([...facets.map((f) => f.value), value[from], value[to]].filter(Boolean))]
-      .sort((a, b) => Number(a) - Number(b));
-    if (values.length === 0) return null;
-    const choices = (all: string) => [
-      { value: "", label: all },
-      ...values.map((v) => ({ value: v, label: power(v) })),
-    ];
+  const single = (key: "sph" | "cyl" | "add", label: string, facets: LensFacet[]) => {
+    const chosen = value[key];
+    // ค่าที่เลือกไว้แต่ไม่อยู่ในลิสต์แล้ว (ตัวกรองอื่นเปลี่ยน) ยังต้องอ่านได้บนหน้าปุ่ม
+    const list = chosen && !facets.some((f) => f.value === chosen) ? [...facets, { value: chosen, count: 0 }] : facets;
+    if (list.length === 0) return null;
     return (
       <div className="filterbar__item filterbar__item--range">
-        <span className="filterbar__label" id={`lf-${key}`}>{label}</span>
-        <span className="lensrange" role="group" aria-labelledby={`lf-${key}`}>
+        <label className="filterbar__label" htmlFor={`lf-${key}`}>{label}</label>
+        <span className="lensrange">
           <Select
+            id={`lf-${key}`}
             className="input--inline lensrange__end"
-            value={value[from]}
-            onChange={(v) => onChange({ ...value, [from]: v })}
-            options={choices("ตั้งแต่")}
-            placeholder="ตั้งแต่"
-          />
-          <span aria-hidden="true">–</span>
-          <Select
-            className="input--inline lensrange__end"
-            value={value[to]}
-            onChange={(v) => onChange({ ...value, [to]: v })}
-            options={choices("ถึง")}
-            placeholder="ถึง"
+            value={chosen}
+            onChange={(v) => onChange({ ...value, [key]: v })}
+            options={[
+              { value: "", label: "ทุกค่า" },
+              ...[...list]
+                .sort((a, b) => Number(a.value) - Number(b.value))
+                .map((f) => ({ value: f.value, label: withCount(power(f.value), f.count) })),
+            ]}
+            placeholder="ทุกค่า"
           />
         </span>
       </div>
     );
   };
 
-  if (groups.length === 0 && sphs.length === 0 && cyls.length === 0) return null;
+  if (groups.length === 0 && sphs.length === 0 && cyls.length === 0 && adds.length === 0) return null;
 
   return (
     <>
-      {range("sph", "SPH", sphs)}
-      {range("cyl", "CYL", cyls)}
+      {single("sph", "SPH", sphs)}
+      {single("cyl", "CYL", cyls)}
+      {single("add", "ADD", adds)}
       {groups.length > 0 ? (
         <div className="filterbar__item filterbar__item--chips">
           <div className="chipbar lenschips">
