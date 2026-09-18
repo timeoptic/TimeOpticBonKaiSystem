@@ -4564,3 +4564,8 @@ kbd {
   .billline__cost { flex: 1 1 40%; inline-size: auto; }
   .billline__exp { flex: 1 1 45%; }
 }
+
+/* แถว "รอต้นทุน" / "ค้างรับเงินจากสาขา" ไม่ย้อมสีแล้ว (ร้านขอ 18 ก.ย. 2026: "มีสถานะบอกอยู่แล้ว
+   ไม่จำเป็นต้องทำให้เหลือง") — ป้ายสถานะในแถวเป็นตัวบอกอย่างเดียว */
+.grid__row--pending { background: transparent; }
+.reccard--pending { border-inline-start: 0; }
