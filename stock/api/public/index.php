@@ -526,7 +526,7 @@ Http::post('/api/lots/{id}/update', static function (array $p) use ($numericId):
 
 Http::post('/api/lots/{id}/delete', static function (array $p) use ($numericId): array {
     $actor = Auth::require();
-    return ['deleted' => Catalog::deleteLot($numericId($p), $actor['roles'])];
+    return ['deleted' => Catalog::deleteLot($numericId($p), $actor['roles'], (int) $actor['id'])];
 });
 
 /* ------------------------------------------------------------------ users */

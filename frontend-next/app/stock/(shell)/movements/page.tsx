@@ -49,6 +49,8 @@ const TYPES = [
   { key: "COST", label: "ลงต้นทุน RX", countKey: "COST" },
   { key: "PRICE", label: "แก้ราคาขาย", countKey: "PRICE" },
   { key: "SETTLE", label: "รับเงินจากสาขา", countKey: "SETTLE" },
+  /* ร่องรอยของล็อตที่ถูกลบ (038) — จำนวนศูนย์ รายละเอียดอยู่ในหมายเหตุ */
+  { key: "LOT_DELETE", label: "ลบล็อต", countKey: "LOT_DELETE" },
 ] as const;
 
 /** ใครเป็นคนเอาของไป — คนละคำถามกับ "ของขยับแบบไหน" ข้างบน */

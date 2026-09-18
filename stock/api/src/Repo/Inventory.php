@@ -134,6 +134,8 @@ final class Inventory
         'COST'     => 'ลงต้นทุน RX',
         'PRICE'    => 'แก้ราคาขาย',
         'SETTLE'   => 'รับเงินจากสาขา',
+        /* ร่องรอยของล็อตที่ถูกลบ (038) — จำนวนศูนย์ รายละเอียดอยู่ในหมายเหตุ */
+        'LOT_DELETE' => 'ลบล็อต',
     ];
 
     /* ------------------------------------------------------------- products */
@@ -709,7 +711,7 @@ final class Inventory
 
         $joins =
             'FROM inventory_logs g
-             JOIN products p ON p.id = g.product_id
+             LEFT JOIN products p ON p.id = g.product_id
              LEFT JOIN stock_lots l ON l.id = g.lot_id
              LEFT JOIN admins a ON a.id = g.created_by
              LEFT JOIN admins who ON who.id = g.issued_to_admin_id
@@ -724,7 +726,9 @@ final class Inventory
         $rows = Db::all(
             "SELECT g.id, g.action_type, g.quantity, g.unit_cost, g.sale_price, g.reference_doc, g.notes,
                     g.created_at, g.created_by, g.created_by_kind,
-                    g.product_id, p.sku, p.name AS product_name,
+                    g.product_id,
+                    /* แถวร่องรอยการลบล็อตของสินค้าที่ถูกลบตามไปแล้ว (038) ไม่มีสินค้าให้ join */
+                    COALESCE(p.sku, '—') AS sku, COALESCE(p.name, 'สินค้าที่ถูกลบแล้ว') AS product_name,
                     p.base_selling_price,
                     l.lot_number, a.display_name AS actor_name, a.job_title AS actor_job,
                     g.issued_to_admin_id, who.display_name AS issued_to_name, g.scrap_by,

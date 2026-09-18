@@ -598,3 +598,26 @@ test('เลือกชิปหลายตัว = รวมกัน · ช�
         }
     });
 });
+
+test('ลบล็อตแล้วเหลือแถว "ลบล็อต" ในสมุด · ลบสินค้าต่อได้ และแถวร่องรอยยังอยู่', function () {
+    withRollback(function () {
+        $made = Catalog::createProduct([
+            'name' => 'ทดสอบลบล็อต ' . uniqid(), 'product_type' => 'Accessory',
+            'category_id' => (int) Db::value("SELECT id FROM categories WHERE code = 'Accessory'"),
+            'base_selling_price' => '0',
+        ], [Roles::OWNER]);
+        $lot = Receiving::receive(
+            ['sku' => $made['sku'], 'quantity' => 3, 'received_date' => date('Y-m-d'), 'note' => 'INV-9'],
+            [Roles::OWNER], 1,
+        );
+        Catalog::deleteLot((int) $lot['lotId'], [Roles::OWNER], 1);
+
+        $trace = Db::one("SELECT product_id, quantity, lot_id, notes FROM inventory_logs WHERE action_type = 'LOT_DELETE' AND reference_doc = ?", [$lot['lotNumber']]);
+        ok($trace !== null, 'มีแถวลบล็อต');
+        eq([(int) $trace['quantity'], $trace['lot_id']], [0, null], 'จำนวนศูนย์ ไม่ผูกล็อต');
+        ok(str_contains((string) $trace['notes'], 'จำนวน 3 ชิ้น') && str_contains((string) $trace['notes'], 'INV-9'), 'บอกจำนวนกับหมายเหตุเดิม');
+
+        Catalog::deleteProduct((int) $made['id'], [Roles::OWNER]);
+        eq(Db::value("SELECT product_id FROM inventory_logs WHERE action_type = 'LOT_DELETE' AND reference_doc = ?", [$lot['lotNumber']]), null, 'ลบสินค้าได้ แถวร่องรอยอยู่ต่อโดยไม่ผูกสินค้า');
+    });
+});

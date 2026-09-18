@@ -183,7 +183,12 @@ final class Catalog
         // here says so plainly rather than letting the foreign key throw a
         // message nobody outside the database would understand.
         $lots = (int) Db::value('SELECT COUNT(*) FROM stock_lots WHERE product_id = ?', [$id]);
-        $logs = (int) Db::value('SELECT COUNT(*) FROM inventory_logs WHERE product_id = ?', [$id]);
+        // ร่องรอยการลบล็อต (038) ไม่นับเป็นประวัติที่ห้ามลบ — ลบล็อตที่รับผิดแล้วลบสินค้าที่สร้างซ้ำ
+        // ต้องทำได้เหมือนเดิม แถวร่องรอยอยู่ต่อโดยไม่ผูกสินค้า (ชื่อกับรหัสอยู่ในข้อความแล้ว)
+        $logs = (int) Db::value(
+            "SELECT COUNT(*) FROM inventory_logs WHERE product_id = ? AND action_type <> 'LOT_DELETE'",
+            [$id],
+        );
 
         if ($lots > 0 || $logs > 0) {
             throw ApiError::conflict(
@@ -193,7 +198,12 @@ final class Catalog
             );
         }
 
-        Db::run('DELETE FROM products WHERE id = ?', [$id]);
+        Db::tx(static function (PDO $pdo) use ($id): void {
+            $pdo->prepare(
+                "UPDATE inventory_logs SET product_id = NULL WHERE product_id = ? AND action_type = 'LOT_DELETE'"
+            )->execute([$id]);
+            $pdo->prepare('DELETE FROM products WHERE id = ?')->execute([$id]);
+        });
 
         return ['id' => $id, 'sku' => $p['sku'], 'name' => $p['name']];
     }
@@ -357,7 +367,7 @@ final class Catalog
      *
      * @return array<string,mixed>
      */
-    public static function deleteLot(int $lotId, array $roles): array
+    public static function deleteLot(int $lotId, array $roles, ?int $actorId = null): array
     {
         Roles::require(Roles::editCatalog($roles), 'ลบล็อต');
 
@@ -378,11 +388,33 @@ final class Catalog
             );
         }
 
-        Db::tx(static function (PDO $pdo) use ($lotId): void {
+        $p = Db::one('SELECT sku, name FROM products WHERE id = ?', [$lot['product_id']]);
+
+        /* ร่องรอยของการลบ (038) — แถว IN ของล็อตต้องไปพร้อมกับล็อต ไม่งั้นสมุดกระทบยอดไม่ได้
+           แต่หน้าความเคลื่อนไหวต้องยังบอกได้ว่าเคยรับอะไรเข้ามาแล้วใครลบ · จำนวนศูนย์ ไม่ผูกล็อต
+           ต้นทุนอยู่ในข้อความ ไม่ใช่ช่อง unit_cost — รายงานเงินจะได้ไม่นับแถวนี้เป็นเงิน */
+        $trace = sprintf(
+            'ลบล็อต %s ของ %s %s — รับเข้า %s จำนวน %d ชิ้น%s%s',
+            $lot['lot_number'],
+            $p['sku'] ?? '',
+            $p['name'] ?? '',
+            $lot['received_date'],
+            (int) $lot['initial_qty'],
+            $lot['cost_per_unit'] !== null ? ' ต้นทุน ' . $lot['cost_per_unit'] . '/ชิ้น' : ' ยังไม่มีต้นทุน',
+            trim((string) ($lot['notes'] ?? '')) !== '' ? ' · หมายเหตุเดิม: ' . trim((string) $lot['notes']) : '',
+        );
+
+        Db::tx(static function (PDO $pdo) use ($lotId, $lot, $trace, $actorId): void {
             // The goods-received line goes with it; keeping an IN for a lot that
             // no longer exists would leave the ledger unbalanceable.
             $pdo->prepare('DELETE FROM inventory_logs WHERE lot_id = ?')->execute([$lotId]);
             $pdo->prepare('DELETE FROM stock_lots WHERE id = ?')->execute([$lotId]);
+            $pdo->prepare(
+                'INSERT INTO inventory_logs
+                   (product_id, lot_id, action_type, quantity, unit_cost, sale_price,
+                    reference_doc, notes, created_by, created_by_kind, created_at)
+                 VALUES (?, NULL, \'LOT_DELETE\', 0, NULL, NULL, ?, ?, ?, \'user\', NOW())'
+            )->execute([(int) $lot['product_id'], $lot['lot_number'], $trace, $actorId]);
         });
 
         return ['id' => $lotId, 'lotNumber' => $lot['lot_number']];
