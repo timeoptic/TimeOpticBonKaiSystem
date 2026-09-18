@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import {
   addItem, removeItem, setQty, bumpQty, setPrice, setMeta, setCustomName,
   lineTotal, totals, changeFor, paymentStatus, validateCart, validatePayment,
-  toItemsPayload, round2,
+  toItemsPayload, round2, isContactLens, hiddenFromOther,
 } from '../pos/cart.js';
 
 const spray = { id: 1, sku: 'CLN-0005', name: 'สเปรย์ Hitop 60 ml', base_selling_price: 120, pos_fields: [] };
@@ -254,4 +254,74 @@ test('toItemsPayload: ส่งเฉพาะสิ่งที่ API ใช�
   });
   assert.equal(p[1].custom_name, 'ค่าประกอบพิเศษ');
   assert.equal(p[1].item_meta.custom_name, 'ค่าประกอบพิเศษ');
+});
+
+/* ---- ของจากคลัง (กรอบ / คอนแทคเลนส์) — สเปก 2026-09-18-pos-sell-from-stock ---- */
+const eyeField = {
+  key: 'eye', label: 'ข้าง', type: 'choice', required: true,
+  options: [['R', 'ขวา (R)'], ['L', 'ซ้าย (L)'], ['RL', 'ทั้งสองข้าง']],
+};
+const frame = {
+  id: 1, sku: 'FRM-0001', name: 'กรอบ Rayban RX5154', base_selling_price: 4500,
+  product_type: 'Frame', on_hand: 2, stock: true, pos_fields: [],
+};
+const stockCtl = {
+  id: 7, sku: 'CTL-0001', name: 'Acuvue Oasys -2.50', base_selling_price: 900,
+  product_type: 'ContactLen', on_hand: 5, stock: true, pos_fields: [eyeField],
+};
+
+test('addItem: แถวจากคลังจำว่าเป็นของคลัง และคงเหลือเท่าไร', () => {
+  const [it] = addItem([], frame);
+  assert.equal(it.stock, true);
+  assert.equal(it.stock_product_id, 1);
+  assert.equal(it.on_hand, 2);
+  assert.equal(it.product_type, 'Frame');
+});
+
+test('addItem: ของคลัง id ชนกับ pos_items id — ไม่รวมเป็นแถวเดียว', () => {
+  let c = addItem([], { ...spray, id: 1, base_selling_price: 4500 });
+  c = addItem(c, frame);
+  assert.equal(c.length, 2);
+});
+
+test('addItem: กรอบตัวเดิมซ้ำ บวกจำนวนในแถวเดิม', () => {
+  let c = addItem([], frame);
+  c = addItem(c, frame);
+  assert.equal(c.length, 1);
+  assert.equal(c[0].quantity, 2);
+});
+
+test('validateCart: จำนวนเกินของในคลัง ขึ้นเตือน', () => {
+  const one = addItem([], frame);
+  assert.equal(validateCart(setQty(one, one[0].key, 2)).length, 0, 'เท่าคงเหลือพอดี ผ่าน');
+  const e = validateCart(setQty(one, one[0].key, 3));
+  assert.equal(e.length, 1);
+  assert.match(e[0].message, /เกินจำนวนในคลัง \(เหลือ 2\)/);
+});
+
+test('validateCart: คอนแทคเลนส์จากคลังต้องเลือกข้าง', () => {
+  const e = validateCart(addItem([], stockCtl));
+  assert.equal(e.length, 1);
+  assert.match(e[0].message, /ต้องระบุข้าง/);
+});
+
+test('toItemsPayload: แถวคลังส่ง stock_product_id ไม่ส่ง product_id', () => {
+  const [line] = toItemsPayload(addItem([], stockCtl, { meta: { eye: 'R' } }));
+  assert.equal(line.stock_product_id, 7);
+  assert.equal(line.product_id, undefined);
+  assert.deepEqual(line.item_meta, { eye: 'R' });
+});
+
+test('isContactLens: ของคลังประเภทคอนแทคเลนส์ และของ pos_items ที่ถามค่าสายตา', () => {
+  assert.equal(isContactLens(addItem([], stockCtl)[0]), true);
+  assert.equal(isContactLens(addItem([], lens)[0]), true);
+  assert.equal(isContactLens(addItem([], frame)[0]), false);
+  assert.equal(isContactLens(addItem([], spray)[0]), false);
+});
+
+test('hiddenFromOther: ซ่อนคอนแทคเลนส์ PosCtl* กับ "กรอบแว่น" EYW-0003 จากการ์ดสินค้าอื่น', () => {
+  assert.equal(hiddenFromOther({ sku: 'CTA-0001', category_code: 'PosCtlAcuvue' }), true);
+  assert.equal(hiddenFromOther({ sku: 'EYW-0003', category_code: 'PosEyewear' }), true);
+  assert.equal(hiddenFromOther({ sku: 'EYW-0004', category_code: 'PosEyewear' }), false);
+  assert.equal(hiddenFromOther({ sku: 'SRV-0001', category_code: 'PosService' }), false);
 });

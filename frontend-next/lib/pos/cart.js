@@ -43,9 +43,13 @@ export function addItem(items, product, { quantity = 1, meta = {}, price } = {})
   const unitPrice = price === undefined ? round2(product.base_selling_price) : round2(price);
   const custom = !!product.pos_custom;
 
+  const stock = !!product.stock;
+
   if (!custom) {
+    /* ของคลังกับ pos_items เป็นคนละตาราง id ชนกันได้ — เทียบแหล่งด้วยเสมอ */
     const hit = items.findIndex(
       (it) => it.product_id === product.id
+        && !!it.stock === stock
         && round2(it.unit_price) === unitPrice
         && sameMeta(it.item_meta, meta),
     );
@@ -66,8 +70,34 @@ export function addItem(items, product, { quantity = 1, meta = {}, price } = {})
     quantity,
     unit_price: unitPrice,
     item_meta: { ...meta },
+    /* ของจากคลัง (กรอบ / คอนแทคเลนส์) — ตัดสต็อกจริงตอนบันทึกบิล */
+    ...(stock ? {
+      stock: true,
+      stock_product_id: product.id,
+      on_hand: Number(product.on_hand) || 0,
+      product_type: product.product_type,
+      brand: product.brand || null,
+    } : {}),
   }];
 }
+
+/**
+ * รายการนี้เป็นคอนแทคเลนส์ไหม — ใช้ตัดสินว่าจะโผล่แผงแนบค่าสายตา
+ *
+ * ของ pos_items เดิมถามจากนิยามช่องกรอก (มีช่อง power) · ของคลังถามจากประเภทสินค้า
+ * เพราะในคลังค่าสายตาอยู่ในตัวสินค้าแล้ว ไม่มีช่อง power ให้ดู
+ */
+export const isContactLens = (it) =>
+  it.product_type === 'ContactLen' || (it.pos_fields || []).some((f) => f.key === 'power');
+
+/**
+ * รายการใน pos_items ที่ซ้ำกับของในคลัง — ไม่ให้เลือกในการ์ด "สินค้าอื่น / บริการ"
+ *
+ * กรอบกับคอนแทคเลนส์ขายจากคลังแล้วตั้งแต่ 18 ก.ย. 2026 ถ้ายังเลือกทางเดิมได้ ของจะออก
+ * จากร้านโดยคลังไม่รู้ · ซ่อนในโค้ด ไม่แก้ฐาน บิลเก่าที่อ้างรายการพวกนี้จึงยังเปิดได้
+ */
+export const hiddenFromOther = (p) =>
+  String(p.category_code || '').startsWith('PosCtl') || p.sku === 'EYW-0003';
 
 export const removeItem = (items, key) => items.filter((it) => it.key !== key);
 
@@ -145,6 +175,10 @@ export function validateCart(items) {
     if (num(it.unit_price) < 0) {
       errs.push({ key: it.key, message: `${label} (${name}): ราคาติดลบไม่ได้` });
     }
+    /* ด่านจริงอยู่ที่ฝั่งคลังตอนตัด — ตรงนี้บอกก่อน จะได้ไม่ต้องรอ 400 */
+    if (it.stock && num(it.quantity) > num(it.on_hand)) {
+      errs.push({ key: it.key, message: `${label} (${name}): เกินจำนวนในคลัง (เหลือ ${num(it.on_hand)})` });
+    }
     (it.pos_fields || []).forEach((f) => {
       const v = String(it.item_meta?.[f.key] ?? '').trim();
       if (f.required && !v) {
@@ -186,7 +220,12 @@ export function validatePayment({ total, amount, method, received, delivered, cu
 }
 
 /** แปลงตะกร้าเป็น payload ที่ API รับ — ส่งเฉพาะสิ่งที่ server ต้องใช้ */
-export const toItemsPayload = (items) => items.map((it) => ({
+export const toItemsPayload = (items) => items.map((it) => (it.stock ? {
+  stock_product_id: it.stock_product_id,
+  quantity: it.quantity,
+  unit_price: it.unit_price,
+  item_meta: it.item_meta,
+} : {
   product_id: it.product_id,
   custom_name: it.pos_custom ? it.custom_name : undefined,
   quantity: it.quantity,

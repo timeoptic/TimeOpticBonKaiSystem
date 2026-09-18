@@ -60,7 +60,6 @@
 
 - `api/tests/81-pos-stock-sale.test.php`: ขายแล้วล็อตลด · ของไม่พอ → 400 และไม่มีใบ ·
   กดซ้ำ client_ref เดิม ไม่ตัดสองรอบ · void คืนของ · รายการ pos_items ไม่ตัด
-  PosCtl/EYW-0003
 - `lib/__tests__/posCart.test.js`: แถวคลังไม่รวมกับแถว pos_items id ชนกัน · เกินคงเหลือขึ้นเตือน ·
   payload ถูกต้อง
 - ตรวจด้วยตาบน local :8099 ด้วยสินค้าทดสอบในฐานเครื่องนี้
