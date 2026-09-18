@@ -644,3 +644,29 @@ test('แก้การรับเข้า: จำนวนแก้ที่
         throwsReason('forbidden', fn() => Receiving::editReceipt($in, ['quantity' => 4, 'reason' => 'x'], [Roles::STOCK], 1), 'พนักงานคลังแก้ย้อนหลังไม่ได้');
     });
 });
+
+test('รับเข้าทั้งบิล: หัวบิลใช้ร่วมทุกบรรทัด เลขที่บิลขึ้นเป็นเอกสาร · บรรทัดผิดบรรทัดเดียว ไม่มีอะไรเข้าเลย', function () {
+    withRollback(function () {
+        $a = Catalog::createProduct(productArgs(), [Roles::OWNER]);
+        $b = Catalog::createProduct(productArgs(), [Roles::OWNER]);
+        $bill = 'BILL-' . bin2hex(random_bytes(3));
+
+        $lots = Receiving::receiveMany([
+            'received_date' => date('Y-m-d'),
+            'reference_doc' => $bill,
+            'lines' => [
+                ['sku' => $a['sku'], 'quantity' => 2],
+                ['sku' => $b['sku'], 'quantity' => 5, 'expiry_date' => date('Y-m-d', strtotime('+1 year'))],
+            ],
+        ], [Roles::OWNER], 1);
+        eq(count($lots), 2, 'ได้สองล็อต');
+        eq((int) Db::value("SELECT COUNT(*) FROM inventory_logs WHERE action_type = 'IN' AND reference_doc = ?", [$bill]), 2, 'เลขที่บิลขึ้นทั้งสองแถว');
+
+        $before = (int) Db::value('SELECT COUNT(*) FROM stock_lots');
+        throwsReason('unknown_sku', fn() => Receiving::receiveMany([
+            'received_date' => date('Y-m-d'),
+            'lines' => [['sku' => $a['sku'], 'quantity' => 1], ['sku' => 'NO-SUCH-SKU', 'quantity' => 1]],
+        ], [Roles::OWNER], 1), 'บรรทัดสองผิด');
+        eq((int) Db::value('SELECT COUNT(*) FROM stock_lots'), $before, 'บรรทัดแรกต้องไม่เข้าคลังด้วย');
+    });
+});

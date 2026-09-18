@@ -512,6 +512,12 @@ Http::post('/api/rx/{id}/delete', static function (array $p): array {
 
 /* -------------------------------------------------------------- receiving */
 
+/** รับเข้าทั้งบิล — หัวบิลเดียว หลายสินค้า ทรานแซกชันเดียว (ดู Receiving::receiveMany) */
+Http::post('/api/lots/many', static function (): array {
+    $actor = Auth::require();
+    return ['lots' => Receiving::receiveMany(Http::body(), $actor['roles'], (int) $actor['id'])];
+});
+
 Http::post('/api/lots', static function (): array {
     $actor = Auth::require();
     return ['lot' => Receiving::receive(Http::body(), $actor['roles'], $actor['id'])];

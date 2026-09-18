@@ -4550,3 +4550,17 @@ kbd {
   .lensbar .filterbar__item--range .filterbar__label { flex: 0 0 2.4rem; }
 }
 .lensrange .combo { inline-size: 9rem; }
+
+/* บรรทัดในบิลรับเข้า — ชื่อกับจำนวนแถวบน ต้นทุน วันหมดอายุ และปุ่มเอาออกแถวล่าง (ร้านขอ 18 ก.ย. 2026) */
+.billline { flex-wrap: wrap; row-gap: var(--space-xs); }
+.billline__more {
+  flex: 1 1 100%;
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-xs);
+}
+.billline__cost { inline-size: 8.5rem; flex: 0 0 auto; }
+.billline__exp { flex: 1 1 9rem; min-inline-size: 0; }
+.billline__more .btn { margin-inline-start: auto; }
+@media (max-width: 40rem) {
+  .billline__cost { flex: 1 1 40%; inline-size: auto; }
+  .billline__exp { flex: 1 1 45%; }
+}

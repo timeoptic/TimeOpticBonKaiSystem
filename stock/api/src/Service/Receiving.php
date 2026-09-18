@@ -38,6 +38,8 @@ final class Receiving
         $expiry = self::date($req, 'expiry_date', required: false);
         $note = self::optional($req, 'note', 500);
         $supplierId = self::supplier($req);
+        // เลขที่บิล/ใบส่งของ (รับเข้าแบบเปิดบิล) — ขึ้นเป็นเลขเอกสารของแถวรับเข้า ค้นได้ในหน้าความเคลื่อนไหว
+        $bill = self::optional($req, 'reference_doc', 100);
 
         // A cost is money, and money is a narrower permission than moving stock.
         if ($cost !== null) {
@@ -93,7 +95,7 @@ final class Receiving
             ? (string) $p['base_selling_price']
             : null;
 
-        $lotId = Db::tx(static function (PDO $pdo) use ($p, $lotNumber, $supplierId, $cost, $salePrice, $qty, $received, $expiry, $note, $actorId): int {
+        $lotId = Db::tx(static function (PDO $pdo) use ($p, $lotNumber, $supplierId, $cost, $salePrice, $qty, $received, $expiry, $note, $actorId, $bill): int {
             $pdo->prepare(
                 'INSERT INTO stock_lots
                    (lot_number, product_id, supplier_id, cost_per_unit, initial_qty,
@@ -112,8 +114,8 @@ final class Receiving
                     reference_doc, notes, created_by, created_by_kind, created_at)
                  VALUES (?, ?, \'IN\', ?, ?, ?, ?, ?, ?, \'user\', NOW())'
             )->execute([
-                $p['id'], $id, $qty, $cost, $salePrice, 'GRN-' . $lotNumber,
-                "รับเข้าคลัง {$lotNumber}", $actorId,
+                $p['id'], $id, $qty, $cost, $salePrice, $bill ?? 'GRN-' . $lotNumber,
+                "รับเข้าคลัง {$lotNumber}" . ($bill !== null ? " · บิล {$bill}" : ''), $actorId,
             ]);
 
             /* ของเข้าก็ต้องจด ไม่ใช่เฉพาะของออก — นี่คือจังหวะที่ธง "เตือนไปแล้ว"
@@ -134,6 +136,69 @@ final class Receiving
             'unitCost'     => $cost,
             'awaitingCost' => $cost === null,
         ];
+    }
+
+    /**
+     * รับเข้าทั้งบิล — ร้านขอ 18 ก.ย. 2026 ("นำเข้าแบบเปิดบิลคล้ายใส่ตะกร้า บิลเดียวมีหลายสินค้า")
+     *
+     * หัวบิล (ผู้ขาย วันที่รับ เลขที่บิล หมายเหตุ) ใช้ร่วมทุกบรรทัด · แต่ละบรรทัดมีจำนวน ต้นทุน
+     * วันหมดอายุของตัวเอง · ทั้งบิลอยู่ในทรานแซกชันเดียว — บรรทัดไหนผิด ไม่มีอะไรเข้าคลังเลย
+     * แล้วบอกว่าบรรทัดที่เท่าไร · บิลที่เข้าไปครึ่งเดียวคือบิลที่ต้องไล่ดูว่าอะไรเข้าแล้วบ้าง
+     *
+     * แต่ละบรรทัดเดินผ่าน receive() ตัวเดิม สิทธิ์ ต้นทุน การหักกลบของค้างส่ง จึงเหมือนรับทีละชิ้นทุกอย่าง
+     *
+     * @param array<string,mixed> $req
+     * @param list<string> $roles
+     * @return list<array<string,mixed>>
+     */
+    public static function receiveMany(array $req, array $roles, int $actorId): array
+    {
+        $lines = $req['lines'] ?? null;
+        if (!is_array($lines) || $lines === []) {
+            throw ApiError::badRequest('บิลต้องมีสินค้าอย่างน้อยหนึ่งรายการ', 'empty_bill');
+        }
+        if (count($lines) > 300) {
+            throw ApiError::badRequest('บิลเดียวรับได้ไม่เกิน 300 รายการ', 'bill_too_long');
+        }
+        $head = array_intersect_key($req, array_flip(['supplier_id', 'received_date', 'reference_doc', 'note']));
+
+        // ตรวจที่ผิดบ่อยของทุกบรรทัดก่อนเขียนอะไรเลย — รหัสที่ไม่มี สินค้าสั่งตัด จำนวนไม่ใช่เลข
+        foreach (array_values($lines) as $i => $line) {
+            $sku = is_array($line) ? trim((string) ($line['sku'] ?? '')) : '';
+            $label = 'รายการที่ ' . ($i + 1) . ' (' . ($sku !== '' ? $sku : '?') . ') — ';
+            $p = $sku === '' ? null : Db::one('SELECT is_custom_made FROM products WHERE sku = ?', [$sku]);
+            if ($p === null) {
+                throw new ApiError(404, 'unknown_sku', $label . 'ไม่พบสินค้ารหัสนี้', ['line' => $i + 1]);
+            }
+            if ((bool) $p['is_custom_made']) {
+                throw ApiError::conflict('custom_made', $label . 'เป็นสินค้าสั่งตัด ไม่เก็บเป็นล็อตในคลัง', ['line' => $i + 1]);
+            }
+            $q = $line['quantity'] ?? null;
+            if (!(is_int($q) || (is_string($q) && ctype_digit($q))) || (int) $q < 1) {
+                throw ApiError::badRequest($label . 'จำนวนต้องเป็นจำนวนเต็มตั้งแต่ 1 ขึ้นไป', 'bad_quantity');
+            }
+        }
+
+        return Db::tx(static function () use ($lines, $head, $roles, $actorId): array {
+            $out = [];
+            foreach (array_values($lines) as $i => $line) {
+                if (!is_array($line)) {
+                    throw ApiError::badRequest('รายการที่ ' . ($i + 1) . ' ไม่ถูกต้อง', 'bad_line');
+                }
+                $one = array_intersect_key($line, array_flip(['sku', 'quantity', 'cost_per_unit', 'expiry_date', 'note'])) + $head;
+                try {
+                    $out[] = self::receive($one, $roles, $actorId);
+                } catch (ApiError $e) {
+                    throw new ApiError(
+                        $e->status,
+                        $e->reason,
+                        'รายการที่ ' . ($i + 1) . ' (' . ($line['sku'] ?? '?') . ') — ' . $e->getMessage(),
+                        $e->extra + ['line' => $i + 1],
+                    );
+                }
+            }
+            return $out;
+        });
     }
 
     /* ---------------------------------------------------------- แก้การรับเข้า */

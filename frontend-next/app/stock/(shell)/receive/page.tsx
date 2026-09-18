@@ -4,439 +4,441 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { can, useActor, WorkHead } from "@/stockmod/components/AppShell";
 import { useToast } from "@/stockmod/components/Toaster";
-import ProductPicker, { PickedSummary } from "@/stockmod/components/ProductPicker";
-import LotEditDialog from "@/stockmod/components/LotEditDialog";
+import ProductPicker from "@/stockmod/components/ProductPicker";
 import TaskDialog from "@/stockmod/components/TaskDialog";
-import QtyField from "@/stockmod/components/QtyField";
 import NewProductDialog from "@/stockmod/components/NewProductDialog";
-import Select from "@/stockmod/components/Select";
 import SupplierSelect, { supplierIdOf } from "@/stockmod/components/SupplierSelect";
+import DateField from "@/stockmod/components/DateField";
+import { IconCart } from "@/stockmod/components/Icon";
 import { api, ApiError, type CreatedLot, type ProductRow, type ReceiveDefaults } from "@/stockmod/lib/api";
 import { useApi } from "@/stockmod/lib/useApi";
-import { count, date, money, shortName } from "@/stockmod/lib/format";
-import DateField from "@/stockmod/components/DateField";
+import { count, money, shortName } from "@/stockmod/lib/format";
 
 type Supplier = { id: number; name: string };
 
+/** หนึ่งบรรทัดในบิล — ช่องที่แก้ได้เก็บเป็นข้อความตามที่พิมพ์ แปลงตอนกดบันทึก */
+type Line = {
+  sku: string;
+  name: string;
+  qty: string;
+  cost: string;
+  expiry: string;
+  /** ต้นทุนล็อตก่อน ไว้บอกข้างช่อง — null คือไม่เคยมีหรือไม่มีสิทธิ์เห็น */
+  lastCost: number | null;
+};
+
+type Bill = { supplier: string; received: string; doc: string; note: string };
+
+const today = () => new Date().toISOString().slice(0, 10);
+const EMPTY_BILL = (): Bill => ({ supplier: "", received: today(), doc: "", note: "" });
+const DRAFT = "timeoptic.receive.bill.v1";
 
 /**
- * Goods arriving from a supplier.
+ * รับของเข้าแบบเปิดบิล — ร้านขอ 18 ก.ย. 2026
  *
- * The rule this page is built around: a second lot of something already in the
- * catalogue is the same product, so nothing about the product gets retyped. Pick
- * it and its SKU, name and brand come along — there is no field to get them
- * wrong in, which is what used to create two products for one thing.
+ * บริษัทมาส่งของทีละบิล บิลหนึ่งมีหลายสินค้า ที่ใช้ร่วมกันทั้งบิล (ผู้ขาย วันที่รับ เลขที่บิล)
+ * ไม่ควรต้องกรอกซ้ำทุกชิ้น · หัวบิลกรอกครั้งเดียว แล้วกดสินค้าจากรายการใส่บิลไปเรื่อย ๆ แบบ
+ * ใส่ตะกร้า (หน้าตาเดียวกับหน้าเบิก) · แต่ละบรรทัดแก้แค่จำนวน ต้นทุน วันหมดอายุ · กดบันทึกครั้ง
+ * เดียวเข้าคลังทั้งบิล (POST /lots/many — ทรานแซกชันเดียว ผิดบรรทัดเดียวไม่มีอะไรเข้าเลย)
  *
- * What genuinely differs between deliveries — lot number, supplier, cost, dates —
- * is prefilled from the last lot and left editable. Suggested, not imposed:
- * prices move and suppliers change.
+ * ต้นทุนเติมจากล็อตก่อนของสินค้านั้นให้เอง · กดสินค้าเดิมซ้ำ = บวกจำนวน · บิลที่ยังไม่บันทึก
+ * จำไว้ในเครื่องนี้ รีเฟรชหน้าแล้วไม่หาย
  */
 export default function ReceivePage() {
   const actor = useActor();
   const mayCost = can.enterCost(actor);
   const toast = useToast();
-
-  const [product, setProduct] = useState<ProductRow | null>(null);
-  const [defaults, setDefaults] = useState<ReceiveDefaults | null>(null);
-
   const suppliers = useApi<{ suppliers: Supplier[] }>("/suppliers");
 
-  const [qty, setQty] = useState("1");
-  const [supplierId, setSupplierId] = useState("");
-  const [cost, setCost] = useState("");
-  const [received, setReceived] = useState(() => new Date().toISOString().slice(0, 10));
-  const [expiry, setExpiry] = useState("");
-  const [note, setNote] = useState("");
-
-  /** Bumped after a receipt, so the list underneath shows the new counts. */
+  const [bill, setBill] = useState<Bill>(EMPTY_BILL);
+  const [lines, setLines] = useState<Line[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [reviewing, setReviewing] = useState(false);
   const [refresh, setRefresh] = useState(0);
-
-  /**
-   * Whether the last lot is open for correction rather than being added to.
-   *
-   * Goods arrive before the invoice does, so a lot sits with no cost until the
-   * paperwork turns up. The obvious move then is to open this form, type the
-   * cost and save — and the form answers that the quantity must be at least
-   * one, because it only knows how to receive. It was the wrong door, and
-   * nothing here pointed at the right one.
-   */
-  const [fixingLot, setFixingLot] = useState(false);
-
+  const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
-  const [creating, setCreating] = useState(false);
+  /** นับทุกครั้งที่ใส่บิล ให้ไอคอนเด้งบอกว่าได้ยิน (แบบเดียวกับหน้าเบิก) */
+  const [taps, setTaps] = useState(0);
 
-  // Picking a product is what fills the form. Everything below is a suggestion
-  // taken from the last delivery of this exact thing.
+  // บิลที่ค้างอยู่ในเครื่อง — ความสะดวกของคนนี้คนเดียว อ่านไม่ได้ก็เริ่มบิลใหม่
   useEffect(() => {
-    if (product === null) {
-      setDefaults(null);
+    try {
+      const raw = localStorage.getItem(DRAFT);
+      if (raw) {
+        const d = JSON.parse(raw) as { bill?: Bill; lines?: Line[] };
+        if (d.bill) setBill({ ...EMPTY_BILL(), ...d.bill });
+        if (Array.isArray(d.lines)) setLines(d.lines);
+      }
+    } catch {
+      /* เริ่มบิลใหม่ */
+    }
+    setLoaded(true);
+  }, []);
+  useEffect(() => {
+    if (!loaded) return;
+    try {
+      if (lines.length === 0 && !bill.doc && !bill.note && !bill.supplier) localStorage.removeItem(DRAFT);
+      else localStorage.setItem(DRAFT, JSON.stringify({ bill, lines }));
+    } catch {
+      /* เก็บไม่ได้ก็แค่ไม่จำ */
+    }
+  }, [bill, lines, loaded]);
+
+  const setB = (patch: Partial<Bill>) => setBill((b) => ({ ...b, ...patch }));
+  const setLine = (sku: string, patch: Partial<Line>) =>
+    setLines((ls) => ls.map((l) => (l.sku === sku ? { ...l, ...patch } : l)));
+
+  async function add(p: ProductRow | null) {
+    if (p === null) return;
+    if (p.isCustomMade) {
+      toast.info({
+        text: `${shortName(p.name)} เป็นสินค้าสั่งตัด`,
+        detail: "ไม่เก็บเป็นล็อตในคลัง — สั่งกับผู้ขายที่หน้าใบสั่งตัด RX",
+        link: { href: "/rx", label: "ไปหน้าใบสั่งตัด RX" },
+      });
       return;
     }
+    setTaps((n) => n + 1);
+    const had = lines.some((l) => l.sku === p.sku);
+    if (had) {
+      setLines((ls) => ls.map((l) => (l.sku === p.sku ? { ...l, qty: String((Number(l.qty) || 0) + 1) } : l)));
+      return;
+    }
+    setLines((ls) => [...ls, { sku: p.sku, name: p.name, qty: "1", cost: "", expiry: "", lastCost: null }]);
+    // ต้นทุนกับผู้ขายจากล็อตก่อน — ถามทีหลัง บรรทัดขึ้นทันทีไม่ต้องรอ
+    try {
+      const d = await api.get<ReceiveDefaults>(`/receive-defaults/${encodeURIComponent(p.sku)}`);
+      const last = d.lastLot?.costPerUnit ?? null;
+      setLines((ls) =>
+        ls.map((l) =>
+          l.sku === p.sku && l.cost === ""
+            ? { ...l, lastCost: last, cost: mayCost && last !== null ? String(last) : "" }
+            : l,
+        ),
+      );
+      if (d.lastLot?.supplierId != null) {
+        setBill((b) => (b.supplier === "" ? { ...b, supplier: String(d.lastLot!.supplierId) } : b));
+      }
+    } catch {
+      /* ไม่มีค่าเริ่มต้นก็กรอกเอง */
+    }
+  }
 
-    let alive = true;
-    api
-      .get<ReceiveDefaults>(`/receive-defaults/${encodeURIComponent(product.sku)}`)
-      .then((d) => {
-        if (!alive) return;
-        setDefaults(d);
-        setQty(d.lastLot ? String(d.lastLot.quantity) : "1");
-        setSupplierId(d.lastLot?.supplierId != null ? String(d.lastLot.supplierId) : "");
-        setCost(mayCost && d.lastLot?.costPerUnit != null ? String(d.lastLot.costPerUnit) : "");
-        setProblem(null);
-      })
-      .catch((e: unknown) => {
-        if (alive) setProblem(e instanceof Error ? e.message : "ดึงข้อมูลสินค้าไม่ได้");
-      });
-
-    return () => {
-      alive = false;
-    };
-  }, [product, mayCost]);
+  const pieces = lines.reduce((n, l) => n + (Number(l.qty) || 0), 0);
+  const worth = lines.reduce((n, l) => n + (Number(l.qty) || 0) * (Number(l.cost) || 0), 0);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (product === null) return;
-
+    const bad = lines.find((l) => !/^\d+$/.test(l.qty.trim()) || Number(l.qty) < 1);
+    if (bad) {
+      setProblem(`จำนวนของ ${shortName(bad.name)} ต้องเป็นจำนวนเต็มตั้งแต่ 1 ขึ้นไป`);
+      return;
+    }
     setBusy(true);
     setProblem(null);
-
     try {
-      const { lot: created } = await api.post<{
-        lot: CreatedLot;
-      }>("/lots", {
-        sku: product.sku,
-        quantity: Number(qty),
-        supplier_id: await supplierIdOf(supplierId),
-        cost_per_unit: mayCost && cost.trim() ? cost.trim() : null,
-        received_date: received,
-        expiry_date: expiry || null,
-        note: note.trim() || null,
+      const { lots } = await api.post<{ lots: CreatedLot[] }>("/lots/many", {
+        supplier_id: await supplierIdOf(bill.supplier),
+        received_date: bill.received,
+        reference_doc: bill.doc.trim() || null,
+        note: bill.note.trim() || null,
+        lines: lines.map((l) => ({
+          sku: l.sku,
+          quantity: Number(l.qty),
+          cost_per_unit: mayCost && l.cost.trim() ? l.cost.trim() : null,
+          expiry_date: l.expiry || null,
+        })),
       });
-
-      // Past this line the lot exists. Nothing below may throw into the catch,
-      // or a received delivery would be reported as a failed one.
-      setProduct(null);
-      setRefresh((n) => n + 1);
-      setQty("1");
-      setExpiry("");
-      setNote("");
-
-      // Said in the corner and the form closed, rather than a green panel left
-      // sitting above the last delivery while the next box waits.
+      const waiting = lots.filter((x) => x.awaitingCost).length;
       const said = {
-        text: `รับ ${created.name} เข้าคลังแล้ว`,
-        detail:
-          `${count(created.quantity)} ชิ้น` +
-          (created.awaitingCost ? " · ยังไม่มีต้นทุน รอใบกำกับ" : ""),
-        link: { href: "/lots", label: "ดูล็อตทั้งหมด" },
+        text: `รับเข้าคลังแล้ว ${count(lots.length)} รายการ${bill.doc.trim() ? ` · บิล ${bill.doc.trim()}` : ""}`,
+        detail: `${count(lots.reduce((n, x) => n + x.quantity, 0))} ชิ้น` + (waiting ? ` · ${count(waiting)} รายการยังไม่มีต้นทุน` : ""),
+        link: { href: "/movements", label: "ดูความเคลื่อนไหว" },
       };
-      /* ล็อตที่ไม่มีต้นทุนคือใบกำกับที่ยังต้องตามเก็บ — งานยังไม่จบ ต่างจากล็อต
-         ที่ลงต้นทุนครบซึ่งจบแล้วจริง ๆ · โทนเป็นตัวบอกความต่างนี้ */
-      if (created.awaitingCost) toast.warning(said);
+      if (waiting) toast.warning(said);
       else toast.success(said);
+      setLines([]);
+      setBill(EMPTY_BILL());
+      setReviewing(false);
+      setRefresh((n) => n + 1);
     } catch (err) {
-      setProblem(ApiError.is(err) ? err.message : "รับของไม่สำเร็จ");
+      setProblem(ApiError.is(err) ? err.message : "รับของไม่สำเร็จ — ยังไม่มีอะไรเข้าคลัง");
     } finally {
       setBusy(false);
     }
   }
 
+  const supplierList = suppliers.status === "ready" ? suppliers.data.suppliers : [];
+
   return (
     <main className="work-main">
       <WorkHead
         title="รับของเข้าคลัง"
-        lede="ล็อตใหม่ของสินค้าที่มีอยู่แล้ว — ชื่อและ SKU ใช้ของเดิม ไม่ต้องพิมพ์ซ้ำ"
+        lede="เปิดบิลครั้งเดียว — กรอกผู้ขาย วันที่ เลขที่บิล แล้วกดสินค้าใส่บิลทีละรายการ บันทึกทีเดียวทั้งบิล"
       >
-        {/* A delivery routinely contains something the shop has never held —
-            a lens in a new power, a frame in a new colour. That is a new
-            product, and its spec belongs to it, so it gets typed here rather
-            than by sending someone off to another screen and back. */}
-        <button type="button" className="btn btn--primary" onClick={() => setCreating(true)}>
+        <button
+          type="button"
+          className={lines.length > 0 ? "btn btn--primary btn--icon" : "btn btn--icon"}
+          onClick={() => setReviewing(true)}
+          aria-label={`บิลรับเข้า ${count(lines.length)} รายการ`}
+        >
+          <span className="cart__icon" key={`bill-icon-${taps}`}>
+            <IconCart />
+          </span>
+          บิลรับเข้า
+          {lines.length > 0 ? (
+            <span className="cartcount" key={`bill-count-${taps}`}>
+              {count(lines.length)}
+            </span>
+          ) : null}
+        </button>
+        <button type="button" className="btn" onClick={() => setCreating(true)}>
           เพิ่มสินค้าใหม่
         </button>
-        <Link href="/stock/products" className="btn">
-          สินค้าทั้งหมด
-        </Link>
+        <span id="recv-sort" />
       </WorkHead>
 
-      {/* Same shape as the catalogue index until a product is chosen: a
-          full-width stock list with its own toolbar and pager, not a table
-          boxed inside a card. */}
-      {product === null ? (
+      {lines.length === 0 ? (
         <p className="notice" role="status">
-          เลือกสินค้าที่จะรับเข้าจากรายการด้านล่าง — ถ้าของที่มาส่งยังไม่เคยมีในระบบ กด{" "}
-          <strong>เพิ่มสินค้าใหม่</strong> ด้านบน ในนั้นคัดลอกจากสินค้าที่ใกล้เคียงได้
-          กรอกสเปกกับล็อตแรก (จำนวน ต้นทุน วันที่รับเข้า) ให้ครบในหน้าเดียว แล้วกดบันทึกครั้งเดียวจบ
+          กด <strong>+ ใส่บิล</strong> ที่สินค้าในรายการด้านล่างทีละตัว แล้วเปิด <strong>บิลรับเข้า</strong> ด้านบน
+          เพื่อกรอกผู้ขาย วันที่ เลขที่บิล และแก้จำนวน/ต้นทุนของแต่ละรายการ — ของที่ยังไม่เคยมีในระบบ กด{" "}
+          <strong>เพิ่มสินค้าใหม่</strong> แล้วมันจะเข้าบิลให้เอง
         </p>
       ) : null}
 
       <ProductPicker
         value={null}
-        onPick={setProduct}
+        onPick={(p) => void add(p)}
+        pickLabel="+ ใส่บิล"
+        pickByButton
+        reserved={{}}
         refresh={refresh}
         only="ready"
         label="สินค้าที่รับเข้า"
         autoFocus
+        sortSlotId="recv-sort"
       />
 
-      {product !== null ? (
+      {lines.length > 0 && !reviewing ? (
+        <div className="cartfab" role="group" aria-label="บิลที่ค้างอยู่">
+          <span className="cartfab__what">
+            <IconCart />
+            <span>
+              <b>{count(lines.length)} รายการ</b>
+              <span className="cartfab__sub">{count(pieces)} ชิ้น</span>
+            </span>
+          </span>
+          <button type="button" className="btn btn--primary" onClick={() => setReviewing(true)}>
+            ดูบิลแล้วรับเข้า
+          </button>
+        </div>
+      ) : null}
+
+      {reviewing ? (
         <TaskDialog
           eyebrow="รับของเข้าคลัง"
-          title={shortName(product.name)}
-          head={<PickedSummary row={product} showName={false} />}
-          onClose={() => setProduct(null)}
+          title={`บิลรับเข้า · ${count(lines.length)} รายการ`}
+          onClose={() => setReviewing(false)}
         >
-          {product.isCustomMade ? (
-            <div className="notice" role="status">
-              <p>
-                <strong>{shortName(product.name)}</strong> เป็นสินค้าสั่งตัด — ไม่เก็บเป็นล็อตในคลัง
-                จึงไม่มีอะไรให้รับเข้า
-              </p>
+          {lines.length === 0 ? (
+            <div className="basket__empty">
+              <p>บิลยังว่าง</p>
               <p className="field__help">
-                ของแบบนี้สั่งกับผู้ขายเป็นรายใบ ที่หน้า{" "}
-                <Link href="/stock/rx" className="grid__link">
-                  ใบสั่งตัด RX
-                </Link>
+                ปิดหน้านี้ แล้วกด <strong>+ ใส่บิล</strong> ที่สินค้าแต่ละตัวที่มากับบิล — กดตัวเดิมซ้ำ = บวกจำนวน
               </p>
+              <div className="chips">
+                <button type="button" className="btn btn--primary" onClick={() => setReviewing(false)}>
+                  ไปเลือกสินค้า
+                </button>
+              </div>
             </div>
           ) : (
-          <form onSubmit={submit} noValidate>
-            {defaults?.lastLot ? (
-              <div className="onhand" role="status">
-                ล็อตล่าสุดของสินค้านี้: <strong>{count(defaults.lastLot.quantity)} ชิ้น</strong> ·{" "}
-                {defaults.lastLot.costPerUnit === null
-                  ? "ยังไม่มีต้นทุน"
-                  : `${money(defaults.lastLot.costPerUnit)} บาท/ชิ้น`}
-                {defaults.lastLot.supplierName ? ` · ${defaults.lastLot.supplierName}` : ""} ·
-                รับเข้า {date(defaults.lastLot.receivedDate)}
-                {/* The way out of the wrong door: correcting that lot is a
-                    different job from receiving another one, and this form
-                    only does the second. */}
-                {mayCost && defaults.lastLot.costPerUnit === null ? (
-                  <div className="chips">
-                    <button
-                      type="button"
-                      className="btn btn--small"
-                      onClick={() => setFixingLot(true)}
-                      disabled={busy}
-                    >
-                      ลงต้นทุนล็อตนั้น — ไม่เพิ่มจำนวน
-                    </button>
-                  </div>
-                ) : null}
+            <form onSubmit={submit} noValidate>
+              <div className="formgrid">
+                <div className="field">
+                  <label className="field__label" htmlFor="rb-sup">ผู้ขาย</label>
+                  <SupplierSelect
+                    id="rb-sup"
+                    value={bill.supplier}
+                    onChange={(v) => setB({ supplier: v })}
+                    disabled={busy || suppliers.status !== "ready"}
+                    suppliers={supplierList}
+                  />
+                </div>
+                <div className="field">
+                  <label className="field__label" htmlFor="rb-recv">วันที่รับเข้า</label>
+                  <DateField id="rb-recv" value={bill.received} onChange={(v) => setB({ received: v })} disabled={busy} clearable={false} />
+                </div>
+                <div className="field">
+                  <label className="field__label" htmlFor="rb-doc">เลขที่บิล / ใบส่งของ</label>
+                  <input
+                    id="rb-doc"
+                    className="input"
+                    value={bill.doc}
+                    onChange={(e) => setB({ doc: e.target.value })}
+                    maxLength={100}
+                    disabled={busy}
+                    autoComplete="off"
+                    placeholder="เช่น IV2609-0123"
+                  />
+                </div>
+                <div className="field">
+                  <label className="field__label" htmlFor="rb-note">หมายเหตุ (ทั้งบิล)</label>
+                  <input
+                    id="rb-note"
+                    className="input"
+                    value={bill.note}
+                    onChange={(e) => setB({ note: e.target.value })}
+                    maxLength={500}
+                    disabled={busy}
+                    autoComplete="off"
+                  />
+                </div>
               </div>
-            ) : (
-              <div className="onhand" role="status">
-                สินค้านี้ยังไม่เคยมีล็อตในคลัง — ล็อตนี้จะเป็นล็อตแรก
-              </div>
-            )}
 
-            <QtyField
-              id="rc-qty"
-              value={qty}
-              onChange={setQty}
-              disabled={busy}
-              label="จำนวนที่รับเข้า"
-              help="กดบวกลบได้ หรือพิมพ์เองถ้ารับมาเยอะ"
-            />
+              <div className="basket">
+                <p className="basket__head">
+                  {count(lines.length)} รายการ · {count(pieces)} ชิ้น
+                  {mayCost && worth > 0 ? ` · ต้นทุนรวม ${money(worth)}` : ""}
+                </p>
+                <ul className="basket__list">
+                  {lines.map((l) => (
+                    <li className="basket__line billline" key={l.sku}>
+                      <span className="basket__name">
+                        {shortName(l.name)}
+                        <span className="basket__sku">
+                          {l.sku}
+                          {mayCost && l.lastCost !== null ? ` · ล็อตก่อน ${money(l.lastCost)}/ชิ้น` : ""}
+                        </span>
+                      </span>
+                      <span className="basket__step">
+                        <button
+                          type="button"
+                          className="qty__step"
+                          onClick={() => setLine(l.sku, { qty: String(Math.max(1, (Number(l.qty) || 1) - 1)) })}
+                          disabled={busy || (Number(l.qty) || 0) <= 1}
+                          aria-label={`ลดจำนวน ${l.name}`}
+                        >
+                          −
+                        </button>
+                        <input
+                          className="input basket__qtyinput"
+                          inputMode="numeric"
+                          autoComplete="off"
+                          value={l.qty}
+                          onChange={(e) => setLine(l.sku, { qty: e.target.value.replace(/[^\d]/g, "") })}
+                          disabled={busy}
+                          aria-label={`จำนวน ${l.name}`}
+                        />
+                        <button
+                          type="button"
+                          className="qty__step"
+                          onClick={() => setLine(l.sku, { qty: String((Number(l.qty) || 0) + 1) })}
+                          disabled={busy}
+                          aria-label={`เพิ่มจำนวน ${l.name}`}
+                        >
+                          +
+                        </button>
+                      </span>
+                      <span className="billline__more">
+                        <input
+                          className="input billline__cost"
+                          inputMode="decimal"
+                          value={l.cost}
+                          onChange={(e) => setLine(l.sku, { cost: e.target.value })}
+                          disabled={busy || !mayCost}
+                          placeholder={mayCost ? "ต้นทุน/ชิ้น" : "บัญชีลงต้นทุน"}
+                          aria-label={`ต้นทุนต่อชิ้น ${l.name}`}
+                          autoComplete="off"
+                        />
+                        <span className="billline__exp">
+                          <DateField
+                            value={l.expiry}
+                            onChange={(v) => setLine(l.sku, { expiry: v })}
+                            disabled={busy}
+                            placeholder="วันหมดอายุ"
+                          />
+                        </span>
+                        <button
+                          type="button"
+                          className="btn btn--quiet btn--small"
+                          onClick={() => setLines((ls) => ls.filter((x) => x.sku !== l.sku))}
+                          disabled={busy}
+                        >
+                          เอาออก
+                        </button>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
 
-            <div className="formgrid">
-              <div className="field">
-                <label className="field__label" htmlFor="rc-sup">
-                  ผู้ขาย
-                </label>
-                <SupplierSelect
-                  id="rc-sup"
-                  value={supplierId}
-                  onChange={setSupplierId}
-                  disabled={busy || suppliers.status !== "ready"}
-                  suppliers={suppliers.status === "ready" ? suppliers.data.suppliers : []}
-                />
-                {defaults?.lastLot?.supplierName ? (
-                  <span className="field__help">เติมจากล็อตก่อน — เปลี่ยนได้ถ้าสั่งเจ้าอื่น</span>
-                ) : null}
-              </div>
-              <div className="field">
-                <label className="field__label" htmlFor="rc-cost">
-                  ต้นทุนต่อชิ้น (฿)
-                </label>
-                <input
-                  id="rc-cost"
-                  className="input"
-                  inputMode="decimal"
-                  value={cost}
-                  onChange={(e) => setCost(e.target.value)}
-                  placeholder={mayCost ? "เว้นว่างถ้าใบกำกับยังไม่มา" : "ฝ่ายบัญชีเป็นคนลง"}
-                  disabled={busy || !mayCost}
-                />
-                {mayCost && defaults?.lastLot?.costPerUnit != null ? (
-                  <span className="field__help">
-                    ต้นทุนล็อตก่อน {money(defaults.lastLot.costPerUnit)} — แก้ได้ถ้าราคาเปลี่ยน
-                  </span>
-                ) : null}
-              </div>
-              <div className="field">
-                <label className="field__label" htmlFor="rc-recv">
-                  วันที่รับเข้า
-                </label>
-                <DateField
-                  id="rc-recv"
-                  value={received}
-                  onChange={setReceived}
+              <p className="field__help">
+                เว้นต้นทุนว่างได้ถ้าใบกำกับยังไม่มา — รายการนั้นขึ้น "รอต้นทุน" ให้บัญชีลงทีหลัง · เลขที่บิลขึ้นเป็นเอกสาร
+                ของทุกรายการ ค้นได้ในหน้าความเคลื่อนไหว
+              </p>
+
+              {problem ? (
+                <div className="notice notice--error" role="alert">
+                  {problem}
+                </div>
+              ) : null}
+
+              <div className="chips">
+                <button type="submit" className="btn btn--primary" disabled={busy}>
+                  {busy ? "กำลังรับเข้า…" : `รับเข้าคลัง ${count(lines.length)} รายการ`}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn--quiet"
+                  onClick={() => {
+                    setLines([]);
+                    setBill(EMPTY_BILL());
+                    setProblem(null);
+                  }}
                   disabled={busy}
-                  clearable={false}
-                />
+                >
+                  ล้างบิล
+                </button>
               </div>
-              <div className="field">
-                <label className="field__label" htmlFor="rc-exp">
-                  วันหมดอายุ
-                </label>
-                <DateField
-                  id="rc-exp"
-                  value={expiry}
-                  onChange={setExpiry}
-                  disabled={busy}
-                  placeholder="ไม่มีวันหมดอายุ"
-                />
-              </div>
-            </div>
-
-            <div className="field">
-              <label className="field__label" htmlFor="rc-note">
-                หมายเหตุ
-              </label>
-              <input
-                id="rc-note"
-                className="input"
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                placeholder="เช่น เลขที่ใบส่งของ"
-                disabled={busy}
-                autoComplete="off"
-              />
-              <span className="field__help">
-                เว้นต้นทุนว่างได้ถ้าใบกำกับยังไม่มา — ระบบจะนับล็อตนั้นแยกไว้แทนที่จะคิดเป็นศูนย์
-              </span>
-            </div>
-
-            {problem ? (
-              <div className="notice notice--error" role="alert">
-                {problem}
-              </div>
-            ) : null}
-
-            <button type="submit" className="btn btn--primary" disabled={busy}>
-              {busy ? "กำลังรับเข้า…" : "รับเข้าคลัง"}
-            </button>
-          </form>
+            </form>
           )}
         </TaskDialog>
       ) : null}
 
-      {/* Built from what the defaults already carry: the lot's own figures,
-          and the product's name and code from the row that is picked. */}
-      {fixingLot && product !== null && defaults?.lastLot ? (
-        <LotEditDialog
-          lot={{
-            id: defaults.lastLot.id,
-            lotNumber: defaults.lastLot.lotNumber,
-            productId: product.id,
-            sku: product.sku,
-            productName: product.name,
-            productType: product.productType,
-            supplierName: defaults.lastLot.supplierName,
-            costPerUnit: defaults.lastLot.costPerUnit,
-            initialQty: defaults.lastLot.quantity,
-            remainingQty: defaults.lastLot.remainingQty,
-            receivedDate: defaults.lastLot.receivedDate,
-            expiryDate: defaults.lastLot.expiryDate,
-            expiringSoon: false,
-            value: null,
-          }}
-          onClose={() => setFixingLot(false)}
-          onSaved={() => {
-            setFixingLot(false);
-            setRefresh((n) => n + 1);
-            toast.success({ text: "แก้ไขล็อตแล้ว", link: { href: "/lots", label: "ดูล็อตทั้งหมด" } });
-            // Re-read the defaults so the line above stops saying "ยังไม่มีต้นทุน".
-            const picked = product;
-            setProduct(null);
-            setTimeout(() => setProduct(picked), 0);
-          }}
-        />
-      ) : null}
-
       {creating ? (
         <NewProductDialog
-          title="เพิ่มสินค้าใหม่แล้วรับเข้าเลย"
-          receive
-          // Only goods that can actually be received. A made-to-order lens is
-          // ordered on the RX screen and never arrives as a lot.
+          title="เพิ่มสินค้าใหม่ แล้วใส่บิล"
           make="stock"
           onUseExisting={async (id) => {
             setCreating(false);
             try {
-              const { product: fresh } = await api.get<{ product: ProductRow }>(`/products/${id}`);
-              setProduct(fresh);
+              const { product } = await api.get<{ product: ProductRow }>(`/products/${id}`);
+              void add(product);
             } catch {
-              setProblem("เลือกสินค้าตัวเดิมให้อัตโนมัติไม่สำเร็จ — เลือกจากรายการด้านล่างได้เลย");
+              setProblem("ใส่บิลให้อัตโนมัติไม่สำเร็จ — กด + ใส่บิล จากรายการได้เลย");
             }
           }}
           onClose={() => setCreating(false)}
-          onSaved={async (id, created) => {
+          onSaved={async (id) => {
             setCreating(false);
-            // The dialog took the first lot in as part of the same save, so the
-            // receipt is reported here exactly as one entered on this form is.
-            if (created) {
-              const said = {
-                text: `เพิ่ม ${created.name} และรับเข้าคลังแล้ว`,
-                detail:
-                  `${count(created.quantity)} ชิ้น` +
-                  (created.awaitingCost ? " · ยังไม่มีต้นทุน รอใบกำกับ" : ""),
-                link: { href: "/lots", label: "ดูล็อตทั้งหมด" },
-              };
-              if (created.awaitingCost) toast.warning(said);
-              else toast.success(said);
-            }
             setRefresh((n) => n + 1);
-
-            // The product stays picked so the next lot of the same delivery
-            // needs no second search — but only if it is a product this page
-            // can act on at all. A made-to-order one holds no stock: handing it
-            // to the receive form opens a form whose every outcome is the API
-            // refusing it, which is exactly what used to happen.
             try {
-              const { product: fresh } = await api.get<{ product: ProductRow }>(`/products/${id}`);
-              if (fresh.isCustomMade) {
-                toast.info({
-                  text: `เพิ่ม ${fresh.name} เข้าแคตตาล็อกแล้ว`,
-                  detail: "สินค้าสั่งตัดไม่เก็บเป็นล็อต — ไม่ต้องรับเข้าคลัง สั่งกับผู้ขายที่หน้าใบสั่งตัด RX",
-                  link: { href: "/rx", label: "ไปหน้าใบสั่งตัด RX" },
-                });
-                return;
-              }
-              setProduct(fresh);
+              const { product } = await api.get<{ product: ProductRow }>(`/products/${id}`);
+              void add(product);
+              toast.success({ text: `เพิ่ม ${shortName(product.name)} แล้ว และใส่บิลให้แล้ว` });
             } catch {
-              // The product saved; only the hand-off failed. Say nothing and let
-              // them pick it from the list, which now contains it.
-              setProblem("เพิ่มสินค้าแล้ว แต่เลือกให้อัตโนมัติไม่สำเร็จ — เลือกจากรายการด้านล่างได้เลย");
+              toast.info({ text: "เพิ่มสินค้าแล้ว — กด + ใส่บิล จากรายการได้เลย" });
             }
           }}
         />
       ) : null}
+
+      <p className="field__help">
+        ต้องแก้ล็อตที่รับไปแล้ว (จำนวน ต้นทุน วันที่) ใช้ปุ่ม <strong>แก้ไขการรับเข้า</strong> ในหน้า{" "}
+        <Link href="/stock/movements" className="grid__link">ความเคลื่อนไหว</Link>
+      </p>
     </main>
   );
-}
-
-/**
- * "LOT-2026-014" becomes "LOT-2026-015" so a delivery of several lots does not
- * mean retyping the prefix each time. Same rule the API uses for its own
- * suggestion; anything without a number on the end gets none.
- */
-function stepLotNumber(previous: string): string | null {
-  const m = /^(.*?)(\d+)$/.exec(previous);
-  if (m === null) return null;
-  const next = String(Number(m[2]) + 1);
-  return m[1] + next.padStart(m[2].length, "0");
 }
