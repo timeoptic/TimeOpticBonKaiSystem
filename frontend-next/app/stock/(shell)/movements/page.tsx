@@ -9,6 +9,7 @@ import { Filter, FilterBar, withCount } from "@/stockmod/components/FilterBar";
 import RecordCard, { CardList } from "@/stockmod/components/RecordCard";
 import ShopIssueDialog from "@/stockmod/components/ShopIssueDialog";
 import DateRangeField from "@/stockmod/components/DateRangeField";
+import StockDrawer from "@/stockmod/components/StockDrawer";
 import { qs, useApi } from "@/stockmod/lib/useApi";
 import { count, dateTime, money, shortName } from "@/stockmod/lib/format";
 import type { MovementRow, Page, Person } from "@/stockmod/lib/api";
@@ -77,6 +78,8 @@ export default function MovementsPage() {
   const [page, setPage] = useState(1);
   /** ช่วงวันที่ของรายการ — ว่างทั้งคู่ = ทุกวัน · API รับ from/to อยู่แล้ว */
   const [range, setRange] = useState({ from: "", to: "" });
+  /** สินค้าที่เปิดลิ้นชักดูล็อตอยู่ — กดชื่อสินค้าในแถว (ร้านขอ 18 ก.ย. 2026) */
+  const [openProduct, setOpenProduct] = useState<number | null>(null);
   const { sort, dir, sortBy } = useSort<SortKey>("date", NATURAL_ASC);
 
   const actor = useActor();
@@ -254,7 +257,7 @@ export default function MovementsPage() {
           {/* บนมือถือ แถวกลายเป็นการ์ด — ดู RecordCard ว่าทำไมไม่ใช่ตารางที่เลื่อนข้าง */}
           <CardList label="ความเคลื่อนไหวสต็อก">
             {rows.map((r) => (
-              <MovementCard key={r.id} row={r} money={money$} onEdit={onEdit} />
+              <MovementCard key={r.id} row={r} money={money$} onEdit={onEdit} onProduct={setOpenProduct} />
             ))}
           </CardList>
 
@@ -288,7 +291,7 @@ export default function MovementsPage() {
               </thead>
               <tbody>
                 {rows.map((r) => (
-<Row key={r.id} row={r} money={money$} onEdit={onEdit} />
+<Row key={r.id} row={r} money={money$} onEdit={onEdit} onProduct={setOpenProduct} />
                 ))}
               </tbody>
             </table>
@@ -311,6 +314,9 @@ export default function MovementsPage() {
           onClose={() => setEditing(null)}
           onSaved={list.reload}
         />
+      ) : null}
+      {openProduct !== null ? (
+        <StockDrawer productId={openProduct} onClose={() => setOpenProduct(null)} onChanged={list.reload} />
       ) : null}
     </main>
   );
@@ -372,10 +378,13 @@ function MovementCard({
   row: r,
   money: showMoney,
   onEdit,
+  onProduct,
 }: {
   row: MovementRow;
   money: boolean;
   onEdit?: (r: MovementRow) => void;
+  /** เปิดลิ้นชักของสินค้าในแถว — ล็อต ประวัติ และปุ่มแก้ล็อต */
+  onProduct?: (productId: number) => void;
 }) {
   const awaitingRxCost = showMoney && r.actionType === "RX_ORDER" && r.unitCost === null;
   const owed = r.branchStatus === "pending";
@@ -397,7 +406,15 @@ function MovementCard({
           <span className="reccard__when">{dateTime(r.createdAt)}</span>
         </>
       }
-      title={shortName(r.productName)}
+      title={
+        onProduct && r.productId ? (
+          <button type="button" className="grid__link" onClick={() => onProduct(r.productId as number)}>
+            {shortName(r.productName)}
+          </button>
+        ) : (
+          shortName(r.productName)
+        )
+      }
       sub={r.sku}
       fields={[
         {
@@ -455,10 +472,13 @@ function Row({
   row: r,
   money: showMoney,
   onEdit,
+  onProduct,
 }: {
   row: MovementRow;
   money: boolean;
   onEdit?: (r: MovementRow) => void;
+  /** เปิดลิ้นชักของสินค้าในแถว — ล็อต ประวัติ และปุ่มแก้ล็อต */
+  onProduct?: (productId: number) => void;
 }) {
   // Without permission to see costs, a null cost says nothing about whether an
   // invoice is outstanding — so it must not tint the row as if it did.
@@ -489,7 +509,19 @@ function Row({
       </td>
 
       <td>
-        <span className="grid__name">{shortName(r.productName)}</span>
+        {/* กดชื่อแล้วเปิดลิ้นชักสินค้า เห็นล็อตทั้งหมดของมันโดยไม่ต้องออกจากหน้านี้ */}
+        {onProduct && r.productId ? (
+          <button
+            type="button"
+            className="grid__name grid__link"
+            onClick={() => onProduct(r.productId as number)}
+            title="ดูล็อตของสินค้านี้"
+          >
+            {shortName(r.productName)}
+          </button>
+        ) : (
+          <span className="grid__name">{shortName(r.productName)}</span>
+        )}
         <span className="grid__sub">{r.sku}</span>
       </td>
       {/* แถวเรื่องเงินไม่มีของเคลื่อน — ขีดกลางบอกว่า "ไม่มีจำนวน" ส่วนเลข 0
