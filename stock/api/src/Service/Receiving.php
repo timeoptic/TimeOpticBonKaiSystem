@@ -27,7 +27,7 @@ final class Receiving
      * @param array<string,mixed> $req
      * @return array<string,mixed>
      */
-    public static function receive(array $req, array $roles, int $actorId): array
+    public static function receive(array $req, array $roles, int $actorId, bool $allowExpired = false): array
     {
         Roles::require(Roles::moveStock($roles), 'รับของเข้าคลัง');
 
@@ -59,7 +59,10 @@ final class Receiving
             );
         }
 
-        if ($expiry !== null && $expiry < $received) {
+        /* $allowExpired มาจากสคริปต์นำเข้ายอดนับ (bin/import-contactlens.php) เท่านั้น ไม่มีเส้น API
+           ไหนส่ง — ของหมดอายุที่ยังวางอยู่บนชั้นวันนับต้องเข้าระบบพร้อมวันจริง จะได้ขึ้นเตือน
+           แล้วตัดเป็นของเสีย ไม่ใช่หายไปจากยอดเงียบ ๆ */
+        if ($expiry !== null && $expiry < $received && !$allowExpired) {
             throw ApiError::badRequest('วันหมดอายุต้องไม่มาก่อนวันที่รับเข้า', 'bad_expiry');
         }
 

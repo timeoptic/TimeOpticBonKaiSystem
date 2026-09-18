@@ -695,9 +695,39 @@ final class Catalog
                 break;
 
             case 'ContactLen':
+                /* คอนแทคเลนส์เก็บแยกตามค่าสายตาเหมือนเลนส์สต็อก (ร้านขอ 18 ก.ย. 2026) —
+                   "Maxim Color Natural Gray -2.25" · ชื่อรุ่นของคอนแทคมักมีแบรนด์นำหน้าอยู่แล้ว
+                   ("Acuvue Oasys", "B&L Monthly 2P") จึงไม่พูดแบรนด์ซ้ำ · สีคือตัวสินค้า
+                   ไม่ใช่คำอธิบาย สองสีค่าเดียวกันคือคนละกล่อง · Toric ต่อ CYL×AXIS แบบที่
+                   เขียนบนกล่อง · Multifocal ต่อระดับ ADD (Low / Mid / High) */
+                $model = $at('model');
+                if ($model !== null && $parts[0] !== null
+                    && str_starts_with(mb_strtolower($model), mb_strtolower($parts[0]))) {
+                    $parts[0] = null;
+                }
+                $parts[] = $at('color');
                 $parts[] = $at('bc');
                 $parts[] = $at('dia');
-                $parts[] = $at('pack');
+                // "B&L Monthly 2P" บอกจำนวนต่อกล่องในชื่อรุ่นแล้ว ไม่ต่อเลขซ้ำท้าย
+                $pack = $at('pack');
+                if ($pack !== null && !preg_match('/\b' . preg_quote($pack, '/') . '\s*P\b/i', (string) $model)) {
+                    $parts[] = $pack;
+                }
+
+                $sph = $power($attrs['sph'] ?? null);
+                $cyl = $power($attrs['cyl'] ?? null);
+                if ($sph !== null) {
+                    $rx = $sph === '0.00' || $sph === '0' ? 'Plano' : $sph;
+                    if ($cyl !== null && $cyl !== '0.00' && $cyl !== '0') {
+                        $axis = $at('axis');
+                        $rx .= '/' . $cyl . ($axis !== null ? "x{$axis}" : '');
+                    }
+                    $parts[] = $rx;
+                }
+                $addLevel = $at('add_level');
+                if ($addLevel !== null) {
+                    $parts[] = "Add {$addLevel}";
+                }
                 break;
 
             case 'Accessory':

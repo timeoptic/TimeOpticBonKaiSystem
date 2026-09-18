@@ -136,6 +136,7 @@ Http::get('/api/products/compose-name', static function (): array {
     foreach ([
         'model', 'coating', 'lens_index', 'lens_design', 'sph', 'cyl', 'axis', 'add',
         'color', 'size', 'material', 'tint', 'bc', 'dia', 'pack', 'wear', 'kind', 'volume',
+        'cl_type', 'add_level',
     ] as $key) {
         $v = Http::query($key);
         if ($v !== null && $v !== '') {

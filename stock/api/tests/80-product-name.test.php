@@ -354,3 +354,16 @@ test('ไม่บอกเลนส์เลย ถูกปฏิเสธ', f
         );
     });
 });
+
+test('คอนแทคเลนส์: ค่าสายตาอยู่ในชื่อ · สีแยกกล่อง · Toric มี CYL×AXIS · ไม่พูดแบรนด์ซ้ำ', function () {
+    eq(composed('ContactLen', 'Maxim', ['model' => 'Maxim Color', 'color' => 'Natural Gray', 'sph' => -2.25]),
+        'Maxim Color Natural Gray -2.25', 'สี');
+    eq(composed('ContactLen', 'Maxim', ['model' => 'Maxim Color', 'color' => 'Hazel', 'sph' => 0]),
+        'Maxim Color Hazel Plano', 'ไม่มีค่าสายตา');
+    eq(composed('ContactLen', 'Acuvue', ['model' => 'Acuvue Oasys 1D for Astig', 'sph' => -6.5, 'cyl' => -0.75, 'axis' => 180]),
+        'Acuvue Oasys 1D for Astig -6.50/-0.75x180', 'Toric');
+    eq(composed('ContactLen', 'Acuvue', ['model' => 'Acuvue Moist Multifocal 1D', 'sph' => 1, 'add_level' => 'Mid']),
+        'Acuvue Moist Multifocal 1D +1.00 Add Mid', 'Multifocal');
+    eq(composed('ContactLen', 'B&L', ['model' => 'B&L Monthly 2P', 'pack' => 2, 'sph' => -1]),
+        'B&L Monthly 2P -1.00', 'จำนวนต่อกล่องอยู่ในชื่อรุ่นแล้ว ไม่ต่อซ้ำ');
+});

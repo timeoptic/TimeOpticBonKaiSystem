@@ -175,15 +175,65 @@ const SPECS: Record<string, { title: string; fields: Spec[] }> = {
       { key: "product_line", label: "ไลน์สินค้า", placeholder: "Eyewear" },
     ],
   },
+  /* คอนแทคเลนส์เก็บแยกตามค่าสายตาเหมือนเลนส์สต็อก (ร้านขอ 18 ก.ย. 2026) — ประเภทเป็นตัวเลือก
+     ว่าต้องถามอะไรต่อ: สีถามเฉดสี · Toric ถาม CYL กับ AXIS · Multifocal ถามระดับ ADD ·
+     ใสถามแค่ SPH · BC / DIA ไม่บังคับ ร้านส่วนใหญ่ไม่ได้จดจากกล่อง */
   ContactLen: {
     title: "สเปกคอนแทคเลนส์",
     fields: [
       MODEL,
+      { key: "wear", label: "รอบการใส่", input: "select", options: ["Daily", "Bi-weekly", "Monthly"] },
+      {
+        key: "cl_type",
+        label: "ประเภท",
+        input: "select",
+        options: ["ใส", "สี", "Toric", "Multifocal"],
+        help: "Toric = สายตาเอียง · Multifocal = มีค่าอ่านหนังสือ",
+      },
+      {
+        key: "color",
+        label: "เฉดสี",
+        placeholder: "Natural Gray",
+        seed: ["Natural Gray", "Natural Brown", "Choco Brown", "Chic Brown", "Donut Brown", "Hazel", "Cocoa", "O Grey", "O Brown", "Trio Grey", "Moon Gray", "Baby Blue"],
+        when: { key: "cl_type", is: ["สี"] },
+      },
+      {
+        key: "sph",
+        label: "SPH (ค่าสายตา)",
+        placeholder: "เลือก หรือพิมพ์ค่า",
+        seed: SPH_LADDER,
+        closed: true,
+        numeric: true,
+        help: "0.00 = ไม่มีค่าสายตา (Plano)",
+      },
+      {
+        key: "cyl",
+        label: "CYL (สายตาเอียง)",
+        placeholder: "เลือก หรือพิมพ์ค่า",
+        seed: CYL_LADDER,
+        closed: true,
+        numeric: true,
+        when: { key: "cl_type", is: ["Toric"] },
+      },
+      {
+        key: "axis",
+        label: "AXIS (องศา)",
+        placeholder: "0–180",
+        seed: AXIS_LADDER,
+        closed: true,
+        numeric: true,
+        when: { key: "cl_type", is: ["Toric"] },
+      },
+      {
+        key: "add_level",
+        label: "ADD",
+        input: "select",
+        options: ["Low", "Mid", "High"],
+        when: { key: "cl_type", is: ["Multifocal"] },
+      },
+      { key: "pack", label: "จำนวนต่อกล่อง", placeholder: "30", seed: ["1", "2", "5", "6", "10", "30", "90"], numeric: true },
       { key: "bc", label: "BC (ความโค้ง)", placeholder: "8.6", seed: ["8.3", "8.4", "8.5", "8.6", "8.7", "8.8", "9.0"] },
       { key: "dia", label: "DIA (เส้นผ่านศูนย์กลาง)", placeholder: "14.2", seed: ["13.8", "14.0", "14.2", "14.5"] },
-      { key: "pack", label: "จำนวนต่อกล่อง", placeholder: "30", seed: ["1", "5", "6", "10", "30", "90"], numeric: true },
-      { key: "wear", label: "รอบการใส่", input: "select", options: ["Daily", "Bi-weekly", "Monthly"] },
-      EYE_SIDE,
     ],
   },
   Accessory: {
@@ -262,7 +312,7 @@ const TYPE_ASKS: Record<string, string> = {
   Lens: "ถามสเปกต่อ — ชนิดเลนส์ · Index · Coating · ข้างตา · SPH CYL AXIS ADD",
   Frame: "กรอบสำเร็จรูปที่ขายเป็นชิ้น — กรอกแค่ชื่อกับราคา",
   Sunglass: "แว่นกันแดดสำเร็จรูป — กรอกแค่ชื่อกับราคา",
-  ContactLen: "คอนแทคเลนส์ทั้งกล่อง — กรอกแค่ชื่อกับราคา",
+  ContactLen: "ถามสเปกต่อ — รอบการใส่ · ใส / สี / Toric / Multifocal · ค่าสายตา · วันหมดอายุ",
   Accessory: "กล่อง · น้ำยา · สาย · ผ้าเช็ด — กรอกแค่ชื่อกับราคา",
 };
 
@@ -553,8 +603,14 @@ export default function ProductForm({
           // the save will not produce.
           ...(custom && type === "Lens"
             ? {}
-            : { sph: values.sph, cyl: values.cyl, axis: values.axis, add: values.add }),
-          color: values.color,
+            : type === "ContactLen"
+              ? // เฉพาะช่องที่ประเภทนี้ถามอยู่ — ช่องที่ซ่อนไม่ถูกบันทึก ชื่อตัวอย่างต้องไม่มีมันด้วย
+                {
+                  sph: values.sph,
+                  ...(values.cl_type === "Toric" ? { cyl: values.cyl, axis: values.axis } : {}),
+                }
+              : { sph: values.sph, cyl: values.cyl, axis: values.axis, add: values.add }),
+          color: type === "ContactLen" && values.cl_type !== "สี" ? "" : values.color,
           size: values.size,
           material: values.material,
           tint: values.tint,
@@ -562,6 +618,8 @@ export default function ProductForm({
           dia: values.dia,
           pack: values.pack,
           wear: values.wear,
+          cl_type: values.cl_type,
+          add_level: values.cl_type === "Multifocal" ? values.add_level : "",
           kind: values.kind,
           volume: values.volume,
         })}`,
@@ -577,7 +635,9 @@ export default function ProductForm({
       setName("");
       return;
     }
-    if ((type === "Lens" || namedByModel) && composed.status === "ready") setName(composed.data.name);
+    if ((type === "Lens" || type === "ContactLen" || namedByModel) && composed.status === "ready") {
+      setName(composed.data.name);
+    }
   }, [type, namedByModel, hasModel, autoName, composed.status, composed.data]);
 
   /* ------------------------------------------------------------ first lot */
@@ -631,7 +691,7 @@ export default function ProductForm({
    * เลนส์ต่างออกไปจริง — ค่าสายตา Index Coating ข้างตา ไม่ใช่คำอธิบายของชื่อ
    * แต่เป็นตัวสินค้าเอง เลนส์ -2.00 กับ -2.25 คนละ SKU กัน ระบบจึงต้องรู้
    */
-  const wantSpec = type === "Lens";
+  const wantSpec = type === "Lens" || type === "ContactLen";
 
   const steps = [
     "ข้อมูลหลัก",
@@ -1073,7 +1133,7 @@ export default function ProductForm({
               disabled={locked}
               autoComplete="off"
               placeholder={
-                type === "Lens" && autoName
+                (type === "Lens" || type === "ContactLen") && autoName
                   ? "ตั้งให้เองจากสเปกด้านล่าง"
                   : namedByModel && autoName
                     ? "ใส่รุ่นแล้วระบบตั้งชื่อให้ — หรือพิมพ์ชื่อเอง"
@@ -1093,7 +1153,7 @@ export default function ProductForm({
               >
                 กลับไปใช้ชื่อที่ตั้งให้เอง
               </button>
-            ) : type !== "Lens" ? (
+            ) : type !== "Lens" && type !== "ContactLen" ? (
               /* ชนิดอื่นไม่ได้ถามสเปกแล้ว ชื่อจึงเป็นสิ่งเดียวที่แยกสินค้าออกจาก
                  กันในรายการ — บอกไปตรง ๆ ว่าเขียนให้ครบพอที่จะจำได้ */
               <span className="field__help">
