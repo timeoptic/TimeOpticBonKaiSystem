@@ -7,7 +7,7 @@ import Select from "@/stockmod/components/Select";
 import { CHART_INK, DayBars, FlowChart, RankBars } from "@/stockmod/components/Charts";
 import { qs, useApi } from "@/stockmod/lib/useApi";
 import { count, date, money, shortName } from "@/stockmod/lib/format";
-import { PRODUCT_TYPE_LABEL, PRODUCT_TYPES, type BranchRow, type Movers } from "@/stockmod/lib/api";
+import { api, PRODUCT_TYPE_LABEL, PRODUCT_TYPES, type BranchRow, type Movers } from "@/stockmod/lib/api";
 import DateRangeField from "@/stockmod/components/DateRangeField";
 import TaskDialog from "@/stockmod/components/TaskDialog";
 import { useToast } from "@/stockmod/components/Toaster";
@@ -202,7 +202,29 @@ const SHEETS: readonly { value: string; label: string; hint: string }[] = [
   { value: "สินค้าจ่ายออกมากสุด", label: "สินค้าจ่ายออกมากสุด", hint: "สิบอันดับแรกของช่วงนี้" },
   { value: "ใครเบิกมากสุด", label: "ใครเบิกมากสุด", hint: "นับทั้งการเบิกและการตัดของเสีย" },
   { value: "ของเสียแยกตามคน", label: "ของเสียแยกตามคน", hint: "เฉพาะใบที่ระบุชื่อคนทำไว้" },
+  /* สองชีตทีละบรรทัด (ร้านขอ 18 ก.ย. 2026) — ดึงจาก /report/lines ตอนกดสร้างไฟล์ ไม่ได้มากับหน้าจอ */
+  { value: "ตัดออกแยกตามออเดอร์", label: "ตัดออกแยกตามออเดอร์", hint: "ของที่จ่ายออก/ตัดเสีย จัดกลุ่มตามเลขออเดอร์ มียอดรวมย่อย" },
+  { value: "รับเข้ารายวัน", label: "รับเข้ารายวัน", hint: "แต่ละวันรับอะไรเข้ามา ทีละล็อต มียอดรวมย่อยรายวัน" },
 ];
+
+/** หนึ่งบรรทัดของ /report/lines */
+type Line = {
+  kind: "IN" | "OUT" | "SCRAP";
+  at: string;
+  doc: string | null;
+  branch: string | null;
+  sku: string | null;
+  name: string | null;
+  lot: string | null;
+  expiry: string | null;
+  supplier: string | null;
+  qty: number;
+  unitCost: number | null;
+  total: number | null;
+  who: string | null;
+  keyedBy: string | null;
+  note: string | null;
+};
 
 const PRESETS = [
   { key: "today", label: "วันนี้", range: () => ({ from: shift(0), to: shift(0) }) },
@@ -680,6 +702,91 @@ export default function DashboardPage() {
           ],
         },
       ];
+
+      /* ชีตทีละบรรทัด — ถามเฉพาะตอนเลือกไว้ เพราะช่วงยาว ๆ มีหลายพันบรรทัด */
+      const wantOrders = exSheets.includes("ตัดออกแยกตามออเดอร์");
+      const wantIn = exSheets.includes("รับเข้ารายวัน");
+      if (wantOrders || wantIn) {
+        const res = await api.get<{ rows: Line[]; truncated: boolean }>(
+          `/report/lines${qs({ from: d.from, to: d.to, branch, type: ptype })}`,
+        );
+        const cut = res.truncated ? " · เกิน 20,000 บรรทัด ตัดท้ายออก — แคบช่วงวันลงแล้วออกใหม่" : "";
+        const when = (s: string) => new Date(s.replace(" ", "T"));
+
+        if (wantOrders) {
+          /* ออเดอร์ = เลขเอกสารในสมุด (หน้าร้านใส่เลขเคส) · ใบเบิกสาขาที่ไม่มีเลขใช้ชื่อสาขา */
+          const keyOf = (l: Line) => l.doc ?? (l.branch ? `สาขา ${l.branch}` : "ไม่ระบุเอกสาร");
+          const out = res.rows
+            .filter((l) => l.kind !== "IN")
+            .sort((a, b) => keyOf(a).localeCompare(keyOf(b), "th") || a.at.localeCompare(b.at));
+          sheets.push({
+            name: "ตัดออกแยกตามออเดอร์",
+            note: `จ่ายออกและตัดเสีย จัดกลุ่มตามเลขเอกสาร/ออเดอร์ มียอดรวมย่อยทุกออเดอร์${cut}`,
+            groupBy: 0,
+            columns: [
+              { header: "ออเดอร์ / เอกสาร", width: 22 },
+              { header: "วันที่", width: 18, format: "dd/mm/yyyy hh:mm" },
+              { header: "รายการ", width: 10 },
+              { header: "SKU", width: 12 },
+              { header: "สินค้า", width: 40 },
+              { header: "ล็อต", width: 14 },
+              { header: "จำนวน", total: true },
+              { header: "ทุน/ชิ้น", money: true },
+              { header: "รวมทุน", money: true, total: true },
+              { header: "ผู้เบิก / คนทำเสีย", width: 18 },
+            ],
+            rows: out.map((l) => [
+              keyOf(l),
+              when(l.at),
+              l.kind === "SCRAP" ? "ตัดเสีย" : "จ่ายออก",
+              l.sku,
+              l.name,
+              l.lot,
+              l.qty,
+              cost$(l.unitCost),
+              cost$(l.total),
+              l.who,
+            ]),
+          });
+        }
+
+        if (wantIn) {
+          const ins = res.rows.filter((l) => l.kind === "IN");
+          sheets.push({
+            name: "รับเข้ารายวัน",
+            note: `ทุกล็อตที่รับเข้าในช่วงนี้ เรียงตามวัน มียอดรวมย่อยทุกวัน${cut}`,
+            groupBy: 0,
+            columns: [
+              { header: "วันที่", width: 12 },
+              { header: "เวลา", width: 8 },
+              { header: "SKU", width: 12 },
+              { header: "สินค้า", width: 40 },
+              { header: "ล็อต", width: 14 },
+              { header: "หมดอายุ", width: 12 },
+              { header: "ผู้ขาย", width: 18 },
+              { header: "จำนวน", total: true },
+              { header: "ทุน/ชิ้น", money: true },
+              { header: "รวมทุน", money: true, total: true },
+              { header: "หมายเหตุ", width: 28 },
+              { header: "ผู้บันทึก", width: 14 },
+            ],
+            rows: ins.map((l) => [
+              l.at.slice(0, 10),
+              l.at.slice(11, 16),
+              l.sku,
+              l.name,
+              l.lot,
+              l.expiry,
+              l.supplier,
+              l.qty,
+              cost$(l.unitCost),
+              cost$(l.total),
+              l.note,
+              l.keyedBy,
+            ]),
+          });
+        }
+      }
 
       /* ไม่มีชีตไหนถูกตัดออกเพราะ "กรองไม่ได้" อีกแล้ว — ทุกชีตประกอบจากข้อมูล
          ที่ API กรองมาให้ชุดเดียวกัน · ชีตที่กรองแล้วไม่เหลือแถวยังตัดออกเหมือน

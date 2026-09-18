@@ -219,6 +219,17 @@ Http::get('/api/report', static function () use ($maySeeCost): array {
     );
 });
 
+/** รับเข้า / จ่ายออก / ของเสีย ทีละบรรทัด — ชีต "ตัดออกแยกตามออเดอร์" กับ "รับเข้ารายวัน" ของไฟล์ Excel */
+Http::get('/api/report/lines', static function () use ($maySeeCost): array {
+    $actor = Auth::require();
+    return Reports::lines(
+        Http::query('from') ?? date('Y-m-01'),
+        Http::query('to') ?? date('Y-m-d'),
+        $maySeeCost($actor),
+        ['branch' => Http::query('branch'), 'type' => Http::query('type')],
+    );
+});
+
 /** What sells and what sits — the buying decision, from both ends. */
 Http::get('/api/movers', static function () use ($maySeeCost): array {
     $actor = Auth::require();

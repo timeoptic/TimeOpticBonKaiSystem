@@ -666,6 +666,76 @@ final class Reports
     public const IDLE_DAYS = 90;
 
     /**
+     * รายการรับเข้า / จ่ายออก / ของเสีย ทีละบรรทัด สำหรับไฟล์ Excel ของแดชบอร์ด (ร้านขอ 18 ก.ย. 2026)
+     *
+     * ชีตสรุปตอบว่า "เท่าไร" · ร้านอยากรู้ว่า "ของที่ออกไปไปกับออเดอร์ไหน" และ "วันนี้รับอะไรเข้ามา"
+     * ซึ่งต้องเห็นทีละบรรทัด · ช่วงวันและตัวกรองสาขา/ชนิดชุดเดียวกับ overview ตัวเลขในไฟล์จึงรวม
+     * กลับมาเท่ากับชีตสรุปเสมอ · ต้นทุนเฉพาะคนที่เห็นทุน
+     *
+     * ออเดอร์ของแถวที่ออก = เลขเอกสารในสมุด (หน้าร้านใส่เลขเคส ใบเบิกสาขาใส่เลขใบ) · ใบเบิกสาขา
+     * ที่ไม่มีเลขเอกสารใช้ชื่อสาขาแทน · ไม่มีทั้งคู่คือ "ไม่ระบุเอกสาร"
+     *
+     * @param array{branch?:?string,type?:?string} $filter
+     * @return array{rows:list<array<string,mixed>>,truncated:bool}
+     */
+    public static function lines(string $from, string $to, bool $money = false, array $filter = []): array
+    {
+        [$from, $to] = self::range($from, $to);
+        [$lens, $lensArgs] = self::lens($filter);
+        $cap = 20000;
+
+        $rows = Db::all(
+            "SELECT g.id, g.action_type, g.created_at, g.quantity, g.unit_cost, g.reference_doc, g.notes, g.scrap_by,
+                    p.sku, p.name AS product_name, p.product_type,
+                    l.lot_number, l.expiry_date, s.name AS supplier_name,
+                    a.display_name AS actor_name, who.display_name AS issued_to_name,
+                    br.name AS branch_name, bi.taken_by
+             FROM inventory_logs g" . self::LENS_JOINS . "
+             LEFT JOIN stock_lots l ON l.id = g.lot_id
+             LEFT JOIN suppliers s  ON s.id = l.supplier_id
+             LEFT JOIN admins a     ON a.id = g.created_by
+             LEFT JOIN admins who   ON who.id = g.issued_to_admin_id
+             LEFT JOIN branches br  ON br.id = bi.branch_id
+             WHERE g.action_type IN ('IN', 'OUT', 'SCRAP')
+               AND g.created_at >= ? AND g.created_at < DATE_ADD(?, INTERVAL 1 DAY){$lens}
+             ORDER BY g.created_at ASC, g.id ASC
+             LIMIT " . ($cap + 1),
+            [$from, $to, ...$lensArgs],
+        );
+
+        $truncated = count($rows) > $cap;
+        $rows = array_slice($rows, 0, $cap);
+
+        return [
+            'truncated' => $truncated,
+            'rows' => array_map(static function (array $r) use ($money): array {
+                $qty = abs((int) $r['quantity']);
+                $cost = $money && $r['unit_cost'] !== null ? (float) $r['unit_cost'] : null;
+                $doc = trim((string) ($r['reference_doc'] ?? ''));
+                return [
+                    'kind'      => $r['action_type'],
+                    'at'        => $r['created_at'],
+                    'doc'       => $doc !== '' ? $doc : null,
+                    'branch'    => $r['branch_name'] ?? null,
+                    'sku'       => $r['sku'],
+                    'name'      => $r['product_name'],
+                    'type'      => $r['product_type'],
+                    'lot'       => $r['lot_number'],
+                    'expiry'    => $r['expiry_date'],
+                    'supplier'  => $r['supplier_name'],
+                    'qty'       => $qty,
+                    'unitCost'  => $cost,
+                    'total'     => $cost === null ? null : round($cost * $qty, 2),
+                    // คนที่เอาของไป — ใบเบิกสาขาคือคนมารับ · ของเสียคือชื่อคนทำเสีย · นอกนั้นคือคนเบิก
+                    'who'       => $r['taken_by'] ?? $r['scrap_by'] ?? $r['issued_to_name'] ?? $r['actor_name'],
+                    'keyedBy'   => $r['actor_name'],
+                    'note'      => $r['notes'],
+                ];
+            }, $rows),
+        ];
+    }
+
+    /**
      * Which goods move and which do not — the same shelf read from both ends.
      *
      * Two questions that are only worth asking together. "What sells" alone
