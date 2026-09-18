@@ -68,14 +68,23 @@ export default function DateRangeField({
   onApply,
   disabled = false,
   split = false,
+  placeholder,
+  clearable = false,
 }: {
   id?: string;
+  /** ว่างได้ทั้งคู่ — แปลว่า "ยังไม่ได้เลือกช่วง" ไม่ใช่ error (ดู `placeholder`) */
   from: string;
   to: string;
   onApply: (range: { from: string; to: string }) => void;
   disabled?: boolean;
   /** สองช่อง "จาก"/"ถึง" แทนช่องเดียวที่เขียนทั้งช่วง — ปฏิทินยังเป็นใบเดียวกัน */
   split?: boolean;
+  /** ข้อความตอน `from`/`to` ยังว่าง — หน้าที่ไม่มีค่าตั้งต้น (เคส/บันทึก) ใช้ตัวนี้
+   * แทนที่จะโชว์วันที่มั่ว ๆ · หน้าที่มีค่าตั้งต้นเสมอ (แดชบอร์ด/settlements) ไม่ต้องส่ง */
+  placeholder?: string;
+  /** ปุ่ม "ล้างช่วงวันที่" เพิ่มในแผงท้าย — สำหรับหน้าที่ "ไม่กรองเลย" เป็นสถานะที่ถูกต้อง
+   * (ต่างจากแดชบอร์ด/settlements ที่บังคับให้เลือกช่วงเสมอ จึงไม่ต้องมีปุ่มนี้) */
+  clearable?: boolean;
 }) {
   const wrap = useRef<HTMLDivElement>(null);
   const face = useRef<HTMLButtonElement>(null);
@@ -86,8 +95,8 @@ export default function DateRangeField({
   const [end, setEnd] = useState("");
   /** วันที่เมาส์อยู่ ใช้ทาแถบระหว่างกำลังลากสายตาไปหาปลายทาง */
   const [hover, setHover] = useState("");
-  /** เดือนซ้ายของสองเดือนที่วาดอยู่ */
-  const [at, setAt] = useState(() => parse(from));
+  /** เดือนซ้ายของสองเดือนที่วาดอยู่ — ยังไม่มี `from` (หน้าที่ไม่มีช่วงตั้งต้น) เปิดที่เดือนนี้ */
+  const [at, setAt] = useState(() => (from ? parse(from) : new Date()));
 
   // กว้างพอวางปฏิทินสองเดือนคู่กัน ไม่ใช่กว้างเท่าช่อง · สูงกว่าค่าปริยาย
   // เพราะหกสัปดาห์สองชุดสูงกว่าดรอปดาวน์ทั่วไปเกือบเท่าตัว
@@ -100,7 +109,7 @@ export default function DateRangeField({
       setStart(from);
       setEnd(to);
       setHover("");
-      setAt(parse(from));
+      setAt(from ? parse(from) : new Date());
     }
   }, [open, from, to]);
 
@@ -147,7 +156,8 @@ export default function DateRangeField({
 
   const today = iso(new Date());
   const ready = start !== "" && end !== "";
-  const label = `${readable(from)} – ${readable(to)}`;
+  const empty = placeholder ?? "เลือกช่วงวันที่";
+  const label = from && to ? `${readable(from)} – ${readable(to)}` : empty;
 
   return (
     <div className={split ? "daterange daterange--split" : "daterange"} ref={wrap}>
@@ -167,7 +177,7 @@ export default function DateRangeField({
             aria-expanded={open}
             onClick={() => setOpen((v) => !v)}
           >
-            <span>{readable(from)}</span>
+            <span>{from ? readable(from) : "—"}</span>
             <IconCalendar />
           </button>
           <span className="toolbar__lead">ถึง</span>
@@ -179,7 +189,7 @@ export default function DateRangeField({
             aria-expanded={open}
             onClick={() => setOpen((v) => !v)}
           >
-            <span>{readable(to)}</span>
+            <span>{to ? readable(to) : "—"}</span>
             <IconCalendar />
           </button>
         </>
@@ -288,6 +298,20 @@ export default function DateRangeField({
                   : `${readable(start)} – ${readable(end)}`}
             </span>
             <div className="chips">
+              {/* "ล้างช่วงวันที่" มีเฉพาะหน้าที่ไม่กรองเลยได้ (คลิก "เดือนนี้" ค้างเป็นค่าตั้งต้น
+                  ของแดชบอร์ด/settlements ไม่มีสถานะ "ไม่กรอง" ให้ล้างกลับไปหา) */}
+              {clearable ? (
+                <button
+                  type="button"
+                  className="btn btn--quiet btn--small"
+                  onClick={() => {
+                    onApply({ from: "", to: "" });
+                    setOpen(false);
+                  }}
+                >
+                  ล้างช่วงวันที่
+                </button>
+              ) : null}
               <button
                 type="button"
                 className="btn btn--quiet btn--small"

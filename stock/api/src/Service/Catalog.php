@@ -210,8 +210,6 @@ final class Catalog
      */
     public static function updateLot(int $lotId, array $req, array $roles, int $actorId): array
     {
-        Roles::require(Roles::moveStock($roles), 'แก้ไขล็อต');
-
         $lot = Db::one(
             'SELECT l.*, p.sku FROM stock_lots l JOIN products p ON p.id = l.product_id WHERE l.id = ?',
             [$lotId],
@@ -228,6 +226,14 @@ final class Catalog
            แต่ยังต้องเข้าประตูเดียวกับที่เหลือ ไม่งั้นจะมีคนเขียน stock_lots ตรง ๆ อีกที */
         $supplier = array_key_exists('supplier_id', $req) ? self::supplierOrNull($req['supplier_id']) : false;
 
+        /* ฝ่ายบัญชีลงต้นทุนของล็อตได้โดยไม่ต้องมีสิทธิ์ขยับสต็อก — ใบกำกับมาถึงบัญชี
+           ไม่ใช่คลัง · อย่างอื่นในล็อต (ยอด วันหมดอายุ หมายเหตุ ผู้ขาย) ยังเป็นงานคลัง
+           หน้าจอส่ง remaining_qty มาทุกครั้ง จึงดูว่ายอดเปลี่ยนจริงไหม ไม่ใช่ดูว่ามีคีย์ */
+        $touchesStock = ($remaining !== null && $remaining !== (int) $lot['remaining_qty'])
+            || $expiry !== false || $note !== false || $supplier !== false;
+        if ($touchesStock || $cost === false) {
+            Roles::require(Roles::moveStock($roles), 'แก้ไขล็อต');
+        }
         if ($cost !== false) {
             Roles::require(Roles::enterRxCost($roles), 'แก้ต้นทุน');
         }

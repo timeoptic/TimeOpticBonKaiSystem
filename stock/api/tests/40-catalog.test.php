@@ -561,3 +561,40 @@ test('ตัวเลขบนชิปเลนส์ตรงกับจำ�
         }
     });
 });
+
+test('เลือกชิปหลายตัว = รวมกัน · ช่วง SPH/CYL นับตรงกับตัวเลือก', function () {
+    withRollback(function () {
+        $options = Inventory::lensOptions();
+
+        // หลาย Index ในช่องเดียวคือ "ตัวไหนก็ได้" — จำนวนต้องเท่าผลรวมของแต่ละชิป
+        $two = array_slice($options['indexes'], 0, 2);
+        if (count($two) === 2) {
+            $rows = Inventory::products(
+                ['type' => 'Lens', 'index' => $two[0]['value'] . '|' . $two[1]['value']],
+                true,
+            );
+            eq($rows['total'], $two[0]['count'] + $two[1]['count'], 'Index สองค่ารวมกันไม่เท่าผลรวมของชิป');
+        }
+
+        // ช่วงที่หัวท้ายเป็นค่าเดียวกัน คือค่านั้นค่าเดียว · "-2" ต้องเท่ากับ "-2.00"
+        foreach (['sph', 'cyl'] as $key) {
+            foreach ($options[$key . 's'] as $p) {
+                $rows = Inventory::products(
+                    ['type' => 'Lens', "{$key}_from" => $p['value'], "{$key}_to" => $p['value']],
+                    true,
+                );
+                eq($rows['total'], $p['count'], strtoupper($key) . ' ' . $p['value'] . ' บอก ' . $p['count'] . ' แต่กรองได้ ' . $rows['total']);
+            }
+        }
+
+        // หัวท้ายกลับด้าน ได้ผลเท่ากับเรียงถูก ไม่ใช่รายการว่าง
+        $sph = $options['sphs'];
+        if (count($sph) >= 2) {
+            $lo = $sph[0]['value'];
+            $hi = $sph[count($sph) - 1]['value'];
+            $a = Inventory::products(['type' => 'Lens', 'sph_from' => $lo, 'sph_to' => $hi], true);
+            $b = Inventory::products(['type' => 'Lens', 'sph_from' => $hi, 'sph_to' => $lo], true);
+            eq($b['total'], $a['total'], 'ช่วง SPH กลับด้านให้ผลต่างจากเรียงถูก');
+        }
+    });
+});

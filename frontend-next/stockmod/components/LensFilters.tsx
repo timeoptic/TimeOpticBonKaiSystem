@@ -1,41 +1,68 @@
 "use client";
 
-import { Filter, withCount } from "./FilterBar";
+import { useRef } from "react";
+import { withCount } from "./FilterBar";
+import Select from "./Select";
 import { qs, useApi } from "@/stockmod/lib/useApi";
-import type { LensOptions } from "@/stockmod/lib/api";
+import type { LensFacet, LensOptions } from "@/stockmod/lib/api";
 
 /**
  * Narrowing a list of lenses down to the drawer worth walking to.
  *
- * เคยเป็นชิป และเหตุผลเดิมคือกดครั้งเดียวแล้วเห็นคำตอบโดยไม่ต้องเปิด · พอ
- * แคตตาล็อกโตขึ้นจนมี Index ห้าค่า ชนิดเลนส์หกแบบ Coating ห้าแบบ สามแถวนั้น
- * กลายเป็นยี่สิบปุ่มคาดอยู่เหนือตาราง ซึ่งข้อดีข้อเดิมไม่เหลือ — ของที่เห็นได้
- * โดยไม่ต้องเปิด มีมากเกินกว่าจะกวาดตาอ่าน
+ * Index / ชนิดเลนส์ / Coating กลับมาเป็นชิป แต่เลือกได้หลายตัวในแถวเดียว ·
+ * รอบก่อนเปลี่ยนเป็นดรอปดาวน์เพราะชิปยี่สิบปุ่มกวาดตาอ่านไม่ไหว แต่ดรอปดาวน์
+ * ตอบได้ทีละค่า ขณะที่คำถามจริงหน้าร้านคือ "1.56 หรือ 1.60 ก็ได้ ขอ Blue" ·
+ * ชิปที่ไม่มีของเลยถูกซ่อน (เว้นตัวที่เลือกอยู่) จึงเหลือแค่ของที่มีจริง ซึ่งสั้น
+ * กว่ายี่สิบมาก
  *
- * ดรอปดาวน์แทน และจำนวนของแต่ละค่าย้ายไปต่อท้ายชื่อในบรรทัดของมัน จึงไม่หาย
+ * SPH / CYL เป็นดรอปดาวน์ช่วง "ตั้งแต่–ถึง" — ค่าสายตามีหลายสิบค่า เป็นชิปไม่ได้
+ * และคนถือค่าที่วัดมาแล้วอยากได้ "แถว ๆ นี้" มากกว่าค่าเดียวเป๊ะ
  *
- * ค่าที่ให้เลือกมาจาก `/lens-options` ของ API — สเปกที่แคตตาล็อกมีอยู่จริง
- * พิมพ์เองไม่ได้ และค่าที่ไม่มีของเลยจะไม่ถูกเสนอ เลือกผิดจนตารางว่างจึงเป็น
- * สิ่งที่ทำไม่ได้ ไม่ใช่สิ่งที่ต้องระวัง
+ * ทุกค่าที่ให้เลือกมาจาก `/lens-options` — สเปกที่แคตตาล็อกมีอยู่จริง นับภายใต้
+ * ตัวกรองอื่นที่ใช้อยู่ เลือกผิดจนตารางว่างจึงเป็นสิ่งที่ทำไม่ได้
  *
- * โผล่เฉพาะตอนที่มีเลนส์ให้กรอง — บนรายการกรอบแว่น สามช่องนี้คือช่องที่กดแล้ว
- * ไม่มีอะไรเกิดขึ้น ซึ่งแย่กว่าช่องที่ไม่มี
+ * โผล่เฉพาะตอนที่มีเลนส์ให้กรอง — บนรายการกรอบแว่น ช่องพวกนี้กดแล้วไม่มีอะไร
+ * เกิดขึ้น ซึ่งแย่กว่าช่องที่ไม่มี
  */
+
+export type LensPick = {
+  index: string[];
+  design: string[];
+  coating: string[];
+  sphFrom: string;
+  sphTo: string;
+  cylFrom: string;
+  cylTo: string;
+};
+
+export const NO_LENS: LensPick = {
+  index: [], design: [], coating: [], sphFrom: "", sphTo: "", cylFrom: "", cylTo: "",
+};
+
+/** หลายค่าในช่องเดียวส่งเป็น `1.56|1.60` — API อ่านแบบ "ตัวไหนก็ได้" */
+export const lensParams = (l: LensPick) => ({
+  index: l.index.join("|"),
+  design: l.design.join("|"),
+  coating: l.coating.join("|"),
+  sph_from: l.sphFrom,
+  sph_to: l.sphTo,
+  cyl_from: l.cylFrom,
+  cyl_to: l.cylTo,
+});
+
+/** ค่าสายตาอย่างที่เขียนบนซอง — +1.00, 0.00, -2.25 */
+const power = (v: string): string => {
+  const n = Number(v);
+  return n > 0 ? `+${n.toFixed(2)}` : n.toFixed(2);
+};
+
 export default function LensFilters({
-  index,
-  design,
-  coating,
-  onIndex,
-  onDesign,
-  onCoating,
+  value,
+  onChange,
   scope,
 }: {
-  index: string;
-  design: string;
-  coating: string;
-  onIndex: (v: string) => void;
-  onDesign: (v: string) => void;
-  onCoating: (v: string) => void;
+  value: LensPick;
+  onChange: (next: LensPick) => void;
   /**
    * The rest of the narrowing the list under these is already under.
    *
@@ -46,64 +73,111 @@ export default function LensFilters({
    */
   scope?: { q?: string; eye?: string; make?: string };
 }) {
-  // The chosen index and design go too. The API drops a facet's own choice
-  // before counting it, so sending them is what makes the *other* lists
-  // re-tally — pick Progressive and the index counts become the Progressive
-  // ones, rather than staying the counts for every lens in the shop.
-  const options = useApi<LensOptions>(
-    `/lens-options${qs({ ...scope, index, design, coating })}`,
-  );
+  // The current choices go too. The API drops a facet's own choice before
+  // counting it, so sending them is what makes the *other* rows re-tally —
+  // pick Progressive and the index counts become the Progressive ones.
+  const options = useApi<LensOptions>(`/lens-options${qs({ ...scope, ...lensParams(value) })}`);
 
-  if (options.status !== "ready") return null;
+  /* ทุกครั้งที่กดชิป ตัวเลขถูกถามใหม่ · ระหว่างรอ ใช้ชุดเดิมไปก่อน ไม่งั้นทั้งแถว
+     หายแล้วโผล่กลับ ตารางข้างล่างกระโดดขึ้นลงทุกครั้งที่กด */
+  const last = useRef<LensOptions | null>(null);
+  if (options.status === "ready") last.current = options.data;
+  const data = last.current;
+  if (data === null) return null;
 
-  const { indexes, designs, coatings } = options.data;
-  if (indexes.length === 0 && designs.length === 0 && coatings.length === 0) return null;
+  const { indexes, designs, coatings, sphs = [], cyls = [] } = data;
 
-  /**
-   * ค่าที่ไม่มีของและไม่ได้ถูกเลือกอยู่ ถูกตัดออกจากลิสต์
-   *
-   * ชิปตัวเดิมยังวาดไว้แต่กดไม่ได้ เพราะช่องว่างในแถวชิปอ่านเป็นของหาย · ใน
-   * ดรอปดาวน์ไม่มีปัญหานั้น บรรทัดที่ไม่มีก็คือไม่มี · ที่เลือกอยู่ไม่ถูกตัด
-   * ไม่ว่านับได้เท่าไร ไม่งั้นค่าที่เลือกจะหายจากช่องของตัวเอง
-   */
-  const list = (
-    facets: { value: string; count: number }[],
-    chosen: string,
-    allLabel: string,
-  ) => [
-    { value: "", label: allLabel },
-    ...facets
-      .filter((f) => f.count > 0 || f.value === chosen)
-      .map((f) => ({ value: f.value, label: withCount(f.value, f.count) })),
-  ];
+  const toggle = (key: "index" | "design" | "coating", v: string) => {
+    const on = value[key];
+    onChange({ ...value, [key]: on.includes(v) ? on.filter((x) => x !== v) : [...on, v] });
+  };
+
+  /* ค่าที่นับได้ศูนย์และไม่ได้เลือกอยู่ถูกซ่อน · ตัวที่เลือกอยู่ไม่ถูกซ่อนไม่ว่า
+     นับได้เท่าไร ไม่งั้นมันจะหายไปทั้งที่ยังกรองอยู่ และกดยกเลิกไม่ได้ */
+  const shown = (facets: LensFacet[], chosen: string[]) =>
+    facets.filter((f) => f.count > 0 || chosen.includes(f.value));
+
+  const groups = [
+    { key: "index" as const, label: "Index", facets: shown(indexes, value.index) },
+    { key: "design" as const, label: "ชนิดเลนส์", facets: shown(designs, value.design) },
+    { key: "coating" as const, label: "Coating", facets: shown(coatings, value.coating) },
+  ].filter((g) => g.facets.length > 0);
+
+  const range = (
+    key: "sph" | "cyl",
+    label: string,
+    facets: LensFacet[],
+  ) => {
+    const from = key === "sph" ? "sphFrom" : "cylFrom";
+    const to = key === "sph" ? "sphTo" : "cylTo";
+    // ค่าที่เลือกไว้แต่ไม่มีในลิสต์แล้ว (ตัวกรองอื่นเปลี่ยน) ยังต้องอ่านได้บนหน้าปุ่ม
+    const values = [...new Set([...facets.map((f) => f.value), value[from], value[to]].filter(Boolean))]
+      .sort((a, b) => Number(a) - Number(b));
+    if (values.length === 0) return null;
+    const choices = (all: string) => [
+      { value: "", label: all },
+      ...values.map((v) => ({ value: v, label: power(v) })),
+    ];
+    return (
+      <div className="filterbar__item filterbar__item--range">
+        <span className="filterbar__label" id={`lf-${key}`}>{label}</span>
+        <span className="lensrange" role="group" aria-labelledby={`lf-${key}`}>
+          <Select
+            className="input--inline lensrange__end"
+            value={value[from]}
+            onChange={(v) => onChange({ ...value, [from]: v })}
+            options={choices("ตั้งแต่")}
+            placeholder="ตั้งแต่"
+          />
+          <span aria-hidden="true">–</span>
+          <Select
+            className="input--inline lensrange__end"
+            value={value[to]}
+            onChange={(v) => onChange({ ...value, [to]: v })}
+            options={choices("ถึง")}
+            placeholder="ถึง"
+          />
+        </span>
+      </div>
+    );
+  };
+
+  if (groups.length === 0 && sphs.length === 0 && cyls.length === 0) return null;
 
   return (
     <>
-      <Filter
-        id="lf-index"
-        label="Index"
-        value={index}
-        onChange={onIndex}
-        options={list(indexes, index, "ทุก Index")}
-      />
-      <Filter
-        id="lf-design"
-        label="ชนิดเลนส์"
-        value={design}
-        onChange={onDesign}
-        options={list(designs, design, "ทุกชนิดเลนส์")}
-      />
-      {/* Coating earns a place now that the shop stocks five of them rather
-          than the open-ended list it used to be. Ordered by how much of each
-          is stocked, not alphabetically: what a shop reaches for first is the
-          one it sells most of, and A-to-Z would put Blue above everything. */}
-      <Filter
-        id="lf-coating"
-        label="Coating"
-        value={coating}
-        onChange={onCoating}
-        options={list(coatings, coating, "ทุก Coating")}
-      />
+      {range("sph", "SPH", sphs)}
+      {range("cyl", "CYL", cyls)}
+      {groups.length > 0 ? (
+        <div className="filterbar__item filterbar__item--chips">
+          <div className="chipbar lenschips">
+            {groups.map((g, i) => (
+              <span key={g.key} className="lenschips__group" role="group" aria-label={g.label}>
+                {i > 0 ? <span className="chipbar__sep" aria-hidden="true" /> : null}
+                <span className="filterbar__label">{g.label}</span>
+                <span className="chips chips--tight">
+                  {g.facets.map((f) => {
+                    const on = value[g.key].includes(f.value);
+                    return (
+                      <button
+                        key={f.value}
+                        type="button"
+                        className="chip"
+                        aria-pressed={on}
+                        onClick={() => toggle(g.key, f.value)}
+                        title={withCount(f.value, f.count)}
+                      >
+                        {f.value}
+                        <span className="chip__count">{f.count.toLocaleString("th-TH")}</span>
+                      </button>
+                    );
+                  })}
+                </span>
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }

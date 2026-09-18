@@ -17,13 +17,19 @@ import { LensPicker } from './LensPicker.jsx';
 import { Icon } from './Icon.jsx';
 import { useToast } from './Toast.jsx';
 import { api } from '../lib/apiClient.js';
+import { shortName } from '../lib/lensFilter.js';
 
-/** product_name usually already starts with the brand — don't say it twice */
+/** product_name usually already starts with the brand — don't say it twice
+ *  ค่านี้ถูกบันทึกลงออเดอร์และส่งเป็นชื่อรุ่นของใบสั่งตัด RX — ต้องเป็นชื่อเต็มเสมอ
+ *  ที่แสดงบนจอใช้ shownLabel แทน */
 export const stockLabel = (r) => {
   const name = r.product_name || '';
   const brand = r.brand || r.brand_name || '';
   return brand && !name.toLowerCase().startsWith(brand.toLowerCase()) ? `${brand} ${name}` : name;
 };
+
+/** ชื่อบนจอ — ตัดคำว่า "Single Vision" (ร้านขอ 18 ก.ย. 2026) ตัวที่ไม่มีคำบอกชนิดคือชั้นเดียว */
+export const shownLabel = (r) => shortName(stockLabel(r));
 
 /**
  * ตอนเลือกสินค้า คำถามคือ "ชิ้นนี้ใช่ไหม และยังมีของไหม" ไม่ใช่ "ชิ้นนี้เท่าไหร่" —
@@ -83,7 +89,7 @@ export function StockPicker({ type, onPick, selectedId = null, picked = null, on
     return (
       <div className="picked-item">
         <Icon name="box" />
-        <b>{stockLabel(picked)}</b>
+        <b>{shownLabel(picked)}</b>
         {/* title ไว้กู้ข้อความที่ถูก … ตัดไปตอนแถวแคบ (ดู .picked-item .muted) */}
         <span className="muted" title={stockSub(picked)}>{stockSub(picked)}</span>
         <span className="p-id">#{picked.id}</span>
@@ -103,7 +109,7 @@ export function StockPicker({ type, onPick, selectedId = null, picked = null, on
 
   return (
     <>
-      {/* เลนส์มีตัวกรอง Coating / SPH / CYL เพิ่ม — มีตัวกรองอยู่ขอ 200 แถว เพราะคือการหา
+      {/* เลนส์มีชิป Index / ชนิด / Coating กับช่วง SPH / CYL เพิ่ม — มีตัวกรองอยู่ขอ 200 แถว เพราะคือการหา
           ค่าสายตาเดียวให้ครบทุก index ทุกยี่ห้อ ไม่ใช่ 30 ตัวแรกของ Coating ที่มีเป็นพันรุ่น */}
       {type === 'Lens' ? (
         <LensPicker
@@ -112,7 +118,8 @@ export function StockPicker({ type, onPick, selectedId = null, picked = null, on
             q: term, type, sold: 0, group: 'product',
             limit: Object.keys(filters).length ? 200 : 30, ...filters,
           })}
-          label={stockLabel}
+          optionsFetcher={(term, filters) => api.get('/api/stock/lens-options', { q: term, ...filters })}
+          label={shownLabel}
           stock={lensStock}
           onPick={choose}
           selectedId={selectedId}
@@ -123,7 +130,7 @@ export function StockPicker({ type, onPick, selectedId = null, picked = null, on
           fetcher={(term) => api.get('/api/stock', {
             q: term, type: type || undefined, sold: 0, group: 'product', limit: 30,
           })}
-          label={stockLabel}
+          label={shownLabel}
           sub={stockSub}
           onPick={choose}
           selectedId={selectedId}

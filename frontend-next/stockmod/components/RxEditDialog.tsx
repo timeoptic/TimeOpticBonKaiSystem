@@ -6,7 +6,7 @@ import TaskDialog from "./TaskDialog";
 import { IconTrash } from "./Icon";
 import { useToast } from "./Toaster";
 import { api, ApiError, type RxOrderRow } from "@/stockmod/lib/api";
-import { money } from "@/stockmod/lib/format";
+import { money, shortName } from "@/stockmod/lib/format";
 
 /**
  * แก้ใบสั่งตัดที่เปิดไปแล้ว และเอามันออกเมื่อเปิดผิดใบ
@@ -19,9 +19,11 @@ import { money } from "@/stockmod/lib/format";
  * ป็อปอัพ ไม่ใช่แถวที่กางออก: หน้านี้เป็นสมุด คนเปิดมาเพื่อกวาดตาหาใบของลูกค้า
  * คนหนึ่ง แถวที่กางออกจะดันใบที่เหลือหายจากจอพอดีตอนที่ยังต้องเทียบกับใบข้าง ๆ
  *
- * สองอย่างที่จงใจไม่อยู่ในฟอร์มนี้:
- *   รุ่นเลนส์  เปลี่ยนรุ่นคือคนละใบ ไม่ใช่ใบเดิมที่พิมพ์ผิด — ให้ลบแล้วเปิดใหม่
- *   ต้นทุน    ลงได้ครั้งเดียวและเป็นของฝ่ายบัญชี ช่องของมันอยู่ในตารางที่เดิม
+ * ชื่อเลนส์แก้ได้ (ร้านขอ 18 ก.ย. 2026) — หน้าร้านพิมพ์ชื่อรุ่นผิดมาเยอะ · API หารุ่นจากชื่อใหม่
+ * หรือเปิดรุ่นใหม่ให้ แล้วย้ายใบนี้ไปรุ่นนั้น ชื่อรุ่นเดิมไม่ถูกแก้ (ใบอื่นอาจชี้มันอยู่ถูกแล้ว)
+ *
+ * ที่จงใจไม่อยู่ในฟอร์มนี้:
+ *   ต้นทุน    เป็นของฝ่ายบัญชี ช่องของมันอยู่ในตารางที่เดิม
  */
 export default function RxEditDialog({
   row,
@@ -36,6 +38,7 @@ export default function RxEditDialog({
   const toast = useToast();
 
   const [doc, setDoc] = useState(row.referenceDoc ?? "");
+  const [lensName, setLensName] = useState(row.name);
   const [eye, setEye] = useState<"" | "left" | "right">(row.eyeSide ?? "");
   const [sph, setSph] = useState(row.sph === null ? "" : String(row.sph));
   const [cyl, setCyl] = useState(row.cyl === null ? "" : String(row.cyl));
@@ -67,6 +70,8 @@ export default function RxEditDialog({
     try {
       await api.post(`/rx/${row.id}/update`, {
         reference_doc: doc.trim(),
+        // ส่งเฉพาะตอนเปลี่ยน — ชื่อที่ส่งมาเหมือนเดิม API ก็ไม่ย้ายรุ่นอยู่แล้ว แต่ไม่ต้องให้มันหา
+        ...(lensName.trim() && lensName.trim() !== row.name ? { lens_name: lensName.trim() } : {}),
         eye_side: eye,
         sph: sph.trim(),
         cyl: cyl.trim(),
@@ -120,7 +125,7 @@ export default function RxEditDialog({
       title={row.referenceDoc ?? row.sku}
       head={
         <>
-          {row.name}
+          {shortName(row.name)}
           {row.salePrice !== null ? ` · ขาย ${money(row.salePrice)}` : ""}
         </>
       }
@@ -145,6 +150,25 @@ export default function RxEditDialog({
           disabled={busy}
           autoComplete="off"
         />
+      </div>
+
+      <div className="field">
+        <label className="field__label" htmlFor="rxe-lens">
+          ชื่อเลนส์
+        </label>
+        <input
+          id="rxe-lens"
+          className="input"
+          value={lensName}
+          onChange={(e) => setLensName(e.target.value)}
+          disabled={busy}
+          autoComplete="off"
+        />
+        {lensName.trim() && lensName.trim() !== row.name ? (
+          <span className="field__help">
+            ใบนี้จะย้ายไปรุ่น “{lensName.trim()}” — ถ้ายังไม่มีรุ่นชื่อนี้ ระบบเปิดรุ่นใหม่ให้
+          </span>
+        ) : null}
       </div>
 
       <div className="field">

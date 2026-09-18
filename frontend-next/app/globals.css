@@ -4944,6 +4944,10 @@ html,body{overflow-x:clip}
   .fb-fields .bf-dates .datef{width:100%}
   .fb-fields .bf-dates .datef > .datef-input{min-height:46px;font-size:16px}
   .fb-fields .bf-dates-sep{display:none}
+  /* ปฏิทินช่วงวันที่ (DateRangeField แบบ split) แทนคู่ .datef เดิม — กินเต็มแถว
+     เหมือนกัน แล้วให้สอง "จาก"/"ถึง" หารครึ่งกันเองแทนตาราง 1fr 1fr ด้านนอก */
+  .fb-fields .bf-dates .daterange--split{grid-column:1 / -1;width:100%;flex-wrap:nowrap}
+  .fb-fields .bf-dates .daterange__slot{flex:1 1 0;width:auto;min-height:44px;font-size:16px}
 
   /* ปุ่มกลุ่มแบบแบ่งช่อง (ทั้งหมด / SightFirst / ลูกค้าร้าน) กินเต็มความกว้าง
      แต่แบ่งช่องตามความยาวชื่อ ไม่ใช่หารสามเท่า ๆ กัน — หารเท่ากันแล้วช่อง
@@ -5018,3 +5022,191 @@ html,body{overflow-x:clip}
   .measure-grid{gap:8px}
   .measure-grid .measure-input input{min-height:44px;font-size:16px}
 }
+
+/* ── ปฏิทินช่วงวันที่สองเดือน (DateRangeField) ───────────────────────────────
+   ตัวคอมโพเนนต์อยู่ที่ stockmod/components/DateRangeField.tsx ใช้ร่วมกับฝั่ง
+   คลัง — คัดลอกเฉพาะคลาสที่มันอ้างมาจาก app/stock/globals.css เพราะสไตล์นั้น
+   โหลดเฉพาะฝั่งคลัง (ดูเหตุผลใน app/stock/layout.tsx) ไม่ข้ามมาฝั่งร้าน · แปลง
+   ชื่อตัวแปรเป็นของฝั่งนี้ (--ink แทน --color-ink ฯลฯ) ค่าสีเดียวกันทุกตัว
+   เทียบแล้วตรงกันแบบเลขต่อเลข ไม่ใช่ของใหม่ที่อาจไม่เข้าธีม
+
+   `.btn--primary` `.btn--quiet` `.btn--small` `.chips` `.icon` เป็นชื่อคลาส
+   BEM ของฝั่งคลังที่ฝั่งร้านไม่เคยมี (ฝั่งร้านใช้ `.btn-sm` `.btn-ghost` ขีดเดียว)
+   จึงคัดลอกมาเฉพาะสี่ตัวที่ปฏิทินนี้ใช้จริง ไม่ชนของเดิม · ส่วน `.btn` ฐาน
+   ใช้ของฝั่งร้านเอง (โครงสร้างเกือบเหมือนกันอยู่แล้ว) ไม่ต้องคัดลอกซ้ำ */
+.input {
+  min-height: 46px;
+  inline-size: 100%;
+  padding: 11px 14px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: var(--field);
+  color: var(--ink);
+  transition: background var(--dur-fast) var(--ease-out),
+              border-color var(--dur-fast) var(--ease-out);
+}
+
+.btn--primary {
+  background: var(--green);
+  border-color: transparent;
+  color: var(--ink);
+  font-weight: 600;
+  box-shadow: var(--shadow-green);
+}
+
+/* ปุ่มเงียบไม่มีทั้งพื้นและขอบ เท่ากับ `.btn-ghost` — ใช้กับงานที่ไม่อยากให้
+   แข่งกับปุ่มหลักในกล่องเดียวกัน (ยกเลิก) */
+.btn--quiet {
+  background: transparent;
+  border-color: transparent;
+  color: #1E293B;
+  box-shadow: none;
+}
+
+.btn--small { min-height: 36px; padding: 6px 14px; font-size: var(--t-sm); font-weight: 600; }
+
+.chips { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+
+.icon { inline-size: 1.05em; block-size: 1.05em; flex: none; }
+
+.toolbar__lead { font-size: var(--t-xs); color: var(--ink-faint); white-space: nowrap; }
+
+.daterange { position: relative; }
+
+.daterange__face {
+  inline-size: 100%;
+  text-align: start;
+  cursor: pointer;
+}
+
+.daterange__pop {
+  z-index: 900;
+  padding: 1.5rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--card);
+  box-shadow: var(--shadow-pop);
+}
+
+.daterange__months { display: flex; flex-wrap: wrap; gap: 2.5rem; }
+
+.daterange__cal { flex: 1 1 15rem; min-inline-size: 14.5rem; }
+
+.daterange__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-block-end: 0.75rem;
+}
+
+.daterange__title { font-weight: 700; font-size: var(--t-base); letter-spacing: 0.01em; }
+
+.daterange__step {
+  inline-size: 2rem;
+  block-size: 2rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--card);
+  color: var(--ink-soft);
+  font-size: var(--t-md);
+  line-height: 1;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out);
+}
+.daterange__step:hover { background: var(--green-tint); border-color: var(--green-edge); color: var(--green-deep); }
+.daterange__step--ghost { visibility: hidden; cursor: default; }
+
+.daterange__dow,
+.daterange__grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  /* ไม่มีช่องว่างระหว่างวัน — แถบของช่วงต้องต่อกันเป็นแถบเดียว */
+  gap: 0;
+}
+
+.daterange__dow {
+  margin-block-end: 0.25rem;
+  font-size: var(--t-xs);
+  font-weight: 600;
+  color: var(--ink-dim);
+  text-align: center;
+}
+
+.daterange__pad { block-size: 2.25rem; }
+
+.daterange__day {
+  position: relative;
+  block-size: 2.25rem;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--ink);
+  font-size: var(--t-sm);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+.daterange__day:hover { background: var(--field-hover); }
+
+.daterange__day--rest { color: var(--ink-soft); }
+
+.daterange__day--today::after {
+  content: "";
+  position: absolute;
+  inset-block-end: 0.3rem;
+  inset-inline-start: 50%;
+  translate: -50% 0;
+  inline-size: 3px;
+  block-size: 3px;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+}
+
+.daterange__day--in { background: var(--green-tint); border-radius: 0; }
+.daterange__day--in:hover { background: #CDF2E1; }
+
+.daterange__day--on {
+  background: var(--accent);
+  color: var(--bg);
+  font-weight: 700;
+  box-shadow: var(--shadow-green);
+}
+.daterange__day--on.daterange__day--today::after { background: var(--bg); }
+
+.daterange__day--start { border-start-end-radius: 0; border-end-end-radius: 0; }
+.daterange__day--end { border-start-start-radius: 0; border-end-start-radius: 0; }
+
+.daterange__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-block-start: 1.5rem;
+  padding-block-start: 1rem;
+  border-block-start: 1px solid var(--line);
+}
+
+.daterange__read { font-size: var(--t-sm); font-weight: 600; color: var(--ink-soft); }
+
+/* สองช่องวันที่ยืนคู่กันพร้อมป้าย "จาก"/"ถึง" คั่น — ใช้แทนช่อง DateField
+   คู่เดิมของหน้าร้าน (cases / logs / pos-history) */
+.daterange--split {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  inline-size: auto;
+  flex-wrap: wrap;
+}
+
+.daterange__slot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  inline-size: 10.5rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.daterange__slot .icon { color: var(--ink-dim); flex: none; }

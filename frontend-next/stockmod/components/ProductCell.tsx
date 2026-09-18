@@ -1,7 +1,7 @@
 "use client";
 
 import type { ProductRow } from "@/stockmod/lib/api";
-import { lensRx, lensSpec } from "@/stockmod/lib/format";
+import { lensRx, lensSpec, shortName } from "@/stockmod/lib/format";
 
 /**
  * Who the row is about, in one cell instead of three.
@@ -49,7 +49,7 @@ export default function ProductCell({
   return (
     <th scope="row">
       <span className="grid__name">
-        {row.name}
+        {shortName(row.name)}
         {side ? (
           <span className="eye eye--inline">
             {side === "left" ? "L" : "R"}

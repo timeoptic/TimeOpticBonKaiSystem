@@ -9,7 +9,7 @@ import { Filter, FilterBar, withCount } from "@/stockmod/components/FilterBar";
 import RecordCard, { CardList } from "@/stockmod/components/RecordCard";
 import ShopIssueDialog from "@/stockmod/components/ShopIssueDialog";
 import { qs, useApi } from "@/stockmod/lib/useApi";
-import { count, dateTime, money } from "@/stockmod/lib/format";
+import { count, dateTime, money, shortName } from "@/stockmod/lib/format";
 import type { MovementRow, Page, Person } from "@/stockmod/lib/api";
 
 type Counts = Record<string, number>;
@@ -384,7 +384,7 @@ function MovementCard({
           <span className="reccard__when">{dateTime(r.createdAt)}</span>
         </>
       }
-      title={r.productName}
+      title={shortName(r.productName)}
       sub={r.sku}
       fields={[
         {
@@ -392,10 +392,15 @@ function MovementCard({
           value:
             r.quantity === 0 ? (
               <span className="grid__muted">—</span>
-            ) : r.quantity > 0 ? (
-              <span className="grid__num--in">+{count(r.quantity)}</span>
             ) : (
-              count(r.quantity)
+              <>
+                {r.quantity > 0 ? (
+                  <span className="grid__num--in">+{count(r.quantity)}</span>
+                ) : (
+                  count(r.quantity)
+                )}
+                <Left n={r.balanceAfter} />
+              </>
             ),
         },
         showMoney && {
@@ -471,7 +476,7 @@ function Row({
       </td>
 
       <td>
-        <span className="grid__name">{r.productName}</span>
+        <span className="grid__name">{shortName(r.productName)}</span>
         <span className="grid__sub">{r.sku}</span>
       </td>
       {/* แถวเรื่องเงินไม่มีของเคลื่อน — ขีดกลางบอกว่า "ไม่มีจำนวน" ส่วนเลข 0
@@ -480,6 +485,7 @@ function Row({
         {r.quantity === 0
           ? <span className="grid__muted">—</span>
           : r.quantity > 0 ? `+${count(r.quantity)}` : count(r.quantity)}
+        {r.quantity !== 0 ? <Left n={r.balanceAfter} block /> : null}
       </td>
 
       {/* One money column instead of two. Cost leads because it is the figure
@@ -572,5 +578,18 @@ function Row({
         </td>
       ) : null}
     </tr>
+  );
+}
+
+/**
+ * ยอดคงเหลือหลังรายการนี้ — ร้านขอ 18 ก.ย. 2026 · "+1" หรือ "-1" อย่างเดียวไม่บอกว่าตอนนั้น
+ * เหลือเท่าไร ต้องไปนับย้อนเอง · สีหม่นไว้ข้างใต้ ตัวเลขที่เคลื่อนยังเป็นเรื่องหลักของแถว
+ */
+function Left({ n, block = false }: { n: number | null; block?: boolean }) {
+  if (n === null) return null;
+  return (
+    <span className={block ? "grid__sub" : "grid__muted"} style={block ? undefined : { marginInlineStart: 6 }}>
+      เหลือ {count(n)}
+    </span>
   );
 }

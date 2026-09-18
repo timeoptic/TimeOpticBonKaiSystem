@@ -22,7 +22,7 @@ import {
   type RxOrderRow,
 } from "@/stockmod/lib/api";
 import { qs, useApi } from "@/stockmod/lib/useApi";
-import { dateTime, diopter, money } from "@/stockmod/lib/format";
+import { dateTime, diopter, money, shortName } from "@/stockmod/lib/format";
 import {
   ADD_LADDER,
   AXIS_LADDER,
@@ -131,36 +131,51 @@ function whoLine(o: Order): string {
  *
  * ใครเข้าฝั่งคลังได้ก็ติ๊กได้ เพราะคนรับของคือคนที่รู้ · หน้าเคสกับกระดานงานเห็นเอง และเมื่อ
  * เลนส์ของเคสมาครบทุกข้าง ระบบแจ้ง Telegram · ติ๊กผิดเอาออกได้ ติ๊กซ้ำไม่ทับเวลาเดิม
+ *
+ * ติ๊กเข้าเปิดป๊อปอัพถามเลขรับที่มากับเลนส์ก่อน (ร้านขอ 18 ก.ย. 2026) — ติ๊กยังไม่ขึ้นจนกว่า
+ * จะกดบันทึก ปิดป๊อปอัพ = ไม่ได้ติ๊ก · กดเลขรับที่ขึ้นอยู่ใต้ติ๊กเพื่อแก้เลขทีหลังได้
  */
 function ArrivedCheck({ row, onDone }: { row: Order; onDone: () => void }) {
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const arrived = row.arrivedAt !== null;
-  /* ค่าที่เพิ่งกด — ติ๊กขึ้นทันทีที่กด ไม่ต้องรอรายการโหลดใหม่ (ช่องที่กดแล้วนิ่งอ่านว่า
+  /* ค่าที่เพิ่งกด — ติ๊กขึ้นทันทีที่บันทึก ไม่ต้องรอรายการโหลดใหม่ (ช่องที่กดแล้วนิ่งอ่านว่า
      กดไม่ติด แล้วคนจะกดซ้ำ) · ล้างเมื่อแถวที่โหลดกลับมาตรงกันแล้ว หรือบันทึกไม่สำเร็จ */
   const [pending, setPending] = useState<boolean | null>(null);
   const shown = pending ?? arrived;
   const id = `rx-arrived-${row.id}`;
 
+  /* ป๊อปอัพเลขรับ — null คือปิดอยู่ */
+  const [asking, setAsking] = useState<string | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+
   useEffect(() => {
     if (pending !== null && arrived === pending) setPending(null);
   }, [arrived, pending]);
 
-  async function toggle(next: boolean) {
+  async function send(next: boolean, ref?: string) {
     setPending(next);
     setBusy(true);
+    setProblem(null);
     try {
-      await api.post(`/rx/${row.id}/arrived`, { arrived: next });
+      await api.post(`/rx/${row.id}/arrived`, next ? { arrived: true, ref } : { arrived: false });
       toast.success({
         text: next
-          ? `เลนส์ ${row.referenceDoc ?? row.sku} มาถึงแล้ว`
+          ? arrived
+            ? `แก้เลขรับของ ${row.referenceDoc ?? row.sku} แล้ว`
+            : `เลนส์ ${row.referenceDoc ?? row.sku} มาถึงแล้ว`
           : `เอาติ๊กเลนส์ ${row.referenceDoc ?? row.sku} ออกแล้ว`,
-        detail: row.caseCode ? `เคส ${row.caseCode}` : row.name,
+        detail: [ref ? `เลขรับ ${ref}` : null, row.caseCode ? `เคส ${row.caseCode}` : row.name]
+          .filter(Boolean)
+          .join(" · "),
       });
+      setAsking(null);
       onDone();
     } catch (e) {
       setPending(null);
-      toast.error({ text: "บันทึกไม่สำเร็จ", detail: ApiError.is(e) ? e.message : "ลองใหม่อีกครั้ง" });
+      const why = ApiError.is(e) ? e.message : "ลองใหม่อีกครั้ง";
+      if (next) setProblem(why);
+      else toast.error({ text: "บันทึกไม่สำเร็จ", detail: why });
     } finally {
       setBusy(false);
     }
@@ -177,7 +192,14 @@ function ArrivedCheck({ row, onDone }: { row: Order; onDone: () => void }) {
           type="checkbox"
           checked={shown}
           disabled={busy}
-          onChange={(e) => void toggle(e.target.checked)}
+          onChange={(e) => {
+            if (e.target.checked) {
+              setProblem(null);
+              setAsking("");
+            } else {
+              void send(false);
+            }
+          }}
           style={{ inlineSize: 20, blockSize: 20 }}
         />
         <span className={shown ? "grid__name" : "grid__muted"}>{shown ? "มาถึงแล้ว" : "รอเลนส์"}</span>
@@ -186,7 +208,70 @@ function ArrivedCheck({ row, onDone }: { row: Order; onDone: () => void }) {
         <span className="grid__sub">
           {dateTime(row.arrivedAt)}
           {row.arrivedByName ? ` · ${row.arrivedByName}` : ""}
+          {" · "}
+          <button
+            type="button"
+            className="grid__link"
+            onClick={() => {
+              setProblem(null);
+              setAsking(row.arrivedRef ?? "");
+            }}
+            disabled={busy}
+          >
+            {row.arrivedRef ? `เลขรับ ${row.arrivedRef}` : "ใส่เลขรับ"}
+          </button>
         </span>
+      ) : null}
+
+      {asking !== null ? (
+        <TaskDialog
+          eyebrow={arrived ? "แก้เลขรับ" : "เลนส์มาถึงแล้ว"}
+          title={row.referenceDoc ?? row.sku}
+          head={[row.name, row.caseCode ? `เคส ${row.caseCode}` : null].filter(Boolean).join(" · ")}
+          onClose={() => (busy ? undefined : setAsking(null))}
+        >
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (asking.trim() === "") {
+                setProblem("ใส่เลขรับที่มากับเลนส์ก่อน");
+                return;
+              }
+              void send(true, asking.trim());
+            }}
+            noValidate
+          >
+            <div className="field">
+              <label className="field__label" htmlFor={`${id}-ref`}>
+                เลขรับ
+              </label>
+              <input
+                id={`${id}-ref`}
+                className="input"
+                value={asking}
+                onChange={(e) => setAsking(e.target.value)}
+                placeholder="เลขที่มากับกล่องเลนส์"
+                maxLength={100}
+                disabled={busy}
+                autoComplete="off"
+                autoFocus
+              />
+            </div>
+            {problem ? (
+              <div className="notice notice--error" role="alert">
+                {problem}
+              </div>
+            ) : null}
+            <div className="chips">
+              <button type="submit" className="btn btn--primary" disabled={busy}>
+                {busy ? "กำลังบันทึก…" : arrived ? "บันทึกเลขรับ" : "บันทึกว่ามาถึงแล้ว"}
+              </button>
+              <button type="button" className="btn btn--quiet" onClick={() => setAsking(null)} disabled={busy}>
+                ยกเลิก
+              </button>
+            </div>
+          </form>
+        </TaskDialog>
       ) : null}
     </span>
   );
@@ -586,7 +671,7 @@ function useOrderRow(row: Order, onDone: () => void) {
         text: `${row.unitCost === null ? "ลงต้นทุน" : "แก้ต้นทุน"}ใบสั่ง ${
           row.referenceDoc ?? row.sku
         } แล้ว`,
-        detail: `${row.name} · ${
+        detail: `${shortName(row.name)} · ${
           row.unitCost === null
             ? money(Number(value.trim()))
             : `จาก ${money(row.unitCost)} เป็น ${money(Number(value.trim()))}`
@@ -699,7 +784,7 @@ function OrderCard({
             <span className="reccard__money">{money(row.unitCost as number)}</span>
           )
         }
-        title={row.name}
+        title={shortName(row.name)}
         sub={[row.referenceDoc ?? "—", row.branch ?? "TimeOptic"].join(" · ")}
         fields={[
           row.caseId !== null ? { label: "เคส", value: <CaseLink row={row} /> } : null,
@@ -831,7 +916,7 @@ function OrderCard({
           title={row.referenceDoc ?? row.sku}
           from={row.unitCost}
           to={c.askCost}
-          note={`${row.name} · ทุกครั้งที่แก้จะมีบรรทัดในสมุดบอกว่าใครแก้`}
+          note={`${shortName(row.name)} · ทุกครั้งที่แก้จะมีบรรทัดในสมุดบอกว่าใครแก้`}
           busy={c.busy}
           problem={c.problem}
           onConfirm={() => void c.save()}
@@ -845,7 +930,7 @@ function OrderCard({
           title={row.referenceDoc ?? row.sku}
           from={row.salePrice}
           to={c.askPrice}
-          note={row.name}
+          note={shortName(row.name)}
           busy={c.priceBusy}
           problem={c.priceProblem}
           onConfirm={() => void c.savePrice()}
@@ -896,7 +981,7 @@ function OrderRow({
       </th>
       <td>
         <EyeTag side={row.eyeSide} />
-        <span className="grid__name">{row.name}</span>
+        <span className="grid__name">{shortName(row.name)}</span>
         <span className="grid__sub grid__rx">{rx ?? "ไม่ได้บันทึกค่าสายตา"}</span>
       </td>
       <td className="grid__muted grid__when">
@@ -977,7 +1062,7 @@ function OrderRow({
             to={askCost}
             /* ยังถามก่อนทุกครั้ง ถึงจะแก้ทีหลังได้แล้วก็ตาม — กำไรของงานนี้ถูกคิด
                จากตัวเลขนี้ทุกที่ และการแก้ลงสมุดเป็นบรรทัดที่มีชื่อคนแก้ติดอยู่ */
-            note={`${row.name} · ทุกครั้งที่แก้จะมีบรรทัดในสมุดบอกว่าใครแก้`}
+            note={`${shortName(row.name)} · ทุกครั้งที่แก้จะมีบรรทัดในสมุดบอกว่าใครแก้`}
             busy={busy}
             problem={problem}
             onConfirm={() => void save()}
@@ -1050,7 +1135,7 @@ function OrderRow({
             title={row.referenceDoc ?? row.sku}
             from={row.salePrice}
             to={askPrice}
-            note={row.name}
+            note={shortName(row.name)}
             busy={priceBusy}
             problem={priceProblem}
             onConfirm={() => void savePrice()}
@@ -1756,7 +1841,7 @@ export function LensModels() {
     try {
       await api.post(`/products/${row.id}/delete`);
       list.reload();
-      toast.success({ text: `ลบรุ่น ${row.name} แล้ว` });
+      toast.success({ text: `ลบรุ่น ${shortName(row.name)} แล้ว` });
     } catch (e) {
       setProblem(ApiError.is(e) ? e.message : "ลบไม่สำเร็จ");
     }
@@ -1836,7 +1921,7 @@ export function LensModels() {
                 {rows.map((r) => (
                   <tr className="grid__row" key={r.id}>
                     <th scope="row">
-                      <span className="grid__name">{r.name}</span>
+                      <span className="grid__name">{shortName(r.name)}</span>
                       <span className="grid__sub">
                         {r.sku}
                         {r.brand ? ` · ${r.brand}` : ""}
@@ -1847,7 +1932,7 @@ export function LensModels() {
                     </td>
                     <td className="grid__num">
                       <InlineEdit
-                        label={`ราคาตั้งของ ${r.name}`}
+                        label={`ราคาตั้งของ ${shortName(r.name)}`}
                         value={String(r.basePrice)}
                         display={money(r.basePrice)}
                         disabled={!mayEdit}
@@ -1860,7 +1945,7 @@ export function LensModels() {
                           type="button"
                           className="btn btn--danger btn--small btn--icon"
                           onClick={() => remove(r)}
-                          aria-label={`ลบรุ่น ${r.name}`}
+                          aria-label={`ลบรุ่น ${shortName(r.name)}`}
                         >
                           <IconTrash />
                         </button>

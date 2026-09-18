@@ -322,9 +322,11 @@ final class Rx
      * สิ่งที่แก้ที่นี่คือ "ใบสั่งใบนี้บอกอะไร" ไม่ใช่ "ใบสั่งใบนี้คือของอะไร":
      *
      *   แก้ได้     เลขใบสั่ง · ค่าสายตาทั้งชุด · หมายเหตุ · ราคาขาย
-     *   แก้ไม่ได้  รุ่นเลนส์ — เปลี่ยนรุ่นคือคนละใบ ไม่ใช่ใบเดิมที่พิมพ์ผิด และ
-     *              `product_id` ของแถวนี้เป็นตัวที่รายงานทุกตัวรวมยอดตาม
-     *              เปลี่ยนมันเงียบ ๆ = ย้ายยอดของเดือนที่ปิดไปแล้วข้ามรุ่น
+     *   แก้ได้     ชื่อเลนส์ (`lens_name`) — ร้านขอ 18 ก.ย. 2026 เพราะหน้าร้านพิมพ์ชื่อรุ่นผิด
+     *              มาเยอะ · ชื่อใหม่หา/เปิดรุ่นผ่าน modelByName แบบเดียวกับตอนสั่ง แล้วย้าย
+     *              `product_id` ของแถวนี้ไปรุ่นนั้น · ยอดของใบนี้ในรายงานย้ายตามไปด้วย
+     *              ซึ่งคือสิ่งที่ต้องการ — ยอดเดิมอยู่ผิดรุ่นมาตั้งแต่แรก · ชื่อรุ่นเดิมไม่ถูกแก้
+     *              เพราะใบอื่นที่ชี้รุ่นนั้นอยู่อาจถูกต้อง
      *   แก้ไม่ได้  ต้นทุน — แก้ได้ แต่ไม่ใช่ที่นี่ มันมีเส้นของตัวเองที่ setCost
      *              เพราะเป็นคนละสิทธิ์ (ฝ่ายบัญชี) และลงสมุดคนละบรรทัด · ส่งมาก็
      *              ไม่รับ ไม่ต้องโยน error: ฟอร์มไม่มีช่องนี้ให้กรอกอยู่แล้ว
@@ -350,9 +352,39 @@ final class Rx
         $doc = $doc === '' ? $log['reference_doc'] : self::str($body, 'reference_doc', 100);
         $note = self::optional($body, 'note', 500);
 
-        Db::tx(static function (PDO $pdo) use ($logId, $doc, $note, $spec): void {
+        /* ชื่อเลนส์ที่ส่งมาว่าง หรือเหมือนเดิม = ไม่ได้ตั้งใจเปลี่ยนรุ่น */
+        $productId = null;
+        $lensName = trim((string) ($body['lens_name'] ?? ''));
+        if ($lensName !== '' && mb_strtolower($lensName) !== mb_strtolower(trim((string) $log['name']))) {
+            $sku = self::modelByName(['lens_name' => $lensName], $roles);
+            $p = Db::one('SELECT id, is_custom_made FROM products WHERE sku = ?', [$sku]);
+            if ($p === null) {
+                throw ApiError::unknownSku($sku);
+            }
+            // กติกาเดียวกับตอนสั่ง — ของที่ยังมีในคลังต้องตัดตาม FIFO ไม่ใช่สั่งตัด
+            if (!(bool) $p['is_custom_made']) {
+                $onHand = (int) Db::value(
+                    'SELECT COALESCE(SUM(remaining_qty), 0) FROM stock_lots WHERE product_id = ?',
+                    [$p['id']],
+                );
+                if ($onHand > 0) {
+                    throw ApiError::conflict(
+                        'still_in_stock',
+                        "เลนส์รุ่นนี้ยังมีสต็อกอยู่ {$onHand} ชิ้น ให้ตัดตามล็อต FIFO แทนการสั่งตัด",
+                        ['sku' => $sku, 'available' => $onHand],
+                    );
+                }
+            }
+            $productId = (int) $p['id'];
+        }
+
+        Db::tx(static function (PDO $pdo) use ($logId, $doc, $note, $spec, $productId): void {
             $pdo->prepare('UPDATE inventory_logs SET reference_doc = ?, notes = ? WHERE id = ?')
                 ->execute([$doc, $note, $logId]);
+            if ($productId !== null) {
+                $pdo->prepare('UPDATE inventory_logs SET product_id = ? WHERE id = ?')
+                    ->execute([$productId, $logId]);
+            }
 
             self::ensureDetail($pdo, $logId);
             $pdo->prepare(
@@ -785,6 +817,8 @@ final class Rx
             // เลนส์มาถึงร้านเมื่อไร และใครติ๊ก (036) — null คือยังไม่มา
             'arrivedAt'    => $r['arrived_at'] ?? null,
             'arrivedByName' => $r['arrived_by_name'] ?? null,
+            // เลขรับของที่มากับเลนส์ (037)
+            'arrivedRef'   => $r['arrived_ref'] ?? null,
         ];
     }
 
@@ -808,7 +842,7 @@ final class Rx
 
     private const CASE_COLUMNS = 'lk.slot AS link_slot, lk.case_id AS link_case_id, cs.case_code,
                     e.employee_name AS emp_name, e.first_name AS emp_first, e.last_name AS emp_last,
-                    r.arrived_at, arr.display_name AS arrived_by_name';
+                    r.arrived_at, r.arrived_ref, arr.display_name AS arrived_by_name';
 
     /** ชื่อพนักงาน — ชื่อที่ร้านเรียกก่อน ไม่มีค่อยใช้ชื่อจริงนามสกุล · ไม่มีอะไรเลยคือ null */
     private static function personName(?string $name, ?string $first, ?string $last): ?string
@@ -827,37 +861,53 @@ final class Rx
      * ใครใช้ฝั่งคลังได้ก็ติ๊กได้ (`stock.use`) เพราะคนรับของคือคนที่รู้ · ติ๊กซ้ำไม่ทับเวลาเดิม
      * — "มาถึงเมื่อไร" คือคำตอบที่หน้าร้านเอาไปนัดลูกค้า · เอาติ๊กออกล้างทั้งเวลาและคนติ๊ก
      *
+     * `$ref` คือเลขรับของที่มากับเลนส์ (037) — ถามตอนติ๊ก · ติ๊กซ้ำพร้อมเลขใหม่ = แก้เลข
+     * โดยเวลามาถึงเดิมไม่ขยับ · เอาติ๊กออกล้างเลขไปด้วย
+     *
      * `notice` คือข้อความ Telegram เมื่อการติ๊กครั้งนี้ทำให้เลนส์ของเคสมาครบทุกข้าง ·
      * คืนข้อความ ไม่ได้ส่งเอง — เส้น API เป็นคนส่ง เทสต์จึงไม่ยิงเข้ากลุ่มจริง
      *
      * @param list<string> $roles
-     * @return array{id:int,arrivedAt:?string,arrivedByName:?string,notice:?string}
+     * @return array{id:int,arrivedAt:?string,arrivedByName:?string,arrivedRef:?string,notice:?string}
      */
-    public static function setArrived(int $logId, bool $arrived, array $roles, int $actorId): array
+    public static function setArrived(int $logId, bool $arrived, array $roles, int $actorId, ?string $ref = null): array
     {
         Roles::require(Roles::useStock($roles), 'ติ๊กว่าเลนส์มาถึงแล้ว');
         self::liveOrder($logId);
 
-        $changed = Db::tx(static function (PDO $pdo) use ($logId, $arrived, $actorId): bool {
+        $ref = $ref === null ? null : trim($ref);
+        if ($ref === '') {
+            $ref = null;
+        }
+        if ($ref !== null && mb_strlen($ref) > 100) {
+            throw ApiError::badRequest('เลขรับยาวเกิน 100 ตัวอักษร', 'field_too_long');
+        }
+
+        $changed = Db::tx(static function (PDO $pdo) use ($logId, $arrived, $actorId, $ref): bool {
             self::ensureDetail($pdo, $logId);
             $st = $pdo->prepare('SELECT arrived_at FROM rx_orders WHERE log_id = ? FOR UPDATE');
             $st->execute([$logId]);
             $had = !in_array($st->fetchColumn(), [null, false], true);
             if ($had === $arrived) {
+                // มาแล้วอยู่แล้ว แต่ส่งเลขรับมา = แก้เลข · เวลากับคนติ๊กเดิมไม่ขยับ
+                if ($arrived && $ref !== null) {
+                    $pdo->prepare('UPDATE rx_orders SET arrived_ref = ? WHERE log_id = ?')
+                        ->execute([$ref, $logId]);
+                }
                 return false;
             }
             if ($arrived) {
-                $pdo->prepare('UPDATE rx_orders SET arrived_at = NOW(), arrived_by = ? WHERE log_id = ?')
-                    ->execute([$actorId, $logId]);
+                $pdo->prepare('UPDATE rx_orders SET arrived_at = NOW(), arrived_by = ?, arrived_ref = ? WHERE log_id = ?')
+                    ->execute([$actorId, $ref, $logId]);
             } else {
-                $pdo->prepare('UPDATE rx_orders SET arrived_at = NULL, arrived_by = NULL WHERE log_id = ?')
+                $pdo->prepare('UPDATE rx_orders SET arrived_at = NULL, arrived_by = NULL, arrived_ref = NULL WHERE log_id = ?')
                     ->execute([$logId]);
             }
             return true;
         });
 
         $now = Db::one(
-            'SELECT r.arrived_at, a.display_name FROM rx_orders r LEFT JOIN admins a ON a.id = r.arrived_by WHERE r.log_id = ?',
+            'SELECT r.arrived_at, r.arrived_ref, a.display_name FROM rx_orders r LEFT JOIN admins a ON a.id = r.arrived_by WHERE r.log_id = ?',
             [$logId],
         );
 
@@ -865,6 +915,7 @@ final class Rx
             'id'            => $logId,
             'arrivedAt'     => $now['arrived_at'] ?? null,
             'arrivedByName' => $now['display_name'] ?? null,
+            'arrivedRef'    => $now['arrived_ref'] ?? null,
             'notice'        => $changed && $arrived ? self::arrivalNotice($logId) : null,
         ];
     }

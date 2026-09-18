@@ -82,6 +82,10 @@ Http::get('/api/products', static function () use ($maySeeCost): array {
         'index'       => Http::query('index'),
         'design'      => Http::query('design'),
         'coating'     => Http::query('coating'),
+        'sph_from'    => Http::query('sph_from'),
+        'sph_to'      => Http::query('sph_to'),
+        'cyl_from'    => Http::query('cyl_from'),
+        'cyl_to'      => Http::query('cyl_to'),
         'category_id' => Http::query('cat') === null ? null : (int) Http::query('cat'),
         'state'       => Http::query('state'),
         'sort'        => Http::query('sort'),
@@ -254,6 +258,10 @@ Http::get('/api/lens-options', static function (): array {
         'index'   => Http::query('index'),
         'design'  => Http::query('design'),
         'coating' => Http::query('coating'),
+        'sph_from' => Http::query('sph_from'),
+        'sph_to'   => Http::query('sph_to'),
+        'cyl_from' => Http::query('cyl_from'),
+        'cyl_to'   => Http::query('cyl_to'),
     ]);
 });
 
@@ -402,7 +410,8 @@ Http::post('/api/rx/{id}/arrived', static function (array $p): array {
     }
     $body = Http::body();
     $arrived = filter_var($body['arrived'] ?? true, FILTER_VALIDATE_BOOLEAN);
-    $out = Rx::setArrived((int) $p['id'], $arrived, $actor['roles'], (int) $actor['id']);
+    $ref = isset($body['ref']) && is_scalar($body['ref']) ? (string) $body['ref'] : null;
+    $out = Rx::setArrived((int) $p['id'], $arrived, $actor['roles'], (int) $actor['id'], $ref);
     if ($out['notice'] !== null) {
         try {
             Telegram::send($out['notice']);

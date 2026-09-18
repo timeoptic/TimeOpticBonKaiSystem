@@ -154,3 +154,43 @@ test('SPH ที่ไม่ใช่ตัวเลขถูกปฏิเส�
         eq($status, 400, 'sph=abc');
     });
 });
+
+test('ชิปหลายตัวในช่องเดียว = ตัวไหนก็ได้ · ช่วง SPH/CYL รวมหัวท้าย และกลับด้านได้', function () {
+    rollback(function (Tx $q) {
+        lensFilterCatalogue($q);
+        eq(
+            lensFiltered(['coating' => 'Blue|Hard', 'sph' => '+0.25', 'cyl' => '-0.75']),
+            ['TLF-B-P25-M75', 'TLF-H-P25-M75'],
+            'Blue หรือ Hard'
+        );
+        eq(
+            lensFiltered(['coating' => 'Auto', 'cyl_from' => '-0.75', 'cyl_to' => '-0.50']),
+            ['TLF-A-M25-M75', 'TLF-A-P25-M50', 'TLF-A-P25-M75'],
+            'CYL -0.75 ถึง -0.50 ไม่ได้ -1.00'
+        );
+        eq(
+            lensFiltered(['coating' => 'Auto', 'cyl_from' => '-0.50', 'cyl_to' => '-0.75']),
+            ['TLF-A-M25-M75', 'TLF-A-P25-M50', 'TLF-A-P25-M75'],
+            'หัวท้ายกลับด้าน'
+        );
+        eq(lensFiltered(['sph_from' => '1', 'index' => '1.5']), ['TLF-MC-P150-0'], 'SPH ตั้งแต่ +1 · index 1.5 = 1.50');
+    });
+});
+
+test('จำนวนบนชิปตรงกับรายการที่กดแล้วได้จริง', function () {
+    rollback(function (Tx $q) {
+        lensFilterCatalogue($q);
+        $scope = ['q' => 'TLF', 'coating' => 'Auto'];
+        $facets = Router::dispatch('GET', '/api/stock/lens-options', $scope);
+        /* ช่องของตัวเองไม่ถูกนับรวม — Coating ยังเห็นครบทุกตัวแม้เลือก Auto อยู่ */
+        $coat = array_column($facets['coatings'], 'count', 'value');
+        eq($coat['Auto-Blue'] ?? 0, 2, 'Auto-Blue ยังนับได้ตอนเลือก Auto');
+        foreach ($facets['cyls'] as $c) {
+            eq(
+                count(lensFiltered($scope + ['cyl_from' => $c['value'], 'cyl_to' => $c['value']])),
+                $c['count'],
+                'CYL ' . $c['value']
+            );
+        }
+    });
+});

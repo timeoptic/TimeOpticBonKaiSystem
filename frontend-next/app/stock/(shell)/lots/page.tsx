@@ -8,7 +8,7 @@ import SortHead, { SortBar, useSort } from "@/stockmod/components/SortHead";
 import LotEditDialog from "@/stockmod/components/LotEditDialog";
 import RecordCard, { CardList } from "@/stockmod/components/RecordCard";
 import { qs, useApi } from "@/stockmod/lib/useApi";
-import { count, date, money } from "@/stockmod/lib/format";
+import { count, date, money, shortName } from "@/stockmod/lib/format";
 import type { LotRow, Page, Summary } from "@/stockmod/lib/api";
 
 type Counts = { all: number; onhand: number; empty: number; nocost: number; expiring: number };
@@ -242,7 +242,7 @@ export default function LotsPage() {
                   </>
                 )
               }
-              title={r.productName}
+              title={shortName(r.productName)}
               sub={`${r.sku} · ${r.supplierName ?? "ไม่ระบุผู้ขาย"}`}
               fields={[
                 money$
@@ -317,7 +317,7 @@ export default function LotsPage() {
                     <span className="grid__name">{r.supplierName ?? "ไม่ระบุผู้ขาย"}</span>
                   </th>
                   <td>
-                    <span className="grid__name">{r.productName}</span>
+                    <span className="grid__name">{shortName(r.productName)}</span>
                     <span className="grid__sub">{r.sku}</span>
                   </td>
                   <td className="grid__num">

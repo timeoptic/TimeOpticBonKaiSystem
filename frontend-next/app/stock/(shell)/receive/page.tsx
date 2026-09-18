@@ -12,7 +12,7 @@ import NewProductDialog from "@/stockmod/components/NewProductDialog";
 import Select from "@/stockmod/components/Select";
 import { api, ApiError, type CreatedLot, type ProductRow, type ReceiveDefaults } from "@/stockmod/lib/api";
 import { useApi } from "@/stockmod/lib/useApi";
-import { count, date, money } from "@/stockmod/lib/format";
+import { count, date, money, shortName } from "@/stockmod/lib/format";
 import DateField from "@/stockmod/components/DateField";
 
 type Supplier = { id: number; name: string };
@@ -182,14 +182,14 @@ export default function ReceivePage() {
       {product !== null ? (
         <TaskDialog
           eyebrow="รับของเข้าคลัง"
-          title={product.name}
+          title={shortName(product.name)}
           head={<PickedSummary row={product} showName={false} />}
           onClose={() => setProduct(null)}
         >
           {product.isCustomMade ? (
             <div className="notice" role="status">
               <p>
-                <strong>{product.name}</strong> เป็นสินค้าสั่งตัด — ไม่เก็บเป็นล็อตในคลัง
+                <strong>{shortName(product.name)}</strong> เป็นสินค้าสั่งตัด — ไม่เก็บเป็นล็อตในคลัง
                 จึงไม่มีอะไรให้รับเข้า
               </p>
               <p className="field__help">

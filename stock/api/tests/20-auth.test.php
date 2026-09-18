@@ -129,12 +129,14 @@ test('บทบาทบัญชี — เงินและรายงาน
     ok(Roles::seeBranchMoney($acc), 'เห็นยอดและกำไรจากสาขา');
     ok(Roles::settleBranch($acc), 'บันทึกรับเงินจากสาขาได้');
     ok(Roles::useStock($acc), 'เข้าฝั่งคลังไปดูมูลค่าคลังกับยอดสาขาได้');
+    /* ร้านขอ 18 ก.ย. 2026 — ใบกำกับจากผู้ขายมาถึงบัญชี คนลงต้นทุนจึงเป็นบัญชี */
+    ok(Roles::enterRxCost($acc), 'กรอกต้นทุนได้ (ล็อต · RX)');
 
     // สิ่งที่กันไว้ — งานคน งานระบบ และทุกอย่างที่ทำให้ตัวเลขเปลี่ยน
     ok(!Roles::systemZone($acc), 'ไม่เข้ากลุ่มข้อมูลระบบ');
     ok(!Roles::manageAdmins($acc), 'จัดการผู้ใช้ไม่ได้');
     ok(!Roles::manageSystem($acc), 'งานระบบไม่ได้');
-    ok(!Roles::enterRxCost($acc), 'กรอกต้นทุนไม่ได้ — ตรวจตัวเลขที่ตัวเองตั้งไม่ได้');
+    ok(!Roles::moveStock($acc), 'ขยับสต็อกไม่ได้');
     ok(!Roles::editCatalog($acc), 'แก้แคตตาล็อกไม่ได้');
     ok(!Roles::addProduct($acc), 'เพิ่มสินค้าไม่ได้');
     ok(!Roles::manageBranches($acc), 'เพิ่ม/แก้สาขาไม่ได้');

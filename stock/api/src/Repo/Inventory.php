@@ -168,6 +168,31 @@ final class Inventory
         return "NULLIF(JSON_UNQUOTE(JSON_EXTRACT(p.attributes, '$.{$key}')), 'null')";
     }
 
+    /**
+     * Several choices of one filter, sent as `1.56|1.60`.
+     *
+     * A pipe rather than a comma: coatings are free text typed off a rep's
+     * sheet, and a comma inside one is less unlikely than a pipe.
+     *
+     * @return list<string>
+     */
+    private static function many(mixed $v): array
+    {
+        if (!is_string($v)) {
+            return [];
+        }
+        return array_values(array_unique(array_filter(
+            array_map('trim', explode('|', $v)),
+            static fn(string $s): bool => $s !== '',
+        )));
+    }
+
+    /** One end of a power range, or null when absent or not a number. */
+    private static function power(mixed $v): ?float
+    {
+        return is_string($v) && is_numeric(trim($v)) ? round((float) trim($v), 2) : null;
+    }
+
     /** The numeric reading of an attribute, for sorting powers and indexes. */
     private static function attrNum(string $key): string
     {
@@ -276,20 +301,38 @@ final class Inventory
             $args[] = (int) $filter['category_id'];
         }
 
-        // Narrowing a wall of lenses down to the drawer worth walking to. Both
-        // are matched as the exact stored string — the form writes them from a
+        // Narrowing a wall of lenses down to the drawer worth walking to. Each
+        // is matched as the exact stored string — the form writes them from a
         // fixed list, so there is nothing to normalise and nothing to guess.
-        if (!empty($filter['index'])) {
-            $where[] = self::attr('lens_index') . ' = ?';
-            $args[] = (string) $filter['index'];
+        //
+        // Several values of one facet are OR'd, the facets themselves AND'd:
+        // "1.56 or 1.60, Blue" is the question a shop asks when either index
+        // will do for the customer, and two separate searches answer it badly.
+        foreach (['index' => 'lens_index', 'design' => 'lens_design', 'coating' => 'coating'] as $key => $attr) {
+            $values = self::many($filter[$key] ?? null);
+            if ($values !== []) {
+                $where[] = self::attr($attr) . ' IN (' . implode(',', array_fill(0, count($values), '?')) . ')';
+                array_push($args, ...$values);
+            }
         }
-        if (!empty($filter['design'])) {
-            $where[] = self::attr('lens_design') . ' = ?';
-            $args[] = (string) $filter['design'];
-        }
-        if (!empty($filter['coating'])) {
-            $where[] = self::attr('coating') . ' = ?';
-            $args[] = (string) $filter['coating'];
+
+        // SPH / CYL as a range, compared as numbers so "-2" meets "-2.00".
+        // Either end may be open; ends given the wrong way round are swapped
+        // rather than returning nothing, since that is never what was meant.
+        foreach (['sph', 'cyl'] as $key) {
+            $from = self::power($filter["{$key}_from"] ?? null);
+            $to   = self::power($filter["{$key}_to"] ?? null);
+            if ($from !== null && $to !== null && $from > $to) {
+                [$from, $to] = [$to, $from];
+            }
+            if ($from !== null) {
+                $where[] = self::attrNum($key) . ' >= ?';
+                $args[] = $from;
+            }
+            if ($to !== null) {
+                $where[] = self::attrNum($key) . ' <= ?';
+                $args[] = $to;
+            }
         }
 
         /**
@@ -448,6 +491,13 @@ final class Inventory
                     l.lot_number, a.display_name AS actor_name,
                     g.issued_to_admin_id, who.display_name AS issued_to_name, g.scrap_by,
                     EXISTS (SELECT 1 FROM inventory_logs rv WHERE rv.reverses_log_id = g.id) AS returned,
+                    /* ยอดคงเหลือของสินค้านี้หลังรายการนี้ (ร้านขอ 18 ก.ย. 2026) — ผลรวมสมุดที่ผูกล็อต
+                       ถึงแถวนี้ตามลำดับที่ลงสมุด · ยอดล็อต = ผลรวมสมุดของล็อตเสมอ จึงเป็นยอดจริง ณ ตอนนั้น
+                       แถวที่ไม่ผูกล็อต (สั่งตัด RX · แก้ราคา) ไม่ขยับของบนชั้น จึงไม่มียอดให้แสดง */
+                    CASE WHEN g.lot_id IS NULL THEN NULL ELSE
+                      (SELECT COALESCE(SUM(b.quantity), 0) FROM inventory_logs b
+                        WHERE b.product_id = g.product_id AND b.lot_id IS NOT NULL AND b.id <= g.id)
+                    END AS balance_after,
                     (SELECT cs.case_id FROM case_stock_issues cs
                       WHERE g.reference_doc IS NOT NULL AND cs.reference_doc = g.reference_doc
                       ORDER BY cs.id DESC LIMIT 1) AS case_id,
@@ -655,6 +705,13 @@ final class Inventory
                     l.lot_number, a.display_name AS actor_name, a.job_title AS actor_job,
                     g.issued_to_admin_id, who.display_name AS issued_to_name, g.scrap_by,
                     EXISTS (SELECT 1 FROM inventory_logs rv WHERE rv.reverses_log_id = g.id) AS returned,
+                    /* ยอดคงเหลือของสินค้านี้หลังรายการนี้ (ร้านขอ 18 ก.ย. 2026) — ผลรวมสมุดที่ผูกล็อต
+                       ถึงแถวนี้ตามลำดับที่ลงสมุด · ยอดล็อต = ผลรวมสมุดของล็อตเสมอ จึงเป็นยอดจริง ณ ตอนนั้น
+                       แถวที่ไม่ผูกล็อต (สั่งตัด RX · แก้ราคา) ไม่ขยับของบนชั้น จึงไม่มียอดให้แสดง */
+                    CASE WHEN g.lot_id IS NULL THEN NULL ELSE
+                      (SELECT COALESCE(SUM(b.quantity), 0) FROM inventory_logs b
+                        WHERE b.product_id = g.product_id AND b.lot_id IS NOT NULL AND b.id <= g.id)
+                    END AS balance_after,
                     (SELECT cs.case_id FROM case_stock_issues cs
                       WHERE g.reference_doc IS NOT NULL AND cs.reference_doc = g.reference_doc
                       ORDER BY cs.id DESC LIMIT 1) AS case_id,
@@ -895,17 +952,23 @@ final class Inventory
          * row reading 0 the moment one was picked, and switching from 1.60 to
          * 1.67 would look impossible.
          */
-        $tally = static function (string $key, string $drop, string $order) use ($filter): array {
+        $tally = static function (string $key, string|array $drop, string $order, ?string $expr = null) use ($filter): array {
             $scope = $filter;
-            unset($scope[$drop]);
+            foreach ((array) $drop as $d) {
+                unset($scope[$d]);
+            }
             $scope['type'] = 'Lens';
 
             [$clause, $args] = self::productWhere($scope);
-            $expr = self::attr($key);
+            // Emptiness is judged on the stored text even when the value read
+            // is numeric: a DECIMAL compared with '' is compared with 0, and
+            // CYL 0.00 is the commonest power there is.
+            $raw = self::attr($key);
+            $expr ??= $raw;
 
             return Db::all(
                 "SELECT {$expr} AS value, COUNT(*) AS n FROM products p
-                 WHERE {$clause} AND {$expr} IS NOT NULL AND {$expr} <> ''
+                 WHERE {$clause} AND {$raw} IS NOT NULL AND {$raw} <> ''
                  GROUP BY value
                  ORDER BY {$order}",
                 $args,
@@ -947,7 +1010,26 @@ final class Inventory
             $tally('coating', 'coating', 'n DESC, value ASC'),
         );
 
-        return ['indexes' => $indexes, 'designs' => $designs, 'coatings' => $coatings];
+        /**
+         * The powers stocked, low to high, for the ends of the SPH / CYL range.
+         *
+         * Read as numbers so "-2" and "-2.00" land on one line, and a range's
+         * own ends are dropped before counting it for the same reason a chip
+         * row drops its own choice — otherwise narrowing to -2.00..-1.00 would
+         * leave every other power offered at 0 and the range could only shrink.
+         */
+        $powers = static fn(string $key): array => array_map(
+            static fn(array $r): array => ['value' => number_format((float) $r['value'], 2, '.', ''), 'count' => (int) $r['n']],
+            $tally($key, ["{$key}_from", "{$key}_to"], 'value ASC', self::attrNum($key)),
+        );
+
+        return [
+            'indexes'  => $indexes,
+            'designs'  => $designs,
+            'coatings' => $coatings,
+            'sphs'     => $powers('sph'),
+            'cyls'     => $powers('cyl'),
+        ];
     }
 
     /** @return list<array<string,mixed>> */
@@ -1292,6 +1374,7 @@ final class Inventory
             'actionType'    => $r['action_type'],
             'actionLabel'   => self::ACTION_LABEL[$r['action_type']] ?? $r['action_type'],
             'quantity'      => (int) $r['quantity'],
+            'balanceAfter'  => isset($r['balance_after']) ? (int) $r['balance_after'] : null,
             'unitCost'      => $money && $r['unit_cost'] !== null ? (float) $r['unit_cost'] : null,
             /* ราคาขายไม่ถูกกั้นด้วย $money ต่างจากต้นทุน — คนขายต้องเห็นราคาขาย
                เพราะการบอกราคาคือหน้าที่ของเขา ส่วนราคาที่ซื้อมาไม่ใช่ */

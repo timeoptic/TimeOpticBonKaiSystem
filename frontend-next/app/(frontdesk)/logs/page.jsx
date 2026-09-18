@@ -19,7 +19,7 @@ import {
 import { DataTable } from '../../../components/DataTable.jsx';
 import { FilterBar } from '../../../components/FilterBar.jsx';
 import { Pager } from '../../../components/Pager.jsx';
-import { DateField } from '../../../components/DateField.jsx';
+import DateRangeField from '@/stockmod/components/DateRangeField';
 import { Select } from '../../../components/Selects.jsx';
 import { Icon } from '../../../components/Icon.jsx';
 import { AdminOnly } from '../../../components/AdminOnly.jsx';
@@ -317,11 +317,15 @@ function LogsPageInner() {
         <Field label="ใคร">
           <Select value={actorId} onChange={(e) => setActorId(e.target.value)} options={actorOptions} />
         </Field>
-        <Field label="ตั้งแต่วันที่">
-          <DateField value={from} onChange={setFrom} />
-        </Field>
-        <Field label="ถึงวันที่">
-          <DateField value={to} onChange={setTo} />
+        <Field label="ช่วงวันที่">
+          <DateRangeField
+            split
+            clearable
+            placeholder="ทั้งหมด"
+            from={from}
+            to={to}
+            onApply={({ from: f, to: t }) => { setFrom(f); setTo(t); }}
+          />
         </Field>
         <button type="button" className="btn btn-light" onClick={setToday}>วันนี้</button>
       </FilterBar>

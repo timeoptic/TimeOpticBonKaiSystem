@@ -145,6 +145,26 @@ test('ติ๊กเลนส์มาถึง: บันทึกเวลา
     });
 });
 
+test('เลขรับ: เก็บตอนติ๊ก · ติ๊กซ้ำพร้อมเลขใหม่ = แก้เลข เวลาเดิมอยู่ · เอาติ๊กออกล้างเลข', function () {
+    withRollback(function () {
+        $c = arrivalCase();
+
+        eq(Rx::setArrived($c['right'], true, [Roles::STOCK], 1, ' LAB-7781 ')['arrivedRef'], 'LAB-7781', 'เก็บเลขรับ ตัดช่องว่าง');
+        eq(arrivalRow($c['right'], $c['code'])['arrivedRef'], 'LAB-7781', 'แถวใบสั่งบอกเลขรับ');
+
+        Db::run('UPDATE rx_orders SET arrived_at = ? WHERE log_id = ?', ['2026-09-14 09:15:00', $c['right']]);
+        Rx::setArrived($c['right'], true, [Roles::STOCK], 1, 'LAB-7782');
+        $r = arrivalRow($c['right'], $c['code']);
+        eq([$r['arrivedAt'], $r['arrivedRef']], ['2026-09-14 09:15:00', 'LAB-7782'], 'แก้เลขรับ เวลาเดิมไม่ขยับ');
+
+        Rx::setArrived($c['right'], true, [Roles::STOCK], 1);
+        eq(arrivalRow($c['right'], $c['code'])['arrivedRef'], 'LAB-7782', 'ติ๊กซ้ำไม่ส่งเลข = เลขเดิมอยู่');
+
+        Rx::setArrived($c['right'], false, [Roles::STOCK], 1);
+        eq(arrivalRow($c['right'], $c['code'])['arrivedRef'], null, 'เอาติ๊กออก เลขหายด้วย');
+    });
+});
+
 test('ตัวกรองรอเลนส์ / เลนส์มาถึงแล้ว', function () {
     withRollback(function () {
         $c = arrivalCase();

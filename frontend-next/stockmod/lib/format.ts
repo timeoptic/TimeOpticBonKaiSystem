@@ -114,3 +114,13 @@ export function lensRxMore(r: {
   if (r.add) parts.push(`ADD ${r.add}`);
   return parts.length > 0 ? parts.join(" · ") : null;
 }
+
+/**
+ * ชื่อสินค้าที่แสดงบนจอ — ตัดคำว่า "Single Vision" ออก (ร้านขอ 18 ก.ย. 2026)
+ *
+ * เลนส์ส่วนใหญ่ของร้านเป็นชั้นเดียว คำนี้จึงยาวโดยไม่ได้บอกอะไร · ตัดตอนแสดงเท่านั้น ชื่อที่เก็บ
+ * ยังเต็ม เพราะใบสั่งตัด RX จับคู่รุ่นด้วยชื่อ (`Rx::modelByName`) และ Progressive / Bifocal
+ * ยังขึ้นชื่อชนิดตามปกติ — ตัวที่ไม่มีคำบอกชนิดคือชั้นเดียว
+ */
+export const shortName = (name: string | null | undefined): string =>
+  (name ?? "").replace(/\s*Single Vision/gi, "").replace(/\s{2,}/g, " ").trim();

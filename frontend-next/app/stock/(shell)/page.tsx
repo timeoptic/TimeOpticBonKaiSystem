@@ -711,15 +711,23 @@ export default function IssuePage() {
 
             <div className="formgrid">
               <div className="field">
+                {/* ช่องเดียวกัน (reference_doc) แต่ตอนตัดของเสียถามเป็นออเดอร์ — ร้านขอ 18 ก.ย. 2026
+                    ของเสียเกือบทุกชิ้นเสียระหว่างทำงานให้ลูกค้าคนหนึ่ง เลขนั้นคือสิ่งที่ต้องย้อนหาทีหลัง
+                    หน้าความเคลื่อนไหวแสดงและค้นช่องนี้อยู่แล้ว */}
                 <label className="field__label" htmlFor="if-doc">
-                  เลขที่เอกสาร
+                  {kind === "scrap" ? "ตัดเสียกับออเดอร์ไหน" : "เลขที่เอกสาร"}
                 </label>
                 <input
                   id="if-doc"
                   className="input"
                   value={doc}
                   onChange={(e) => setDoc(e.target.value)}
-                  placeholder="เช่น JOB-1042 หรือ SO-2026-1058"
+                  placeholder={
+                    kind === "scrap"
+                      ? "เลขเคส · เลขออเดอร์ · เลขใบสั่ง RX"
+                      : "เช่น JOB-1042 หรือ SO-2026-1058"
+                  }
+                  maxLength={100}
                   disabled={busy}
                 />
               </div>

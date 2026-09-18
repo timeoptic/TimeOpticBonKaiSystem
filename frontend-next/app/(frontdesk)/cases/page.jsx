@@ -57,7 +57,7 @@ import { STAGE_GROUPS, stageInfo } from '../../../lib/constants.js';
 import {
   CARD_PAGE, CASE_FILTERS, boardColumns, boardQuery, dateFieldOptions, stageOptions,
 } from '../../../lib/caseBoard.js';
-import { DateField } from '../../../components/DateField.jsx';
+import DateRangeField from '@/stockmod/components/DateRangeField';
 import { custName, fmtDate, moneyShort } from '../../../lib/format.js';
 import { Icon } from '../../../components/Icon.jsx';
 import { CaseTags, SIGHT_FIRST } from '../../../components/CaseTags.jsx';
@@ -488,9 +488,14 @@ function CaseBoardInner() {
                 onChange={(e) => setDateField(e.target.value)}
                 options={dateFieldOptions({ caseFilter })}
               />
-              <DateField value={from} max={to} placeholder="ตั้งแต่" onChange={setFrom} />
-              <span className="bf-dates-sep muted">–</span>
-              <DateField value={to} min={from} placeholder="ถึง" onChange={setTo} />
+              <DateRangeField
+                split
+                clearable
+                placeholder="ทั้งหมด"
+                from={from}
+                to={to}
+                onApply={({ from: f, to: t }) => { setFrom(f); setTo(t); }}
+              />
             </div>
           </div>
 

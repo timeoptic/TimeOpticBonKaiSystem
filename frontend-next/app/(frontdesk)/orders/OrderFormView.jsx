@@ -25,7 +25,7 @@ import {
   Badge, Card, Field, Fieldset, FormActions, FormGrid, Kpi, Kpis, Kv, Loading, PageHead, Row, Split,
 } from '../../../components/ui.jsx';
 import { Picker } from '../../../components/Picker.jsx';
-import { StockPicker, stockLabel } from '../../../components/StockPicker.jsx';
+import { StockPicker, stockLabel, shownLabel } from '../../../components/StockPicker.jsx';
 import { RxSets } from '../../../components/RxSets.jsx';
 import { RxArrival } from '../../../components/RxLensBadge.jsx';
 import { EyewearHistory } from '../../../components/EyewearHistory.jsx';
@@ -640,7 +640,7 @@ export function OrderFormView({
           <ItemDetails
             picked={picked.frame}
             rows={[
-              ['ชื่อกรอบ', picked.frame ? stockLabel(picked.frame) : '—'],
+              ['ชื่อกรอบ', picked.frame ? shownLabel(picked.frame) : '—'],
               ['ราคา', money(p.frame_price)],
               ['ยี่ห้อ', picked.frame?.brand || '—'],
               ['รุ่น', picked.frame?.model || '—'],
@@ -747,7 +747,7 @@ export function OrderFormView({
                   <ItemDetails
                     picked={item}
                     rows={[
-                      ['ชื่อเลนส์', item ? stockLabel(item) : '—'],
+                      ['ชื่อเลนส์', item ? shownLabel(item) : '—'],
                       ['ยี่ห้อ', item?.brand || '—'],
                       ['ชนิด', item?.lens_design || '—'],
                       ['Index', item?.lens_index || '—'],

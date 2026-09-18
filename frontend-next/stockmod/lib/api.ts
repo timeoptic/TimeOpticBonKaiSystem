@@ -249,6 +249,8 @@ export type MovementRow = {
   actionType: string;
   actionLabel: string;
   quantity: number;
+  /** ยอดคงเหลือของสินค้าหลังรายการนี้ — null คือรายการที่ไม่ขยับของบนชั้น (RX · แก้ราคา) */
+  balanceAfter: number | null;
   unitCost: number | null;
   referenceDoc: string | null;
   notes: string | null;
@@ -370,6 +372,8 @@ export type RxOrderRow = {
   /** เลนส์มาถึงร้านเมื่อไร — null คือยังไม่มา */
   arrivedAt: string | null;
   arrivedByName: string | null;
+  /** เลขรับของที่มากับเลนส์ ใส่ตอนติ๊กว่ามาถึง (037) */
+  arrivedRef: string | null;
 };
 
 /**
@@ -434,6 +438,9 @@ export type LensOptions = {
   designs: LensFacet[];
   /** Ordered by how much of each the shop stocks, not alphabetically. */
   coatings: LensFacet[];
+  /** Powers stocked, low to high, as `-2.00` — the ends a range can take. */
+  sphs: LensFacet[];
+  cyls: LensFacet[];
 };
 
 export type Summary = {

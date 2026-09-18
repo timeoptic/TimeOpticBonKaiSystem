@@ -6,7 +6,7 @@ import { can, useActor, WorkHead } from "@/stockmod/components/AppShell";
 import Select from "@/stockmod/components/Select";
 import { CHART_INK, DayBars, FlowChart, RankBars } from "@/stockmod/components/Charts";
 import { qs, useApi } from "@/stockmod/lib/useApi";
-import { count, date, money } from "@/stockmod/lib/format";
+import { count, date, money, shortName } from "@/stockmod/lib/format";
 import { PRODUCT_TYPE_LABEL, PRODUCT_TYPES, type BranchRow, type Movers } from "@/stockmod/lib/api";
 import DateRangeField from "@/stockmod/components/DateRangeField";
 import TaskDialog from "@/stockmod/components/TaskDialog";
@@ -1273,7 +1273,7 @@ export default function DashboardPage() {
                       <RecordCard
                         key={`m-${b.branchId}-${it.sku}`}
                         head={<span className="reccard__money">{count(it.qty)}</span>}
-                        title={it.name}
+                        title={shortName(it.name)}
                         sub={it.sku}
                         fields={[
                           { label: "ชนิด", value: PRODUCT_TYPE_LABEL[it.type ?? ""] ?? it.type ?? "—" },
@@ -1306,7 +1306,7 @@ export default function DashboardPage() {
                       {items.map((it) => (
                         <tr key={`${b.branchId}-${it.sku}`} className="grid__row">
                           <td>
-                            {it.name}
+                            {shortName(it.name)}
                             <span className="grid__sub">{it.sku}</span>
                           </td>
                           <td>{it.type ? PRODUCT_TYPE_LABEL[it.type] ?? it.type : "—"}</td>
@@ -1375,7 +1375,7 @@ export default function DashboardPage() {
                       <RecordCard
                         key={`mr-${b.branchId}-${it.sku}`}
                         head={<span className="reccard__money">{count(it.qty)}</span>}
-                        title={it.name}
+                        title={shortName(it.name)}
                         sub={it.sku}
                         fields={[
                           { label: "ชนิด", value: PRODUCT_TYPE_LABEL[it.type ?? ""] ?? it.type ?? "—" },
@@ -1410,7 +1410,7 @@ export default function DashboardPage() {
                       {items.map((it) => (
                         <tr key={`${b.branchId ?? "self"}-${it.sku}`} className="grid__row">
                           <td>
-                            {it.name}
+                            {shortName(it.name)}
                             <span className="grid__sub">{it.sku}</span>
                           </td>
                           <td>{it.type ? PRODUCT_TYPE_LABEL[it.type] ?? it.type : "—"}</td>
@@ -1509,7 +1509,7 @@ export default function DashboardPage() {
                           <span className="reccard__when">ไม่ขยับ</span>
                         </>
                       }
-                      title={r.name}
+                      title={shortName(r.name)}
                       sub={[r.sku, r.brand].filter(Boolean).join(" · ")}
                       fields={[
                         { label: "ชนิด", value: PRODUCT_TYPE_LABEL[r.productType] ?? r.productType },
@@ -1547,7 +1547,7 @@ export default function DashboardPage() {
                       {items.map((r) => (
                         <tr key={r.id} className="grid__row">
                           <th scope="row">
-                            <span className="grid__name">{r.name}</span>
+                            <span className="grid__name">{shortName(r.name)}</span>
                             <span className="grid__sub">{r.sku}</span>
                           </th>
                           <td>{PRODUCT_TYPE_LABEL[r.productType] ?? r.productType}</td>

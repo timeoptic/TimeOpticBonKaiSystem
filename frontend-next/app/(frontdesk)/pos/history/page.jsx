@@ -21,7 +21,7 @@ import { DataTable } from '../../../../components/DataTable.jsx';
 import { Pager } from '../../../../components/Pager.jsx';
 import { posApi, PAY_METHODS } from '../../../../lib/pos/posApi.js';
 import { PaymentBadge, FulfillmentBadge } from '../../../../components/pos/PosStatusBadge.jsx';
-import { DateField } from '../../../../components/DateField.jsx';
+import DateRangeField from '@/stockmod/components/DateRangeField';
 import { Select } from '../../../../components/Selects.jsx';
 
 /* ช่วงตั้งต้นของหน้านี้: 30 วันล่าสุด · ประกาศไว้ข้างนอกเพื่อให้ปุ่มรีเซ็ตกับ
@@ -125,11 +125,13 @@ export default function PosHistoryPage() {
             </div>
           )}
         >
-          <Field label="ตั้งแต่">
-            <DateField value={from} onChange={setFrom} />
-          </Field>
-          <Field label="ถึง">
-            <DateField value={to} onChange={setTo} />
+          <Field label="ช่วงวันที่">
+            <DateRangeField
+              split
+              from={from}
+              to={to}
+              onApply={({ from: f, to: t }) => { setFrom(f); setTo(t); }}
+            />
           </Field>
           <Field label="การชำระ">
             <Select

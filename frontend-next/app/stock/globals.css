@@ -850,6 +850,7 @@ code {
 .grid__link { color: var(--color-cyan-ink); border-radius: var(--radius-sm); cursor: pointer; }
 .grid__link:hover { text-decoration: underline; }
 .grid__link:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+button.grid__link { border: 0; background: none; padding: 0; font: inherit; }
 
 /* --------------------------------------------------------------------------
    Status words — always word plus shape plus colour, never colour alone
@@ -1189,6 +1190,7 @@ code {
 }
 
 .log__qty { font-family: var(--font-label); font-variant-numeric: tabular-nums; font-weight: 600; }
+.log__left { font-weight: 400; color: var(--color-muted); }
 .log__lot { font-family: var(--font-label); font-size: var(--text-xs); color: var(--color-muted); }
 
 .log__meta {
@@ -3484,6 +3486,38 @@ kbd {
 
 /* ช่องที่มีคำตอบยาวกว่าเพื่อน — "เลือกไว้ 5 จาก 8" ยาวกว่าชื่อสาขาทุกชื่อ */
 .filterbar__item--wide { flex: 0 1 17rem; min-inline-size: 13rem; }
+
+/* ชิปเลนส์ขึ้นบรรทัดของตัวเองใต้ดรอปดาวน์ — สามกลุ่มเรียงในบรรทัดเดียวคั่นด้วย
+   เส้น แล้วห่อลงเองเมื่อจอแคบ · ชิดซ้าย เพราะชิปอ่านจากต้นแถวเหมือนข้อความ */
+.filterbar__item--chips,
+.listtools .filterbar .filterbar__item--chips { flex: 1 1 100%; min-inline-size: 0; }
+.lenschips { margin-block: 0; }
+.lenschips__group { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-2xs) var(--space-xs); }
+
+/* ช่วง SPH / CYL — สองช่องสั้นพอให้ "-10.00" อ่านจบ */
+.lensrange { display: inline-flex; align-items: center; gap: var(--space-2xs); }
+.listtools .filterbar .lensrange .input--inline,
+.lensrange .input--inline { min-inline-size: 0; inline-size: 6.5rem; }
+
+/* บนมือถือป้ายของตัวกรองอื่นถูกซ่อนเพราะค่าในช่องบอกอยู่แล้ว แต่ "ตั้งแต่ / ถึง"
+   ไม่ได้บอกว่าเป็น SPH หรือ CYL และชิป "1.60" ไม่ได้บอกว่าอยู่กลุ่มไหน —
+   ป้ายของสองอย่างนี้จึงยังอยู่ */
+@media (max-width: 40rem) {
+  .filterbar__item--range,
+  .filterbar__item--chips { flex: 1 1 100%; }
+  .filterbar__item--range .filterbar__label,
+  .lenschips .filterbar__label {
+    position: static;
+    inline-size: auto;
+    block-size: auto;
+    overflow: visible;
+    clip-path: none;
+  }
+  .filterbar__item--range { flex-direction: row; align-items: center; gap: var(--space-xs); }
+  .lensrange { flex: 1 1 auto; }
+  .lensrange .input--inline,
+  .filterbar__item .lensrange .input--inline { inline-size: auto; flex: 1 1 0; }
+}
 
 /* ------------------------------------------------------------- toolbar */
 

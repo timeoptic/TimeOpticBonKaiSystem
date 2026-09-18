@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Paginator from "./Paginator";
 import SortHead, { MATCH_SORT, SortBar, useSort } from "./SortHead";
-import LensFilters from "./LensFilters";
+import LensFilters, { NO_LENS, lensParams, type LensPick } from "./LensFilters";
 import { Filter, FilterBar } from "./FilterBar";
 import LensCells from "./LensCells";
 import ProductCell from "./ProductCell";
@@ -19,7 +19,7 @@ import {
   type Page,
   type ProductRow,
 } from "@/stockmod/lib/api";
-import { count, money } from "@/stockmod/lib/format";
+import { count, money, shortName } from "@/stockmod/lib/format";
 
 type SortKey =
   | "sku" | "name" | "brand" | "onhand" | "price" | "type" | "eye"
@@ -91,7 +91,7 @@ export function PickedSummary({ row, showName = true }: { row: ProductRow; showN
     <div className="picked__what">
       {showName ? (
       <span className="picked__name">
-        {row.name}
+        {shortName(row.name)}
         {row.eyeSide === "left" || row.eyeSide === "right" ? (
           <span className="eye eye--inline">
             {row.eyeSide === "left" ? "L" : "R"}
@@ -197,9 +197,7 @@ export default function ProductPicker({
   const [applied, setApplied] = useState("");
   const [eye, setEye] = useState("");
   const [ptype, setPtype] = useState("");
-  const [lindex, setLindex] = useState("");
-  const [design, setDesign] = useState("");
-  const [coating, setCoating] = useState("");
+  const [lens, setLens] = useState<LensPick>(NO_LENS);
   const [page, setPage] = useState(1);
   const { sort, dir, sortBy, sortTo } = useSort<SortKey>(defaultSort, NATURAL_ASC);
 
@@ -245,9 +243,7 @@ export default function ProductPicker({
           make: only === "all" ? "" : only,
           eye,
           type: ptype,
-          index: lindex,
-          design,
-          coating,
+          ...lensParams(lens),
           sort,
           dir,
           per: perPage,
@@ -291,9 +287,7 @@ export default function ProductPicker({
     refine(() => {
       setPtype(next);
       if (next !== "Lens") {
-        setLindex("");
-        setDesign("");
-        setCoating("");
+        setLens(NO_LENS);
       }
     });
   }
@@ -411,12 +405,8 @@ export default function ProductPicker({
 
         {lensFilters ? (
           <LensFilters
-            index={lindex}
-            design={design}
-            coating={coating}
-            onIndex={(v) => refine(() => setLindex(v))}
-            onDesign={(v) => refine(() => setDesign(v))}
-            onCoating={(v) => refine(() => setCoating(v))}
+            value={lens}
+            onChange={(v) => refine(() => setLens(v))}
             // `only` is the important one: this picker may be showing stock only,
             // or made-to-order only, and a count over the whole catalogue would
             // offer a choice that empties the table.
@@ -500,7 +490,7 @@ export default function ProductPicker({
                       </>
                     )
                   }
-                  title={r.name}
+                  title={shortName(r.name)}
                   sub={[r.sku, r.brand].filter(Boolean).join(" · ")}
                   fields={[
                     { label: "ชนิด", value: PRODUCT_TYPE_LABEL[r.productType] ?? r.productType },
@@ -568,7 +558,7 @@ export default function ProductPicker({
                     onClick={rowPicks ? () => onPick(r) : undefined}
                     tabIndex={rowPicks ? 0 : undefined}
                     role={rowPicks ? "button" : undefined}
-                    aria-label={rowPicks ? `${pickLabel} ${r.name}` : undefined}
+                    aria-label={rowPicks ? `${pickLabel} ${shortName(r.name)}` : undefined}
                     onKeyDown={
                       rowPicks
                         ? (e) => {
@@ -615,7 +605,7 @@ export default function ProductPicker({
                           type="button"
                           className="btn btn--primary btn--small"
                           onClick={() => onPick(r)}
-                          aria-label={`${pickLabel} ${r.name}`}
+                          aria-label={`${pickLabel} ${shortName(r.name)}`}
                         >
                           {pickLabel}
                         </button>

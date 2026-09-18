@@ -6,7 +6,7 @@ import TaskDialog from "./TaskDialog";
 import DateField from "./DateField";
 import QtyField from "./QtyField";
 import { api, ApiError, type LotRow } from "@/stockmod/lib/api";
-import { count, date, money } from "@/stockmod/lib/format";
+import { count, date, money, shortName } from "@/stockmod/lib/format";
 
 /**
  * Correcting a lot that is already in the cupboard.
@@ -91,7 +91,7 @@ export default function LotEditDialog({
   return (
     <TaskDialog
       eyebrow="แก้ไขล็อต"
-      title={lot.productName}
+      title={shortName(lot.productName)}
       head={
         <span className="picked__sub">
           {lot.sku}

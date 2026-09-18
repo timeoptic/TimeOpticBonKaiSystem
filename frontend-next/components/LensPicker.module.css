@@ -9,13 +9,10 @@
 
 .label{display:block;font-size:12.5px;font-weight:600;color:var(--ink-soft);margin-bottom:5px}
 
-.coating{flex:1 1 140px;min-width:0}
-.coating :global(.sel){width:100%}
-
-.powers{flex:0 1 auto;min-width:0}
+/* ช่วงค่าสายตา — สองดรอปดาวน์ "ตั้งแต่ – ถึง" กว้างพอให้ "-10.00" อ่านจบ */
+.range{flex:0 1 auto;min-width:0}
 .pair{display:flex;align-items:center;gap:6px}
-.power{width:78px;text-align:center;font-variant-numeric:tabular-nums}
-.power[aria-invalid="true"]{border-color:#E11D48;background:var(--danger-soft)}
+.pair :global(.sel){width:104px}
 .slash{color:var(--ink-soft);font-weight:600}
 
 .search{flex:1 1 240px;min-width:0}
@@ -27,16 +24,21 @@
 }
 .term input{width:100%;padding-left:34px}
 
-.badHint{margin:0;font-size:12.5px;color:#9F0F33}
-
-.chips{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center}
+/* ชิปตัวกรอง — เต็มบรรทัดใต้ช่องค้นหา สามกลุ่มเรียงต่อกันแล้วห่อลงเองเมื่อจอแคบ
+   ตัวที่เลือกอยู่เป็นเขียวจาง แบบเดียวกับชิปของหน้าคลัง */
+.facets{flex:1 1 100%;display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center}
+.facet{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.facetLabel{font-size:12.5px;font-weight:600;color:var(--ink-soft);margin-right:2px}
 .chip{
-  display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;
-  border:1px solid var(--green-edge);background:var(--green-tint);color:var(--green-deep);
+  display:inline-flex;align-items:center;gap:6px;padding:4px 11px;border-radius:999px;
+  border:1px solid var(--line);background:#fff;color:var(--ink);
   font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;
 }
-.chip:hover{filter:brightness(.96)}
-.chip :global(.ico){width:12px;height:12px}
+.chip:hover{border-color:var(--green-edge)}
+.chip:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.chipOn{border-color:var(--green-edge);background:var(--green-tint);color:var(--green-deep)}
+.count{font-size:11.5px;font-weight:500;color:var(--ink-soft);font-variant-numeric:tabular-nums}
+.chipOn .count{color:var(--green-deep)}
 .clearAll{
   display:inline-flex;align-items:center;gap:5px;padding:4px 6px;border:0;background:none;
   color:var(--accent-deep);font:inherit;font-size:12.5px;cursor:pointer;

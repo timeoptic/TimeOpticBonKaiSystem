@@ -14,7 +14,7 @@ import ConfirmDelete from "./ConfirmDelete";
 import RecordCard, { CardList } from "./RecordCard";
 import StockLines from "./StockLines";
 import LotEditDialog from "./LotEditDialog";
-import { count, date, money } from "@/stockmod/lib/format";
+import { count, date, money, shortName } from "@/stockmod/lib/format";
 import { stockHref } from "@/stockmod/lib/paths";
 
 /**
@@ -97,7 +97,7 @@ export default function StockDrawer({
         <header className="drawer__head">
           <div>
             <p className="drawer__eyebrow">{detail?.sku ?? "กำลังโหลด"}</p>
-            <h2 className="drawer__title">{detail?.name ?? "…"}</h2>
+            <h2 className="drawer__title">{detail ? shortName(detail.name) : "…"}</h2>
           </div>
           <div className="chips">
             {detail && can.editCatalog(actor) && !editing ? (
@@ -384,6 +384,7 @@ export default function StockDrawer({
                     </span>
                     <span className="log__qty">
                       {g.quantity > 0 ? `+${count(g.quantity)}` : count(g.quantity)}
+                      {g.balanceAfter !== null ? <span className="log__left"> → เหลือ {count(g.balanceAfter)}</span> : null}
                     </span>
                     <span className="log__meta">
                       {date(g.createdAt)}

@@ -1,15 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  LENS_COATINGS, parsePower, formatPower, lensQuery, lensChips,
+  EMPTY_LENS, parsePower, formatPower, lensParams, toggleLens,
 } from '../lensFilter.js';
 
 /* ตัวกรองเลนส์หน้าขาย — ค่าที่พนักงานพิมพ์ต้องกลายเป็นค่าเดียวที่ฝั่ง API เทียบตรงตัว
    ฝั่ง API เทียบเป็นตัวเลข (api/tests/13-stock-lens-filter.test.php) ที่นี่แค่อ่านช่อง */
-
-test('ตัวเลือก Coating ตรงกับค่าที่มีในคลังจริง', () => {
-  assert.deepEqual(LENS_COATINGS, ['Hard', 'MC', 'Auto', 'Blue', 'Auto-Blue']);
-});
 
 test('ค่าสายตา: บวก ลบ ทศนิยม · -2 = -2.00 · 0.25 = +0.25', () => {
   assert.deepEqual(parsePower('+0.25'), { value: '0.25', error: false });
@@ -44,34 +40,18 @@ test('แสดงค่าสายตาแบบใบสั่ง: มีเ
   assert.equal(formatPower('0.00'), '0.00');
 });
 
-test('query ส่งเฉพาะช่องที่กรอก · ทั้งหมด = ไม่ส่ง coating', () => {
+test('query ส่งเฉพาะช่องที่เลือก · หลายชิปในช่องเดียวคั่นด้วย |', () => {
+  assert.deepEqual(lensParams(EMPTY_LENS), {});
   assert.deepEqual(
-    lensQuery({ coating: 'Auto', sph: '+0.25', cyl: '-0.75' }),
-    { params: { coating: 'Auto', sph: '0.25', cyl: '-0.75' }, invalid: [], active: true },
-  );
-  assert.deepEqual(
-    lensQuery({ coating: 'Auto', sph: '+0.25', cyl: '' }),
-    { params: { coating: 'Auto', sph: '0.25' }, invalid: [], active: true },
-  );
-  assert.deepEqual(
-    lensQuery({ coating: '', sph: '', cyl: '' }),
-    { params: {}, invalid: [], active: false },
+    lensParams({ ...EMPTY_LENS, index: ['1.56', '1.60'], coating: ['Auto-Blue'], sphFrom: '-2.00', cylTo: '0.00' }),
+    { index: '1.56|1.60', coating: 'Auto-Blue', sph_from: '-2.00', cyl_to: '0.00' },
   );
 });
 
-test('ช่องที่ผิดถูกบอกออกมา — หน้าจอต้องไม่ค้นด้วยเงื่อนไขครึ่งเดียว', () => {
-  const r = lensQuery({ coating: 'Auto', sph: '-', cyl: '-0.75' });
-  assert.deepEqual(r.invalid, ['sph']);
-});
-
-test('ชิปตัวกรอง เรียง Coating → SPH → CYL', () => {
-  assert.deepEqual(
-    lensChips({ coating: 'Auto-Blue', sph: '-2', cyl: '-0.75' }),
-    [
-      { key: 'coating', label: 'Coating: Auto-Blue' },
-      { key: 'sph', label: 'SPH: -2.00' },
-      { key: 'cyl', label: 'CYL: -0.75' },
-    ],
-  );
-  assert.deepEqual(lensChips({ coating: '', sph: 'x', cyl: '' }), []);
+test('กดชิปซ้ำ = เอาออก · ชิปอื่นในช่องเดียวกันยังอยู่', () => {
+  const one = toggleLens(EMPTY_LENS, 'index', '1.56');
+  const two = toggleLens(one, 'index', '1.60');
+  assert.deepEqual(two.index, ['1.56', '1.60']);
+  assert.deepEqual(toggleLens(two, 'index', '1.56').index, ['1.60']);
+  assert.deepEqual(EMPTY_LENS.index, [], 'สถานะตั้งต้นไม่ถูกแก้');
 });

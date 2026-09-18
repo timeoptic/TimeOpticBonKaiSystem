@@ -5,7 +5,7 @@ import { can, useActor, WorkHead } from "@/stockmod/components/AppShell";
 import { useToast } from "@/stockmod/components/Toaster";
 import Paginator from "@/stockmod/components/Paginator";
 import SortHead, { MATCH_SORT, SortBar, useSort } from "@/stockmod/components/SortHead";
-import LensFilters from "@/stockmod/components/LensFilters";
+import LensFilters, { NO_LENS, lensParams, type LensPick } from "@/stockmod/components/LensFilters";
 import { Filter, FilterBar, withCount } from "@/stockmod/components/FilterBar";
 import RecordCard, { CardList } from "@/stockmod/components/RecordCard";
 import TaskDialog from "@/stockmod/components/TaskDialog";
@@ -15,7 +15,7 @@ import NewProductDialog from "@/stockmod/components/NewProductDialog";
 import StockDrawer from "@/stockmod/components/StockDrawer";
 import StockLines from "@/stockmod/components/StockLines";
 import { qs, useApi } from "@/stockmod/lib/useApi";
-import { count, dateTime, money } from "@/stockmod/lib/format";
+import { count, dateTime, money, shortName } from "@/stockmod/lib/format";
 import {
   PRODUCT_TYPES,
   PRODUCT_TYPE_LABEL,
@@ -162,9 +162,7 @@ export default function ProductsScreen({
   const [applied, setApplied] = useState("");
 
   const [ptype, setPtype] = useState("");
-  const [lindex, setLindex] = useState("");
-  const [design, setDesign] = useState("");
-  const [coating, setCoating] = useState("");
+  const [lens, setLens] = useState<LensPick>(NO_LENS);
   const [page, setPage] = useState(1);
   const { sort, dir, sortBy, sortTo } = useSort<SortKey>(views?.[0]?.sort ?? "added", NATURAL_ASC);
   const [openId, setOpenId] = useState<number | null>(null);
@@ -190,7 +188,7 @@ export default function ProductsScreen({
   const money$ = can.seeCost(actor);
   const summary = useApi<Summary>("/summary");
   const list = useApi<Page<ProductRow> & { stateCounts?: StateCounts }>(
-    `/products${qs({ q: applied, make: ONLY_STOCK, type: ptype, index: lindex, design, coating, state, sort, dir, page, counts: "1" })}`,
+    `/products${qs({ q: applied, make: ONLY_STOCK, type: ptype, ...lensParams(lens), state, sort, dir, page, counts: "1" })}`,
   );
 
   const counts = list.status === "ready" ? list.data.stateCounts : undefined;
@@ -298,7 +296,7 @@ function ProductRowCard({
           <span className="status status--stock">มีของ</span>
         )
       }
-      title={row.name}
+      title={shortName(row.name)}
       sub={[row.sku, row.brand].filter(Boolean).join(" · ")}
       fields={[
         alerted ? { label: "แจ้งเตือนเมื่อ", value: dateTime(row.lowStockNotifiedAt) } : null,
@@ -348,7 +346,7 @@ function ProductRowCard({
       {lots ? (
         <TaskDialog
           eyebrow={row.sku}
-          title={row.name}
+          title={shortName(row.name)}
           onClose={() => setLots(false)}
         >
           <StockLines
@@ -380,9 +378,7 @@ function ProductRowCard({
     refine(() => {
       setPtype(next);
       if (next !== "Lens") {
-        setLindex("");
-        setDesign("");
-        setCoating("");
+        setLens(NO_LENS);
       }
     });
   }
@@ -527,12 +523,8 @@ function ProductRowCard({
 
           {lensFilters ? (
             <LensFilters
-              index={lindex}
-              design={design}
-              coating={coating}
-              onIndex={(v) => refine(() => setLindex(v))}
-              onDesign={(v) => refine(() => setDesign(v))}
-              onCoating={(v) => refine(() => setCoating(v))}
+              value={lens}
+              onChange={(v) => refine(() => setLens(v))}
               // Whatever else the table is narrowed by, so a count is a count of
               // rows this screen would actually show.
               scope={{ q: applied, make: ONLY_STOCK }}
@@ -568,9 +560,7 @@ function ProductRowCard({
                 setApplied("");
                 if (sort === "match") sortTo("added");
                 setPtype("");
-                setLindex("");
-                setDesign("");
-                setCoating("");
+                setLens(NO_LENS);
                 setState(lockState);
               })
             }
@@ -751,7 +741,7 @@ function Row({
       tabIndex={0}
       role="button"
       aria-expanded={open}
-      aria-label={`${open ? "ปิด" : "เปิด"}ล็อตของ ${row.name}`}
+      aria-label={`${open ? "ปิด" : "เปิด"}ล็อตของ ${shortName(row.name)}`}
       onKeyDown={(e) => {
         // Only the row's own keys. The cells stop clicks from reaching here but
         // not keystrokes, so Enter to save a price or a minimum was also

@@ -284,10 +284,9 @@ function CaseFormInner() {
             <Field label="พนักงานผู้รับเรื่อง" hint="ผู้รับลูกค้าในเคสนี้ ตรวจย้อนหลังได้จากไทม์ไลน์">
               <EmployeeSelect name="received_by" defaultValue="" />
             </Field>
-            <Field
-              label="ประเภทงาน / Case Type"
-              hint="งานชิ้นนี้คืองานอะไร — เลือก “ตรวจสายตา” แล้วเคสจะมีแค่ รับลูกค้า → วัดสายตา และจบเองเมื่อยืนยันผลวัด"
-            >
+            {/* ข้อความแนะนำเรื่องเคส "ตรวจสายตา" ถูกถอดไว้ก่อน — สเปกเคสตรวจสายตาอย่างเดียวยังไม่อนุมัติ
+                และ API ของมัน (processes.php · Lookups.php · cases.php) ยังไม่ขึ้นเว็บ */}
+            <Field label="ประเภทงาน / Case Type" hint="งานชิ้นนี้คืองานอะไร">
               <ListSelect name="case_type" kind="case_type" defaultValue="" blank="— เลือกประเภทงาน —" />
             </Field>
             <Field label="ประเภทลูกค้า / Customer Category" hint="ใช้แยกสมุดงานบนกระดาน">

@@ -1,10 +1,10 @@
 'use client';
 /**
- * เลือกเลนส์จากคลัง — ช่องค้นหาเดิมบวกตัวกรอง Coating / SPH / CYL
+ * เลือกเลนส์จากคลัง — ช่องค้นหาเดิม บวกชิป Index / ชนิดเลนส์ / Coating และช่วง SPH / CYL
  *
- * พนักงานถือค่าสายตาที่วัดได้แล้วมาหาเลนส์ในลิ้นชัก ช่องค้นหาอย่างเดียวให้ทุกตัวที่
- * "ใกล้" คำที่พิมพ์ ซึ่งสำหรับเลนส์คือของผิดชิ้น (+0.25/-0.50 ไม่ใช่ +0.25/-0.75)
- * ตัวกรองจึงเป็น AND ทุกข้อและเทียบตรงค่า — ตัวเทียบจริงอยู่ฝั่ง API (stockLensFilter)
+ * พนักงานถือค่าสายตาที่วัดได้แล้วมาหาเลนส์ในลิ้นชัก · ชิปเลือกได้หลายตัว ("1.56 หรือ 1.60 ก็ได้")
+ * ช่องต่างกันเป็น AND · ค่าสายตาเป็นช่วงตั้งแต่–ถึง ที่ดึงจากเลนส์ที่มีจริง ตัวเทียบจริงอยู่ฝั่ง API
+ * (stockLensFilter) · ตัวเลือกพร้อมจำนวนมาจาก optionsFetcher ชิปที่นับได้ศูนย์ไม่ถูกวาด
  *
  * การเลือกยังเป็นของ StockPicker ทั้งหมด (onPick) ที่นี่แค่หาแถวให้เจอ
  * แบ่งหน้าแบบเดียวกับ Picker ของสินค้าอื่น
@@ -15,22 +15,25 @@ import { Pager } from './Pager.jsx';
 import { PAGE_SIZES, sliceOf } from '../lib/pager.js';
 import { Select } from './Selects.jsx';
 import { Icon } from './Icon.jsx';
-import {
-  LENS_COATINGS, formatPower, lensChips, lensQuery, parsePower,
-} from '../lib/lensFilter.js';
+import { EMPTY_LENS, formatPower, lensParams, toggleLens } from '../lib/lensFilter.js';
 import s from './LensPicker.module.css';
 
-const EMPTY = { coating: '', sph: '', cyl: '' };
-const COATING_OPTIONS = [['', 'ทั้งหมด'], ...LENS_COATINGS.map((c) => [c, c])];
+const CHIP_GROUPS = [
+  ['index', 'indexes', 'Index'],
+  ['design', 'designs', 'ชนิดเลนส์'],
+  ['coating', 'coatings', 'Coating'],
+];
 
 /**
- * fetcher(term, params) -> Promise<rows> · params คือ { coating?, sph?, cyl? } ที่กรอกครบถูกแล้ว
+ * fetcher(term, params) -> Promise<rows> · params คือ query ของตัวกรอง (lensParams)
+ * optionsFetcher(term, params) -> Promise<{ indexes, designs, coatings, sphs, cyls }>
  * label(row) ชื่อเลนส์ · stock(row) -> { text, tone } ช่องคงเหลือ
  */
-export function LensPicker({ placeholder, fetcher, label, stock, onPick, selectedId = null }) {
+export function LensPicker({ placeholder, fetcher, optionsFetcher, label, stock, onPick, selectedId = null }) {
   const [term, setTerm] = useState('');
-  const [filters, setFilters] = useState(EMPTY);
+  const [filters, setFilters] = useState(EMPTY_LENS);
   const [rows, setRows] = useState([]);
+  const [facets, setFacets] = useState(null);
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(PAGE_SIZES[0]);
   const [state, setState] = useState('loading');
@@ -41,26 +44,20 @@ export function LensPicker({ placeholder, fetcher, label, stock, onPick, selecte
   const lastKey = useRef(null);
 
   /* debounce ทั้งชุดเป็นสตริงเดียว — อ็อบเจกต์ใหม่ทุกรอบวาดจะทำให้ตัวจับเวลาไม่เคยครบ */
-  const key = JSON.stringify([term, filters.coating, filters.sph, filters.cyl]);
+  const key = JSON.stringify([term, lensParams(filters)]);
   const debouncedKey = useDebounced(key, 220);
 
   const load = (k, force = false) => {
     if (!force && k === lastKey.current) return;
     lastKey.current = k;
-    const [t, coating, sph, cyl] = JSON.parse(k);
-    const q = lensQuery({ coating, sph, cyl });
+    const [t, params] = JSON.parse(k);
     const my = ++runId.current;
-    /* ช่องค่าสายตาพิมพ์ผิด — ไม่ค้นด้วยเงื่อนไขที่เหลือครึ่งเดียว ผลแบบนั้นอ่านเหมือนตรงค่าที่พิมพ์ */
-    if (q.invalid.length) {
-      setState('invalid');
-      return;
-    }
     setState('loading');
-    fetcher(t, q.params)
+    fetcher(t, params)
       .then((data) => {
         if (my !== runId.current) return;
         setRows(data || []);
-        setNarrowed(q.active || t.trim() !== '');
+        setNarrowed(Object.keys(params).length > 0 || t.trim() !== '');
         setPage(1);
         setState('done');
       })
@@ -69,6 +66,11 @@ export function LensPicker({ placeholder, fetcher, label, stock, onPick, selecte
         setError(e.message);
         setState('error');
       });
+    /* ตัวเลขบนชิปถามแยก ผลที่ช้ากว่าไม่ทับรายการ · ระหว่างรอ ชิปชุดเดิมยังอยู่
+       ไม่งั้นทั้งแถวหายแล้วโผล่กลับทุกครั้งที่กด · ถามไม่สำเร็จก็แค่ใช้ชุดเดิม */
+    optionsFetcher?.(t, params)
+      .then((data) => { if (my === runId.current) setFacets(data); })
+      .catch(() => {});
   };
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -78,16 +80,10 @@ export function LensPicker({ placeholder, fetcher, label, stock, onPick, selecte
   useEffect(() => () => { runId.current += 1; lastKey.current = null; }, []);
 
   const setF = (patch) => setFilters((f) => ({ ...f, ...patch }));
-  const clearAll = () => { setTerm(''); setFilters(EMPTY); };
-  const bad = lensQuery(filters).invalid;
-  const chips = lensChips(filters);
+  const clearAll = () => { setTerm(''); setFilters(EMPTY_LENS); };
+  const active = Object.keys(lensParams(filters)).length > 0;
 
-  /* ออกจากช่องแล้วเขียนค่าแบบใบสั่ง "-2" → "-2.00" ให้เห็นว่าระบบอ่านว่าอะไร */
-  const tidy = (k) => {
-    const { value, error: wrong } = parsePower(filters[k]);
-    if (!wrong && value !== null) setF({ [k]: formatPower(value) });
-  };
-  /* ทั้งหน้าเป็นฟอร์มออเดอร์ — Enter ในช่องกรองต้องค้นทันที ไม่ใช่ส่งฟอร์ม */
+  /* ทั้งหน้าเป็นฟอร์มออเดอร์ — Enter ในช่องค้นหาต้องค้นทันที ไม่ใช่ส่งฟอร์ม */
   const enter = (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
@@ -95,40 +91,50 @@ export function LensPicker({ placeholder, fetcher, label, stock, onPick, selecte
     }
   };
 
-  const powerInput = (k, text) => (
-    <input
-      className={s.power}
-      placeholder="0.00"
-      aria-label={text}
-      aria-invalid={bad.includes(k) || undefined}
-      autoComplete="off"
-      value={filters[k]}
-      onChange={(e) => setF({ [k]: e.target.value })}
-      onBlur={() => tidy(k)}
-      onKeyDown={enter}
-    />
-  );
+  /* ชิปที่นับได้ศูนย์ถูกซ่อน เว้นตัวที่เลือกอยู่ — ไม่งั้นมันหายไปทั้งที่ยังกรองอยู่ และกดเอาออกไม่ได้ */
+  const chipsOf = (k, list) => (list || []).filter((f) => f.count > 0 || filters[k].includes(f.value));
+
+  /* ค่าที่เลือกไว้แต่ไม่อยู่ในลิสต์แล้ว (ตัวกรองอื่นเปลี่ยน) ยังต้องอ่านได้บนหน้าปุ่ม */
+  const rangeOptions = (list, from, to, all) => {
+    const values = [...new Set([...(list || []).map((f) => f.value), from, to].filter(Boolean))]
+      .sort((a, b) => Number(a) - Number(b));
+    return [['', all], ...values.map((v) => [v, formatPower(v)])];
+  };
+
+  const range = (k, text) => {
+    const from = filters[`${k}From`];
+    const to = filters[`${k}To`];
+    const list = facets?.[`${k}s`];
+    if (!list?.length && !from && !to) return null;
+    return (
+      <div className={s.range}>
+        <span className={s.label}>{text}</span>
+        <div className={s.pair}>
+          <Select
+            value={from}
+            onChange={(e) => setF({ [`${k}From`]: e.target.value })}
+            options={rangeOptions(list, from, to, 'ตั้งแต่')}
+            aria-label={`${text} ตั้งแต่`}
+          />
+          <span className={s.slash} aria-hidden="true">–</span>
+          <Select
+            value={to}
+            onChange={(e) => setF({ [`${k}To`]: e.target.value })}
+            options={rangeOptions(list, from, to, 'ถึง')}
+            aria-label={`${text} ถึง`}
+          />
+        </div>
+      </div>
+    );
+  };
+
+  const groups = CHIP_GROUPS
+    .map(([k, list, text]) => ({ k, text, chips: chipsOf(k, facets?.[list]) }))
+    .filter((g) => g.chips.length > 0);
 
   return (
     <div className="stack">
       <div className={s.bar}>
-        <div className={s.coating}>
-          <span className={s.label}>Coating</span>
-          <Select
-            value={filters.coating}
-            onChange={(e) => setF({ coating: e.target.value })}
-            options={COATING_OPTIONS}
-            aria-label="Coating"
-          />
-        </div>
-        <div className={s.powers}>
-          <span className={s.label}>ค่าสายตา (SPH / CYL)</span>
-          <div className={s.pair}>
-            {powerInput('sph', 'SPH')}
-            <span className={s.slash} aria-hidden="true">/</span>
-            {powerInput('cyl', 'CYL')}
-          </div>
-        </div>
         <div className={s.search}>
           <span className={s.label}>ค้นหาเลนส์ / ยี่ห้อ / SKU</span>
           <div className={s.searchRow}>
@@ -147,32 +153,38 @@ export function LensPicker({ placeholder, fetcher, label, stock, onPick, selecte
             <button type="button" className="btn" onClick={() => load(key, true)}>ค้นหา</button>
           </div>
         </div>
+        {range('sph', 'SPH')}
+        {range('cyl', 'CYL')}
+
+        {groups.length ? (
+          <div className={s.facets}>
+            {groups.map((g) => (
+              <div key={g.k} className={s.facet} role="group" aria-label={g.text}>
+                <span className={s.facetLabel}>{g.text}</span>
+                {g.chips.map((f) => {
+                  const on = filters[g.k].includes(f.value);
+                  return (
+                    <button
+                      type="button"
+                      key={f.value}
+                      className={`${s.chip} ${on ? s.chipOn : ''}`}
+                      aria-pressed={on}
+                      onClick={() => setFilters((cur) => toggleLens(cur, g.k, f.value))}
+                    >
+                      {f.value} <span className={s.count}>{f.count.toLocaleString('th-TH')}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
+            {active ? (
+              <button type="button" className={s.clearAll} onClick={clearAll}>
+                <Icon name="trash" /> ล้างตัวกรอง
+              </button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
-
-      {bad.length ? (
-        <p className={s.badHint} role="alert">
-          {bad.map((k) => k.toUpperCase()).join(' และ ')} ต้องเป็นตัวเลข เช่น -0.25 หรือ +1.50
-        </p>
-      ) : null}
-
-      {chips.length ? (
-        <div className={s.chips}>
-          {chips.map((c) => (
-            <button
-              type="button"
-              key={c.key}
-              className={s.chip}
-              onClick={() => setF({ [c.key]: '' })}
-              aria-label={`เอา ${c.label} ออก`}
-            >
-              {c.label} <Icon name="x" />
-            </button>
-          ))}
-          <button type="button" className={s.clearAll} onClick={clearAll}>
-            <Icon name="trash" /> ล้างทั้งหมด
-          </button>
-        </div>
-      ) : null}
 
       <div className={s.list} role="radiogroup" aria-label="เลือกเลนส์">
         <div className={s.head} aria-hidden="true">
@@ -184,7 +196,6 @@ export function LensPicker({ placeholder, fetcher, label, stock, onPick, selecte
         </div>
         {state === 'loading' && <div className={s.msg}><span className="spin" /> กำลังค้นหา…</div>}
         {state === 'error' && <div className={s.msg}>{error}</div>}
-        {state === 'invalid' && <div className={s.msg}>แก้ค่าสายตาให้เป็นตัวเลขก่อน แล้วรายการจะขึ้นตามเงื่อนไข</div>}
         {state === 'done' && rows.length === 0 && (narrowed ? (
           <div className={`${s.msg} ${s.empty}`}>
             <span>ไม่พบเลนส์ที่ตรงกับเงื่อนไข</span>
