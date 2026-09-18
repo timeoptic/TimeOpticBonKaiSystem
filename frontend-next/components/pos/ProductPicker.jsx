@@ -105,9 +105,10 @@ export function ProductPicker({ products, onPick, placeholder }) {
                         {out ? 'หมด' : `เหลือ ${p.on_hand}`}
                       </span>
                     )}
-                    {/* ราคา 0 คือ "ยังไม่ได้ตั้งราคา" ไม่ใช่ "ของฟรี" จึงบอกให้พิมพ์เอง */}
+                    {/* ราคา 0 คือ "ยังไม่ได้ตั้งราคา" ไม่ใช่ "ของฟรี" จึงบอกให้พิมพ์เอง ·
+                        ของจากคลังตั้งราคาเองเสมอ (ดู addItem ใน cart.js) */}
                     <span className="pos-hit-price">
-                      {Number(p.base_selling_price) > 0 ? money(p.base_selling_price) : 'ตั้งราคาเอง'}
+                      {!p.stock && Number(p.base_selling_price) > 0 ? money(p.base_selling_price) : 'ตั้งราคาเอง'}
                     </span>
                   </button>
                 );

@@ -278,6 +278,11 @@ test('addItem: แถวจากคลังจำว่าเป็นขอ�
   assert.equal(it.product_type, 'Frame');
 });
 
+test('addItem: ของจากคลังไม่มีราคาตั้งต้น — พนักงานตั้งราคาเองเหมือนสินค้า Gadget', () => {
+  assert.equal(addItem([], frame)[0].unit_price, 0);
+  assert.equal(addItem([], frame, { price: 3990 })[0].unit_price, 3990, 'ส่งราคามาเองยังใช้ได้');
+});
+
 test('addItem: ของคลัง id ชนกับ pos_items id — ไม่รวมเป็นแถวเดียว', () => {
   let c = addItem([], { ...spray, id: 1, base_selling_price: 4500 });
   c = addItem(c, frame);

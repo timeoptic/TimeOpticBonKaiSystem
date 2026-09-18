@@ -40,10 +40,13 @@ const sameMeta = (a, b) => {
  * สินค้า Custom แยกแถวเสมอ เพราะชื่อที่พิมพ์เองยังว่างอยู่ตอนเพิ่ง add
  */
 export function addItem(items, product, { quantity = 1, meta = {}, price } = {}) {
-  const unitPrice = price === undefined ? round2(product.base_selling_price) : round2(price);
   const custom = !!product.pos_custom;
-
   const stock = !!product.stock;
+  /* กรอบแว่น/คอนแทคเลนส์จากคลังเริ่มที่ 0 ให้พนักงานตั้งราคาเองทุกครั้ง แบบเดียวกับ
+     สินค้า Gadget (ร้านสั่ง 18 ก.ย. 2026) — ไม่ใช้ราคาขายที่ตั้งไว้ในคลัง */
+  const unitPrice = price !== undefined ? round2(price)
+    : stock ? 0
+      : round2(product.base_selling_price);
 
   if (!custom) {
     /* ของคลังกับ pos_items เป็นคนละตาราง id ชนกันได้ — เทียบแหล่งด้วยเสมอ */
