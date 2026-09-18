@@ -279,7 +279,8 @@ export default function ProductPicker({
    */
   const lensCols =
     list.status === "ready" && list.data.rows.some((r) => r.productType === "Lens");
-  const lensFilters = ptype === "Lens";
+  /* ชิปเลนส์แสดงตลอด ไม่ต้องเลือกชนิด "เลนส์" ก่อน (ร้านขอ 18 ก.ย. 2026) · ซ่อนเฉพาะตอนเลือกชนิดอื่น */
+  const lensFilters = ptype === "" || ptype === "Lens";
 
   /** Leaving the lens aisle takes the lens filters with it, rather than leaving
    *  an invisible narrowing on a list that no longer offers a way to see it. */
@@ -402,8 +403,12 @@ export default function ProductPicker({
           onChange={chooseType}
           options={TYPES.map((t) => ({ value: t.key, label: t.label }))}
         />
+      </FilterBar>
+      </div>
 
-        {lensFilters ? (
+      {/* แถวของตัวเอง นอกแถบที่พับบนมือถือ — เห็นทันที ไม่ต้องกดเปิดตัวกรองก่อน */}
+      {lensFilters ? (
+        <div className="filterbar lensbar">
           <LensFilters
             value={lens}
             onChange={(v) => refine(() => setLens(v))}
@@ -412,9 +417,8 @@ export default function ProductPicker({
             // offer a choice that empties the table.
             scope={{ q: applied, eye, make: only === "all" ? "" : only }}
           />
-        ) : null}
-      </FilterBar>
-      </div>
+        </div>
+      ) : null}
 
       {list.status === "loading" ? <div className="skeleton" /> : null}
 

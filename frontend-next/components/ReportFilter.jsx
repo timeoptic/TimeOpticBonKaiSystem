@@ -18,7 +18,7 @@ import { Icon } from './Icon.jsx';
 import { api } from '../lib/apiClient.js';
 import { useAsync } from '../lib/hooks.js';
 import {
-  CHANNELS, GROUPS, PERIODS, STATUSES, filterQuery, periodOf, rangeFor, rangeLabel, readFilter,
+  CHANNELS, GROUPS, PERIODS, STATUSES, filterQuery, periodOf, rangeFor, readFilter,
 } from '../lib/reportRange.js';
 import DateRangeField from '@/stockmod/components/DateRangeField';
 import { FilterBar } from './FilterBar.jsx';
@@ -103,24 +103,17 @@ export function ReportFilter({
             ))}
           </div>
 
-          <span className="rf-range" title="ช่วงที่กำลังดูอยู่">
-            <Icon name="calendar" /> {rangeLabel(f.from, f.to)}
-          </span>
+          {/* ป้ายช่วงที่กำลังดู กลายเป็นปุ่มปฏิทินเอง — กดแล้วเลือกช่วงได้ทันที ไม่ต้องเปิดแผ่น */}
+          <div className="fb-date rf-range-pick">
+            <DateRangeField
+              from={f.from}
+              to={f.to}
+              onApply={({ from, to }) => go({ from, to })}
+            />
+          </div>
         </>
       )}
     >
-      {/* <div> ไม่ใช่ <label> เหมือนช่องอื่น — DateRangeField ไม่ใช่ <input> เดี่ยวที่
-          label คลิกทะลุถึงได้อยู่แล้ว ปฏิทินใบเดียวกันเลือกทั้งต้นทาง/ปลายทาง จึงไม่มี
-          จังหวะกะพริบปิด-เปิดแบบ DateField เดิมที่แยกสองช่อง */}
-      <div className="rf-date">
-        <span>ช่วงวันที่</span>
-        <DateRangeField
-          split
-          from={f.from}
-          to={f.to}
-          onApply={({ from, to }) => go({ from, to })}
-        />
-      </div>
 
       <label className="rf-date">
         <span>{channelLabel}</span>

@@ -240,7 +240,18 @@ export default function DateRangeField({
                       ›
                     </button>
                   ) : (
-                    <span className="daterange__step daterange__step--ghost" aria-hidden="true" />
+                    <>
+                      <span className="daterange__step daterange__step--ghost daterange__step--wide" aria-hidden="true" />
+                      {/* จอแคบเหลือเดือนเดียว (CSS ซ่อนเดือนที่สอง) ปุ่มถัดไปจึงต้องอยู่เดือนแรกด้วย */}
+                      <button
+                        type="button"
+                        className="daterange__step daterange__step--narrow"
+                        aria-label="เดือนถัดไป"
+                        onClick={() => setAt(new Date(at.getFullYear(), at.getMonth() + 1, 1))}
+                      >
+                        ›
+                      </button>
+                    </>
                   )}
                 </div>
 

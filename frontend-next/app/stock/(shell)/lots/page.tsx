@@ -6,6 +6,7 @@ import { useToast } from "@/stockmod/components/Toaster";
 import Paginator from "@/stockmod/components/Paginator";
 import SortHead, { SortBar, useSort } from "@/stockmod/components/SortHead";
 import LotEditDialog from "@/stockmod/components/LotEditDialog";
+import DateRangeField from "@/stockmod/components/DateRangeField";
 import RecordCard, { CardList } from "@/stockmod/components/RecordCard";
 import { qs, useApi } from "@/stockmod/lib/useApi";
 import { count, date, money, shortName } from "@/stockmod/lib/format";
@@ -56,6 +57,8 @@ export default function LotsPage() {
   const [applied, setApplied] = useState("");
   const [state, setState] = useState<string>("all");
   const [page, setPage] = useState(1);
+  /** ช่วงวันรับเข้า — ว่างทั้งคู่ = ทุกวัน */
+  const [range, setRange] = useState({ from: "", to: "" });
   const { sort, dir, sortBy } = useSort<SortKey>("received", NATURAL_ASC);
 
   /**
@@ -72,7 +75,7 @@ export default function LotsPage() {
 
   const money$ = can.seeCost(useActor());
   const list = useApi<List>(
-    `/lots${qs({ state: state === "all" ? "" : state, q: applied, sort, dir, page })}`,
+    `/lots${qs({ state: state === "all" ? "" : state, q: applied, from: range.from, to: range.to, sort, dir, page })}`,
   );
   const summary = useApi<Summary>("/summary");
 
@@ -178,7 +181,16 @@ export default function LotsPage() {
         {state === "expiring" ? <span className="chips__note">ภายใน 120 วัน</span> : null}
       </div>
 
-      <SortBar id="lots" columns={sorts(money$)} sort={sort} dir={dir} onSort={pick} />
+      <div className="listtools">
+        <DateRangeField
+          from={range.from}
+          to={range.to}
+          clearable
+          placeholder="รับเข้าทุกวัน"
+          onApply={(r) => refine(() => setRange(r))}
+        />
+        <SortBar id="lots" columns={sorts(money$)} sort={sort} dir={dir} onSort={pick} />
+      </div>
 
       {list.status === "loading" ? <div className="skeleton" /> : null}
 

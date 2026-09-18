@@ -300,15 +300,27 @@ function LogsPageInner() {
           </button>
         )}
         search={(
-          <div className="search-field">
-            <Icon name="search" />
-            <input
-              type="search"
-              placeholder="ชื่อคน / สิ่งที่ทำ / เส้นทาง / ค่าที่เปลี่ยน"
-              value={term}
-              onChange={(e) => setTerm(e.target.value)}
-            />
-          </div>
+          <>
+            <div className="search-field">
+              <Icon name="search" />
+              <input
+                type="search"
+                placeholder="ชื่อคน / สิ่งที่ทำ / เส้นทาง / ค่าที่เปลี่ยน"
+                value={term}
+                onChange={(e) => setTerm(e.target.value)}
+              />
+            </div>
+            {/* ปฏิทินอยู่นอกแผ่นตัวกรอง — บนมือถือกดครั้งเดียวถึง (ร้านขอ 18 ก.ย. 2026) */}
+            <div className="fb-date">
+              <DateRangeField
+                clearable
+                placeholder="ทุกวัน"
+                from={from}
+                to={to}
+                onApply={({ from: f, to: t }) => { setFrom(f); setTo(t); }}
+              />
+            </div>
+          </>
         )}
       >
         <Field label="ชนิด">
@@ -316,16 +328,6 @@ function LogsPageInner() {
         </Field>
         <Field label="ใคร">
           <Select value={actorId} onChange={(e) => setActorId(e.target.value)} options={actorOptions} />
-        </Field>
-        <Field label="ช่วงวันที่">
-          <DateRangeField
-            split
-            clearable
-            placeholder="ทั้งหมด"
-            from={from}
-            to={to}
-            onApply={({ from: f, to: t }) => { setFrom(f); setTo(t); }}
-          />
         </Field>
         <button type="button" className="btn btn-light" onClick={setToday}>วันนี้</button>
       </FilterBar>

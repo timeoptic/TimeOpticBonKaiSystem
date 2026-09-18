@@ -114,25 +114,27 @@ export default function PosHistoryPage() {
             setPay(''); setFul(''); setMethod('');
           }}
           search={(
-            <div className="search-field">
-              <Icon name="search" />
-              <input
-                type="search"
-                value={q}
-                placeholder="เลขที่ / ชื่อลูกค้า / เบอร์โทร / ชื่อสินค้า"
-                onChange={(e) => setQ(e.target.value)}
-              />
-            </div>
+            <>
+              <div className="search-field">
+                <Icon name="search" />
+                <input
+                  type="search"
+                  value={q}
+                  placeholder="เลขที่ / ชื่อลูกค้า / เบอร์โทร / ชื่อสินค้า"
+                  onChange={(e) => setQ(e.target.value)}
+                />
+              </div>
+              {/* ปฏิทินอยู่นอกแผ่นตัวกรอง — บนมือถือกดครั้งเดียวถึง (ร้านขอ 18 ก.ย. 2026) */}
+              <div className="fb-date">
+                <DateRangeField
+                  from={from}
+                  to={to}
+                  onApply={({ from: f, to: t }) => { setFrom(f); setTo(t); }}
+                />
+              </div>
+            </>
           )}
         >
-          <Field label="ช่วงวันที่">
-            <DateRangeField
-              split
-              from={from}
-              to={to}
-              onApply={({ from: f, to: t }) => { setFrom(f); setTo(t); }}
-            />
-          </Field>
           <Field label="การชำระ">
             <Select
               value={pay}

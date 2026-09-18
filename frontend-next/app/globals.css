@@ -5210,3 +5210,49 @@ html,body{overflow-x:clip}
   white-space: nowrap;
 }
 .daterange__slot .icon { color: var(--ink-dim); flex: none; }
+
+/* ปฏิทินช่วงวันบนจอแคบ — เหลือเดือนเดียว (สองเดือนเรียงลงล่างสูงเกินจอโทรศัพท์)
+   ปุ่มถัดไปย้ายมาอยู่เดือนแรก · ช่องวันใหญ่พอให้นิ้วกด · เลื่อนในกล่องได้ถ้าจอเตี้ย */
+.daterange__step--narrow { display: none; }
+.daterange__pop { overflow-y: auto; overscroll-behavior: contain; }
+@media (max-width: 40rem) {
+  .daterange__cal + .daterange__cal { display: none; }
+  .daterange__step--wide { display: none; }
+  .daterange__step--narrow { display: inline-flex; }
+  .daterange__pop { padding: 0.875rem; }
+  .daterange__cal { min-inline-size: 0; }
+  .daterange__day { min-block-size: 2.5rem; }
+  .daterange__foot { flex-wrap: wrap; gap: 0.5rem; }
+}
+
+/* ---------------- ปฏิทินช่วงวันที่ที่เห็นตลอด (ร้านขอ 18 ก.ย. 2026) ----------------
+ * อยู่ช่อง `search` ของ FilterBar / แถวค้นหาของกระดานงาน ไม่ได้อยู่ในแผ่นตัวกรอง —
+ * บนมือถือกดครั้งเดียวถึงปฏิทิน · หน้าปุ่มคือช่วงที่กำลังดูอยู่ จึงแทนป้ายช่วงเดิมของหน้ารายงานด้วย
+ */
+.fb-date{flex:0 0 auto;min-width:0}
+.fb-date .daterange__face{
+  min-height:44px;white-space:nowrap;border-radius:999px;padding-inline:16px 40px;
+  background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23136724' stroke-width='2' stroke-linecap='round'%3E%3Crect x='3' y='5' width='18' height='16' rx='2'/%3E%3Cpath d='M16 3v4M8 3v4M3 10h18'/%3E%3C/svg%3E") no-repeat right 14px center/18px;
+  font-weight:600;color:var(--ink);
+}
+.rf-range-pick .daterange__face{background-color:var(--accent-soft);color:var(--accent-deep);border-color:transparent}
+@media (min-width:640px){ .report-filter .rf-range-pick{order:3} }
+@media (max-width:639.98px){
+  .filter-bar .fb-date,.board-filters .fb-date{flex:1 1 100%}
+  .fb-date .daterange__face{width:100%;font-size:16px}
+}
+
+/* กล่องปฏิทินสูงไม่เกินที่ว่างใต้ปุ่ม (useDropBox ตั้ง max-block-size) — ส่วนท้ายที่มีปุ่ม "ใช้ช่วงนี้"
+   ต้องอยู่ในกล่องเสมอ ส่วนที่เลื่อนได้คือตัวปฏิทิน ไม่ใช่ปุ่ม · border-box ให้ padding นับรวมในความสูง */
+.daterange__pop { box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; }
+.daterange__months { overflow-y: auto; min-block-size: 0; flex: 1 1 auto; overscroll-behavior: contain; }
+.daterange__foot { flex: 0 0 auto; }
+.daterange__step { display: inline-flex; align-items: center; justify-content: center; padding: 0; line-height: 1; }
+.daterange__step--ghost { display: inline-block; }
+@media (max-width: 40rem) {
+  .daterange__step--wide { display: none; }
+  .daterange__foot { flex-direction: column; align-items: stretch; }
+  .daterange__foot .chips { justify-content: flex-end; flex-wrap: nowrap; }
+}
+.daterange__step--narrow { display: none; }
+@media (max-width: 40rem) { .daterange__step--narrow { display: inline-flex; } }

@@ -8,6 +8,7 @@ import SortHead, { SortBar, useSort } from "@/stockmod/components/SortHead";
 import { Filter, FilterBar, withCount } from "@/stockmod/components/FilterBar";
 import RecordCard, { CardList } from "@/stockmod/components/RecordCard";
 import ShopIssueDialog from "@/stockmod/components/ShopIssueDialog";
+import DateRangeField from "@/stockmod/components/DateRangeField";
 import { qs, useApi } from "@/stockmod/lib/useApi";
 import { count, dateTime, money, shortName } from "@/stockmod/lib/format";
 import type { MovementRow, Page, Person } from "@/stockmod/lib/api";
@@ -72,6 +73,8 @@ export default function MovementsPage() {
   const [type, setType] = useState("");
   const [who, setWho] = useState("");
   const [page, setPage] = useState(1);
+  /** ช่วงวันที่ของรายการ — ว่างทั้งคู่ = ทุกวัน · API รับ from/to อยู่แล้ว */
+  const [range, setRange] = useState({ from: "", to: "" });
   const { sort, dir, sortBy } = useSort<SortKey>("date", NATURAL_ASC);
 
   const actor = useActor();
@@ -83,7 +86,7 @@ export default function MovementsPage() {
   const people = useApi<{ people: Person[] }>(maySettle ? "/people" : null);
   const [editing, setEditing] = useState<MovementRow | null>(null);
   const onEdit = maySettle ? setEditing : undefined;
-  const list = useApi<List>(`/movements${qs({ type, q: applied, who, sort, dir, page })}`);
+  const list = useApi<List>(`/movements${qs({ type, q: applied, who, from: range.from, to: range.to, sort, dir, page })}`);
   const rows = list.status === "ready" ? list.data.rows : [];
   const counts: Counts = list.status === "ready" ? list.data.counts : {};
 
@@ -194,6 +197,14 @@ export default function MovementsPage() {
 
         {/* ไม่มีปุ่มกลับด้าน — ทุกคอลัมน์ในตารางข้างล่างกดเรียงได้ และกดซ้ำก็กลับด้าน
             อยู่แล้ว ปุ่มบนแถบนี้จึงเป็นทางที่สองไปหาสิ่งเดียวกัน */}
+        {/* นอกแถบตัวกรองที่พับบนมือถือ — ปฏิทินกดได้ทันที (ร้านขอ 18 ก.ย. 2026) */}
+        <DateRangeField
+          from={range.from}
+          to={range.to}
+          clearable
+          placeholder="ทุกวัน"
+          onApply={(r) => refine(() => setRange(r))}
+        />
         <SortBar
           id="mov"
           columns={sorts(money$)}

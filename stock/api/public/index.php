@@ -86,6 +86,8 @@ Http::get('/api/products', static function () use ($maySeeCost): array {
         'sph_to'      => Http::query('sph_to'),
         'cyl_from'    => Http::query('cyl_from'),
         'cyl_to'      => Http::query('cyl_to'),
+        'received_from' => Http::query('from'),
+        'received_to'   => Http::query('to'),
         'category_id' => Http::query('cat') === null ? null : (int) Http::query('cat'),
         'state'       => Http::query('state'),
         'sort'        => Http::query('sort'),
@@ -179,6 +181,8 @@ Http::get('/api/lots', static function () use ($maySeeCost): array {
     return Inventory::lots([
         'state' => Http::query('state'),
         'q'     => Http::query('q'),
+        'from'  => Http::query('from'),
+        'to'    => Http::query('to'),
         'sort'  => Http::query('sort'),
         'dir'   => Http::query('dir'),
         'page'  => Http::query('page'),
@@ -263,6 +267,8 @@ Http::get('/api/lens-options', static function (): array {
         'sph_to'   => Http::query('sph_to'),
         'cyl_from' => Http::query('cyl_from'),
         'cyl_to'   => Http::query('cyl_to'),
+        'received_from' => Http::query('from'),
+        'received_to'   => Http::query('to'),
     ]);
 });
 

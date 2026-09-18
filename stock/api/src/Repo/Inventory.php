@@ -316,6 +316,21 @@ final class Inventory
             }
         }
 
+        /* สินค้าที่มีล็อตรับเข้าในช่วงวันนี้ — ปฏิทินของหน้าสินค้าและสต็อก (ร้านขอ 18 ก.ย. 2026)
+           ถามเป็นเรื่องของล็อต คำตอบเป็นสินค้า แบบเดียวกับตัวกรองสถานะข้างล่าง */
+        $recv = [];
+        if (self::isDate($filter['received_from'] ?? null)) {
+            $recv[] = 'l3.received_date >= ?';
+            $args[] = $filter['received_from'];
+        }
+        if (self::isDate($filter['received_to'] ?? null)) {
+            $recv[] = 'l3.received_date <= ?';
+            $args[] = $filter['received_to'];
+        }
+        if ($recv !== []) {
+            $where[] = 'EXISTS (SELECT 1 FROM stock_lots l3 WHERE l3.product_id = p.id AND ' . implode(' AND ', $recv) . ')';
+        }
+
         // SPH / CYL as a range, compared as numbers so "-2" meets "-2.00".
         // Either end may be open; ends given the wrong way round are swapped
         // rather than returning nothing, since that is never what was meant.
@@ -576,6 +591,15 @@ final class Inventory
             $where[] = '(l.lot_number LIKE ? OR p.sku LIKE ? OR p.name LIKE ?)';
             $like = '%' . $filter['q'] . '%';
             array_push($args, $like, $like, $like);
+        }
+        // ช่วงวันรับเข้า — ปฏิทินเดียวกับทุกหน้า (ร้านขอ 18 ก.ย. 2026)
+        if (self::isDate($filter['from'] ?? null)) {
+            $where[] = 'l.received_date >= ?';
+            $args[] = $filter['from'];
+        }
+        if (self::isDate($filter['to'] ?? null)) {
+            $where[] = 'l.received_date <= ?';
+            $args[] = $filter['to'];
         }
 
         $clause = implode(' AND ', $where);

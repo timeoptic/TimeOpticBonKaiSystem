@@ -71,7 +71,7 @@ export default function LensFilters({
    * lists only stock, both 1.74 lenses in the shop are made to order, and the
    * count read "1.74 · 2" above a table that could never show either of them.
    */
-  scope?: { q?: string; eye?: string; make?: string };
+  scope?: { q?: string; eye?: string; make?: string; from?: string; to?: string };
 }) {
   // The current choices go too. The API drops a facet's own choice before
   // counting it, so sending them is what makes the *other* rows re-tally —

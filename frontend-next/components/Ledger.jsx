@@ -211,26 +211,29 @@ export function Ledger({ title, subtitle, icon, endpoint, typeKey, typeList, wit
           </button>
         )}
         search={(
-          <div className="search-field">
-            <Icon name="search" />
-            <input
-              type="search"
-              placeholder="ประเภท / สาขา / หมายเหตุ"
-              value={term}
-              onChange={(e) => setTerm(e.target.value)}
-            />
-          </div>
+          <>
+            <div className="search-field">
+              <Icon name="search" />
+              <input
+                type="search"
+                placeholder="ประเภท / สาขา / หมายเหตุ"
+                value={term}
+                onChange={(e) => setTerm(e.target.value)}
+              />
+            </div>
+            {/* ปฏิทินอยู่นอกแผ่นตัวกรอง — บนมือถือกดครั้งเดียวถึง (ร้านขอ 18 ก.ย. 2026) */}
+            <div className="fb-date">
+              <DateRangeField
+                clearable
+                placeholder="ทุกวัน"
+                from={from}
+                to={to}
+                onApply={({ from: f, to: t }) => { setFrom(f); setTo(t); }}
+              />
+            </div>
+          </>
         )}
       >
-        <Field label="ช่วงวันที่">
-          <DateRangeField
-            split
-            placeholder="ทั้งหมด"
-            from={from}
-            to={to}
-            onApply={({ from: f, to: t }) => { setFrom(f); setTo(t); }}
-          />
-        </Field>
         <button type="button" className="btn btn-light" onClick={thisMonth}>เดือนนี้</button>
         {(from || to) && (
           <button type="button" className="btn btn-light" onClick={clearRange}>ล้างช่วงวันที่</button>

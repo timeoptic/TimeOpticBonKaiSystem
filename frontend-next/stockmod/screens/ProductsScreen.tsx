@@ -9,6 +9,7 @@ import LensFilters, { NO_LENS, lensParams, type LensPick } from "@/stockmod/comp
 import { Filter, FilterBar, withCount } from "@/stockmod/components/FilterBar";
 import RecordCard, { CardList } from "@/stockmod/components/RecordCard";
 import TaskDialog from "@/stockmod/components/TaskDialog";
+import DateRangeField from "@/stockmod/components/DateRangeField";
 import LensCells from "@/stockmod/components/LensCells";
 import ProductCell from "@/stockmod/components/ProductCell";
 import NewProductDialog from "@/stockmod/components/NewProductDialog";
@@ -163,6 +164,8 @@ export default function ProductsScreen({
 
   const [ptype, setPtype] = useState("");
   const [lens, setLens] = useState<LensPick>(NO_LENS);
+  /** ช่วงวันรับเข้า — ว่างทั้งคู่ = ทุกวัน */
+  const [range, setRange] = useState({ from: "", to: "" });
   const [page, setPage] = useState(1);
   const { sort, dir, sortBy, sortTo } = useSort<SortKey>(views?.[0]?.sort ?? "added", NATURAL_ASC);
   const [openId, setOpenId] = useState<number | null>(null);
@@ -188,7 +191,7 @@ export default function ProductsScreen({
   const money$ = can.seeCost(actor);
   const summary = useApi<Summary>("/summary");
   const list = useApi<Page<ProductRow> & { stateCounts?: StateCounts }>(
-    `/products${qs({ q: applied, make: ONLY_STOCK, type: ptype, ...lensParams(lens), state, sort, dir, page, counts: "1" })}`,
+    `/products${qs({ q: applied, make: ONLY_STOCK, type: ptype, ...lensParams(lens), from: range.from, to: range.to, state, sort, dir, page, counts: "1" })}`,
   );
 
   const counts = list.status === "ready" ? list.data.stateCounts : undefined;
@@ -228,7 +231,9 @@ export default function ProductsScreen({
    * its name, where they cost nothing from the rows that have none.
    */
   const lensCols = ptype === "Lens";
-  const lensFilters = ptype === "Lens";
+  /* ชิปเลนส์แสดงตลอด ไม่ต้องเลือกชนิด "เลนส์" ก่อน (ร้านขอ 18 ก.ย. 2026) — กดชิปแล้วรายการ
+     เหลือแต่เลนส์เอง · ซ่อนเฉพาะตอนเลือกชนิดอื่นไว้ ชิปเลนส์บนรายการกรอบแว่นกดแล้วว่างเปล่า */
+  const lensFilters = ptype === "" || ptype === "Lens";
   /** มุมมองที่เปิดอยู่ (ถ้าหน้านี้มี) · คอลัมน์ "แจ้งเตือนเมื่อ" มีเฉพาะมุมของที่ถูกเตือน */
   const view = views?.find((v) => v.key === state);
   const alertedCol = state === "alerted";
@@ -481,6 +486,14 @@ function ProductRowCard({
               ))}
             </div>
           ) : null}
+          {/* ปฏิทินอยู่แถวนี้ ไม่ได้อยู่ในแถบตัวกรองที่พับบนมือถือ — กดครั้งเดียวถึง */}
+          <DateRangeField
+            from={range.from}
+            to={range.to}
+            clearable
+            placeholder="รับเข้าทุกวัน"
+            onApply={(r) => refine(() => setRange(r))}
+          />
           <SortBar
             id="prod"
             columns={[...(applied ? [MATCH_SORT] : []), ...(alertedCol ? [ALERTED_SORT] : []), ...SORTS]}
@@ -521,17 +534,21 @@ function ProductRowCard({
             options={TYPES.map((t) => ({ value: t.key, label: t.label }))}
           />
 
-          {lensFilters ? (
-            <LensFilters
-              value={lens}
-              onChange={(v) => refine(() => setLens(v))}
-              // Whatever else the table is narrowed by, so a count is a count of
-              // rows this screen would actually show.
-              scope={{ q: applied, make: ONLY_STOCK }}
-            />
-          ) : null}
         </FilterBar>
       </div>
+
+      {/* ชิปเลนส์เป็นแถวของตัวเอง นอกแถบที่พับบนมือถือ — เห็นทันทีที่เปิดหน้า */}
+      {lensFilters ? (
+        <div className="filterbar lensbar">
+          <LensFilters
+            value={lens}
+            onChange={(v) => refine(() => setLens(v))}
+            // Whatever else the table is narrowed by, so a count is a count of
+            // rows this screen would actually show.
+            scope={{ q: applied, make: ONLY_STOCK, from: range.from, to: range.to }}
+          />
+        </div>
+      ) : null}
 
       {list.status === "loading" ? <div className="skeleton" /> : null}
 
@@ -561,6 +578,7 @@ function ProductRowCard({
                 if (sort === "match") sortTo("added");
                 setPtype("");
                 setLens(NO_LENS);
+                setRange({ from: "", to: "" });
                 setState(lockState);
               })
             }
