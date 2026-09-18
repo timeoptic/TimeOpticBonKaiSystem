@@ -10,6 +10,7 @@ import { Filter, FilterBar, withCount } from "@/stockmod/components/FilterBar";
 import RecordCard, { CardList } from "@/stockmod/components/RecordCard";
 import TaskDialog from "@/stockmod/components/TaskDialog";
 import DateRangeField from "@/stockmod/components/DateRangeField";
+import { BillButton, ReceiveBill, useReceiveBill } from "@/stockmod/components/ReceiveBill";
 import ExportDialog, { branchOf, fetchAll, fetchLines, inSheet, orderOf, outSheet } from "@/stockmod/components/ExportDialog";
 import LensCells from "@/stockmod/components/LensCells";
 import ProductCell from "@/stockmod/components/ProductCell";
@@ -131,7 +132,10 @@ export default function ProductsScreen({
   empty,
   canAdd = true,
   views,
+  bill = false,
 }: {
+  /** รับของเข้าแบบเปิดบิล — ปุ่ม "+ ใส่บิล" ทุกแถว (เฉพาะหน้าสินค้าและสต็อก, ร้านขอ 18 ก.ย. 2026) */
+  bill?: boolean;
   /**
    * สถานะที่หน้านี้ล็อกไว้ตายตัว — หน้า "สินค้ารอสั่ง" ส่ง `backorder` มา
    *
@@ -187,6 +191,8 @@ export default function ProductsScreen({
   const [exporting, setExporting] = useState(false);
 
   const actor = useActor();
+  const rb = useReceiveBill(can.enterCost(actor), () => reload());
+  const onBill = bill ? (p: ProductRow) => void rb.add(p) : undefined;
   const toast = useToast();
   // Whole columns and tiles go away rather than being drawn empty: a dash where
   // a number belongs reads as missing data, not as "not yours to see".
@@ -257,6 +263,7 @@ function ProductRowCard({
   alerted,
   onOpen,
   onChanged,
+  onBill,
 }: {
   row: ProductRow;
   money: boolean;
@@ -264,6 +271,7 @@ function ProductRowCard({
   alerted: boolean;
   onOpen: () => void;
   onChanged: () => void;
+  onBill?: (p: ProductRow) => void;
 }) {
   /**
    * แผงล็อตของสินค้าตัวนี้ เปิดเป็นกล่อง
@@ -343,9 +351,16 @@ function ProductRowCard({
       ]}
       actions={
         rx ? undefined : (
-          <button type="button" className="btn btn--small" onClick={() => setLots(true)}>
-            ล็อตและรับของเข้า
-          </button>
+          <>
+            {onBill ? (
+              <button type="button" className="btn btn--small btn--primary" onClick={() => onBill(row)}>
+                + ใส่บิล
+              </button>
+            ) : null}
+            <button type="button" className="btn btn--small" onClick={() => setLots(true)}>
+              ล็อตและรับของเข้า
+            </button>
+          </>
         )
       }
     />
@@ -427,6 +442,7 @@ function ProductRowCard({
             เพิ่มสินค้า
           </button>
         ) : null}
+        {bill ? <BillButton b={rb} /> : null}
         {/* Export สินค้า คงเหลือ รับเข้า และจ่ายออก ตามช่วงวัน (ร้านขอ 18 ก.ย. 2026) */}
         <button type="button" className="btn" onClick={() => setExporting(true)}>
           Export Excel
@@ -609,6 +625,7 @@ function ProductRowCard({
                 alerted={alertedCol}
                 onOpen={() => setOpenId(r.id)}
                 onChanged={reload}
+                onBill={onBill}
               />
             ))}
           </CardList>
@@ -641,6 +658,7 @@ function ProductRowCard({
                   {money$ ? <th scope="col" className="grid__num">ต้นทุนถัดไป</th> : null}
                   <SortHead label="ราคาขาย" col="price" sort={sort} dir={dir} onSort={pick} num />
                   <th scope="col">สถานะ</th>
+                  {bill ? <th scope="col"><span className="sr-only">ใส่บิล</span></th> : null}
                 </tr>
               </thead>
               <tbody>
@@ -653,7 +671,8 @@ function ProductRowCard({
                     inlineSpec={!lensCols}
                     alerted={alertedCol}
                     open={openRow === r.id}
-                    columns={3 + (lensCols ? 2 : 0) + (alertedCol ? 1 : 0) + (money$ ? 1 : 0) + 2}
+                    columns={3 + (lensCols ? 2 : 0) + (alertedCol ? 1 : 0) + (money$ ? 1 : 0) + 2 + (bill ? 1 : 0)}
+                    onBill={onBill}
                     startReceiving={receiveInto === r.id}
                     onToggle={() => {
                       setReceiveInto(null);
@@ -716,6 +735,7 @@ function ProductRowCard({
           }}
         />
       ) : null}
+      {bill ? <ReceiveBill b={rb} /> : null}
       {exporting ? (
         <ExportDialog
           title={title}
@@ -800,6 +820,7 @@ function Row({
   onToggle,
   onOpen,
   onChanged,
+  onBill,
 }: {
   row: ProductRow;
   money: boolean;
@@ -818,6 +839,7 @@ function Row({
   onToggle: () => void;
   onOpen: () => void;
   onChanged: () => void;
+  onBill?: (p: ProductRow) => void;
 }) {
   const rx = row.isCustomMade;
   const pending = row.lotsMissingCost > 0;
@@ -900,6 +922,15 @@ function Row({
           <span className="status status--stock">มีของ</span>
         )}
       </td>
+      {onBill ? (
+        <td className="grid__act" onClick={(e) => e.stopPropagation()}>
+          {rx ? null : (
+            <button type="button" className="btn btn--small btn--primary" onClick={() => onBill(row)}>
+              + ใส่บิล
+            </button>
+          )}
+        </td>
+      ) : null}
     </tr>
 
     {open ? (
