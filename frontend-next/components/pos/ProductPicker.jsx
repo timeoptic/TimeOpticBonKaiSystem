@@ -1,21 +1,24 @@
 'use client';
 /**
- * ช่องค้นหา/เลือกสินค้า — วางอยู่ตำแหน่งเดียวกับช่อง "ชื่อสินค้า" ของ POS เดิม
+ * ช่องค้นหา/เลือกสินค้า
  *
- * สินค้าทั้งหมดมาจาก `/api/pos/products` ซึ่งอ่านตาราง pos_items ของหน้าร้าน (ไม่ใช่ของคลัง) — ไม่มี
- * รายการสินค้าตัวไหนเขียนไว้ในไฟล์นี้ เพิ่มสินค้าที่ฐานแล้วขึ้นเองทันที
+ * รายการที่ค้นมาจากการ์ดที่เลือกอยู่ (ดู PosModeCards): กรอบ/คอนแทคเลนส์มาจากคลัง
+ * (`/api/pos/stock-products`) ส่วนสินค้าอื่นมาจาก `/api/pos/products` (pos_items) —
+ * ไม่มีรายการสินค้าตัวไหนเขียนไว้ในไฟล์นี้
  *
- * โหลดครั้งเดียวตอนเปิดหน้าแล้วกรองในเครื่อง ไม่ยิง API ทุกตัวอักษร — แคตตาล็อก
- * ของร้านมีหลักสิบถึงหลักร้อยรายการ การกรองในเครื่องเร็วกว่ารอเน็ตเสมอ และ
- * หน้าร้านพิมพ์ไปคุยกับลูกค้าไป จะรอ debounce ไม่ได้
+ * โหลดครั้งเดียวต่อการ์ดแล้วกรองในเครื่อง ไม่ยิง API ทุกตัวอักษร — หน้าร้านพิมพ์ไป
+ * คุยกับลูกค้าไป จะรอ debounce ไม่ได้
  *
- * กด Enter = หยิบตัวแรกที่เจอ · พนักงานที่ชินแล้วพิมพ์ "hitop 60" แล้ว Enter รัว ๆ ได้
+ * กด Enter = หยิบตัวแรกที่ยังมีของ · ของจากคลังที่หมดแล้วยังโชว์ (เป็นสีเทา กดไม่ได้)
+ * เพื่อให้พนักงานรู้ว่าพิมพ์ถูกแล้ว แค่ของหมด ไม่ใช่ไปหาชื่ออื่นต่อ
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { money } from '../../lib/format.js';
-import { PosField } from './PosField.jsx';
+import { Icon } from '../Icon.jsx';
 
-export function ProductPicker({ products, onPick }) {
+const soldOut = (p) => p.stock && Number(p.on_hand) <= 0;
+
+export function ProductPicker({ products, onPick, placeholder }) {
   const [term, setTerm] = useState('');
   const [open, setOpen] = useState(false);
   const box = useRef(null);
@@ -30,21 +33,22 @@ export function ProductPicker({ products, onPick }) {
   const hits = useMemo(() => {
     const t = term.trim().toLowerCase();
     const rows = !t ? products : products.filter((p) => {
-      const hay = `${p.name} ${p.sku} ${p.brand || ''} ${p.category_name}`.toLowerCase();
+      const hay = `${p.name} ${p.sku} ${p.brand || ''} ${p.category_name || ''}`.toLowerCase();
       /* ทุกคำต้องเจอ ไม่ใช่ทั้งประโยคต้องติดกัน — "acuvue astig" จึงหาเจอ */
       return t.split(/\s+/).every((w) => hay.includes(w));
     });
     return rows.slice(0, 60);
   }, [products, term]);
 
-  /* จัดกลุ่มตามหมวดเพื่อให้กวาดตาหาได้เร็วกว่ารายการยาวเรียงเดียว */
+  /* จัดกลุ่มเพื่อให้กวาดตาหาได้เร็วกว่ารายการยาวเรียงเดียว — ของคลังจัดตามแบรนด์ */
   const groups = useMemo(() => {
     const out = [];
     let last = null;
     hits.forEach((p) => {
-      if (p.category_name !== last) {
-        out.push({ head: p.category_name, items: [] });
-        last = p.category_name;
+      const head = p.stock ? (p.brand || 'ไม่ระบุแบรนด์') : p.category_name;
+      if (head !== last) {
+        out.push({ head, items: [] });
+        last = head;
       }
       out[out.length - 1].items.push(p);
     });
@@ -52,6 +56,7 @@ export function ProductPicker({ products, onPick }) {
   }, [hits]);
 
   const pick = (p) => {
+    if (soldOut(p)) return;
     onPick(p);
     setTerm('');
     setOpen(false);
@@ -59,18 +64,21 @@ export function ProductPicker({ products, onPick }) {
 
   return (
     <div className="pos-search" ref={box}>
-      <PosField label="ชื่อสินค้า:" icon="bag">
+      <div className="pos-f pos-f-search">
+        <span className="pos-ico icon-only" aria-hidden="true"><Icon name="search" /></span>
         <input
           value={term}
-          placeholder="ค้นหาหรือเลือกสินค้า — ชื่อ หรือ SKU"
+          placeholder={placeholder || 'ค้นหาชื่อสินค้า หรือรหัส SKU …'}
           onChange={(e) => { setTerm(e.target.value); setOpen(true); }}
           onFocus={() => setOpen(true)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && hits.length) { e.preventDefault(); pick(hits[0]); }
+            const first = hits.find((p) => !soldOut(p));
+            if (e.key === 'Enter' && first) { e.preventDefault(); pick(first); }
             if (e.key === 'Escape') setOpen(false);
           }}
+          aria-label="ค้นหาสินค้า"
         />
-      </PosField>
+      </div>
 
       {open && (
         <div className="pos-results">
@@ -78,18 +86,32 @@ export function ProductPicker({ products, onPick }) {
           {groups.map((g) => (
             <div key={g.head}>
               <div className="pos-cat">{g.head}</div>
-              {g.items.map((p) => (
-                <button type="button" key={p.id} className="pos-hit" onClick={() => pick(p)}>
-                  <span className="pos-hit-name">
-                    <b>{p.name}</b>
-                    <small>{p.sku}{p.brand ? ` · ${p.brand}` : ''}</small>
-                  </span>
-                  {/* ราคา 0 คือ "ยังไม่ได้ตั้งราคา" ไม่ใช่ "ของฟรี" จึงบอกให้พิมพ์เอง */}
-                  <span className="pos-hit-price">
-                    {Number(p.base_selling_price) > 0 ? money(p.base_selling_price) : 'ตั้งราคาเอง'}
-                  </span>
-                </button>
-              ))}
+              {g.items.map((p) => {
+                const out = soldOut(p);
+                return (
+                  <button
+                    type="button"
+                    key={p.id}
+                    className={`pos-hit${out ? ' is-out' : ''}`}
+                    disabled={out}
+                    onClick={() => pick(p)}
+                  >
+                    <span className="pos-hit-name">
+                      <b>{p.name}</b>
+                      <small>{p.sku}{!p.stock && p.brand ? ` · ${p.brand}` : ''}</small>
+                    </span>
+                    {p.stock && (
+                      <span className={`pos-stock${out ? ' out' : ''}`}>
+                        {out ? 'หมด' : `เหลือ ${p.on_hand}`}
+                      </span>
+                    )}
+                    {/* ราคา 0 คือ "ยังไม่ได้ตั้งราคา" ไม่ใช่ "ของฟรี" จึงบอกให้พิมพ์เอง */}
+                    <span className="pos-hit-price">
+                      {Number(p.base_selling_price) > 0 ? money(p.base_selling_price) : 'ตั้งราคาเอง'}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           ))}
         </div>

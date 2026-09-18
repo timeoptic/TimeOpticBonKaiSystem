@@ -48,10 +48,14 @@
 
 @media (max-width:1120px){ .pos-work{grid-template-columns:1fr} }
 
-.pos-main{
+.pos-main{min-width:0;display:flex;flex-direction:column;gap:16px}
+
+.pos-panel{
   background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
-  box-shadow:var(--shadow-sm);padding:18px 20px 20px;min-width:0;
+  box-shadow:var(--shadow-sm);padding:18px 20px 20px;
 }
+
+.pos-panel-h{margin:0 0 12px;font-size:var(--t-md);font-weight:650;letter-spacing:-.3px}
 
 .pos-side{min-width:0}
 
@@ -68,15 +72,35 @@
 /* ---- ยอดรวม ----
    ตัวเลขเดียวที่ต้องอ่านถูกต่อหน้าลูกค้า จึงใหญ่กว่าทุกอย่างในแผงและอยู่บนสุด */
 .pos-total{
-  display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;
+  display:flex;align-items:flex-start;gap:12px;
   padding:0 0 16px;margin-bottom:16px;border-bottom:1px solid var(--line-soft);
 }
 
-.pos-total-lab{font-size:var(--t-sm);color:var(--ink-faint);font-weight:500}
+.pos-total-ico{
+  width:46px;height:46px;flex:0 0 46px;border-radius:var(--radius-sm);
+  background:var(--green-tint);color:var(--green-ink);
+  display:flex;align-items:center;justify-content:center;
+}
+.pos-total-ico .ico{width:22px;height:22px;margin:0}
+
+.pos-total-txt{display:flex;flex-direction:column;min-width:0}
+
+.pos-total-lab{font-size:var(--t-sm);color:var(--ink-soft);font-weight:600}
 
 .pos-total-val{
-  margin-left:auto;font-size:34px;font-weight:650;letter-spacing:-1.4px;
-  color:var(--ink);font-variant-numeric:tabular-nums;line-height:1.1;
+  font-size:34px;font-weight:700;letter-spacing:-1.4px;
+  color:var(--green-deep);font-variant-numeric:tabular-nums;line-height:1.15;
+}
+
+.pos-total-n{
+  margin-left:auto;padding:4px 11px;border-radius:var(--radius-pill);white-space:nowrap;
+  background:var(--green-tint);color:var(--green-deep);font-size:var(--t-xs);font-weight:650;
+}
+
+/* หัวข้อย่อยในแผงเก็บเงิน */
+.pos-sec{
+  display:flex;align-items:center;gap:6px;margin-bottom:8px;
+  font-size:var(--t-sm);font-weight:650;color:var(--ink-soft);
 }
 
 /* ---- แถวช่องกรอก ---- */
@@ -145,14 +169,24 @@
 
 /* ---- กล่องรับสินค้า ---- */
 .pos-deliver{
-  display:flex;gap:12px;align-items:flex-start;
+  display:flex;gap:12px;align-items:center;
   background:var(--green-tint);border:1px solid var(--green-edge);
   border-radius:var(--radius-sm);padding:13px 14px;margin:16px 0;cursor:pointer;
 }
 
 .pos-deliver input{width:20px;height:20px;margin-top:1px;accent-color:var(--green-ink);flex:0 0 auto}
 
-.pos-deliver .pos-deliver-txt{font-size:var(--t-sm);color:var(--ink)}
+.pos-deliver .pos-deliver-txt{flex:1 1 auto;font-size:var(--t-sm);color:var(--ink);font-weight:600}
+
+.pos-deliver .pos-deliver-ico{
+  width:34px;height:34px;flex:0 0 34px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--green-ink);color:#fff;
+}
+.pos-deliver .pos-deliver-ico .ico{width:18px;height:18px;margin:0}
+.pos-deliver.off .pos-deliver-ico{background:var(--warn)}
+
+.pos-deliver .pos-deliver-state{font-weight:500}
 
 .pos-deliver .pos-deliver-state{display:block;margin-top:2px;font-weight:650;color:var(--green-deep)}
 
@@ -161,7 +195,7 @@
 .pos-deliver.off .pos-deliver-state{color:var(--warn)}
 
 /* ปุ่มรับเงินกว้างเต็มแผง — เป็นปุ่มเดียวที่จบงานได้ ไม่ต้องแข่งกับใคร */
-.pos-go{width:100%;margin-top:4px}
+.pos-go{width:100%;margin-top:4px;gap:8px}
 
 /* ---- ปุ่มแบบเดิม (ยังใช้ในหน้าประวัติกับหน้ารายละเอียด) ---- */
 .pos-btn{
@@ -183,7 +217,18 @@
 .pos-btn.back:hover{text-decoration:none;border-color:var(--ink-dim);color:var(--ink)}
 
 /* ---- ตะกร้า ---- */
-.pos-cart-head{display:flex;align-items:center;gap:8px;margin:18px 0 8px}
+.pos-cart-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+
+.pos-cart-head .pos-panel-h{margin:0}
+
+.pos-count-txt{font-weight:500;color:var(--ink-faint);font-size:var(--t-sm)}
+
+.pos-cart-acts{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+
+.pos-clear{background:var(--danger-soft);color:var(--danger);border-color:#FECDD3}
+.pos-clear:disabled{opacity:.5}
+
+.pos-add{background:var(--green-tint);color:var(--green-deep);border-color:var(--green-edge)}
 
 .pos-count{
   display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;
@@ -197,13 +242,49 @@
   padding:34px 18px;text-align:center;color:var(--ink-faint);font-size:var(--t-sm);
 }
 
+.pos-empty-ico{display:block;color:var(--ink-dim);margin-bottom:8px}
+.pos-empty-ico .ico{width:44px;height:44px;margin:0}
+
 .pos-cart-empty b{display:block;color:var(--ink);font-weight:600;font-size:var(--t-base);margin-bottom:3px}
 
 .pos-line{padding:14px 16px;border-top:1px solid var(--line-soft);background:var(--card)}
 
-.pos-line:first-child{border-top:0}
+.pos-thead + .pos-line{border-top:0}
+
+.pos-line .pos-price{width:100%}
+
+.pos-line .pos-line-sum{margin-left:0;text-align:right}
+
+.pos-line .pos-del{justify-self:center}
+
+.pos-stock-tag{
+  display:inline-flex;align-items:center;gap:4px;margin-top:4px;
+  padding:2px 8px;border-radius:var(--radius-pill);
+  background:var(--cyan-tint);color:var(--cyan-deep);font-size:var(--t-xs);font-weight:600;
+}
+.pos-stock-tag .ico{width:12px;height:12px;margin:0}
 
 .pos-line.is-bad{background:var(--danger-soft)}
+
+/* สินค้า · จำนวน · ราคาต่อหน่วย · รวมเงิน · จัดการ — หัวตาราง (.pos-thead) กับแถว
+   (CartItemRow) ใช้คลาสเดียวกัน คอลัมน์จึงตรงกันเสมอ */
+.pos-grid{
+  display:grid;grid-template-columns:minmax(0,1fr) 124px 110px 110px 48px;
+  gap:12px;align-items:center;
+}
+
+.pos-thead{
+  padding:10px 16px;background:var(--panel);border-bottom:1px solid var(--line-soft);
+  font-size:var(--t-xs);font-weight:650;color:var(--ink-faint);
+}
+.pos-thead span:nth-child(n+3){text-align:right}
+.pos-thead span:last-child{text-align:center}
+
+@media (max-width:760px){
+  .pos-thead{display:none}
+  .pos-grid{grid-template-columns:1fr auto;row-gap:10px}
+  .pos-grid .pos-line-name{grid-column:1 / -1}
+}
 
 .pos-line-top{display:flex;gap:10px;align-items:flex-start}
 
@@ -366,6 +447,76 @@
 .pos-hit .pos-hit-name small{color:var(--ink-faint);font-size:var(--t-xs)}
 
 .pos-hit .pos-hit-price{font-weight:650;color:var(--ink);white-space:nowrap;font-variant-numeric:tabular-nums}
+
+/* ของคลังที่หมด — ยังโชว์ให้รู้ว่าพิมพ์ถูก แต่กดไม่ได้ */
+.pos-hit.is-out{cursor:not-allowed;color:var(--ink-dim);background:var(--card)}
+.pos-hit.is-out:hover{background:var(--card)}
+.pos-hit.is-out .pos-hit-name b,.pos-hit.is-out .pos-hit-price{color:var(--ink-dim)}
+
+.pos-stock{
+  padding:2px 9px;border-radius:var(--radius-pill);white-space:nowrap;
+  background:var(--green-tint);color:var(--green-deep);font-size:var(--t-xs);font-weight:650;
+}
+.pos-stock.out{background:var(--danger-soft);color:var(--danger)}
+
+/* ---- การ์ดเลือกประเภทที่จะขาย ---- */
+.pos-modes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+
+@media (max-width:760px){ .pos-modes{grid-template-columns:1fr} }
+
+.pos-mode{
+  display:flex;align-items:center;gap:12px;padding:16px;text-align:left;
+  background:var(--card);border:1.5px solid var(--line);border-radius:var(--radius);
+  box-shadow:var(--shadow-sm);font:inherit;color:var(--ink);cursor:pointer;
+}
+
+.pos-mode:hover{border-color:var(--green-edge)}
+
+.pos-mode.on{border-color:var(--green-ink);background:var(--green-tint);box-shadow:0 0 0 3px var(--green-tint)}
+
+.pos-mode-ico{
+  width:46px;height:46px;flex:0 0 46px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--surface-alt);color:var(--ink-soft);
+}
+.pos-mode-ico .ico{width:24px;height:24px;margin:0}
+.pos-mode.on .pos-mode-ico{background:var(--card);color:var(--green-ink)}
+
+.pos-mode-txt{flex:1 1 auto;min-width:0}
+.pos-mode-txt b{display:block;font-weight:650}
+.pos-mode-txt small{display:block;color:var(--ink-faint);font-size:var(--t-xs)}
+
+/* จอแท็บเล็ต (แผงเก็บเงินลงไปอยู่ข้างล่าง แต่เมนูซ้ายยังอยู่) การ์ดสามใบแคบลง — ชื่อ
+   ต้องอยู่บรรทัดเดียว เอาวงไอคอนออกก่อน แล้วค่อยตัดคำอธิบายด้วย … */
+.pos-mode-txt b,.pos-mode-txt small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:1280px){
+  .pos-mode{padding:12px 14px;gap:10px}
+  .pos-mode-ico{width:36px;height:36px;flex-basis:36px}
+  .pos-mode-ico .ico{width:20px;height:20px}
+}
+@media (max-width:1120px) and (min-width:761px){ .pos-mode-ico{display:none} }
+
+.pos-mode-dot{
+  width:24px;height:24px;flex:0 0 24px;border-radius:50%;
+  border:1.5px solid var(--line);display:flex;align-items:center;justify-content:center;
+}
+.pos-mode.on .pos-mode-dot{background:var(--green-ink);border-color:var(--green-ink);color:#fff}
+.pos-mode-dot .ico{width:14px;height:14px;margin:0}
+
+/* ---- ชิปหมวดหมู่ ---- */
+.pos-chips-wrap{margin-top:14px}
+
+.pos-chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+
+.pos-chip{
+  padding:8px 16px;border-radius:var(--radius-pill);border:1px solid var(--line);
+  background:var(--surface-alt);font:inherit;font-size:var(--t-sm);color:var(--ink);cursor:pointer;
+}
+.pos-chip:hover{border-color:var(--green-edge)}
+.pos-chip.on{background:var(--green-tint);border-color:var(--green-ink);color:var(--green-deep);font-weight:600}
+
+/* ช่องค้นหา — ไม่มีป้ายด้านบนแล้ว หัวการ์ด "ค้นหาสินค้า" ทำหน้าที่นั้น */
+.pos-f-search > input{border:1px solid var(--line);background:var(--card)}
 
 /* ---- กล่องยืนยัน ---- */
 .pos-modal-scrim{

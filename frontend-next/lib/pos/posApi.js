@@ -31,6 +31,8 @@ export const FULFILLMENT_STATUS = {
 
 export const posApi = {
   products: (q, signal) => api.get('/api/pos/products', q ? { q } : {}, signal),
+  /** กรอบแว่น (Frame) / คอนแทคเลนส์ (ContactLen) จากคลัง พร้อมคงเหลือ — ขายแล้วตัดสต็อก */
+  stockProducts: (type, signal) => api.get('/api/pos/stock-products', { type }, signal),
   sales: (query, signal) => api.get('/api/pos/sales', query, signal),
   sale: (id, signal) => api.get(`/api/pos/sales/${id}`, {}, signal),
   create: (body) => api.post('/api/pos/sales', body),

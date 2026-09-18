@@ -33,8 +33,10 @@ import { posApi, PAY_METHODS } from '../../../lib/pos/posApi.js';
 import {
   addItem, removeItem, setQty, bumpQty, setPrice, setMeta, setCustomName,
   totals, changeFor, validateCart, validatePayment, toItemsPayload,
+  isContactLens, hiddenFromOther,
 } from '../../../lib/pos/cart.js';
 import { ProductPicker } from '../../../components/pos/ProductPicker.jsx';
+import { POS_MODES, PosModeCards, PosCategoryChips } from '../../../components/pos/PosModeCards.jsx';
 import { CartItemRow } from '../../../components/pos/CartItemRow.jsx';
 import { ConfirmSaleModal } from '../../../components/pos/ConfirmSaleModal.jsx';
 import { PosField, PosOut } from '../../../components/pos/PosField.jsx';
@@ -54,10 +56,18 @@ const blankForm = () => ({
 
 /* คีย์กันบันทึกซ้ำ หนึ่งค่าต่อหนึ่งตะกร้า — ออกตั้งแต่เปิดตะกร้า ไม่ใช่ตอนกดปุ่ม
    ถ้าออกตอนกดปุ่ม การกดสองครั้งจะได้สองคีย์ ซึ่งกันอะไรไม่ได้เลย */
-/* "รายการนี้เป็นคอนแทคเลนส์ไหม" — ถามจากนิยามช่องกรอกของสินค้า ไม่ใช่จากหมวดหรือ
-   ชื่อ SKU · ของที่ถามค่าสายตาคือของที่ต้องผูกใบวัด และนิยามนั้นอยู่ในฐานข้อมูลที่
-   ร้านแก้เองได้ เพิ่มยี่ห้อใหม่จึงไม่ต้องกลับมาไล่แก้โค้ด */
-const hasPower = (it) => (it.pos_fields || []).some((f) => f.key === 'power');
+/* "รายการนี้เป็นคอนแทคเลนส์ไหม" (ต้องผูกใบวัด) — ของ pos_items เดิมถามจากนิยาม
+   ช่องกรอก (มีช่องค่าสายตา) ของคลังถามจากประเภทสินค้า ดู isContactLens ใน cart.js */
+const hasPower = isContactLens;
+
+/* ชิปหมวดหมู่ — ของคลังใช้แบรนด์ที่มีของมากที่สุดก่อน ของหน้าร้านใช้กลุ่มตามลำดับเดิม */
+const MAX_CHIPS = 8;
+function chipsOf(list, stock) {
+  if (!stock) return [...new Set(list.map((p) => p.category_name).filter(Boolean))];
+  const n = new Map();
+  list.forEach((p) => { if (p.brand) n.set(p.brand, (n.get(p.brand) || 0) + 1); });
+  return [...n.entries()].sort((a, b) => b[1] - a[1]).slice(0, MAX_CHIPS).map(([b]) => b);
+}
 
 const newRef = () => (globalThis.crypto?.randomUUID
   ? globalThis.crypto.randomUUID()
@@ -69,6 +79,33 @@ export default function PosPage() {
   const confirm = useConfirm();
 
   const { data: products, loading, error } = useAsync(() => posApi.products(), []);
+
+  /* การ์ดที่เลือก = แหล่งที่ช่องค้นหาไปหา · บิลไม่ผูกกับการ์ด สลับแล้วของในบิลไม่หาย */
+  const [mode, setMode] = useState('frame');
+  const [chip, setChip] = useState(null);
+  const modeDef = POS_MODES.find((m) => m.key === mode);
+  const {
+    data: stockList, loading: stockLoading, error: stockError, reload: reloadStock,
+  } = useAsync(
+    (signal) => (modeDef.stockType ? posApi.stockProducts(modeDef.stockType, signal) : Promise.resolve([])),
+    [mode],
+  );
+  const switchMode = (m) => { setMode(m); setChip(null); };
+
+  /* รายการของการ์ดที่เลือก — การ์ด "สินค้าอื่น" ไม่เอาคอนแทคเลนส์/กรอบของ pos_items
+     ที่ซ้ำกับคลัง (ขายทางนั้นแล้วคลังไม่รู้) และไม่เอาช่อง "อื่นๆ (พิมพ์เอง)" ซึ่งมี
+     ปุ่ม "เพิ่มรายการด้วยตนเอง" ของมันเองแล้ว */
+  /* ระหว่างโหลดของการ์ดใหม่ useAsync ยังถือรายการของการ์ดเดิมไว้ — ต้องว่างไว้ก่อน
+     ไม่งั้นกด Enter ตอนนั้นจะหยิบกรอบใส่บิลทั้งที่อยู่การ์ดคอนแทคเลนส์ */
+  const modeList = useMemo(() => {
+    if (modeDef.stockType) return stockLoading ? [] : (stockList || []);
+    return (products || []).filter((p) => !hiddenFromOther(p) && !p.pos_custom);
+  }, [modeDef.stockType, stockLoading, stockList, products]);
+  const chips = useMemo(() => chipsOf(modeList, !!modeDef.stockType), [modeList, modeDef.stockType]);
+  const shown = useMemo(() => (
+    !chip ? modeList : modeList.filter((p) => (modeDef.stockType ? p.brand : p.category_name) === chip)
+  ), [modeList, chip, modeDef.stockType]);
+  const customItem = useMemo(() => (products || []).find((p) => p.pos_custom), [products]);
 
   const [items, setItems] = useState([]);
   const [form, setForm] = useState(blankForm);
@@ -163,7 +200,15 @@ export default function PosPage() {
 
   const badKeys = useMemo(() => new Set(cartErrors.map((e) => e.key).filter(Boolean)), [cartErrors]);
 
+  /* ล้างทั้งบิล — ถามก่อนเสมอ เพราะแถวในบิลมีจำนวนกับราคาที่แก้มือไปแล้วอยู่ด้วย */
+  const clearAll = async () => {
+    if (!items.length) return;
+    if (!await confirm('ล้างรายการ', `เอาสินค้าทั้ง ${items.length} รายการออกจากบิล?`, { confirmText: 'ล้างรายการ', danger: true })) return;
+    setItems([]);
+  };
+
   const resetAll = () => {
+    reloadStock();
     setItems([]);
     setForm(blankForm());
     setSaleDate(todayISO());
@@ -259,44 +304,77 @@ export default function PosPage() {
         <span className="pos-mark"><Icon name="bag" /></span>
         <div className="pos-head-txt">
           <h1>ขายหน้าร้าน</h1>
-          <p>บิลด่วน ไม่ต้องเปิดเคส</p>
+          <p>สร้างรายการขายสินค้าหน้าร้านได้อย่างรวดเร็ว — บิลด่วน ไม่ต้องเปิดเคส</p>
         </div>
         <div className="pos-head-act">
           <span className="pos-who">ผู้ขาย · {actor?.displayName || '—'}</span>
-          <Link className="btn btn-light btn-sm" href="/pos/history/">ประวัติการขาย</Link>
+          <Link className="btn btn-light btn-sm" href="/pos/history/"><Icon name="refresh" /> ประวัติการขาย</Link>
         </div>
       </div>
 
       <div className="pos-work">
         {/* ─── แผงซ้าย: เลือกของ ─────────────────────────────────────────── */}
         <section className="pos-main">
-          <ProductPicker products={products || []} onPick={(p) => setItems((c) => addItem(c, p))} />
+          <PosModeCards mode={mode} onMode={switchMode} />
 
-          <div className="pos-cart-head">
-            <span className="pos-lab">รายการในบิล</span>
-            {items.length > 0 && <span className="pos-count">{items.length}</span>}
-          </div>
-          <div className="pos-cart">
-            {items.length === 0
-              ? (
-                <div className="pos-cart-empty">
-                  <b>ยังไม่มีสินค้าในบิล</b>
-                  ค้นหาชื่อสินค้าหรือ SKU ด้านบน แล้วกดเพื่อเพิ่มลงบิล
-                </div>
-              )
-              : items.map((it) => (
-                <CartItemRow
-                  key={it.key}
-                  item={it}
-                  bad={badKeys.has(it.key)}
-                  onQty={(v) => setItems((c) => setQty(c, it.key, v))}
-                  onBump={(d) => setItems((c) => bumpQty(c, it.key, d))}
-                  onPrice={(v) => setItems((c) => setPrice(c, it.key, v))}
-                  onMeta={(k, v) => setItems((c) => setMeta(c, it.key, k, v))}
-                  onCustomName={(v) => setItems((c) => setCustomName(c, it.key, v))}
-                  onRemove={() => void dropItem(it)}
+          <div className="pos-panel">
+            <h2 className="pos-panel-h">ค้นหาสินค้า</h2>
+            {stockError
+              ? <p className="pos-err">{stockError.message}</p>
+              : (
+                <ProductPicker
+                  products={shown}
+                  placeholder={stockLoading
+                    ? 'กำลังโหลดสินค้าจากคลัง…'
+                    : `ค้นหา${modeDef.title.replace('ขาย', '')} — ชื่อ แบรนด์ หรือรหัส SKU …`}
+                  onPick={(p) => setItems((c) => addItem(c, p))}
                 />
-              ))}
+              )}
+            <PosCategoryChips chips={chips} value={chip} onChange={setChip} />
+          </div>
+
+          <div className="pos-panel">
+            <div className="pos-cart-head">
+              <h2 className="pos-panel-h">
+                รายการสินค้าในบิล <span className="pos-count-txt">({items.length} รายการ)</span>
+              </h2>
+              <div className="pos-cart-acts">
+                <button type="button" className="btn btn-sm pos-clear" disabled={!items.length} onClick={() => void clearAll()}>
+                  <Icon name="trash" /> ล้างรายการ
+                </button>
+                {customItem && (
+                  <button type="button" className="btn btn-sm pos-add" onClick={() => setItems((c) => addItem(c, customItem))}>
+                    <Icon name="plus" /> เพิ่มรายการด้วยตนเอง
+                  </button>
+                )}
+              </div>
+            </div>
+            <div className="pos-cart">
+              <div className="pos-grid pos-thead" aria-hidden="true">
+                <span>สินค้า</span><span>จำนวน</span><span>ราคาต่อหน่วย</span><span>รวมเงิน</span><span>จัดการ</span>
+              </div>
+              {items.length === 0
+                ? (
+                  <div className="pos-cart-empty">
+                    <span className="pos-empty-ico"><Icon name="box" /></span>
+                    <b>ยังไม่มีสินค้าในบิล</b>
+                    ค้นหาสินค้าด้านบน แล้วกดเพื่อเพิ่มลงบิล
+                  </div>
+                )
+                : items.map((it) => (
+                  <CartItemRow
+                    key={it.key}
+                    item={it}
+                    bad={badKeys.has(it.key)}
+                    onQty={(v) => setItems((c) => setQty(c, it.key, v))}
+                    onBump={(d) => setItems((c) => bumpQty(c, it.key, d))}
+                    onPrice={(v) => setItems((c) => setPrice(c, it.key, v))}
+                    onMeta={(k, v) => setItems((c) => setMeta(c, it.key, k, v))}
+                    onCustomName={(v) => setItems((c) => setCustomName(c, it.key, v))}
+                    onRemove={() => void dropItem(it)}
+                  />
+                ))}
+            </div>
           </div>
         </section>
 
@@ -306,8 +384,12 @@ export default function PosPage() {
             {/* ยอดรวมเป็นของชิ้นเดียวที่ต้องเห็นก่อนเสมอตอนเก็บเงิน จึงอยู่บนสุด
                 และตัวใหญ่กว่าทุกอย่างในแผง ไม่ใช่แถวหนึ่งในฟอร์ม */}
             <div className="pos-total">
-              <span className="pos-total-lab">ยอดรวม</span>
-              <b className="pos-total-val">{money(sums.total)}</b>
+              <span className="pos-total-ico"><Icon name="receipt" /></span>
+              <span className="pos-total-txt">
+                <span className="pos-total-lab">ยอดรวมทั้งสิ้น</span>
+                <b className="pos-total-val">{money(sums.total)}</b>
+              </span>
+              <span className="pos-total-n">{sums.itemCount} รายการ</span>
             </div>
 
             <div className="pos-row">
@@ -374,6 +456,7 @@ export default function PosPage() {
 
             <hr className="pos-sep" />
 
+            <span className="pos-sec"><Icon name="user" /> ข้อมูลลูกค้า</span>
             <div className="pos-row">
               <PosField label="ชื่อลูกค้า" icon="user">
                 <input
@@ -531,11 +614,7 @@ export default function PosPage() {
 
             {/* สถานะรับสินค้าแยกจากสถานะจ่ายเงินโดยสิ้นเชิง — ติ๊กได้แม้ยังค้างเงิน */}
             <label className={`pos-deliver${form.delivered ? '' : ' off'}`}>
-              <input
-                type="checkbox"
-                checked={form.delivered}
-                onChange={(e) => set('delivered', e.target.checked)}
-              />
+              <span className="pos-deliver-ico"><Icon name={form.delivered ? 'checkCircle' : 'hourglass'} /></span>
               <span className="pos-deliver-txt">
                 ลูกค้ารับสินค้าแล้ววันนี้
                 <b className="pos-deliver-state">
@@ -544,6 +623,11 @@ export default function PosPage() {
                     : 'รอลูกค้ามารับ — บิลยังไม่ปิด'}
                 </b>
               </span>
+              <input
+                type="checkbox"
+                checked={form.delivered}
+                onChange={(e) => set('delivered', e.target.checked)}
+              />
             </label>
 
             {errors.map((e) => <p className="pos-err" key={e}>{e}</p>)}
@@ -554,7 +638,7 @@ export default function PosPage() {
               disabled={busy || errors.length > 0 || items.length === 0}
               onClick={() => { setSaveError(null); setConfirming(true); }}
             >
-              รับเงิน {money(payNow)}
+              <Icon name="banknote" /> รับเงิน {money(payNow)}
             </button>
           </div>
         </aside>

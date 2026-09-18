@@ -1,6 +1,9 @@
 'use client';
 /**
- * หนึ่งแถวในตะกร้า
+ * หนึ่งแถวในตารางรายการสินค้าในบิล
+ *
+ * คอลัมน์ตรงกับหัวตารางใน pos/page.jsx: สินค้า · จำนวน · ราคาต่อหน่วย · รวมเงิน · จัดการ
+ * (`.pos-grid` ใช้ร่วมกัน สองที่ต้องแก้คู่กัน)
  *
  * แก้ได้ทั้งจำนวนและราคาต่อชิ้นตรงแถวเลย ไม่ต้องเปิดกล่องแก้ไข — หน้าร้านลดราคา
  * ให้ลูกค้าประจำเป็นเรื่องปกติ และการต้องกดเข้าไปแก้ทีละชิ้นคือขั้นตอนที่ทำให้
@@ -15,7 +18,7 @@ import { Icon } from '../Icon.jsx';
 export function CartItemRow({ item, bad, onQty, onBump, onPrice, onMeta, onCustomName, onRemove }) {
   return (
     <div className={`pos-line${bad ? ' is-bad' : ''}`}>
-      <div className="pos-line-top">
+      <div className="pos-grid">
         <div className="pos-line-name">
           {item.pos_custom ? (
             <input
@@ -28,13 +31,16 @@ export function CartItemRow({ item, bad, onQty, onBump, onPrice, onMeta, onCusto
           )}
           <small>
             {item.sku}
-            {item.category_name ? ` · ${item.category_name}` : ''}
+            {!item.stock && item.category_name ? ` · ${item.category_name}` : ''}
           </small>
+          {/* ของจากคลัง — บอกตรงแถวว่าบิลนี้จะตัดสต็อก และเหลือกี่ชิ้น */}
+          {item.stock && (
+            <span className="pos-stock-tag">
+              <Icon name="box" /> ตัดสต็อก · เหลือ {item.on_hand}
+            </span>
+          )}
         </div>
-        <button type="button" className="pos-del" onClick={onRemove} aria-label="ลบรายการ"><Icon name="x" /></button>
-      </div>
 
-      <div className="pos-line-ctl">
         <div className="pos-step">
           <button type="button" onClick={() => onBump(-1)} aria-label="ลดจำนวน">−</button>
           <input
@@ -51,14 +57,15 @@ export function CartItemRow({ item, bad, onQty, onBump, onPrice, onMeta, onCusto
           inputMode="decimal"
           value={item.unit_price}
           onChange={(e) => onPrice(e.target.value)}
-          aria-label="ราคาต่อชิ้น"
+          aria-label="ราคาต่อหน่วย"
         />
 
         <span className="pos-line-sum">{money(lineTotal(item))}</span>
+
+        <button type="button" className="pos-del" onClick={onRemove} aria-label="ลบรายการ"><Icon name="trash" /></button>
       </div>
 
-      {/* ช่องกรอกเพิ่มตามชนิดสินค้า — นิยามมาจาก pos_items.pos_fields
-          ผูกกับแถวนี้แถวเดียว ไม่ใช่ช่องกลางของทั้งใบ */}
+      {/* ช่องกรอกเพิ่มตามชนิดสินค้า — ผูกกับแถวนี้แถวเดียว ไม่ใช่ช่องกลางของทั้งใบ */}
       {(item.pos_fields || []).length > 0 && (
         <div className="pos-meta">
           {item.pos_fields.map((f) => {
