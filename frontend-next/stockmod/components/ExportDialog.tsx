@@ -166,7 +166,13 @@ export async function fetchAll<T>(
 export const orderOf = (l: { doc: string | null; branch: string | null }) =>
   l.doc ?? (l.branch ? `สาขา ${l.branch}` : "ไม่ระบุเอกสาร");
 export const branchOf = (b: string | null) => b ?? "TimeOptic (ร้าน)";
-export const when = (s: string) => new Date(s.replace(" ", "T"));
+/**
+ * เวลาในฐาน ("2026-09-19 11:04:00") เป็นเวลาไทยอยู่แล้ว ไม่มีโซน — อ่านเป็น UTC ตรง ๆ
+ * เพราะ ExcelJS แปลง Date เป็นเลขวันของ Excel ด้วยเวลา UTC · เดิมอ่านเป็นเวลาเครื่อง (ไทย)
+ * แล้ว ExcelJS แปลงกลับเป็น UTC ในไฟล์เวลาจึงช้าไป 7 ชั่วโมง (ร้านแจ้ง 19 ก.ย. 2026)
+ */
+export const when = (s: string) =>
+  new Date(/[ T]\d{2}:\d{2}/.test(s) ? s.replace(" ", "T").replace(/Z?$/, "Z") : `${s.slice(0, 10)}T00:00:00Z`);
 const th = (a: string, b: string) => a.localeCompare(b, "th");
 
 /** จ่ายออก / ตัดเสีย ทีละบรรทัด จัดกลุ่มตาม key (ออเดอร์ หรือ สาขา) มียอดรวมย่อยทุกกลุ่ม */

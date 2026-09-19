@@ -14,6 +14,7 @@ import { useToast } from "@/stockmod/components/Toaster";
 import RecordCard, { CardList } from "@/stockmod/components/RecordCard";
 import { IconChart } from "@/stockmod/components/Icon";
 import { download, type Sheet } from "@/stockmod/lib/workbook";
+import { when } from "@/stockmod/components/ExportDialog";
 import { daysPng, INK, piePng, rankPng } from "@/stockmod/lib/chartimage";
 import Paginator from "@/stockmod/components/Paginator";
 
@@ -711,7 +712,6 @@ export default function DashboardPage() {
           `/report/lines${qs({ from: d.from, to: d.to, branch, type: ptype })}`,
         );
         const cut = res.truncated ? " · เกิน 20,000 บรรทัด ตัดท้ายออก — แคบช่วงวันลงแล้วออกใหม่" : "";
-        const when = (s: string) => new Date(s.replace(" ", "T"));
 
         if (wantOrders) {
           /* ออเดอร์ = เลขเอกสารในสมุด (หน้าร้านใส่เลขเคส) · ใบเบิกสาขาที่ไม่มีเลขใช้ชื่อสาขา */
