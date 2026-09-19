@@ -272,8 +272,12 @@ export function ReceiveBill({ b }: { b: ReceiveBillState }) {
                   {mayCost && worth > 0 ? ` · ต้นทุนรวม ${money(worth)}` : ""}
                 </p>
                 <ul className="basket__list">
-                  {lines.map((l) => (
+                  {lines.map((l, i) => (
                     <li className="basket__line billline" key={l.sku}>
+                      {/* เลขแถว — บิลยาว ๆ ไล่เทียบกับกระดาษได้ไม่หลง (ร้านขอ 19 ก.ย. 2026) */}
+                      <span className="billline__no" aria-label={`แถวที่ ${i + 1}`}>
+                        {i + 1}
+                      </span>
                       <span className="basket__name">
                         {shortName(l.name)}
                         <span className="basket__sku">
@@ -321,6 +325,11 @@ export function ReceiveBill({ b }: { b: ReceiveBillState }) {
                           aria-label={`ต้นทุนต่อชิ้น ${l.name}`}
                           autoComplete="off"
                         />
+                        {mayCost ? (
+                          <span className="billline__sum" aria-label={`ต้นทุนรวม ${l.name}`}>
+                            รวม {Number(l.cost) > 0 ? money((Number(l.qty) || 0) * Number(l.cost)) : "—"}
+                          </span>
+                        ) : null}
                         <span className="billline__exp">
                           <DateField value={l.expiry} onChange={(v) => setLine(l.sku, { expiry: v })} disabled={busy} placeholder="วันหมดอายุ" />
                         </span>
@@ -336,6 +345,18 @@ export function ReceiveBill({ b }: { b: ReceiveBillState }) {
                     </li>
                   ))}
                 </ul>
+                {/* ต้นทุนรวมทั้งบิล — ไว้เทียบยอดท้ายใบกำกับ (ร้านขอ 19 ก.ย. 2026) */}
+                {mayCost ? (
+                  <p className="billtotal">
+                    <span>ต้นทุนรวมทั้งบิล</span>
+                    <b>{money(worth)}</b>
+                    {lines.some((l) => !(Number(l.cost) > 0)) ? (
+                      <span className="billtotal__note">
+                        ยังไม่ใส่ต้นทุน {count(lines.filter((l) => !(Number(l.cost) > 0)).length)} แถว
+                      </span>
+                    ) : null}
+                  </p>
+                ) : null}
               </div>
 
               <p className="field__help">

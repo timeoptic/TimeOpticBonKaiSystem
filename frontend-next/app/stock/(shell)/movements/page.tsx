@@ -48,7 +48,7 @@ const TYPES = [
   { key: "RX_ORDER", label: "สั่งตัด RX", countKey: "RX_ORDER" },
   /* สามชนิดท้ายไม่ใช่การเคลื่อนของ แต่เป็นตัวเลขเงินที่มีคนกรอกในวันนั้น —
      จำนวนเป็นศูนย์เสมอ และวันที่คือวันที่กรอก ไม่ใช่วันที่ของออกไป */
-  { key: "COST", label: "ลงต้นทุน RX", countKey: "COST" },
+  { key: "COST", label: "ลงต้นทุน", countKey: "COST" },
   { key: "PRICE", label: "แก้ราคาขาย", countKey: "PRICE" },
   { key: "SETTLE", label: "รับเงินจากสาขา", countKey: "SETTLE" },
   /* ร่องรอยของล็อตที่ถูกลบ (038) — จำนวนศูนย์ รายละเอียดอยู่ในหมายเหตุ */

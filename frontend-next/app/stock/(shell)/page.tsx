@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { can, useActor, WorkHead } from "@/stockmod/components/AppShell";
 import { useToast } from "@/stockmod/components/Toaster";
@@ -14,6 +14,7 @@ import {
   ApiError,
   type BranchRow,
   type Person,
+  type ProductDetail,
   type ProductRow,
   type Summary,
 } from "@/stockmod/lib/api";
@@ -76,7 +77,55 @@ const OTHER_REASON = "อื่น ๆ";
  * short" without asking the API again — the number was already on the row that
  * was picked.
  */
-type Line = { sku: string; name: string; qty: number; onHand: number };
+type Line = { id: number; sku: string; name: string; qty: number; onHand: number };
+
+/**
+ * ต้นทุนของของในตะกร้า — ร้านขอ 19 ก.ย. 2026 ("สินค้าในตะกร้าถ้ามีต้นทุนก็แสดงด้วย")
+ *
+ * ไล่ล็อตแบบ FIFO ลำดับเดียวกับที่ `Stock::plan` ตัดจริง (วันรับเข้าเก่าสุดก่อน แล้วตาม id)
+ * ตัวเลขจึงตรงกับที่จะลงสมุดตอนกดบันทึก · ล็อตที่ยังไม่มีต้นทุนนับเป็น "รอต้นทุน" ไม่ใช่ศูนย์
+ */
+function fifoCost(
+  lots: ProductDetail["lots"],
+  qty: number,
+): { total: number; known: number; unknown: number } {
+  const queue = lots
+    .filter((l) => l.remainingQty > 0)
+    .sort((a, b) => a.receivedDate.localeCompare(b.receivedDate) || a.id - b.id);
+  let left = qty;
+  let total = 0;
+  let known = 0;
+  for (const l of queue) {
+    if (left <= 0) break;
+    const take = Math.min(left, l.remainingQty);
+    if (l.costPerUnit !== null) {
+      total += take * l.costPerUnit;
+      known += take;
+    }
+    left -= take;
+  }
+  return { total, known, unknown: qty - known };
+}
+
+/** ต้นทุนของบรรทัดหนึ่งในตะกร้า — ถามล็อตของสินค้านั้นครั้งเดียว แล้วคิดใหม่ทุกครั้งที่จำนวนเปลี่ยน */
+function LineCost({ line, onCost }: { line: Line; onCost: (sku: string, c: { total: number; unknown: number } | null) => void }) {
+  const d = useApi<{ product: ProductDetail }>(`/products/${line.id}`);
+  const c = d.status === "ready" ? fifoCost(d.data.product.lots, line.qty) : null;
+  const total = c?.total ?? null;
+  const unknown = c?.unknown ?? null;
+  useEffect(() => {
+    onCost(line.sku, total === null || unknown === null ? null : { total, unknown });
+  }, [line.sku, total, unknown, onCost]);
+  if (d.status !== "ready" || c === null) return <span className="basket__cost basket__cost--muted">ต้นทุน …</span>;
+  if (c.known === 0) return <span className="status status--pending">รอต้นทุน</span>;
+  return (
+    <span className="basket__cost">
+      ต้นทุน {money(c.total)}
+      {line.qty > 1 && c.unknown === 0 ? <span className="basket__cost--muted"> ({money(c.total / line.qty)}/ชิ้น)</span> : null}
+      {c.unknown > 0 ? <span className="basket__cost--muted"> · รอต้นทุน {count(c.unknown)} ชิ้น</span> : null}
+    </span>
+  );
+}
 
 /**
  * The one thing this shop does all day: take stock out.
@@ -261,7 +310,7 @@ export default function IssuePage() {
     if (at === -1) {
       return [
         ...lines,
-        { sku: p.sku, name: p.name, qty: Math.min(n, p.onHand), onHand: p.onHand },
+        { id: p.id, sku: p.sku, name: p.name, qty: Math.min(n, p.onHand), onHand: p.onHand },
       ];
     }
     const merged = [...lines];
@@ -273,6 +322,19 @@ export default function IssuePage() {
   }
 
   const lines = basket;
+
+  /* ต้นทุนของแต่ละบรรทัดในตะกร้า ส่งขึ้นมารวมเป็นยอดทั้งตะกร้า — เฉพาะคนที่เห็นต้นทุนได้ */
+  const seeCost = can.seeCost(actor);
+  const [lineCosts, setLineCosts] = useState<Record<string, { total: number; unknown: number } | null>>({});
+  const onLineCost = useCallback(
+    (sku: string, c: { total: number; unknown: number } | null) =>
+      setLineCosts((m) => (m[sku]?.total === c?.total && m[sku]?.unknown === c?.unknown && sku in m ? m : { ...m, [sku]: c })),
+    [],
+  );
+  const basketCost = lines.map((l) => lineCosts[l.sku]);
+  const basketCostReady = basketCost.every((c) => c != null);
+  const basketTotal = basketCost.reduce((n, c) => n + (c?.total ?? 0), 0);
+  const basketUnknown = basketCost.reduce((n, c) => n + (c?.unknown ?? 0), 0);
   const short = lines.find((l) => l.qty > l.onHand) ?? null;
 
   /**
@@ -656,6 +718,8 @@ export default function IssuePage() {
             <div className="basket">
               <p className="basket__head">
                 {count(lines.length)} รายการ · {count(lines.reduce((n, l) => n + l.qty, 0))} ชิ้น
+                {seeCost && basketCostReady && basketTotal > 0 ? ` · ต้นทุนรวม ${money(basketTotal)}` : ""}
+                {seeCost && basketCostReady && basketUnknown > 0 ? ` · รอต้นทุน ${count(basketUnknown)} ชิ้น` : ""}
               </p>
               <ul className="basket__list">
                 {lines.map((l) => (
@@ -665,6 +729,7 @@ export default function IssuePage() {
                       <span className="basket__sku">
                         {l.sku} · มีอยู่ {count(l.onHand)}
                       </span>
+                      {seeCost ? <LineCost line={l} onCost={onLineCost} /> : null}
                     </span>
                     <span className="basket__step">
                       <button

@@ -1334,6 +1334,7 @@ export function NewOrderDialog({
   useEffect(() => {
     if (autoDoc && issued.status === "ready") setDoc(issued.data.referenceDoc);
   }, [autoDoc, issued.status, issued.data]);
+  const docLocked = autoDoc && issued.status !== "error";
 
   const [cost, setCost] = useState("");
   const [price, setPrice] = useState("");
@@ -1730,11 +1731,12 @@ export function NewOrderDialog({
                   autoDoc && issued.status === "loading" ? "กำลังออกเลข…" : "เช่น RX-2026-0148"
                 }
                 disabled={busy}
+                /* เลขที่ระบบออกให้ล็อกไว้ ไม่ต้องกรอก (ร้านขอ 19 ก.ย. 2026) — ออกเลขไม่สำเร็จเท่านั้นถึงพิมพ์เองได้ */
+                readOnly={docLocked}
+                tabIndex={docLocked ? -1 : undefined}
                 autoComplete="off"
               />
-              {autoDoc ? (
-                <span className="field__help">ระบบออกเลขให้เอง — พิมพ์ทับได้ถ้าใบสั่งมีเลขของตัวเอง</span>
-              ) : null}
+              {docLocked ? <span className="field__help">ระบบออกเลขให้เอง</span> : null}
             </div>
             <div className="field">
               <label className="field__label" htmlFor="rx-branch">

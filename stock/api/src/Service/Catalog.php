@@ -323,6 +323,34 @@ final class Catalog
                 Costing::fill($pdo, $lotId, (string) $cost);
             }
 
+            /* แก้ต้นทุนแล้วต้องมีบรรทัดในความเคลื่อนไหว — ร้านขอ 19 ก.ย. 2026 (เดิมเปลี่ยนเงียบ ๆ
+               ที่ล็อต ไม่มีใครรู้ย้อนหลังว่าใครเปลี่ยนเมื่อไร จากเท่าไร) · รูปแบบเดียวกับ COST
+               ของใบสั่งตัด: จำนวนศูนย์ ยอดคงเหลือและมูลค่าในรายงานไม่กระทบ · ผูกล็อตไว้ให้เห็นเลขล็อต */
+            $oldCost = $lot['cost_per_unit'];
+            if ($cost !== false && ($oldCost === null ? $cost !== null : ($cost === null || (float) $cost !== (float) $oldCost))) {
+                $find = $pdo->prepare(
+                    "SELECT reference_doc FROM inventory_logs WHERE lot_id = ? AND action_type = 'IN' ORDER BY id LIMIT 1"
+                );
+                $find->execute([$lotId]);
+                $doc = $find->fetchColumn();
+                $pdo->prepare(
+                    'INSERT INTO inventory_logs
+                       (product_id, lot_id, action_type, quantity, unit_cost,
+                        reference_doc, notes, created_by, created_by_kind, created_at)
+                     VALUES (?, ?, \'COST\', 0, ?, ?, ?, ?, \'user\', NOW())'
+                )->execute([
+                    $lot['product_id'], $lotId, $cost,
+                    $doc ?: null,
+                    sprintf(
+                        'แก้ต้นทุนล็อต %s จาก %s เป็น %s',
+                        $lot['lot_number'],
+                        $oldCost === null ? 'ยังไม่มีต้นทุน' : $oldCost . ' บาท',
+                        $cost === null ? 'ยังไม่มีต้นทุน' : $cost . ' บาท',
+                    ),
+                    $actorId,
+                ]);
+            }
+
             if ($delta !== 0) {
                 $pdo->prepare(
                     'INSERT INTO inventory_logs
