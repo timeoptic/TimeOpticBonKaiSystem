@@ -26,6 +26,8 @@ import {
 } from '../../../components/ui.jsx';
 import { Picker } from '../../../components/Picker.jsx';
 import { StockPicker, stockLabel } from '../../../components/StockPicker.jsx';
+import { MockLensPicker } from '../../../components/MockLensPicker.jsx';
+import { LENS_SOURCE, requisitionItems } from '../../../lib/lens/lensSource.js';
 import { RxSets } from '../../../components/RxSets.jsx';
 import { RxArrival } from '../../../components/RxLensBadge.jsx';
 import { EyewearHistory } from '../../../components/EyewearHistory.jsx';
@@ -438,6 +440,17 @@ export function OrderFormView({
         ? await api.put('/api/orders/' + id, body)
         : await api.post('/api/orders', body);
       const oid = editing ? id : saved.id;
+      /* Bewell: เลนส์จำลองที่เลือกในรอบนี้ → ใบเบิกเลนส์ · `items` มีค่าเฉพาะตอนมีคนแตะ
+         ตัวเลือกในรอบนี้ เปิดออเดอร์เก่ามาแก้เรื่องอื่นจึงไม่ล้างใบเบิกเดิม
+         เรียกพลาดไม่ทำให้ออเดอร์พัง — ออเดอร์บันทึกไปแล้วด้วยเส้นทางเดิม */
+      const lensItems = LENS_SOURCE === 'mock' ? requisitionItems(items, p) : [];
+      if (lensItems.length) {
+        try {
+          await api.post('/api/lens-requisitions/sync', { order_id: oid, items: lensItems });
+        } catch (ex) {
+          err('บันทึกออเดอร์แล้ว แต่ออกใบเบิกเลนส์ไม่สำเร็จ: ' + (ex?.message || ex));
+        }
+      }
       ok(editing ? 'บันทึกออเดอร์แล้ว' : 'เปิดออเดอร์ ' + saved.invoice_code + ' เรียบร้อย');
       onSaved?.(saved);
       if (!embedded) {
@@ -711,13 +724,22 @@ export function OrderFormView({
                     </div>
                   ) : (
                     <>
-                      <StockPicker
-                        type="Lens"
-                        picked={item}
-                        onPick={(r) => setPicked({ [slot]: r })}
-                        onClear={() => setItems({ ...picked, [slot]: null })}
-                        selectedId={item?.id ?? null}
-                      />
+                      {/* Bewell (LENS_SOURCE=mock): เลนส์จำลอง ไม่ใช่ของในคลัง — ดู lib/lens/lensSource.js */}
+                      {LENS_SOURCE === 'mock' ? (
+                        <MockLensPicker
+                          picked={item}
+                          onPick={(r) => setPicked({ [slot]: r })}
+                          onClear={() => setItems({ ...picked, [slot]: null })}
+                        />
+                      ) : (
+                        <StockPicker
+                          type="Lens"
+                          picked={item}
+                          onPick={(r) => setPicked({ [slot]: r })}
+                          onClear={() => setItems({ ...picked, [slot]: null })}
+                          selectedId={item?.id ?? null}
+                        />
+                      )}
                       {/* เลนส์สั่งตัดไม่มีของบนชั้นให้เลือก จึงไม่ได้อยู่ในรายการ
                           ข้างบน — ปุ่มนี้เปิดใบสั่งจากค่าสายตาที่เพิ่งวัดได้เลย
                           ผลที่ได้คือชื่อกับ SKU ไม่ใช่ล็อต ตอนยืนยันการขายจึงไม่มี
