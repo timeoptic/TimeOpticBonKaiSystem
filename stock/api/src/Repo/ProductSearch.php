@@ -82,6 +82,8 @@ final class ProductSearch
     public static function tokens(string $term): array
     {
         $tokens = [];
+        // "Add+1.50" พิมพ์ติดกัน = "Add +1.50" ในชื่อสินค้า — ตัวอักษรที่ต่อด้วยเครื่องหมาย+เลขถูกแยกเป็นสองคำ
+        $term = preg_replace('~(?<=\p{L})(?=[+\-]\d)~u', ' ', $term) ?? $term;
         foreach (preg_split('~[\s/]+~u', trim($term)) ?: [] as $tok) {
             $tok = trim($tok, '()[]{},;');
             if ($tok !== '') {
@@ -100,8 +102,9 @@ final class ProductSearch
      */
     public static function where(string $term, bool $any = false): array
     {
-        $tokens = self::tokens($term);
-        if ($tokens === []) {
+        [$rest, $pairs] = self::powers($term);
+        $tokens = self::tokens($rest);
+        if ($tokens === [] && $pairs === []) {
             return ['', []];
         }
 
@@ -112,7 +115,53 @@ final class ProductSearch
             $groups[] = $sql;
             array_push($args, ...$a);
         }
-        return ['(' . implode($any ? ' OR ' : ' AND ', $groups) . ')', $args];
+        $where = $groups === [] ? [] : ['(' . implode($any ? ' OR ' : ' AND ', $groups) . ')'];
+
+        /* คู่ค่าสายตาต้องตรงเสมอ แม้ตอนถอยไปตรงบางคำ ($any) — คนพิมพ์ -1.25/-1.75 ต้องการเลนส์
+           ค่านี้ ไม่ใช่เลนส์ยี่ห้อเดียวกันค่าไหนก็ได้ */
+        $num = static fn(string $key): string =>
+            'CAST(COALESCE(NULLIF(' . self::attr($key) . ", ''), '0') AS DECIMAL(6,2))";
+        // สินค้าที่ไม่มีค่าสายตาในสเปก (คีย์ชื่อเอง) ยังหาเจอจากชื่อที่เขียนคู่ค่าเดียวกันไว้
+        $fmt = static fn(float $v): string => $v > 0 ? sprintf('+%.2f', $v) : ($v < 0 ? sprintf('-%.2f', -$v) : '0.00');
+        foreach ($pairs as [$sph, $cyl]) {
+            $where[] = '((' . $num('sph') . ' = ? AND ' . $num('cyl') . ' = ?) OR ('
+                . self::attr('sph') . ' IS NULL AND p.name LIKE ?))';
+            array_push($args, $sph, $cyl, '%' . $fmt($sph) . '/' . $fmt($cyl) . '%');
+        }
+
+        return ['(' . implode(' AND ', $where) . ')', $args];
+    }
+
+    /**
+     * คู่ค่าสายตาที่พิมพ์ในช่องค้นหา — "-1.25/-1.75" คือ SPH -1.25 กับ CYL -1.75 (ร้านขอ 18 ก.ย. 2026)
+     *
+     * เดิม "/" ตัดเป็นสองคำ แล้วแต่ละคำเจอที่ไหนก็ได้ในชื่อ เลนส์ -1.75/-1.25 (สลับกัน) จึงขึ้นมาด้วย ·
+     * ตอนนี้คู่ไหนที่เป็นตัวเลขทั้งสองข้าง ถูกดึงออกมาเทียบกับ sph / cyl ในสเปกแบบตัวเลข
+     * (-2 = -2.00) · CYL ของร้านเป็นลบเสมอ พิมพ์ไม่ใส่ลบก็ถือเป็นลบ · สินค้าที่ไม่มี CYL
+     * (คอนแทคเลนส์ใส) นับเป็น 0.00 · คำที่เหลือค้นแบบเดิม
+     *
+     * @return array{0:string,1:list<array{0:float,1:float}>} [คำที่เหลือ, คู่ [sph, cyl]]
+     */
+    public static function powers(string $term): array
+    {
+        $pairs = [];
+        $rest = preg_replace_callback(
+            '~(?<![\w.])([+\-\x{2212}]?(?:\d{1,2}(?:\.\d{1,2})?|\d{3,4}))\s*/\s*([+\-\x{2212}]?(?:\d{1,2}(?:\.\d{1,2})?|\d{3,4}))(?![\w.])~u',
+            static function (array $m) use (&$pairs): string {
+                // "-350" พิมพ์ไม่ใส่จุด = -3.50 (ค่าสายตาไม่เคยเกิน ±20 เลขสามสี่หลักจึงเป็นหน่วยร้อย)
+                $val = static function (string $t): float {
+                    $t = str_replace("\u{2212}", '-', $t);
+                    $v = (float) $t;
+                    return !str_contains($t, '.') && abs($v) >= 100 ? $v / 100 : $v;
+                };
+                $sph = $val($m[1]);
+                $cyl = -abs($val($m[2]));
+                $pairs[] = [round($sph, 2), round($cyl, 2)];
+                return ' ';
+            },
+            $term,
+        );
+        return [trim((string) $rest), $pairs];
     }
 
     /** @return list<string> */
@@ -196,6 +245,10 @@ final class ProductSearch
         $n = self::number($tok);
         if ($n === null) {
             return '(^|[^0-9.])' . str_replace('.', '[.]', $tok) . '($|[^0-9])';
+        }
+        // ศูนย์ไม่มีเครื่องหมาย — ชื่อสินค้าเขียน 0.00 เสมอ คนพิมพ์ "-0.00" หมายถึงตัวเดียวกัน
+        if ($n['int'] === '0' && $n['frac'] === '') {
+            $n['sign'] = '';
         }
         $head = match ($n['sign']) {
             '-'     => '(^|[^0-9.+-])-',

@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, type ReactNode } from "react";
 import { IconClose } from "./Icon";
-import backdropClose from "./backdrop";
 import useScrollLock from "@/stockmod/lib/scrollLock";
 
 /**
@@ -50,7 +49,6 @@ export default function TaskDialog({
       ref={ref}
       onClose={onClose}
       onCancel={onClose}
-      onClick={backdropClose}
     >
       <div className="drawer__inner">
         <header className="drawer__head">

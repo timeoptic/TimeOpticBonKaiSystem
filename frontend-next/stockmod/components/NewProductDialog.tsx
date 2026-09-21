@@ -3,7 +3,6 @@
 import { useEffect, useRef } from "react";
 import ProductForm from "./ProductForm";
 import { IconClose } from "./Icon";
-import backdropClose from "./backdrop";
 import useScrollLock from "@/stockmod/lib/scrollLock";
 import type { CreatedLot } from "@/stockmod/lib/api";
 
@@ -53,7 +52,6 @@ export default function NewProductDialog({
       ref={ref}
       onClose={onClose}
       onCancel={onClose}
-      onClick={backdropClose}
     >
       <div className="drawer__inner">
         <header className="drawer__head">

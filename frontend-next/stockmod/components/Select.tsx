@@ -111,11 +111,15 @@ export default function Select({
    *
    * กรองต่อเมื่อสิ่งที่พิมพ์ยังไม่ตรงกับตัวเลือกไหนเลย ซึ่งคือตอนกำลังพิมพ์จริง ๆ
    */
+  /* แต่ถ้ากำลังพิมพ์อยู่ ห้ามปลดตัวกรอง — ร้านแจ้ง 19 ก.ย. 2026: พิมพ์ -0.75 ครบแล้ว
+     รายการเด้งกลับเป็นทุกค่า ไฮไลต์ค้างที่แถวแรก กด Enter ได้ค่าอื่นแทนค่าที่พิมพ์ */
+  const [typing, setTyping] = useState(false);
   const exact = q !== "" && options.some((o) => o.value.trim().toLowerCase() === q);
-  const shown =
-    q === "" || exact
-      ? options
-      : options.filter((o) => `${o.label} ${o.keywords ?? ""}`.toLowerCase().includes(q));
+  const match = (text: string) => {
+    const t = text.trim().toLowerCase();
+    return options.filter((o) => `${o.label} ${o.keywords ?? ""}`.toLowerCase().includes(t));
+  };
+  const shown = q === "" || (exact && !typing) ? options : match(q);
 
   /**
    * ตอนเปิด รายการหยุดตรงค่าที่ช่องถืออยู่ — แล้วอยู่นิ่ง
@@ -170,6 +174,7 @@ export default function Select({
   function show() {
     if (disabled || open) return;
     setQuery("");
+    setTyping(false);
     /* ช่องพิมพ์เองที่มีค่าตรงกับตัวเลือกอยู่แล้ว ให้ไฮไลต์ค่านั้นไว้ รายการจะได้
        เลื่อนไปหยุดตรงค่าปัจจุบัน ไม่ใช่เริ่มที่บรรทัดแรกของบันไดที่ยาว 97 ขั้น */
     setAt(options.findIndex((o) => o.value === value));
@@ -199,6 +204,7 @@ export default function Select({
   function hide() {
     setOpen(false);
     setQuery("");
+    setTyping(false);
     quiet(false);
   }
 
@@ -274,12 +280,25 @@ export default function Select({
         // so it says so — the current choice is marked in the list underneath.
         placeholder={open && !free && !mute ? "พิมพ์เพื่อค้นหา…" : placeholder}
         onChange={(e) => {
+          setTyping(true);
           if (free) {
             onChange(e.target.value);
             setAt(-1);
           } else {
             setQuery(e.target.value);
-            setAt(e.target.value.trim() === "" ? -1 : 0);
+            /* ไฮไลต์ตัวที่ตรงกับที่พิมพ์เป๊ะก่อน — พิมพ์ 0.75 แล้ว Enter ต้องได้ 0.75
+               ไม่ใช่ -10.75 ที่บังเอิญอยู่บนสุดของรายการที่กรองแล้ว */
+            const t = e.target.value.trim().toLowerCase();
+            const hits = match(t);
+            const v = (o: Choice) => o.value.trim().toLowerCase();
+            let same = hits.findIndex((o) => v(o) === t);
+            /* พิมพ์ค่าสายตาไม่ใส่เครื่องหมาย (0.75) — เลือกตัวที่ต่างแค่เครื่องหมาย ไม่มีเครื่องหมาย
+               ตามธรรมเนียมคือบวก จึงเอา +0.75 ก่อน ถ้าไม่มี (เช่นบันได CYL ที่มีแต่ลบ) ค่อยเอา -0.75 */
+            if (same < 0 && /^\d/.test(t)) {
+              same = hits.findIndex((o) => v(o) === `+${t}`);
+              if (same < 0) same = hits.findIndex((o) => v(o) === `-${t}`);
+            }
+            setAt(t === "" ? -1 : same >= 0 ? same : 0);
           }
           if (!open) setOpen(true);
         }}

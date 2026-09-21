@@ -114,13 +114,27 @@ test('กดเรียงตามคอลัมน์เองแล้ว �
     });
 });
 
-test('ไม่มีตัวไหนตรงครบทุกคำ — ขึ้นตัวที่ตรงบางคำแทนรายการว่าง', function () {
+test('ไม่มีตัวไหนตรงครบทุกคำ — รายการว่าง ไม่ถอยไปแสดงตัวที่ตรงบางคำ (ร้านขอ 18 ก.ย. 2026)', function () {
     withRollback(function () {
         $b = psBrand();
         psLens($b, 'G Blue 1.50', ['lens_index' => '1.50']);
 
-        $names = psNames(['q' => "{$b} Sapphire"]);
-        ok(in_array("{$b} G Blue 1.50", $names, true), 'ตรงแค่แบรนด์ก็ยังขึ้น — ได้ ' . render($names));
+        eq(psNames(['q' => "{$b} Sapphire"]), [], 'ตรงแค่แบรนด์ไม่ขึ้นแล้ว');
+    });
+});
+
+test('คู่ค่าสายตา -1.25/-1.75 คือ SPH กับ CYL — ไม่ได้ตัวที่สลับกัน · CYL ไม่ใส่ลบก็ได้ · -0.00 = 0.00', function () {
+    withRollback(function () {
+        $b = psBrand();
+        psLens($b, 'MC -1.25/-1.75', ['sph' => '-1.25', 'cyl' => '-1.75']);
+        psLens($b, 'MC -1.75/-1.25', ['sph' => '-1.75', 'cyl' => '-1.25']);
+        psLens($b, 'MC 0.00/0.00', ['sph' => '0.00', 'cyl' => '0.00']);
+
+        eq(psNames(['q' => "{$b} -1.25/-1.75"]), ["{$b} MC -1.25/-1.75"], 'ได้ตัวเดียว ไม่ได้ตัวสลับ');
+        eq(psNames(['q' => "{$b} -1.25/1.75"]), ["{$b} MC -1.25/-1.75"], 'CYL ไม่ใส่ลบ');
+        eq(psNames(['q' => "{$b} -0.00/-0.00"]), ["{$b} MC 0.00/0.00"], 'ศูนย์ใส่ลบ');
+        eq(psNames(['q' => "{$b} -0.00"]), ["{$b} MC 0.00/0.00"], 'ศูนย์ใส่ลบคำเดียว');
+        eq(psNames(['q' => "{$b} -125/-175"]), ["{$b} MC -1.25/-1.75"], 'พิมพ์ไม่ใส่จุด -125 = -1.25');
     });
 });
 
@@ -142,24 +156,24 @@ test('แบ่งหน้าหลังเรียงความตรง �
     });
 });
 
-test('ชิปสถานะนับจากชุดเดียวกับรายการ — ตอนถอยไปตรงบางคำด้วย', function () {
+test('ชิปสถานะนับจากชุดเดียวกับรายการ', function () {
     withRollback(function () {
         $b = psBrand();
         psLens($b, 'G Blue 1.50', ['lens_index' => '1.50']);
 
-        $filter = ['q' => "{$b} Sapphire"];
+        $filter = ['q' => "{$b} Blue"];
         $total = Inventory::products($filter)['total'];
-        ok($total > 0, 'รายการถอยไปตรงบางคำ');
+        ok($total > 0, 'รายการมีของ');
         eq(Inventory::stockStateCounts($filter)['all'] ?? null, $total, 'ชิป "ทั้งหมด" เท่ากับรายการ');
     });
 });
 
-test('ตัวกรองเลนส์นับจากชุดเดียวกับรายการ — ตอนถอยไปตรงบางคำด้วย', function () {
+test('ตัวกรองเลนส์นับจากชุดเดียวกับรายการ', function () {
     withRollback(function () {
         $b = psBrand();
         psLens($b, 'G Blue 1.50', ['lens_index' => '1.50']);
 
-        $indexes = array_column(Inventory::lensOptions(['q' => "{$b} Sapphire"])['indexes'], 'value');
+        $indexes = array_column(Inventory::lensOptions(['q' => "{$b} Blue"])['indexes'], 'value');
         ok(in_array('1.50', $indexes, true), 'index ของเลนส์ที่ขึ้นในรายการมีให้เลือก — ได้ ' . render($indexes));
     });
 });

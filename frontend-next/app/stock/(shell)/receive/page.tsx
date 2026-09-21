@@ -10,6 +10,7 @@ import TaskDialog from "@/stockmod/components/TaskDialog";
 import QtyField from "@/stockmod/components/QtyField";
 import NewProductDialog from "@/stockmod/components/NewProductDialog";
 import Select from "@/stockmod/components/Select";
+import SupplierSelect, { supplierIdOf } from "@/stockmod/components/SupplierSelect";
 import { api, ApiError, type CreatedLot, type ProductRow, type ReceiveDefaults } from "@/stockmod/lib/api";
 import { useApi } from "@/stockmod/lib/useApi";
 import { count, date, money, shortName } from "@/stockmod/lib/format";
@@ -106,7 +107,7 @@ export default function ReceivePage() {
       }>("/lots", {
         sku: product.sku,
         quantity: Number(qty),
-        supplier_id: supplierId === "" ? null : Number(supplierId),
+        supplier_id: await supplierIdOf(supplierId),
         cost_per_unit: mayCost && cost.trim() ? cost.trim() : null,
         received_date: received,
         expiry_date: expiry || null,
@@ -245,18 +246,12 @@ export default function ReceivePage() {
                 <label className="field__label" htmlFor="rc-sup">
                   ผู้ขาย
                 </label>
-                <Select
+                <SupplierSelect
                   id="rc-sup"
                   value={supplierId}
                   onChange={setSupplierId}
                   disabled={busy || suppliers.status !== "ready"}
-                  placeholder="ไม่ระบุ"
-                  options={[
-                    { value: "", label: "ไม่ระบุ" },
-                    ...(suppliers.status === "ready"
-                      ? suppliers.data.suppliers.map((s) => ({ value: String(s.id), label: s.name }))
-                      : []),
-                  ]}
+                  suppliers={suppliers.status === "ready" ? suppliers.data.suppliers : []}
                 />
                 {defaults?.lastLot?.supplierName ? (
                   <span className="field__help">เติมจากล็อตก่อน — เปลี่ยนได้ถ้าสั่งเจ้าอื่น</span>

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { can, useActor } from "./AppShell";
 import Select from "./Select";
+import SupplierSelect, { supplierIdOf } from "./SupplierSelect";
 import DateField from "./DateField";
 import QtyField from "./QtyField";
 import { IconTrash } from "./Icon";
@@ -314,7 +315,7 @@ function ReceiveLine({
       await api.post("/lots", {
         sku,
         quantity: n,
-        supplier_id: supplier === "" ? null : Number(supplier),
+        supplier_id: await supplierIdOf(supplier),
         cost_per_unit: mayCost && cost.trim() ? cost.trim() : null,
         received_date: received,
         expiry_date: expiry || null,
@@ -342,16 +343,12 @@ function ReceiveLine({
           <label className="field__label" htmlFor={`rl-s-${sku}`}>
             ผู้ขาย
           </label>
-          <Select
+          <SupplierSelect
             id={`rl-s-${sku}`}
             value={supplier}
             onChange={setSupplier}
             disabled={busy}
-            placeholder="ไม่ระบุ"
-            options={[
-              { value: "", label: "ไม่ระบุ" },
-              ...suppliers.map((s) => ({ value: String(s.id), label: s.name })),
-            ]}
+            suppliers={suppliers}
           />
         </div>
         <div className="field">

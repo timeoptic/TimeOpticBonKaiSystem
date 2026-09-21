@@ -86,6 +86,8 @@ Http::get('/api/products', static function () use ($maySeeCost): array {
         'sph_to'      => Http::query('sph_to'),
         'cyl_from'    => Http::query('cyl_from'),
         'cyl_to'      => Http::query('cyl_to'),
+        'add_from'    => Http::query('add_from'),
+        'add_to'      => Http::query('add_to'),
         'received_from' => Http::query('from'),
         'received_to'   => Http::query('to'),
         'category_id' => Http::query('cat') === null ? null : (int) Http::query('cat'),
@@ -278,9 +280,18 @@ Http::get('/api/lens-options', static function (): array {
         'sph_to'   => Http::query('sph_to'),
         'cyl_from' => Http::query('cyl_from'),
         'cyl_to'   => Http::query('cyl_to'),
+        'add_from' => Http::query('add_from'),
+        'add_to'   => Http::query('add_to'),
         'received_from' => Http::query('from'),
         'received_to'   => Http::query('to'),
     ]);
+});
+
+/** เพิ่มผู้ขายจากชื่อที่พิมพ์ในช่องผู้ขาย — มีชื่อนี้อยู่แล้วใช้ตัวเดิม (ดู Inventory::supplierByName) */
+Http::post('/api/suppliers', static function (): array {
+    $actor = Auth::require();
+    Roles::require(Roles::moveStock($actor['roles']), 'เพิ่มผู้ขาย');
+    return ['supplier' => Inventory::supplierByName((string) (Http::body()['name'] ?? ''))];
 });
 
 Http::get('/api/suppliers', static function (): array {
@@ -501,6 +512,12 @@ Http::post('/api/rx/{id}/delete', static function (array $p): array {
 
 /* -------------------------------------------------------------- receiving */
 
+/** รับเข้าทั้งบิล — หัวบิลเดียว หลายสินค้า ทรานแซกชันเดียว (ดู Receiving::receiveMany) */
+Http::post('/api/lots/many', static function (): array {
+    $actor = Auth::require();
+    return ['lots' => Receiving::receiveMany(Http::body(), $actor['roles'], (int) $actor['id'])];
+});
+
 Http::post('/api/lots', static function (): array {
     $actor = Auth::require();
     return ['lot' => Receiving::receive(Http::body(), $actor['roles'], $actor['id'])];
@@ -650,6 +667,24 @@ Http::post('/api/movements/{id}/update', static function (array $p): array {
         throw ApiError::badRequest('id ต้องเป็นตัวเลข');
     }
     return ['log' => \Optic\Service\ShopIssue::edit((int) $p['id'], Http::body(), $actor['roles'], $actor['id'])];
+});
+
+/** รายการรับเข้าหนึ่งแถวกับล็อตของมัน — กล่องแก้การรับเข้าในหน้าความเคลื่อนไหว */
+Http::get('/api/movements/{id}/receipt', static function (array $p) use ($maySeeCost): array {
+    $actor = Auth::require();
+    if (!ctype_digit($p['id'])) {
+        throw ApiError::badRequest('id ต้องเป็นตัวเลข');
+    }
+    return ['receipt' => \Optic\Service\Receiving::receipt((int) $p['id'], $maySeeCost($actor))];
+});
+
+/** แก้การรับเข้าที่คีย์ผิด — จำนวน วันที่ ผู้ขาย วันหมดอายุ ต้นทุน หมายเหตุ (ดู Receiving::editReceipt) */
+Http::post('/api/movements/{id}/receipt', static function (array $p): array {
+    $actor = Auth::require();
+    if (!ctype_digit($p['id'])) {
+        throw ApiError::badRequest('id ต้องเป็นตัวเลข');
+    }
+    return ['receipt' => \Optic\Service\Receiving::editReceipt((int) $p['id'], Http::body(), $actor['roles'], (int) $actor['id'])];
 });
 
 /**

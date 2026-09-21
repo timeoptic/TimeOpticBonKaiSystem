@@ -123,4 +123,4 @@ export function lensRxMore(r: {
  * ยังขึ้นชื่อชนิดตามปกติ — ตัวที่ไม่มีคำบอกชนิดคือชั้นเดียว
  */
 export const shortName = (name: string | null | undefined): string =>
-  (name ?? "").replace(/\s*Single Vision/gi, "").replace(/\s{2,}/g, " ").trim();
+  (name ?? "").replace(/\s*Single Vision/gi, "").replace(/\s{2,}/g, " ").trim();

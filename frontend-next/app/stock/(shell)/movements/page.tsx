@@ -9,6 +9,8 @@ import { Filter, FilterBar, withCount } from "@/stockmod/components/FilterBar";
 import RecordCard, { CardList } from "@/stockmod/components/RecordCard";
 import ShopIssueDialog from "@/stockmod/components/ShopIssueDialog";
 import DateRangeField from "@/stockmod/components/DateRangeField";
+import StockDrawer from "@/stockmod/components/StockDrawer";
+import ReceiptEditDialog from "@/stockmod/components/ReceiptEditDialog";
 import { qs, useApi } from "@/stockmod/lib/useApi";
 import { count, dateTime, money, shortName } from "@/stockmod/lib/format";
 import type { MovementRow, Page, Person } from "@/stockmod/lib/api";
@@ -46,7 +48,7 @@ const TYPES = [
   { key: "RX_ORDER", label: "สั่งตัด RX", countKey: "RX_ORDER" },
   /* สามชนิดท้ายไม่ใช่การเคลื่อนของ แต่เป็นตัวเลขเงินที่มีคนกรอกในวันนั้น —
      จำนวนเป็นศูนย์เสมอ และวันที่คือวันที่กรอก ไม่ใช่วันที่ของออกไป */
-  { key: "COST", label: "ลงต้นทุน RX", countKey: "COST" },
+  { key: "COST", label: "ลงต้นทุน", countKey: "COST" },
   { key: "PRICE", label: "แก้ราคาขาย", countKey: "PRICE" },
   { key: "SETTLE", label: "รับเงินจากสาขา", countKey: "SETTLE" },
   /* ร่องรอยของล็อตที่ถูกลบ (038) — จำนวนศูนย์ รายละเอียดอยู่ในหมายเหตุ */
@@ -77,6 +79,8 @@ export default function MovementsPage() {
   const [page, setPage] = useState(1);
   /** ช่วงวันที่ของรายการ — ว่างทั้งคู่ = ทุกวัน · API รับ from/to อยู่แล้ว */
   const [range, setRange] = useState({ from: "", to: "" });
+  /** สินค้าที่เปิดลิ้นชักดูล็อตอยู่ — กดชื่อสินค้าในแถว (ร้านขอ 18 ก.ย. 2026) */
+  const [openProduct, setOpenProduct] = useState<number | null>(null);
   const { sort, dir, sortBy } = useSort<SortKey>("date", NATURAL_ASC);
 
   const actor = useActor();
@@ -87,7 +91,11 @@ export default function MovementsPage() {
   const maySettle = actor.perms.includes("branch.settle");
   const people = useApi<{ people: Person[] }>(maySettle ? "/people" : null);
   const [editing, setEditing] = useState<MovementRow | null>(null);
-  const onEdit = maySettle ? setEditing : undefined;
+  /** แถวรับเข้าที่กำลังแก้ — กล่องคนละใบกับการเบิก (ร้านขอ 18 ก.ย. 2026) */
+  const [receipt, setReceipt] = useState<MovementRow | null>(null);
+  const onEdit = maySettle
+    ? (r: MovementRow) => (r.actionType === "IN" ? setReceipt(r) : setEditing(r))
+    : undefined;
   const list = useApi<List>(`/movements${qs({ type, q: applied, who, from: range.from, to: range.to, sort, dir, page })}`);
   const rows = list.status === "ready" ? list.data.rows : [];
   const counts: Counts = list.status === "ready" ? list.data.counts : {};
@@ -254,7 +262,7 @@ export default function MovementsPage() {
           {/* บนมือถือ แถวกลายเป็นการ์ด — ดู RecordCard ว่าทำไมไม่ใช่ตารางที่เลื่อนข้าง */}
           <CardList label="ความเคลื่อนไหวสต็อก">
             {rows.map((r) => (
-              <MovementCard key={r.id} row={r} money={money$} onEdit={onEdit} />
+              <MovementCard key={r.id} row={r} money={money$} onEdit={onEdit} onProduct={setOpenProduct} />
             ))}
           </CardList>
 
@@ -288,7 +296,7 @@ export default function MovementsPage() {
               </thead>
               <tbody>
                 {rows.map((r) => (
-<Row key={r.id} row={r} money={money$} onEdit={onEdit} />
+<Row key={r.id} row={r} money={money$} onEdit={onEdit} onProduct={setOpenProduct} />
                 ))}
               </tbody>
             </table>
@@ -312,6 +320,12 @@ export default function MovementsPage() {
           onSaved={list.reload}
         />
       ) : null}
+      {receipt ? (
+        <ReceiptEditDialog row={receipt} onClose={() => setReceipt(null)} onSaved={list.reload} />
+      ) : null}
+      {openProduct !== null ? (
+        <StockDrawer productId={openProduct} onClose={() => setOpenProduct(null)} onChanged={list.reload} />
+      ) : null}
     </main>
   );
 }
@@ -327,6 +341,14 @@ export default function MovementsPage() {
  * ส่งไปแก้ที่อื่น
  */
 function FixAction({ row: r, onEdit }: { row: MovementRow; onEdit: (r: MovementRow) => void }) {
+  /* รับเข้าผิดแก้ได้ — จำนวน วันที่ ผู้ขาย วันหมดอายุ ต้นทุน (ร้านขอ 18 ก.ย. 2026) */
+  if (r.actionType === "IN") {
+    return (
+      <button type="button" className="btn btn--small" onClick={() => onEdit(r)}>
+        แก้ไขการรับเข้า
+      </button>
+    );
+  }
   if (r.actionType === "SCRAP") {
     if (r.returned) return <span className="grid__muted">ยกเลิกแล้ว</span>;
     return (
@@ -372,10 +394,13 @@ function MovementCard({
   row: r,
   money: showMoney,
   onEdit,
+  onProduct,
 }: {
   row: MovementRow;
   money: boolean;
   onEdit?: (r: MovementRow) => void;
+  /** เปิดลิ้นชักของสินค้าในแถว — ล็อต ประวัติ และปุ่มแก้ล็อต */
+  onProduct?: (productId: number) => void;
 }) {
   const awaitingRxCost = showMoney && r.actionType === "RX_ORDER" && r.unitCost === null;
   const owed = r.branchStatus === "pending";
@@ -397,7 +422,15 @@ function MovementCard({
           <span className="reccard__when">{dateTime(r.createdAt)}</span>
         </>
       }
-      title={shortName(r.productName)}
+      title={
+        onProduct && r.productId ? (
+          <button type="button" className="grid__link" onClick={() => onProduct(r.productId as number)}>
+            {shortName(r.productName)}
+          </button>
+        ) : (
+          shortName(r.productName)
+        )
+      }
       sub={r.sku}
       fields={[
         {
@@ -455,10 +488,13 @@ function Row({
   row: r,
   money: showMoney,
   onEdit,
+  onProduct,
 }: {
   row: MovementRow;
   money: boolean;
   onEdit?: (r: MovementRow) => void;
+  /** เปิดลิ้นชักของสินค้าในแถว — ล็อต ประวัติ และปุ่มแก้ล็อต */
+  onProduct?: (productId: number) => void;
 }) {
   // Without permission to see costs, a null cost says nothing about whether an
   // invoice is outstanding — so it must not tint the row as if it did.
@@ -489,7 +525,19 @@ function Row({
       </td>
 
       <td>
-        <span className="grid__name">{shortName(r.productName)}</span>
+        {/* กดชื่อแล้วเปิดลิ้นชักสินค้า เห็นล็อตทั้งหมดของมันโดยไม่ต้องออกจากหน้านี้ */}
+        {onProduct && r.productId ? (
+          <button
+            type="button"
+            className="grid__name grid__link"
+            onClick={() => onProduct(r.productId as number)}
+            title="ดูล็อตของสินค้านี้"
+          >
+            {shortName(r.productName)}
+          </button>
+        ) : (
+          <span className="grid__name">{shortName(r.productName)}</span>
+        )}
         <span className="grid__sub">{r.sku}</span>
       </td>
       {/* แถวเรื่องเงินไม่มีของเคลื่อน — ขีดกลางบอกว่า "ไม่มีจำนวน" ส่วนเลข 0

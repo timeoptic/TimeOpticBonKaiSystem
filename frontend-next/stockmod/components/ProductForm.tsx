@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { can, useActor } from "./AppShell";
 import QtyField from "./QtyField";
 import Select from "./Select";
+import SupplierSelect, { supplierIdOf } from "./SupplierSelect";
 import {
   api,
   ApiError,
@@ -629,6 +630,9 @@ export default function ProductForm({
      สเปก ชื่อที่ประกอบจากช่องว่างจะเหลือแค่แบรนด์ ซึ่งแย่กว่าปล่อยให้คนพิมพ์เอง ·
      ลบรุ่นทิ้งแล้วชื่อที่ตั้งให้ต้องหายตาม ไม่ค้างเป็นชื่อของรุ่นที่ไม่มีแล้ว */
   const hasModel = (values.model ?? "").trim() !== "";
+  /* ช่องที่ระบบกรอกให้ ล็อกไว้ไม่ให้พิมพ์ (ร้านขอ 19 ก.ย. 2026) */
+  const skuLocked = autoSku && issued.status !== "error";
+  const nameLocked = autoName && (type === "Lens" || type === "ContactLen" || (namedByModel && hasModel));
   useEffect(() => {
     if (!autoName) return;
     if (namedByModel && !hasModel) {
@@ -895,7 +899,7 @@ export default function ProductForm({
       ({ lot: created } = await api.post<{ lot: CreatedLot }>("/lots", {
         sku: sku.trim(),
         quantity: Number(qty),
-        supplier_id: supplierId === "" ? null : Number(supplierId),
+        supplier_id: await supplierIdOf(supplierId),
         cost_per_unit: mayCost && cost.trim() ? cost.trim() : null,
         received_date: received,
         expiry_date: expiry || null,
@@ -1084,12 +1088,13 @@ export default function ProductForm({
                 clearing(setSku)(e.target.value);
               }}
               disabled={locked}
+              /* รหัสที่ระบบออกให้ล็อกไว้ ไม่ต้องกรอก (ร้านขอ 19 ก.ย. 2026) — ออกรหัสไม่สำเร็จเท่านั้นถึงพิมพ์เองได้ */
+              readOnly={skuLocked}
+              tabIndex={skuLocked ? -1 : undefined}
               autoComplete="off"
               placeholder={autoSku && issued.status === "loading" ? "กำลังออกรหัส…" : undefined}
             />
-            {autoSku ? (
-              <span className="field__help">ระบบออกรหัสให้เอง — พิมพ์ทับได้ถ้าจะใช้รหัสของผู้ขาย</span>
-            ) : null}
+            {skuLocked ? <span className="field__help">ระบบออกรหัสให้เอง</span> : null}
           </div>
           {copiedFrom !== null && name.trim() === copiedFrom.name ? (
             <div className="notice field--wide" role="status">
@@ -1131,6 +1136,9 @@ export default function ProductForm({
                 clearing(setName)(e.target.value);
               }}
               disabled={locked}
+              /* ชื่อที่ตั้งให้เองจากสเปกล็อกไว้ (ร้านขอ 19 ก.ย. 2026) — อยากได้ชื่ออื่นให้แก้ที่สเปก */
+              readOnly={nameLocked}
+              tabIndex={nameLocked ? -1 : undefined}
               autoComplete="off"
               placeholder={
                 (type === "Lens" || type === "ContactLen") && autoName
@@ -1141,9 +1149,7 @@ export default function ProductForm({
               }
             />
             {namedByModel && hasModel && autoName ? (
-              <span className="field__help">
-                ตั้งให้เองจาก แบรนด์ · รุ่น — เติมสี ขนาด ต่อท้าย หรือพิมพ์ทับได้
-              </span>
+              <span className="field__help">ตั้งให้เองจาก แบรนด์ · รุ่น · สี · ขนาด — แก้ชื่อที่ช่องเหล่านั้น</span>
             ) : namedByModel && hasModel ? (
               <button
                 type="button"
@@ -1160,9 +1166,7 @@ export default function ProductForm({
                 ชื่อนี้คือสิ่งเดียวที่ใช้แยกสินค้าตัวนี้ออกจากตัวอื่น — ใส่รุ่น สี ขนาด เท่าที่จำเป็นได้เลย
               </span>
             ) : autoName ? (
-              <span className="field__help">
-                ตั้งให้เองจาก แบรนด์ · รุ่น · สเปก — พิมพ์ทับได้ถ้าจะใช้ชื่ออื่น
-              </span>
+              <span className="field__help">ตั้งให้เองจาก แบรนด์ · รุ่น · สเปก — แก้ชื่อที่ช่องสเปก</span>
             ) : (
               <button
                 type="button"
@@ -1304,18 +1308,12 @@ export default function ProductForm({
             ) : null}
             <div className="field">
               <label className="field__label" htmlFor="pf-sup">ผู้ขาย</label>
-              <Select
+              <SupplierSelect
                 id="pf-sup"
                 value={supplierId}
                 onChange={setSupplierId}
                 disabled={busy || suppliers.status !== "ready"}
-                placeholder="ไม่ระบุ"
-                options={[
-                  { value: "", label: "ไม่ระบุ" },
-                  ...(suppliers.status === "ready"
-                    ? suppliers.data.suppliers.map((s) => ({ value: String(s.id), label: s.name }))
-                    : []),
-                ]}
+                suppliers={suppliers.status === "ready" ? suppliers.data.suppliers : []}
               />
             </div>
             <div className="field">

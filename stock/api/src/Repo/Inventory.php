@@ -131,7 +131,7 @@ final class Inventory
         'RETURN'   => 'รับคืน',
         'SCRAP'    => 'ตัดเสีย',
         /* ตัวเลขเงินที่กรอกทีหลัง ไม่ใช่ของที่เคลื่อน — จำนวนเป็นศูนย์เสมอ */
-        'COST'     => 'ลงต้นทุน RX',
+        'COST'     => 'ลงต้นทุน',
         'PRICE'    => 'แก้ราคาขาย',
         'SETTLE'   => 'รับเงินจากสาขา',
         /* ร่องรอยของล็อตที่ถูกลบ (038) — จำนวนศูนย์ รายละเอียดอยู่ในหมายเหตุ */
@@ -223,11 +223,12 @@ final class Inventory
     }
 
     /**
-     * คำค้นหลายคำที่ไม่มีสินค้าตัวไหนตรงครบ — ถอยไปขึ้นตัวที่ตรงบางคำแทนรายการว่าง
+     * คำค้นแสดงเฉพาะสินค้าที่ตรงครบทุกคำ — ไม่ถอยไปขึ้นตัวที่ตรงบางคำแล้ว (ร้านขอ 18 ก.ย. 2026:
+     * "ให้แสดงแค่ตามค่าที่ค้นเท่านั้น อันใกล้เคียงไม่ต้องแสดง")
      *
-     * แบบเดียวกับหน้าขาย (GET /api/stock) · รายการ ชิปสถานะ และตัวกรองเลนส์ต้องถอย
-     * พร้อมกัน ไม่งั้นชิปบอก 0 เหนือรายการที่มีของ จึงตัดสินที่นี่จากตัวกรองชุดเต็ม
-     * แล้วส่ง `any` ต่อไปให้ productWhere · `any` ไม่ได้มาจาก query string
+     * เดิมคำค้นหลายคำที่ไม่มีตัวไหนตรงครบ ถอยไปแสดงตัวที่ตรงบางคำ ซึ่งกับเลนส์คือของผิดค่าสายตา
+     * ที่ดูเหมือนผลค้นหา · ตอนนี้ไม่ตรงก็ว่าง แล้วหน้าจอบอกว่าไม่เจอ · `any` ไม่ได้มาจาก query string
+     * ถูกล้างทิ้งที่นี่ที่เดียว (หน้าขายฝั่งหน้าร้าน GET /api/stock ยังถอยแบบเดิม — ไม่ได้แตะ)
      *
      * @param array<string,mixed> $filter
      * @return array<string,mixed>
@@ -235,13 +236,6 @@ final class Inventory
     private static function searchScope(array $filter): array
     {
         unset($filter['any']);
-        if (count(ProductSearch::tokens((string) ($filter['q'] ?? ''))) < 2) {
-            return $filter;
-        }
-        [$clause, $args] = self::productWhere($filter);
-        if ((int) Db::value("SELECT COUNT(*) FROM products p WHERE {$clause}", $args) === 0) {
-            $filter['any'] = true;
-        }
         return $filter;
     }
 
@@ -336,7 +330,8 @@ final class Inventory
         // SPH / CYL as a range, compared as numbers so "-2" meets "-2.00".
         // Either end may be open; ends given the wrong way round are swapped
         // rather than returning nothing, since that is never what was meant.
-        foreach (['sph', 'cyl'] as $key) {
+        // ADD เข้ากติกาเดียวกัน (ร้านขอ 18 ก.ย. 2026) — เก็บเป็นข้อความ "+2.00" แต่ CAST เป็นตัวเลขได้
+        foreach (['sph', 'cyl', 'add'] as $key) {
             $from = self::power($filter["{$key}_from"] ?? null);
             $to   = self::power($filter["{$key}_to"] ?? null);
             if ($from !== null && $to !== null && $from > $to) {
@@ -1057,6 +1052,8 @@ final class Inventory
             'coatings' => $coatings,
             'sphs'     => $powers('sph'),
             'cyls'     => $powers('cyl'),
+            // ค่า ADD ที่มีของ — ว่างเมื่อรายการไม่มีเลนส์ที่มี ADD เลย หน้าจอไม่วาดช่องนี้
+            'adds'     => $powers('add'),
         ];
     }
 
@@ -1200,6 +1197,35 @@ final class Inventory
             static fn($s) => ['id' => (int) $s['id'], 'name' => $s['name']],
             Db::all('SELECT id, name FROM suppliers WHERE active = 1 ORDER BY name ASC'),
         );
+    }
+
+    /**
+     * ผู้ขายจากชื่อที่พิมพ์ในช่องผู้ขาย — มีอยู่แล้ว (ไม่สนตัวพิมพ์/ช่องว่างหัวท้าย) ใช้ตัวเดิม ไม่มีก็เพิ่ม
+     *
+     * ร้านขอ 18 ก.ย. 2026: ดรอปดาวน์ผู้ขายพิมพ์เพิ่มไม่ได้ และตารางผู้ขายยังว่างทั้งตาราง · คนรับของ
+     * รู้ชื่อผู้ขายจากใบส่งของที่ถืออยู่ ให้พิมพ์ลงไปเลย ไม่ต้องไปเพิ่มที่หน้าซัพพลายเออร์ของฝั่งการเงินก่อน
+     * รายละเอียดอื่น (คนติดต่อ เบอร์) ยังแก้ที่หน้านั้น
+     *
+     * @return array{id:int,name:string,created:bool}
+     */
+    public static function supplierByName(string $name): array
+    {
+        $name = trim(preg_replace('/\s+/u', ' ', $name) ?? '');
+        if ($name === '') {
+            throw \Optic\ApiError::badRequest('ต้องระบุชื่อผู้ขาย', 'missing_field');
+        }
+        if (mb_strlen($name) > 120) {
+            throw \Optic\ApiError::badRequest('ชื่อผู้ขายยาวเกิน 120 ตัวอักษร', 'field_too_long');
+        }
+        $found = Db::one('SELECT id, name, active FROM suppliers WHERE LOWER(TRIM(name)) = LOWER(?)', [$name]);
+        if ($found !== null) {
+            if (!(int) $found['active']) {
+                Db::run('UPDATE suppliers SET active = 1 WHERE id = ?', [$found['id']]);
+            }
+            return ['id' => (int) $found['id'], 'name' => $found['name'], 'created' => false];
+        }
+        Db::run('INSERT INTO suppliers (name) VALUES (?)', [$name]);
+        return ['id' => (int) Db::value('SELECT id FROM suppliers WHERE name = ?', [$name]), 'name' => $name, 'created' => true];
     }
 
     /** Numbers the dashboard shows above the list. @return array<string,mixed> */

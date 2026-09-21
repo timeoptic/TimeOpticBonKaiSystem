@@ -441,6 +441,8 @@ export type LensOptions = {
   /** Powers stocked, low to high, as `-2.00` — the ends a range can take. */
   sphs: LensFacet[];
   cyls: LensFacet[];
+  /** ค่า ADD ที่มีของ — ว่างเมื่อไม่มีเลนส์ที่มี ADD */
+  adds?: LensFacet[];
 };
 
 export type Summary = {

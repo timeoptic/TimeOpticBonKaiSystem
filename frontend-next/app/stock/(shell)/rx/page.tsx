@@ -11,6 +11,8 @@ import InlineEdit from "@/stockmod/components/InlineEdit";
 import NewProductDialog from "@/stockmod/components/NewProductDialog";
 import { IconTrash } from "@/stockmod/components/Icon";
 import RxEditDialog from "@/stockmod/components/RxEditDialog";
+import ExportDialog, { branchOf, fetchAll, when } from "@/stockmod/components/ExportDialog";
+import type { Sheet } from "@/stockmod/lib/workbook";
 import RecordCard, { CardList } from "@/stockmod/components/RecordCard";
 import { Filter, FilterBar, withCount } from "@/stockmod/components/FilterBar";
 import {
@@ -301,6 +303,7 @@ export default function RxPage() {
   const [span, setSpan] = useState<Span>("all");
   const [range, setRange] = useState(() => monthOf(0));
   const [creating, setCreating] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const period = span === "all" ? { from: "", to: "" } : range;
   const book = useApi<Page<Order>>(
@@ -364,6 +367,10 @@ export default function RxPage() {
         </form>
         <button type="button" className="btn btn--primary" onClick={() => setCreating(true)}>
           + เปิดใบสั่งใหม่
+        </button>
+        {/* Export ใบสั่งตัดตามช่วงวัน แยกตามออเดอร์และสาขา (ร้านขอ 18 ก.ย. 2026) */}
+        <button type="button" className="btn" onClick={() => setExporting(true)}>
+          Export Excel
         </button>
         {/* ตัวกรองสถานะอยู่ในหัวหน้า ไม่ใช่แถวของตัวเอง — ดรอปดาวน์ช่องเดียว
             ไม่คุ้มกับความสูงหนึ่งแถวเต็มเหนือใบสั่งใบแรก · จำนวนที่เคยอยู่บนชิป
@@ -528,6 +535,71 @@ export default function RxPage() {
               detail: awaitingCost ? "รอฝ่ายบัญชีลงต้นทุน" : undefined,
             });
           }}
+        />
+      ) : null}
+      {exporting ? (
+        <ExportDialog
+          title="ใบสั่งตัด RX"
+          file="timeoptic-ใบสั่งตัด-RX"
+          sheets={[
+            { name: "ใบสั่งตัดแยกตามออเดอร์", hint: "ทุกใบในช่วงวัน จัดกลุ่มตามเลขเคส/ออเดอร์ มียอดรวมย่อย" },
+            { name: "ใบสั่งตัดแยกตามสาขา", hint: "จัดกลุ่มตามสาขาที่สั่ง ของร้านเองอยู่กลุ่ม TimeOptic (ร้าน)" },
+          ]}
+          build={async (range, _chosen, say) => {
+            const rows = await fetchAll<Order>(
+              (page) => `/rx/orders${qs({ from: range.from, to: range.to, per: 100, page })}`,
+              say,
+            );
+            const orderKey = (r: Order) => r.caseCode ?? r.referenceDoc ?? "ไม่ระบุ";
+            const sheet = (name: string, key: (r: Order) => string, other: (r: Order) => string): Sheet => ({
+              name,
+              note: "ใบสั่งตัดที่เปิดในช่วงนี้ ยกเว้นใบที่ยกเลิก",
+              groupBy: 0,
+              columns: [
+                { header: name.includes("สาขา") ? "สาขา" : "เคส / ออเดอร์", width: 20 },
+                { header: name.includes("สาขา") ? "เคส / ออเดอร์" : "สาขา", width: 18 },
+                { header: "เลขใบสั่ง", width: 16 },
+                { header: "วันที่", width: 18, format: "dd/mm/yyyy hh:mm" },
+                { header: "เลนส์", width: 40 },
+                { header: "ข้าง", width: 6 },
+                { header: "SPH", width: 8 },
+                { header: "CYL", width: 8 },
+                { header: "AXIS", width: 6 },
+                { header: "ADD", width: 8 },
+                { header: "ราคาขาย", money: true, total: true },
+                { header: "ต้นทุน", money: true, total: true },
+                { header: "เลนส์มาถึง", width: 18 },
+                { header: "เลขรับ", width: 14 },
+                { header: "ผู้ขาย (พนักงาน)", width: 16 },
+                { header: "หมายเหตุ", width: 30 },
+              ],
+              rows: [...rows]
+                .sort((a, b) => key(a).localeCompare(key(b), "th") || a.createdAt.localeCompare(b.createdAt))
+                .map((r) => [
+                  key(r),
+                  other(r),
+                  r.referenceDoc,
+                  when(r.createdAt),
+                  shortName(r.name),
+                  r.eyeSide === "right" ? "R" : r.eyeSide === "left" ? "L" : null,
+                  r.sph,
+                  r.cyl,
+                  r.axis,
+                  r.add,
+                  r.salePrice,
+                  mayCost || can.seeCost(actor) ? r.unitCost : null,
+                  r.arrivedAt ? dateTime(r.arrivedAt) : "รอเลนส์",
+                  r.arrivedRef,
+                  r.salesName ?? r.actorName,
+                  r.note,
+                ]),
+            });
+            return [
+              sheet("ใบสั่งตัดแยกตามออเดอร์", orderKey, (r) => branchOf(r.branch)),
+              sheet("ใบสั่งตัดแยกตามสาขา", (r) => branchOf(r.branch), orderKey),
+            ];
+          }}
+          onClose={() => setExporting(false)}
         />
       ) : null}
     </main>
@@ -1262,6 +1334,7 @@ export function NewOrderDialog({
   useEffect(() => {
     if (autoDoc && issued.status === "ready") setDoc(issued.data.referenceDoc);
   }, [autoDoc, issued.status, issued.data]);
+  const docLocked = autoDoc && issued.status !== "error";
 
   const [cost, setCost] = useState("");
   const [price, setPrice] = useState("");
@@ -1658,11 +1731,12 @@ export function NewOrderDialog({
                   autoDoc && issued.status === "loading" ? "กำลังออกเลข…" : "เช่น RX-2026-0148"
                 }
                 disabled={busy}
+                /* เลขที่ระบบออกให้ล็อกไว้ ไม่ต้องกรอก (ร้านขอ 19 ก.ย. 2026) — ออกเลขไม่สำเร็จเท่านั้นถึงพิมพ์เองได้ */
+                readOnly={docLocked}
+                tabIndex={docLocked ? -1 : undefined}
                 autoComplete="off"
               />
-              {autoDoc ? (
-                <span className="field__help">ระบบออกเลขให้เอง — พิมพ์ทับได้ถ้าใบสั่งมีเลขของตัวเอง</span>
-              ) : null}
+              {docLocked ? <span className="field__help">ระบบออกเลขให้เอง</span> : null}
             </div>
             <div className="field">
               <label className="field__label" htmlFor="rx-branch">
