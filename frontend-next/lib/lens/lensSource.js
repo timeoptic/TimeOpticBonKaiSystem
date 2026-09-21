@@ -1,7 +1,8 @@
 /**
  * แหล่งข้อมูลเลนส์ของหน้าขาย
  *
- *   NEXT_PUBLIC_LENS_SOURCE=mock  Bewell — เลือกจากเลนส์จำลอง (mockLenses.js) ไม่แตะคลัง
+ *   NEXT_PUBLIC_LENS_SOURCE=mock  Bewell — เลือกจากเลนส์จำลอง (mockLenses.js = รายชื่อเลนส์จากเว็บหลัก
+ *                                 TimeOptic) ไม่แตะคลังของ Bewell
  *   ไม่ตั้ง                         TimeOptic — เลือกเลนส์จากคลังแบบเดิม (StockPicker)
  *
  * วันที่ Bewell มีฐานเลนส์จริง ให้เปลี่ยนแหล่งที่ searchMockLenses อ่าน แต่คืนรูปแถวเดิม
@@ -11,27 +12,25 @@ import { MOCK_LENSES } from './mockLenses.js';
 
 export const LENS_SOURCE = process.env.NEXT_PUBLIC_LENS_SOURCE === 'mock' ? 'mock' : 'stock';
 
-const BLUE = /blue|guard|cut/i;
-
-/* ตัวกรอง Coating ของ LensPicker ใช้คำของคลัง TimeOptic — แปลงเป็นคำถามต่อเลนส์จำลอง */
-const COATING_MATCH = {
-  Hard: (l) => /hard/i.test(l.coating),
-  MC: (l) => !/hard/i.test(l.coating),
-  Auto: (l) => Boolean(l.photochromic),
-  Blue: (l) => BLUE.test(l.option),
-  'Auto-Blue': (l) => Boolean(l.photochromic) && BLUE.test(l.option),
+/** ค่าสายตาให้อยู่รูปเดียวกับที่ตัวกรองส่งมา ("-2.00" · "0.25" · "0.00") */
+const powerKey = (v) => {
+  if (v === '' || v === null || v === undefined) return '';
+  const n = Number(v);
+  if (!Number.isFinite(n)) return '';
+  return (Math.abs(n) < 0.005 ? 0 : n).toFixed(2);
 };
 
-export function mockLabel(l) {
-  return [l.brand, l.lens_type, l.design, l.lens_index, l.coating, l.option, l.photochromic, l.color]
-    .filter(Boolean)
-    .join(' ');
-}
+/** รุ่นของเลนส์ = ชื่อที่ตัดแบรนด์ข้างหน้าและ "(Index) ค่าสายตา" ข้างหลังออก — "Crystal FT Auto Bifocal (1.56) ..." → "FT Auto Bifocal" */
+const modelOf = (l) => {
+  let m = l.name.replace(/\s*\(\d\.\d{2}\).*$/, '').trim();
+  if (l.brand && m.toLowerCase().startsWith(l.brand.toLowerCase() + ' ')) m = m.slice(l.brand.length + 1);
+  return m;
+};
 
 /**
  * เลนส์จำลอง → รูปแถวที่ LensPicker และ OrderFormView อ่าน
  * id เป็น null เสมอ: ออเดอร์ไม่ผูกล็อต ขั้นขายจึงไม่ตัดสต็อกเลนส์
- * product_price เป็นราคาครึ่งคู่ เพราะหน้าขายตั้งราคาแยกขวา/ซ้าย แถบราคาคู่จะรวมกลับเป็นราคาคู่
+ * ไฟล์ต้นทางไม่มีราคาขาย product_price จึงเป็น 0 — พนักงานกรอกราคาเองในหน้าขาย
  */
 export function toStockRow(l) {
   return {
@@ -39,28 +38,32 @@ export function toStockRow(l) {
     mock: true,
     mock_code: l.mock_code,
     sku: l.mock_code,
-    product_name: mockLabel(l),
+    product_name: l.name,
     brand: l.brand,
+    model: modelOf(l),
     lens_type: l.lens_type,
-    lens_design: l.design,
+    lens_design: l.lens_type,
     lens_index: l.lens_index,
     coating: l.coating,
-    option: l.option,
-    photochromic: l.photochromic,
-    tint: l.color,
-    price_pair: l.price_pair,
-    product_price: l.price_pair / 2,
+    sph: l.sph,
+    cyl: l.cyl,
+    add: l.add,
+    tint: '',
+    product_price: 0,
   };
 }
 
-/** ค้นหลายคำแบบ AND ทั้งชื่อและรหัส · ตัวกรอง SPH/CYL ไม่ใช้ — เลนส์สั่งตามค่าสายตาทำได้ทุกค่า */
-export function searchMockLenses(term = '', { coating = '' } = {}, list = MOCK_LENSES) {
+/** ค้นหลายคำแบบ AND ในชื่อ/รหัส · Coating / SPH / CYL เทียบตรงค่า เหมือนตัวกรองของคลัง */
+export function searchMockLenses(term = '', { coating = '', sph = '', cyl = '' } = {}, list = MOCK_LENSES) {
   const words = String(term).toLowerCase().split(/\s+/).filter(Boolean);
-  const byCoating = COATING_MATCH[coating];
+  const wantSph = powerKey(sph);
+  const wantCyl = powerKey(cyl);
   return list
-    .filter((l) => !byCoating || byCoating(l))
+    .filter((l) => !coating || l.coating === coating)
+    .filter((l) => wantSph === '' || powerKey(l.sph) === wantSph)
+    .filter((l) => wantCyl === '' || powerKey(l.cyl) === wantCyl)
     .filter((l) => {
-      const hay = `${mockLabel(l)} ${l.mock_code}`.toLowerCase();
+      const hay = `${l.name} ${l.mock_code}`.toLowerCase();
       return words.every((w) => hay.includes(w));
     })
     .map(toStockRow);
@@ -81,12 +84,12 @@ export function requisitionItems(items, prices) {
       mock_code: r.mock_code,
       brand: r.brand,
       lens_type: r.lens_type,
-      design: r.lens_design,
+      design: r.model,
       lens_index: r.lens_index,
       coating: r.coating,
-      option_name: r.option || '',
-      photochromic: r.photochromic || '',
-      color: r.tint || '',
+      option_name: '',
+      photochromic: '',
+      color: '',
       quantity: 1,
       unit_price: Number(prices?.[priceKey]) || 0,
     });

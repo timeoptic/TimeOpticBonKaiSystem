@@ -12,14 +12,14 @@ import { LensPicker } from './LensPicker.jsx';
 import { Icon } from './Icon.jsx';
 import { searchMockLenses } from '../lib/lens/lensSource.js';
 
-const baht = (n) => Number(n || 0).toLocaleString('th-TH');
-const mockStock = (r) => ({ text: `สั่งตามเคส · คู่ละ ${baht(r.price_pair)} บาท`, tone: 'new' });
+/* รายการแสดงแค่ชื่อ (nameOnly) ช่องคงเหลือจึงไม่ถูกวาด — LensPicker ยังต้องการฟังก์ชันนี้อยู่ */
+const mockStock = () => ({ text: '', tone: 'new' });
 
 export function MockLensPicker({ picked = null, onPick, onClear = null }) {
   const [open, setOpen] = useState(false);
 
   if (picked?.mock && !open) {
-    const sub = `เลนส์จำลอง · สั่งตามเคส · คู่ละ ${baht(picked.price_pair)} บาท`;
+    const sub = 'เลนส์จำลอง (รายชื่อจากเว็บหลัก TimeOptic) · สั่งตามเคส';
     return (
       <div className="picked-item">
         <Icon name="glasses" />
@@ -37,7 +37,7 @@ export function MockLensPicker({ picked = null, onPick, onClear = null }) {
   return (
     <>
       <LensPicker
-        placeholder="ยี่ห้อ / รุ่น / Index / เคลือบ"
+        placeholder="ชื่อเลนส์ / ยี่ห้อ / SKU"
         fetcher={(term, params) => Promise.resolve(searchMockLenses(term, params))}
         label={(r) => r.product_name}
         stock={mockStock}
