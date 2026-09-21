@@ -14,7 +14,7 @@ final class Migrate
         'telegram_bot_token'       => '',
         'telegram_chat_id'         => '',
         'reminder_default_minutes' => '10',
-        'shop_name'                => 'TIME OPTIC',
+        'shop_name'                => 'TimeOptic x Bewell',
         'shop_open_time'           => '10:00',
         'shop_close_time'          => '20:00',
         'slot_minutes'             => '30',
@@ -358,6 +358,64 @@ final class Migrate
                 KEY idx_bill_party_customer (customer_id),
                 CONSTRAINT fk_bill_party_customer FOREIGN KEY (customer_id)
                   REFERENCES customers (id) ON DELETE SET NULL
+              ) $c",
+
+            /* ใบเบิกเลนส์ของ Bewell — เลนส์ไม่ใช่สต็อก ไม่ผ่าน CaseStock หรือ rx_orders
+               rx_snapshot = ค่าสายตาที่คัดลอกไว้ตอนออกใบ ใบที่ส่งร้านเลนส์ไปแล้วต้องไม่เปลี่ยนตาม
+               ใบค่าสายตาที่ถูกแก้ทีหลัง (null = เคสยังไม่ยืนยันค่าสายตาสุดท้าย) */
+            'lens_requisitions' => "CREATE TABLE IF NOT EXISTS lens_requisitions (
+                id              int(10) unsigned NOT NULL AUTO_INCREMENT,
+                req_no          varchar(30) NOT NULL,
+                case_id         int(10) unsigned NOT NULL,
+                customer_id     int(10) unsigned NOT NULL,
+                order_id        int(10) unsigned DEFAULT NULL,
+                prescription_id int(10) unsigned DEFAULT NULL,
+                rx_snapshot     longtext DEFAULT NULL,
+                status          enum('pending','issued','ordered','received','assembled','cancelled') NOT NULL DEFAULT 'pending',
+                total           decimal(12,2) NOT NULL DEFAULT 0,
+                note            text DEFAULT NULL,
+                cancel_reason   varchar(255) DEFAULT NULL,
+                created_by      int(10) unsigned DEFAULT NULL,
+                created_at      datetime NOT NULL DEFAULT current_timestamp(),
+                updated_at      datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+                issued_at       datetime DEFAULT NULL,
+                ordered_at      datetime DEFAULT NULL,
+                received_at     datetime DEFAULT NULL,
+                assembled_at    datetime DEFAULT NULL,
+                cancelled_at    datetime DEFAULT NULL,
+                PRIMARY KEY (id),
+                UNIQUE KEY uq_lr_no (req_no),
+                KEY idx_lr_case (case_id),
+                KEY idx_lr_order (order_id),
+                KEY idx_lr_status (status),
+                CONSTRAINT fk_lr_case FOREIGN KEY (case_id) REFERENCES cases (id) ON DELETE CASCADE,
+                CONSTRAINT fk_lr_customer FOREIGN KEY (customer_id) REFERENCES customers (id),
+                CONSTRAINT fk_lr_order FOREIGN KEY (order_id) REFERENCES custom_orders (id) ON DELETE SET NULL,
+                CONSTRAINT fk_lr_rx FOREIGN KEY (prescription_id) REFERENCES prescriptions (id) ON DELETE SET NULL
+              ) $c",
+
+            /* รายการในใบเบิก — ทุกช่องของ spec คัดลอกเก็บไว้ ใบเก่ายังอ่านได้ครบ
+               แม้วันหนึ่งแหล่งเลนส์เปลี่ยนจาก MOCK เป็นฐานจริง */
+            'lens_requisition_items' => "CREATE TABLE IF NOT EXISTS lens_requisition_items (
+                id             int(10) unsigned NOT NULL AUTO_INCREMENT,
+                requisition_id int(10) unsigned NOT NULL,
+                eye            enum('R','L','pair') NOT NULL,
+                source         varchar(20) NOT NULL DEFAULT 'MOCK',
+                mock_code      varchar(120) DEFAULT NULL,
+                brand          varchar(80) NOT NULL,
+                lens_type      varchar(80) DEFAULT NULL,
+                design         varchar(120) DEFAULT NULL,
+                lens_index     varchar(10) DEFAULT NULL,
+                coating        varchar(80) DEFAULT NULL,
+                option_name    varchar(80) DEFAULT NULL,
+                photochromic   varchar(80) DEFAULT NULL,
+                color          varchar(40) DEFAULT NULL,
+                quantity       int(11) NOT NULL DEFAULT 1,
+                unit_price     decimal(12,2) NOT NULL DEFAULT 0,
+                line_total     decimal(12,2) NOT NULL DEFAULT 0,
+                PRIMARY KEY (id),
+                KEY idx_lri_req (requisition_id),
+                CONSTRAINT fk_lri_req FOREIGN KEY (requisition_id) REFERENCES lens_requisitions (id) ON DELETE CASCADE
               ) $c",
         ];
     }

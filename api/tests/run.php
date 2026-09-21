@@ -63,6 +63,8 @@ require __DIR__ . '/../services/PaymentExport.php';
 require __DIR__ . '/../routes/analytics.php';
 /* รับเงินของเคส (95-payment-guards) — ยิง POST /api/payments ตัวจริง */
 require __DIR__ . '/../routes/payments.php';
+/* ใบเบิกเลนส์ของ Bewell (98-lens-requisition) */
+require __DIR__ . '/../routes/lens.php';
 require __DIR__ . '/harness.php';
 
 Db::configure($config['db']);
