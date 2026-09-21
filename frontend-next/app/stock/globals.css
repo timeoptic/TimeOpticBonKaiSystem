@@ -216,7 +216,7 @@ code {
   place-items: center;
   border-radius: 12px;
   background: linear-gradient(135deg, var(--brand-1) 0%, var(--brand-2) 100%);
-  color: var(--color-ink);
+  color: var(--color-on-brand);
   font-size: 19px;
   letter-spacing: -2px;
   box-shadow: var(--shadow-brand);
@@ -291,7 +291,7 @@ code {
    ตัวหนังสือเป็นหมึกเข้ม ไม่ใช่ขาว: ขาวบนเขียวสดได้คอนทราสต์แค่ 2:1 */
 .rail-item[aria-current="page"] {
   background: linear-gradient(135deg, var(--brand-1) 0%, var(--brand-2) 100%);
-  color: var(--color-ink);
+  color: var(--color-on-brand);
   font-weight: 650;
   box-shadow: var(--shadow-brand);
 }
@@ -447,16 +447,16 @@ code {
 .btn--primary {
   background: var(--brand-1);
   border-color: transparent;
-  color: var(--color-ink);
+  color: var(--color-on-brand);
   font-weight: 600;
   box-shadow: var(--shadow-brand);
 }
 
 @media (hover: hover) and (pointer: fine) {
   .btn--primary:hover {
-    background: #3EC554;
+    background: #1A65A8;
     border-color: transparent;
-    color: var(--color-ink);
+    color: var(--color-on-brand);
     transform: translateY(-1px);
     box-shadow: var(--shadow-lift);
   }
@@ -4141,7 +4141,7 @@ kbd {
    ไว้วางบนพื้นเขียวเข้ม · ขาวบนเขียวอ่อนคือตัวหนังสือที่หายไปกับพื้น */
 .railtab[aria-current="page"] {
   background: linear-gradient(135deg, var(--brand-1) 0%, var(--brand-2) 100%);
-  color: var(--color-ink);
+  color: var(--color-on-brand);
   font-weight: 700;
   box-shadow: var(--shadow-brand);
 }

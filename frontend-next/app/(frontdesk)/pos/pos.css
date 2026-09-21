@@ -204,7 +204,7 @@
   cursor:pointer;border:1px solid var(--line);margin-bottom:10px;background:var(--card);color:var(--ink);
 }
 
-.pos-btn.primary{background:var(--green);color:var(--ink);border-color:transparent;box-shadow:var(--shadow-green)}
+.pos-btn.primary{background:var(--green);color:var(--on-brand);border-color:transparent;box-shadow:var(--shadow-green)}
 
 .pos-btn.primary:disabled{opacity:.45;cursor:not-allowed;box-shadow:none}
 
@@ -545,7 +545,7 @@
 
 .pos-modal-foot .pos-back{border:1px solid var(--line);background:var(--card);color:var(--ink)}
 
-.pos-modal-foot .pos-go{border:0;background:var(--green);color:var(--ink);box-shadow:var(--shadow-green);margin:0;width:auto}
+.pos-modal-foot .pos-go{border:0;background:var(--green);color:var(--on-brand);box-shadow:var(--shadow-green);margin:0;width:auto}
 
 .pos-modal-foot .pos-go:disabled{opacity:.45;cursor:not-allowed;box-shadow:none}
 

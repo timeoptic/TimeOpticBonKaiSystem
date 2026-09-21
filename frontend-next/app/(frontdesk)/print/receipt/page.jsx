@@ -780,7 +780,7 @@ const sheetCss = `
   padding:10px 18px;font:inherit;font-size:var(--t-base);font-weight:500;
   line-height:1.2;color:var(--ink-soft)}
 .rc-seg-b + .rc-seg-b{border-left:1px solid var(--line)}
-.rc-seg-b.is-on{background:var(--green);color:var(--ink);font-weight:600}
+.rc-seg-b.is-on{background:var(--green);color:var(--on-brand);font-weight:600}
 /* ระยะไอคอน-ข้อความมาจาก gap ของปุ่ม ไม่ใช่ margin เริ่มต้นของ .ico ใน globals.css
    (ปุ่มนี้ไม่ใช่ .btn จึงไม่โดนยกเว้นให้อัตโนมัติ ถ้าไม่ล้างจะได้ระยะซ้อนสองชั้น) */
 .rc-seg-b .ico{margin:0}

@@ -23,18 +23,27 @@
      สามสีหลักของระบบ ทั้งสามสว่างราว L 76% เท่ากันหมด เขียนตัวหนังสือทับไม่ได้
      (คอนทราสต์บนขาวแค่ 1.9–2.2:1) คู่ ink/deep ข้างล่างจึงมีไว้สำหรับตัวอักษร
      และไอคอน ส่วน tint/edge ไว้ทำพื้นชิปกับขอบ — ทุกค่าคำนวณแล้วผ่าน WCAG AA */
-  --green:#4DD161;   /* สีหลัก — ตัวตนแบรนด์ ปุ่มหลัก สถานะ "เสร็จแล้ว" */
-  --mint:#4DD1A3;    /* สีรอง — งานที่กำลังเดินอยู่ */
+  /* Bewell: สีหลักเป็นฟ้าของเว็บทีม #1E73BE — ชื่อตัวแปรยัง "green" ไว้ เพราะถูกอ้าง
+     อยู่ร้อยกว่าจุด เปลี่ยนค่าที่นี่ที่เดียวทั้งแอปเปลี่ยนตาม · ฟ้านี้เข้มพอ (ขาวทับได้ 4.9:1)
+     ปุ่ม/เมนูที่ทาสีหลักจึงใช้ตัวหนังสือขาว (--on-brand) แทนหมึกเข้มแบบเขียวเดิม */
+  --green:#1E73BE;   /* สีหลัก — ตัวตนแบรนด์ ปุ่มหลัก */
+  --mint:#3D8FD6;    /* สีรอง — งานที่กำลังเดินอยู่ */
   --cyan:#4DBDD1;    /* สีเสริม — ข้อมูล นัดหมาย หมวดหมู่ */
+  --on-brand:#FFFFFF;
+  --brand-hover:#1A65A8;
 
-  --green-ink:#1D8832; --mint-ink:#1E8665; --cyan-ink:#1E8292;    /* 4.5:1 บนขาว */
-  --green-deep:#136724; --mint-deep:#13644A; --cyan-deep:#13616E; /* 7:1 — ตัวเล็ก */
-  --green-tint:#E9FBEC; --mint-tint:#E3FBF2; --cyan-tint:#E1FAFE;
-  --green-edge:#BCEFC5; --mint-edge:#B4EED9; --cyan-edge:#B1E8F3;
+  --green-ink:#1E73BE; --mint-ink:#2A6FAE; --cyan-ink:#1E8292;    /* 4.5:1 บนขาว */
+  --green-deep:#124E82; --mint-deep:#174F80; --cyan-deep:#13616E; /* 7:1 — ตัวเล็ก */
+  --green-tint:#E8F1FA; --mint-tint:#E6F0FA; --cyan-tint:#E1FAFE;
+  --green-edge:#B9D5EF; --mint-edge:#BCD6EE; --cyan-edge:#B1E8F3;
+
+  /* สถานะ "เสร็จแล้ว / สำเร็จ" ยังเป็นเขียว — สีหลักเป็นฟ้าแล้ว ถ้าตามไปเป็นฟ้าด้วย
+     ป้าย "เสร็จ" จะกลืนกับปุ่มและลิงก์ทั้งหน้า */
+  --success-ink:#1D8832; --success-deep:#136724; --success-tint:#E9FBEC; --success-edge:#BCEFC5;
 
   /* ไล่สีมีที่เดียวในระบบ: เมนูที่กำลังเปิดอยู่ ที่อื่นห้ามใช้
      ไล่สีเป็นของประดับที่ถูกที่สุดและเลี่ยนที่สุด — จำกัดไว้จุดเดียวมันถึงมีความหมาย */
-  --grad-brand:linear-gradient(135deg,#4DD161 0%,#4DD1A3 100%);
+  --grad-brand:linear-gradient(135deg,#1E73BE 0%,#3D8FD6 100%);
 
   /* ── กระดาษกับหมึก ───────────────────────────────────────────────────────
      พื้นแอปเย็นอ่อน การ์ดขาวสนิท — ต่างกันแค่ 5% แต่พอให้การ์ดลอยโดยไม่ต้องตีกรอบ */
@@ -55,7 +64,7 @@
      เขียวของ "สำเร็จ" คือเขียวแบรนด์ตัวเดียวกัน — ในระบบที่แบรนด์เป็นเขียวอยู่แล้ว
      การหาเขียวอีกเฉดมาเป็นสถานะมีแต่ทำให้สองเขียวตีกัน
      เหลือง/แดงอยู่นอกพาเลตต์โดยตั้งใจ: มันต้องดังกว่าสีแบรนด์ตอนมีอะไรผิด */
-  --ok:var(--green-ink); --ok-soft:var(--green-tint);
+  --ok:var(--success-ink); --ok-soft:var(--success-tint);
   --warn:#B45309; --warn-soft:#FEF3C7;
   --danger:#BE123C; --danger-soft:#FFE4E6;
 
@@ -72,7 +81,7 @@
   --shadow-lg:0 2px 4px rgba(15,23,42,.04), 0 18px 40px -18px rgba(15,23,42,.20);
   --shadow-pop:0 8px 12px -6px rgba(15,23,42,.10), 0 32px 64px -24px rgba(15,23,42,.28);
   /* เงาสีแบรนด์ ใช้กับของที่เป็นสีเขียวเท่านั้น — เงาเทาใต้ปุ่มเขียวดูเป็นคราบ */
-  --shadow-green:0 2px 6px rgba(29,136,50,.16), 0 10px 24px -12px rgba(29,136,50,.36);
+  --shadow-green:0 2px 6px rgba(30,115,190,.16), 0 10px 24px -12px rgba(30,115,190,.36);
 
   --rule-hair:1px solid var(--line-soft);
   --rule-soft:1px solid var(--line);
@@ -161,7 +170,7 @@ a:hover{text-decoration:underline}
 /* โลโก้เป็นสี่เหลี่ยมมนไล่สีแบรนด์ — ที่เดียวคู่กับเมนู active ที่ยอมให้มีไล่สี */
 .brand-mark{
   width:38px;height:38px;flex:0 0 38px;border-radius:12px;
-  background:var(--grad-brand);color:var(--ink);
+  background:var(--grad-brand);color:var(--on-brand);
   display:flex;align-items:center;justify-content:center;
   font-size:19px;letter-spacing:-2px;box-shadow:var(--shadow-green);
 }
@@ -187,7 +196,7 @@ a:hover{text-decoration:underline}
 /* เมนูที่เปิดอยู่ — ไล่สีเขียว ตัวหนังสือหมึกเข้ม (9:1) ไม่ใช่ขาว
    ขาวบนเขียวสดได้แค่ 2:1 อ่านไม่ออก และการใช้หมึกเข้มทำให้ทั้งจอยังสว่างอยู่ */
 #nav a.active{
-  background:var(--grad-brand);color:var(--ink);font-weight:650;
+  background:var(--grad-brand);color:var(--on-brand);font-weight:650;
   box-shadow:var(--shadow-green);
 }
 
@@ -294,7 +303,7 @@ textarea{max-width:1320px}
   display:flex;align-items:center;justify-content:center;font-size:21px;line-height:1;
 }
 
-.tile:hover .t-ic{background:var(--green);color:var(--ink)}
+.tile:hover .t-ic{background:var(--green);color:var(--on-brand)}
 
 .tile b{display:block;font-size:var(--t-base);font-weight:600;letter-spacing:-.1px}
 
@@ -1046,7 +1055,7 @@ legend{font-size:12px;font-weight:700;color:var(--accent-deep);letter-spacing:.3
 
 /* ---------------- buttons ---------------- */
 /* ปุ่มหลักเป็นเขียวแบรนด์เต็ม ๆ กับตัวหนังสือหมึกเข้ม ไม่ใช่ขาว
-   ขาวบน #4DD161 ได้ 2:1 อ่านไม่ออก · หมึกเข้มบนเขียวได้ 9:1 และทำให้ปุ่มยังสว่าง
+   (Bewell: สีหลักเป็นฟ้า #1E73BE แล้ว — เข้มพอให้ตัวหนังสือขาวทับได้ 4.9:1 ปุ่มหลักจึงใช้ --on-brand)
    ซึ่งเป็นทั้งเรื่องอ่านออกและเรื่องทิศทาง — ทั้งจอต้องสว่าง
 
    ลำดับชั้นของปุ่มมีสามระดับเท่านั้น:
@@ -1056,13 +1065,13 @@ legend{font-size:12px;font-weight:700;color:var(--accent-deep);letter-spacing:.3
    ที่เหลือ (ok / danger) บอกผลลัพธ์ ไม่ใช่ระดับความสำคัญ */
 .btn{
   display:inline-flex;align-items:center;justify-content:center;gap:8px;
-  background:var(--green);color:var(--ink);border:1px solid transparent;border-radius:var(--radius-pill);
+  background:var(--green);color:var(--on-brand);border:1px solid transparent;border-radius:var(--radius-pill);
   padding:10px 20px;font:inherit;font-size:var(--t-base);font-weight:600;cursor:pointer;text-decoration:none;
   box-shadow:var(--shadow-green);white-space:nowrap;
   transition:background var(--dur-fast) var(--ease-out),box-shadow var(--dur-fast) var(--ease-out),transform var(--dur-fast) var(--ease-out),color var(--dur-fast) var(--ease-out);
 }
 
-.btn:hover{background:#3EC554;color:var(--ink);text-decoration:none;transform:translateY(-1px);box-shadow:var(--shadow-lg)}
+.btn:hover{background:var(--brand-hover);color:var(--on-brand);text-decoration:none;transform:translateY(-1px);box-shadow:var(--shadow-lg)}
 
 .btn:active{transform:translateY(0);box-shadow:var(--shadow-sm)}
 
@@ -1077,9 +1086,9 @@ legend{font-size:12px;font-weight:700;color:var(--accent-deep);letter-spacing:.3
 
 .btn-accent:hover{background:var(--green-deep);color:#fff}
 
-.btn-ok{background:var(--green-ink);color:#fff;box-shadow:var(--shadow-sm)}
+.btn-ok{background:var(--success-ink);color:#fff;box-shadow:var(--shadow-sm)}
 
-.btn-ok:hover{background:var(--green-deep);color:#fff}
+.btn-ok:hover{background:var(--success-deep);color:#fff}
 
 .btn-danger{background:var(--danger);color:#fff;box-shadow:var(--shadow-sm)}
 
@@ -1109,7 +1118,7 @@ legend{font-size:12px;font-weight:700;color:var(--accent-deep);letter-spacing:.3
 
 .badge.mint{background:var(--mint-tint);color:var(--mint-deep);border-color:var(--mint-edge)}
 
-.badge.ok{background:var(--green-tint);color:var(--green-deep);border-color:var(--green-edge)}
+.badge.ok{background:var(--success-tint);color:var(--success-deep);border-color:var(--success-edge)}
 
 .badge.warn{background:var(--warn-soft);color:#8A3F07;border-color:#FDE68A}
 
@@ -3898,7 +3907,7 @@ table.grid.data-grid tr.row-danger td:first-child{border-left-color:var(--danger
   display:flow-root;
   min-height:100dvh;
   background:
-    radial-gradient(1200px 600px at 12% -10%, rgba(77,209,97,.18), transparent 60%),
+    radial-gradient(1200px 600px at 12% -10%, rgba(30,115,190,.14), transparent 60%),
     radial-gradient(900px 500px at 88% 8%, rgba(77,189,209,.20), transparent 55%),
     var(--bg);
 }
