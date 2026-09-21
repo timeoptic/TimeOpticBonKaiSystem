@@ -63,6 +63,7 @@ const NAV = [
     ['users', 'ประวัติลูกค้า', '/customers'],
     ['eye', 'วัดสายตา', '/prescriptions'],
     ['glasses', 'ออเดอร์ตัดแว่น', '/orders'],
+    ['clipboard', 'ใบเบิกเลนส์', '/lens-requisitions'],
     ['bag', 'ขายสินค้า', '/pos'],
     ['pin', 'ตำแหน่งสินค้า', '/locations'],
   ]],

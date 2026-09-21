@@ -48,6 +48,7 @@ import { DeliveryPanel } from './panels/DeliveryPanel.jsx';
 import { Icon } from '../../../../components/Icon.jsx';
 import { NotifyPanel } from './panels/NotifyPanel.jsx';
 import { TimelinePanel } from './panels/TimelinePanel.jsx';
+import { LensRequisitionPanel } from './panels/LensRequisitionPanel.jsx';
 import { ChangeCustomerDialog } from './panels/ChangeCustomerDialog.jsx';
 
 /** one panel per process — ids come from lib/caseProcesses.js */
@@ -64,9 +65,11 @@ const PROCESS_PANELS = {
 const EXTRA_VIEWS = [
   ['overview', 'ภาพรวม'],
   ['notify', 'ติดต่อลูกค้า'],
+  /* Bewell — ใบเบิกเลนส์ที่เกิดจากขั้นขาย (panels/LensRequisitionPanel.jsx) */
+  ['lens', 'ใบเบิกเลนส์'],
   ['timeline', 'ไทม์ไลน์'],
 ];
-const EXTRA_PANELS = { notify: NotifyPanel, timeline: TimelinePanel };
+const EXTRA_PANELS = { notify: NotifyPanel, lens: LensRequisitionPanel, timeline: TimelinePanel };
 
 const isProcess = (step) => Object.prototype.hasOwnProperty.call(PROCESS_PANELS, step);
 const isKnownStep = (step) => isProcess(step)

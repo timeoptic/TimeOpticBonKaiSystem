@@ -1,0 +1,38 @@
+/**
+ * สถานะใบเบิกเลนส์ — ต้องตรงกับ LensRequisition::transitionError ฝั่ง API
+ * (api/services/LensRequisition.php) หน้าเว็บแค่ซ่อนปุ่มที่กดแล้วจะโดนปฏิเสธ
+ */
+export const FLOW = ['pending', 'issued', 'ordered', 'received', 'assembled'];
+
+export const STATUS_LABEL = {
+  pending: 'รอเบิก',
+  issued: 'เบิกแล้ว',
+  ordered: 'ส่งผลิต / สั่งเลนส์',
+  received: 'ได้รับเลนส์',
+  assembled: 'ประกอบแล้ว',
+  cancelled: 'ยกเลิก',
+};
+
+/** สีของ Badge (คลาสที่ globals.css มีอยู่แล้ว) */
+export const STATUS_TONE = {
+  pending: 'warn',
+  issued: 'blue',
+  ordered: 'blue',
+  received: 'mint',
+  assembled: 'ok',
+  cancelled: 'danger',
+};
+
+export const EYE_LABEL = { R: 'ขวา (R)', L: 'ซ้าย (L)', pair: 'คู่' };
+
+/** ปุ่มที่กดได้จากสถานะนี้ — เดินหน้าหรือข้ามขั้นได้ ย้อนไม่ได้ · ไม่มีค่าสายตาเหลือแค่ยกเลิก */
+export function nextActions(status, hasRx) {
+  if (status === 'cancelled' || status === 'assembled') return [];
+  const ahead = hasRx ? FLOW.slice(FLOW.indexOf(status) + 1) : [];
+  return [...ahead, 'cancelled'].map((to) => ({ to, label: STATUS_LABEL[to] }));
+}
+
+/** รายละเอียดเลนส์หนึ่งบรรทัด */
+export const lensSpecText = (it) => [
+  it.brand, it.lens_type, it.design, it.lens_index, it.coating, it.option_name, it.photochromic, it.color,
+].filter(Boolean).join(' · ');

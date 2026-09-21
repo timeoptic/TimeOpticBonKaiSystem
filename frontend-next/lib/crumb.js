@@ -59,6 +59,8 @@ export const TITLES = [
   ['/reports/unsold', 'สินค้าค้างสต็อก'],
   ['/reports', 'รายงาน'],
   ['/print/order', 'ใบสั่งตัดแว่น'],
+  ['/lens-requisitions', 'ใบเบิกเลนส์'],
+  ['/print/lens-requisition', 'พิมพ์ใบเบิกเลนส์'],
   ['/print/prescription', 'ใบวัดสายตา'],
 ];
 
