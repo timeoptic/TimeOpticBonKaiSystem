@@ -49,7 +49,7 @@ export default function LoginPage() {
     <div style={{ maxWidth: 380, margin: '12vh auto', padding: '0 16px' }}>
       <div style={{ textAlign: 'center', marginBottom: 14 }}>
         <div style={{ fontSize: 30, letterSpacing: 2 }}>◎◎</div>
-        <h1 style={{ margin: '6px 0 2px', fontSize: 20 }}>TimeOptic</h1>
+        <h1 style={{ margin: '6px 0 2px', fontSize: 20 }}>TimeOptic x Bewell</h1>
         <p className="muted" style={{ margin: 0 }}>หน้าร้าน · คลังและต้นทุน</p>
       </div>
 

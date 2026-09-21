@@ -74,7 +74,7 @@ export const TH_MONTHS_ABBR = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.�
 export const TH_DOW = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'];
 
 export const SHOP = {
-  name: 'TIME OPTIC',
+  name: 'TimeOptic x Bewell',
   tagline: 'ร้านแว่นตาไทม์ออพติก',
   line2: 'โทร. ___-___-____',
 };

@@ -166,7 +166,7 @@ export function Shell({ children }) {
   }, []);
 
   useEffect(() => {
-    document.title = `${crumb} — TimeOptic`;
+    document.title = `${crumb} — TimeOptic x Bewell`;
     window.scrollTo(0, 0);
   }, [crumb, pathname]);
 
@@ -198,7 +198,7 @@ export function Shell({ children }) {
       <aside className={`sidebar ${open ? 'open' : ''}`} id="sidebar">
         <div className="brand">
           <span className="brand-mark">◎◎</span>
-          <span className="brand-text"><b>TimeOptic</b><small>ระบบจัดการร้านแว่นตา</small></span>
+          <span className="brand-text"><b>TimeOptic x Bewell</b><small>ระบบจัดการร้านแว่นตา</small></span>
         </div>
         <nav id="nav">
           {navGroups.map(([group, items]) => (
