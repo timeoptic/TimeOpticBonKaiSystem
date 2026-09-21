@@ -26,8 +26,9 @@ const COATING_OPTIONS = [['', 'ทั้งหมด'], ...LENS_COATINGS.map((c)
 /**
  * fetcher(term, params) -> Promise<rows> · params คือ { coating?, sph?, cyl? } ที่กรอกครบถูกแล้ว
  * label(row) ชื่อเลนส์ · stock(row) -> { text, tone } ช่องคงเหลือ
+ * nameOnly — แสดงแค่ชื่อเลนส์ ไม่มีคอลัมน์คงเหลือ / SKU (เลนส์จำลองของ Bewell ซึ่งไม่ใช่ของในคลัง)
  */
-export function LensPicker({ placeholder, fetcher, label, stock, onPick, selectedId = null }) {
+export function LensPicker({ placeholder, fetcher, label, stock, onPick, selectedId = null, nameOnly = false }) {
   const [term, setTerm] = useState('');
   const [filters, setFilters] = useState(EMPTY);
   const [rows, setRows] = useState([]);
@@ -174,13 +175,17 @@ export function LensPicker({ placeholder, fetcher, label, stock, onPick, selecte
         </div>
       ) : null}
 
-      <div className={s.list} role="radiogroup" aria-label="เลือกเลนส์">
+      <div className={`${s.list} ${nameOnly ? s.nameOnly : ''}`} role="radiogroup" aria-label="เลือกเลนส์">
         <div className={s.head} aria-hidden="true">
           <span />
           <span>ชื่อเลนส์</span>
-          <span>คงเหลือ</span>
-          <span>SKU</span>
-          <span />
+          {nameOnly ? null : (
+            <>
+              <span>คงเหลือ</span>
+              <span>SKU</span>
+              <span />
+            </>
+          )}
         </div>
         {state === 'loading' && <div className={s.msg}><span className="spin" /> กำลังค้นหา…</div>}
         {state === 'error' && <div className={s.msg}>{error}</div>}
@@ -196,7 +201,7 @@ export function LensPicker({ placeholder, fetcher, label, stock, onPick, selecte
         {state === 'done' && sliceOf(rows, page, perPage).map((r, i) => {
           /* สินค้าที่ยังไม่มีล็อต id เป็น null — ต้องไม่ถูกนับว่าเลือกอยู่ตอนยังไม่ได้เลือกอะไร */
           const sel = r.id != null && String(r.id) === String(selectedId);
-          const st = stock(r);
+          const st = nameOnly ? null : stock(r);
           return (
             <div
               key={`${r.id}-${r.sku}-${i}`}
@@ -217,9 +222,13 @@ export function LensPicker({ placeholder, fetcher, label, stock, onPick, selecte
                 <b title={label(r)}>{label(r)}</b>
                 {r.coating ? <span className="badge blue">{r.coating}</span> : null}
               </span>
-              <span className={`${s.stock} ${s[st.tone] || ''}`}>{st.text}</span>
-              <span className={s.sku}>{r.sku || '—'}</span>
-              <span className={s.id}>{r.id != null ? `#${r.id}` : ''}</span>
+              {nameOnly ? null : (
+                <>
+                  <span className={`${s.stock} ${s[st.tone] || ''}`}>{st.text}</span>
+                  <span className={s.sku}>{r.sku || '—'}</span>
+                  <span className={s.id}>{r.id != null ? `#${r.id}` : ''}</span>
+                </>
+              )}
             </div>
           );
         })}

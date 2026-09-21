@@ -79,6 +79,9 @@
 .sku{font-size:12.5px;overflow-wrap:anywhere}
 .id{font-family:var(--font-mono);font-size:12px;opacity:.72;text-align:right}
 
+/* nameOnly (เลนส์จำลองของ Bewell) — เหลือปุ่มเลือกกับชื่อ ชื่อได้ความกว้างเต็มแถว */
+.nameOnly .head,.nameOnly .row{grid-template-columns:18px minmax(0,1fr)}
+
 .msg{display:flex;align-items:center;gap:8px;padding:10px 12px;font-size:13.5px}
 .empty{justify-content:space-between;flex-wrap:wrap}
 
@@ -89,6 +92,7 @@
     grid-template-areas:"radio name name name" "radio stock sku id";
     row-gap:3px;
   }
+  .nameOnly .row{grid-template-columns:18px minmax(0,1fr);grid-template-areas:"radio name"}
   .radio{grid-area:radio}
   .name{grid-area:name}
   .stock{grid-area:stock}

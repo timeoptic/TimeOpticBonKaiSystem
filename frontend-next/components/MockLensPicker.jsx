@@ -41,6 +41,7 @@ export function MockLensPicker({ picked = null, onPick, onClear = null }) {
         fetcher={(term, params) => Promise.resolve(searchMockLenses(term, params))}
         label={(r) => r.product_name}
         stock={mockStock}
+        nameOnly
         onPick={(r) => {
           setOpen(false);
           onPick(r);
