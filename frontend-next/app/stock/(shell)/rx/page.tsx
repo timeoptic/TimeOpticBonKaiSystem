@@ -857,7 +857,7 @@ function OrderCard({
           )
         }
         title={shortName(row.name)}
-        sub={[row.referenceDoc ?? "—", row.branch ?? "TimeOptic x Bewell"].join(" · ")}
+        sub={[row.referenceDoc ?? "—", row.branch ?? "TIMEOPTIC @ Be Well MEDICAL CENTER"].join(" · ")}
         fields={[
           row.caseId !== null ? { label: "เคส", value: <CaseLink row={row} /> } : null,
           row.eyeSide ? { label: "ข้างตา", value: <EyeTag side={row.eyeSide} /> } : null,
@@ -1049,7 +1049,7 @@ function OrderRow({
         <CaseLink row={row} />
         {/* ทุกแถวบอกว่าใครสั่ง — ใบที่ไม่มีสาขาคือ TimeOptic สั่งเอง · เขียนให้ครบ
             ทุกแถวเพราะคอลัมน์ที่ว่างบ้างไม่ว่างบ้าง อ่านเหมือนข้อมูลหาย */}
-        <span className="grid__sub">{row.branch ?? "TimeOptic x Bewell"}</span>
+        <span className="grid__sub">{row.branch ?? "TIMEOPTIC @ Be Well MEDICAL CENTER"}</span>
       </th>
       <td>
         <EyeTag side={row.eyeSide} />
@@ -1748,14 +1748,14 @@ export function NewOrderDialog({
                 onChange={setBranch}
                 disabled={busy || branches.status !== "ready"}
                 options={[
-                  { value: "", label: "TimeOptic x Bewell" },
+                  { value: "", label: "TIMEOPTIC @ Be Well MEDICAL CENTER" },
                   ...(branches.status === "ready"
                     ? branches.data.branches.map((b) => ({ value: String(b.id), label: b.name }))
                     : []),
                 ]}
               />
               {/* บรรทัดนี้มีเพราะช่องว่างกับช่องที่ลืมกรอกหน้าตาเหมือนกัน — และ
-                  ที่นี่ว่างแปลว่า "TimeOptic x Bewell" ซึ่งเป็นคำตอบที่ถูกต้องของ
+                  ที่นี่ว่างแปลว่า "TIMEOPTIC @ Be Well MEDICAL CENTER" ซึ่งเป็นคำตอบที่ถูกต้องของ
                   ใบส่วนใหญ่ ไม่ใช่งานที่ยังทำไม่เสร็จ */}
               <span className="field__help">เลือกเมื่อสาขาอื่นเป็นคนสั่ง — ยอดจะไปรวมในแดชบอร์ดแยกตามสาขา</span>
             </div>

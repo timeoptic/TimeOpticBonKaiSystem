@@ -360,7 +360,7 @@ final class Reports
             if (!isset($out[$id])) {
                 $out[$id] = [
                     'branchId' => $id === 0 ? null : $id,
-                    'branch'   => $r['branch_name'] ?? 'TimeOptic x Bewell',
+                    'branch'   => $r['branch_name'] ?? 'TIMEOPTIC @ Be Well MEDICAL CENTER',
                     'draws'    => 0,
                     'qty'      => 0,
                     'cost'     => 0.0,
@@ -475,7 +475,7 @@ final class Reports
             if (!isset($out[$id])) {
                 $out[$id] = [
                     'branchId'     => $id === 0 ? null : $id,
-                    'branch'       => $r['branch_name'] ?? 'TimeOptic x Bewell',
+                    'branch'       => $r['branch_name'] ?? 'TIMEOPTIC @ Be Well MEDICAL CENTER',
                     'orders'       => 0,
                     'qty'          => 0,
                     'awaitingCost' => 0,

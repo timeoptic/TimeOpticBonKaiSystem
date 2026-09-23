@@ -381,7 +381,7 @@ export default function DashboardPage() {
     branch === ""
       ? null
       : branch === "self"
-        ? "TimeOptic x Bewell"
+        ? "TIMEOPTIC @ Be Well MEDICAL CENTER"
         : ((branches.status === "ready"
             ? branches.data.branches.find((b) => String(b.id) === branch)?.name
             : undefined) ?? "สาขา"),
@@ -916,7 +916,7 @@ export default function DashboardPage() {
               disabled={branches.status !== "ready"}
               options={[
                 { value: "", label: "ทุกสาขา" },
-                { value: "self", label: "TimeOptic x Bewell (ร้านนี้เอง)" },
+                { value: "self", label: "TIMEOPTIC @ Be Well MEDICAL CENTER (ร้านนี้เอง)" },
                 ...(branches.status === "ready"
                   ? branches.data.branches.map((b) => ({ value: String(b.id), label: b.name }))
                   : []),

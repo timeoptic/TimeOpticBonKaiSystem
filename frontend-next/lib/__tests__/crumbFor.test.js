@@ -11,6 +11,6 @@ test('crumbFor: longer, more-specific match wins over a shorter prefix', () => {
   assert.notEqual(crumbFor('/customers/new'), 'ลูกค้า');
 });
 
-test('crumbFor: unknown path falls back to TimeOptic x Bewell', () => {
-  assert.equal(crumbFor('/no-such-route'), 'TimeOptic x Bewell');
+test('crumbFor: unknown path falls back to TIMEOPTIC @ Be Well MEDICAL CENTER', () => {
+  assert.equal(crumbFor('/no-such-route'), 'TIMEOPTIC @ Be Well MEDICAL CENTER');
 });

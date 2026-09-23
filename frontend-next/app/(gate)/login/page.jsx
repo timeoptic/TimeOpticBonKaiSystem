@@ -45,44 +45,48 @@ export default function LoginPage() {
     }
   }
 
+  /* กรอบนอกกว้าง 460 เพราะชื่อร้านยาวกว่าการ์ดฟอร์ม — ฟอร์มยังคุมไว้ที่ 380 เท่าเดิม */
   return (
-    <div style={{ maxWidth: 380, margin: '12vh auto', padding: '0 16px' }}>
+    <div style={{ maxWidth: 460, margin: '12vh auto', padding: '0 16px' }}>
       <div style={{ textAlign: 'center', marginBottom: 14 }}>
         <div style={{ fontSize: 30, letterSpacing: 2 }}>◎◎</div>
-        <h1 style={{ margin: '6px 0 2px', fontSize: 20 }}>TimeOptic x Bewell</h1>
+        {/* ย่อฟอนต์ตามความกว้างจอเพื่อให้ชื่ออยู่บรรทัดเดียวเสมอ — ที่ 20px ต้องการ ~384px */}
+        <h1 style={{ margin: '6px 0 2px', fontSize: 'clamp(13px, 4.3vw, 20px)', whiteSpace: 'nowrap' }}>TIMEOPTIC @ Be Well MEDICAL CENTER</h1>
         <p className="muted" style={{ margin: 0 }}>หน้าร้าน · คลังและต้นทุน</p>
       </div>
 
-      <Card>
-        <form onSubmit={submit}>
-          <Stack>
-            <Field label="ชื่อผู้ใช้">
-              <input
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                autoComplete="username"
-                autoFocus
-                required
-              />
-            </Field>
-            <Field label="รหัสผ่าน">
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                autoComplete="current-password"
-                required
-              />
-            </Field>
+      <div style={{ maxWidth: 380, margin: '0 auto' }}>
+        <Card>
+          <form onSubmit={submit}>
+            <Stack>
+              <Field label="ชื่อผู้ใช้">
+                <input
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  autoComplete="username"
+                  autoFocus
+                  required
+                />
+              </Field>
+              <Field label="รหัสผ่าน">
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="current-password"
+                  required
+                />
+              </Field>
 
-            {error ? <div className="empty" style={{ color: 'var(--danger)' }}>{error}</div> : null}
+              {error ? <div className="empty" style={{ color: 'var(--danger)' }}>{error}</div> : null}
 
-            <button type="submit" className="btn btn-primary btn-lg" disabled={busy}>
-              {busy ? 'กำลังเข้าสู่ระบบ…' : 'เข้าสู่ระบบ'}
-            </button>
-          </Stack>
-        </form>
-      </Card>
+              <button type="submit" className="btn btn-primary btn-lg" disabled={busy}>
+                {busy ? 'กำลังเข้าสู่ระบบ…' : 'เข้าสู่ระบบ'}
+              </button>
+            </Stack>
+          </form>
+        </Card>
+      </div>
 
       <p className="muted" style={{ textAlign: 'center', fontSize: 12 }}>
         บัญชีเดียวใช้ได้ทั้งสองระบบ

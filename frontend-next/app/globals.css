@@ -177,7 +177,11 @@ a:hover{text-decoration:underline}
 
 .brand-text{display:flex;flex-direction:column;line-height:1.2;min-width:0}
 
-.brand-text b{color:var(--ink);font-size:var(--t-md);font-weight:650;letter-spacing:-.2px}
+.brand-text b{color:var(--ink);font-size:var(--t-md);font-weight:650;letter-spacing:.6px}
+
+/* บรรทัดสาขา — เล็กกว่าชื่อร้านแต่เข้มกว่าคำอธิบาย เพราะเป็นส่วนหนึ่งของชื่อ
+   ไม่ใช่หมายเหตุ · ยาว 24 ตัวอักษรจึงต้องอยู่ที่ --t-sm ถึงจะพอดีแถบ 260px */
+.brand-text .brand-at{color:var(--ink-soft);font-size:var(--t-sm);font-weight:500;white-space:nowrap}
 
 .brand-text small{color:var(--ink-faint);font-size:var(--t-xs)}
 

@@ -63,7 +63,6 @@ const NAV = [
     ['users', 'ประวัติลูกค้า', '/customers'],
     ['eye', 'วัดสายตา', '/prescriptions'],
     ['glasses', 'ออเดอร์ตัดแว่น', '/orders'],
-    ['clipboard', 'ใบเบิกเลนส์', '/lens-requisitions'],
     ['bag', 'ขายสินค้า', '/pos'],
     ['pin', 'ตำแหน่งสินค้า', '/locations'],
   ]],
@@ -167,7 +166,7 @@ export function Shell({ children }) {
   }, []);
 
   useEffect(() => {
-    document.title = `${crumb} — TimeOptic x Bewell`;
+    document.title = `${crumb} — TIMEOPTIC @ Be Well MEDICAL CENTER`;
     window.scrollTo(0, 0);
   }, [crumb, pathname]);
 
@@ -199,7 +198,13 @@ export function Shell({ children }) {
       <aside className={`sidebar ${open ? 'open' : ''}`} id="sidebar">
         <div className="brand">
           <span className="brand-mark">◎◎</span>
-          <span className="brand-text"><b>TimeOptic x Bewell</b><small>ระบบจัดการร้านแว่นตา</small></span>
+          {/* ชื่อร้านยาวเกินกว่าจะอยู่บรรทัดเดียวในแถบ 260px — แยกเป็นชื่อหลัก /
+              สาขา / คำอธิบาย ให้ไล่ขนาดลงทีละชั้น แทนที่จะปล่อยให้ตัดบรรทัดเอง */}
+          <span className="brand-text">
+            <b>TIME OPTIC</b>
+            <span className="brand-at">@ Be Well Medical Center</span>
+            <small>ระบบจัดการร้านแว่นตา</small>
+          </span>
         </div>
         <nav id="nav">
           {navGroups.map(([group, items]) => (

@@ -58,7 +58,7 @@ function LensRequisitionPrintInner() {
         <div className="lr-head">
           <div>
             <h1>ใบเบิกเลนส์</h1>
-            <div>TimeOptic x Bewell</div>
+            <div>TIMEOPTIC @ Be Well MEDICAL CENTER</div>
           </div>
           <div style={{ textAlign: 'right' }}>
             <b>{r.req_no}</b>

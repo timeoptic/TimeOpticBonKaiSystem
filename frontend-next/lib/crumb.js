@@ -69,5 +69,5 @@ export function crumbFor(pathname) {
   const hit = TITLES
     .filter(([p]) => p !== '/' && (pathname === p || pathname.startsWith(p + '/')))
     .sort((a, b) => b[0].length - a[0].length)[0];
-  return hit ? hit[1] : 'TimeOptic x Bewell';
+  return hit ? hit[1] : 'TIMEOPTIC @ Be Well MEDICAL CENTER';
 }
