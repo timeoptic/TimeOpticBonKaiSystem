@@ -6,7 +6,6 @@ import { usePathname } from "next/navigation";
 import type { Actor } from "@/stockmod/lib/api";
 import { stockHref, trimSlash } from "@/stockmod/lib/paths";
 import { worksBothSides } from "@/lib/roles.js";
-import { can } from "./AppShell";
 import useScrollLock from "@/stockmod/lib/scrollLock";
 
 /**
@@ -131,6 +130,7 @@ const STOCK: Item[] = [
   { href: "/movements", label: "ความเคลื่อนไหว", hint: "นำเข้า ขาย เบิก ปรับ คืน", icon: ICON.flow },
 ];
 
+/* ไม่แสดงในเมนูของ Bewell แล้ว — ใช้แค่ตั้งชื่อหัวเพจ (ดู sectionFor) */
 const MONEY: Item[] = [
   { href: "/settlements", label: "การเบิกจากสาขา", hint: "เบิกอะไรไป เป็นทุนเท่าไร", icon: ICON.money },
   { href: "/branches", label: "จัดการสาขา", hint: "รายชื่อสาขาที่มาเบิกของได้", icon: ICON.shops },
@@ -325,9 +325,6 @@ function PhoneTabs({ actor, pathname }: { actor: Actor; pathname: string }) {
           <div className="railsheet__panel" onClick={() => setOpen(false)}>
             <Group title="งานประจำวัน" items={DAILY} pathname={pathname} />
             <Group title="คลัง" items={STOCK} pathname={pathname} />
-            {can.seeBranchMoney(actor) ? (
-              <Group title="เงินและสาขา" items={MONEY} pathname={pathname} />
-            ) : null}
             {worksBothSides(actor) ? (
               <div className="rail-group">
                 <p className="rail-group__title">ระบบอื่น</p>
@@ -375,11 +372,8 @@ export default function SideRail({ actor }: { actor: Actor }) {
       <div className="rail-scroll">
         <Group title="งานประจำวัน" items={DAILY} pathname={pathname} />
         <Group title="คลัง" items={STOCK} pathname={pathname} />
-        {/* Staff record branch withdrawals but never see what is owed, so the
-            group that is entirely about money is not in their rail at all. */}
-        {can.seeBranchMoney(actor) ? (
-          <Group title="เงินและสาขา" items={MONEY} pathname={pathname} />
-        ) : null}
+        {/* Bewell ไม่มีสาขามาเบิกของ — กลุ่ม "เงินและสาขา" (การเบิกจากสาขา · จัดการสาขา)
+            จึงไม่ขึ้นในเมนู · MONEY ยังอยู่เพื่อให้หัวเพจรู้ชื่อหน้าเมื่อเข้าจากลิงก์ */}
 
         {/* พนักงานคลังทำงานฝั่งเดียว ปุ่มข้ามฝั่งจึงไม่ขึ้นให้เขา — กดไปก็ถูก
             ส่งกลับมาที่เดิม */}

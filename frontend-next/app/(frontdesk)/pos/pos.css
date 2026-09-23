@@ -460,7 +460,7 @@
 .pos-stock.out{background:var(--danger-soft);color:var(--danger)}
 
 /* ---- การ์ดเลือกประเภทที่จะขาย ---- */
-.pos-modes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.pos-modes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
 
 @media (max-width:760px){ .pos-modes{grid-template-columns:1fr} }
 
