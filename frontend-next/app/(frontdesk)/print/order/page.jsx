@@ -225,7 +225,7 @@ function F({ k, v, fill = false }) {
 function BrandMark() {
   const [bad, setBad] = useState(false);
   if (bad) return <div className="iv-brand-mark"><Icon name="glasses" /><b>TIME OPTIC</b></div>;
-  return <img className="iv-logo" src="/logo-timeoptic.png" alt="TIME OPTIC" onError={() => setBad(true)} />;
+  return <img className="iv-logo" src="/logo-bewell.png" alt="TIME OPTIC at Be Well" onError={() => setBad(true)} />;
 }
 
 /** หัวใบ — ใช้ซ้ำทั้งครึ่งบนและครึ่งล่าง สองครึ่งต้องอ่านเป็นใบเดียวกัน */
@@ -338,7 +338,7 @@ function OrderSheet() {
           แปลว่ามาตราส่วนไม่ใช่ 100% หรือระยะขอบไม่ใช่ None
         </p>
         <p className="iv-qr-note">
-          รูปบนใบอ่านจาก <b>frontend-next/public/</b> — โลโก้หัวใบ <b>logo-timeoptic.png</b>
+          รูปบนใบอ่านจาก <b>frontend-next/public/</b> — โลโก้หัวใบ <b>logo-bewell.png</b>
           และ QR <b>qr-line.png</b> / <b>qr-location.png</b> เปลี่ยนรูปคือทับไฟล์เดิม ไม่ต้องแก้โค้ด
           ไฟล์หายก็ยังพิมพ์ได้ โลโก้กลับไปเป็นไอคอนแว่น+ชื่อร้าน ช่อง QR เป็นกรอบเปล่าที่กว้างเท่าเดิม
         </p>
@@ -523,8 +523,8 @@ const sheetCss = `
   padding-bottom:2mm;border-bottom:0.4mm solid var(--line)}
 .iv-head .iv-brand{display:flex;flex-direction:column;align-items:flex-start;gap:0;min-width:34mm}
 .iv-head .iv-brand-mark{display:flex;align-items:center;gap:1.6mm}
-.iv-head .iv-logo{display:block;height:5mm;width:auto}
-.iv-half.iv-bottom .iv-head .iv-logo{height:4mm}
+/* โลโก้ TIMEOPTIC @ Be well Medical Center (สัดส่วน ~3.8:1) — ครึ่งบน/ล่างใช้ขนาดเดียวกัน */
+.iv-head .iv-logo{display:block;height:7mm;width:auto}
 .iv-head .iv-brand .ico{width:6mm;height:6mm;margin:0;flex:0 0 auto}
 .iv-half.iv-bottom .iv-head .iv-brand .ico{width:4.8mm;height:4.8mm}
 .iv-head .iv-brand b{font-size:11pt;letter-spacing:1.2px;line-height:1.1}

@@ -5,8 +5,9 @@
  * ถูกเรียกจากปุ่ม "พิมพ์" ของ Final Prescription, หน้าออเดอร์ และรายการ
  * Prescriptions ด้วย ?id=<prescription id>
  *
- * กระดาษมีโลโก้ TIMEOPTIC พิมพ์มาแล้วที่มุมขวาบน เราจึงไม่พิมพ์โลโก้ซ้ำ และต้อง
- * กันพื้นที่มุมนั้นว่างไว้ (--logo x --logo-h) ชื่อลูกค้าที่ยาวจะไม่วิ่งไปทับ
+ * มุมขวาบนคือโซนโลโก้ (--logo x --logo-h) ชื่อลูกค้าที่ยาวจะไม่วิ่งไปทับ
+ * TimeOptic เดิมใช้กระดาษที่มีโลโก้พิมพ์มาแล้วจึงเว้นว่าง · Bewell ใช้กระดาษเปล่า
+ * จึงพิมพ์โลโก้ public/logo-bewell.png ลงโซนนั้นเอง (ร้านขอ 21 ก.ย. 2026)
  *
  * ทำไมกว้าง 180 สูง 55: ใบนี้ต้องมีตารางค่าสายตาอยู่ซ้ายและบล็อก CASE / วันที่ /
  * Lens / Frame / Test for อยู่ขวา "ระดับเดียวกัน" ห้ามตกลงไปใต้ตาราง — 6 คอลัมน์ตัวเลข
@@ -159,7 +160,9 @@ function SlipInner() {
               <span className="k">NAME:</span>
               <span className="v">{c ? custName(c) : DASH}</span>
             </div>
-            <div className="slip-logo no-print" aria-hidden="true">โลโก้บนกระดาษ</div>
+            <div className="slip-logo">
+              <img src="/logo-bewell.png" alt="TIME OPTIC at Be Well" />
+            </div>
           </div>
 
           {/* ตัวกลางกินที่ว่างที่เหลือทั้งหมด แล้วดันสองบล็อกลงไปชิดขอบล่าง (ดูเหตุผลใต้ slipCss) */}
@@ -226,7 +229,7 @@ const slipCss = (portrait) => `
   /* ขอบขวาของตาราง = 5 + 3 + 10.6 + 6*11.85 = 89.7mm — ไม่เกินครึ่งใบ 90mm (ร้านขอ 12 ก.ย. 2026) */
   --rule:0.25mm solid #000;   /* เส้นตาราง — บางพอสำหรับเครื่องพิมพ์สลิป */
   --name:13pt;    /* ชื่อลูกค้าใหญ่กว่าตัวอื่นบนใบ — คนหยิบใบต้องอ่านชื่อออกจากระยะไกล */
-  --logo:38mm;    /* โซนโลโก้ TIMEOPTIC ที่พิมพ์มากับกระดาษ — ห้ามพิมพ์อะไรทับ */
+  --logo:38mm;    /* โซนโลโก้มุมขวาบน — Bewell พิมพ์โลโก้ลงเอง (logo-bewell.png) */
   --logo-h:12mm;
   box-sizing:border-box;
   width:180mm; height:55mm; padding:var(--pad);
@@ -243,8 +246,9 @@ const slipCss = (portrait) => `
 .slip-name .v{font-weight:700;font-size:var(--name);line-height:1.1;
   min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .slip-logo{flex:0 0 var(--logo);height:var(--logo-h);box-sizing:border-box;
-  display:flex;align-items:center;justify-content:center;
-  border:1px dashed #c9d6d5;border-radius:3px;color:#9bb0af;font-size:7pt}
+  display:flex;align-items:flex-start;justify-content:flex-end}
+/* โลโก้สัดส่วน 4.4:1 — เต็มความกว้างโซน 38mm สูง ~8.7mm ยังอยู่ในโซน 12mm */
+.slip-logo img{display:block;max-width:100%;max-height:100%;width:auto;height:auto}
 
 /* สองคอลัมน์ตายตัว — บล็อกขวาตกไปใต้ตารางไม่ได้ ไม่ว่าข้อความจะยาวแค่ไหน */
 /* start = ตารางกับบล็อกขวาชิดบนทั้งคู่ แถวบนสุดของตารางเสมอบรรทัด CASE

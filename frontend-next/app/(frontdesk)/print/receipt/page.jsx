@@ -132,7 +132,7 @@ const money2 = (v) =>
 function BrandMark() {
   const [bad, setBad] = useState(false);
   if (bad) return <span className="rc-mark"><Icon name="glasses" /><b>TIME OPTIC</b></span>;
-  return <img className="rc-logo" src="/logo-timeoptic.png" alt="TIME OPTIC" onError={() => setBad(true)} />;
+  return <img className="rc-logo" src="/logo-bewell.png" alt="TIME OPTIC at Be Well" onError={() => setBad(true)} />;
 }
 
 /** แถว "ป้าย : ค่า" ของบล็อกหัวใบและบล็อกลูกค้า — ค่าว่างพิมพ์ขีดให้เขียนมือ */
@@ -660,7 +660,8 @@ const sheetCss = `
 .rc-brand span{font-size:7.5pt;color:var(--data)}
 /* โลโก้เป็นภาพแนวนอนยาว — สูง 8mm แล้วมันกว้างเกินครึ่งใบจนไปเบียดหัวเรื่องกลางใบ
    6.5mm คือความสูงที่ยังอ่านชื่อแบรนด์ออกชัดและเหลือที่ว่างให้คำว่า "ใบเสร็จ" หายใจ */
-.rc-logo{display:block;height:6.5mm;width:auto}
+/* Bewell: โลโก้ใหม่สัดส่วน 4.4:1 — 9.5mm กว้าง ~42mm เท่าโลโก้เดิมที่ 6.5mm */
+.rc-logo{display:block;height:9.5mm;width:auto}
 .rc-mark{display:flex;align-items:center;gap:1.5mm}
 .rc-mark .ico{width:6mm;height:6mm}
 .rc-mark b{font-size:9pt;letter-spacing:1px;white-space:nowrap;margin:0}
