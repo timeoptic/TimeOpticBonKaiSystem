@@ -30,26 +30,56 @@ export function toStockRow(c) {
     lens_design: c.lens_type,
     lens_index: c.lens_index || '',
     coating: c.coating || '',
+    sph: c.sph || '',
+    cyl: c.cyl || '',
+    add: c.add_power || '',
     tint: '',
     pair_price: pair,
     product_price: Math.round((pair / 2) * 100) / 100,
   };
 }
 
-/** ตัวเลือกของช่องเลือกเลนส์ — จัดกลุ่มตามชนิด บรรทัดรองคือ Index · Coating · ราคาคู่ */
-export function catalogOptions(list) {
-  return [...list]
-    .sort((a, b) => String(a.lens_type).localeCompare(String(b.lens_type)) || a.sort_order - b.sort_order)
-    .map((c) => [
-      String(c.id),
-      c.lens_name,
-      {
-        group: c.lens_type,
-        hint: [c.lens_index, c.coating, `${Number(c.selling_price || 0).toLocaleString('th-TH')} บาท/คู่`]
-          .filter(Boolean).join(' · '),
-        keywords: [c.code, c.brand, c.coating, c.lens_index].filter(Boolean).join(' '),
-      },
-    ]);
+/* ตัวกรอง Coating ของ LensPicker ใช้ชื่อย่อของคลัง (Hard / MC / Auto / Blue / Auto-Blue)
+   รายการเลนส์ใช้ชื่อเต็มที่แอดมินพิมพ์ — เทียบหลังตัดช่องว่าง/ขีด และแปลงชื่อย่อก่อน */
+const COATING_ALIAS = { hard: 'hardcoat', mc: 'multicoat', auto: 'photochromic' };
+const coatKey = (v) => {
+  const k = String(v || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  return COATING_ALIAS[k] || k;
+};
+const sameCoating = (a, b) => {
+  const x = coatKey(a);
+  const y = coatKey(b);
+  return x === y || (x === 'photochromic' && y === 'auto') || (y === 'photochromic' && x === 'auto')
+    || (x === 'bluecut' && y === 'blue') || (y === 'bluecut' && x === 'blue');
+};
+
+/** ค่าสายตาให้อยู่รูปเดียวกับที่ตัวกรองส่งมา ("-2.00" · "0.25" · "0.00") */
+const powerKey = (v) => {
+  if (v === '' || v === null || v === undefined) return '';
+  const n = Number(v);
+  if (!Number.isFinite(n)) return '';
+  return (Math.abs(n) < 0.005 ? 0 : n).toFixed(2);
+};
+
+/** รุ่นที่ไม่ได้ระบุค่าสายตา (ช่องว่าง) ใช้ได้ทุกค่า — ตัวกรองไม่ตัดออก */
+const powerMatches = (have, want) => want === '' || have === null || have === undefined || have === ''
+  || powerKey(have) === want;
+
+/**
+ * ค้นในรายการเลนส์ — หลายคำแบบ AND ในชื่อ รหัส ยี่ห้อ ชนิด Index
+ * Coating / SPH / CYL เทียบตรงค่าแบบตัวกรองของคลัง (รายชื่อเดิมจากเว็บหลักแยกรุ่นตามค่าสายตา)
+ */
+export function searchCatalog(list, term = '', { coating = '', sph = '', cyl = '' } = {}) {
+  const words = String(term).toLowerCase().split(/\s+/).filter(Boolean);
+  const wantSph = powerKey(sph);
+  const wantCyl = powerKey(cyl);
+  return (list || [])
+    .filter((c) => !coating || sameCoating(c.coating, coating))
+    .filter((c) => powerMatches(c.sph, wantSph) && powerMatches(c.cyl, wantCyl))
+    .filter((c) => {
+      const hay = [c.lens_name, c.code, c.brand, c.lens_type, c.lens_index].filter(Boolean).join(' ').toLowerCase();
+      return words.every((w) => hay.includes(w));
+    });
 }
 
 /**

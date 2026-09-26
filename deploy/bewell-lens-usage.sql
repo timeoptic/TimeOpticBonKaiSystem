@@ -18,6 +18,9 @@ CREATE TABLE IF NOT EXISTS lens_catalog (
   lens_index    varchar(10)  DEFAULT NULL,
   coating       varchar(80)  DEFAULT NULL,
   brand         varchar(80)  DEFAULT NULL,
+  sph           varchar(10)  DEFAULT NULL,
+  cyl           varchar(10)  DEFAULT NULL,
+  add_power     varchar(10)  DEFAULT NULL,
   cost_price    decimal(12,2) DEFAULT NULL COMMENT 'ต่อคู่',
   selling_price decimal(12,2) NOT NULL DEFAULT 0 COMMENT 'ต่อคู่',
   active        tinyint(1) NOT NULL DEFAULT 1,
@@ -30,6 +33,11 @@ CREATE TABLE IF NOT EXISTS lens_catalog (
   UNIQUE KEY uq_lens_catalog_code (code),
   KEY idx_lens_catalog_active (active, sort_order)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+ALTER TABLE lens_catalog
+  ADD COLUMN IF NOT EXISTS sph       varchar(10) DEFAULT NULL AFTER brand,
+  ADD COLUMN IF NOT EXISTS cyl       varchar(10) DEFAULT NULL AFTER sph,
+  ADD COLUMN IF NOT EXISTS add_power varchar(10) DEFAULT NULL AFTER cyl;
 
 ALTER TABLE lens_requisition_items
   ADD COLUMN IF NOT EXISTS lens_catalog_id int(10) unsigned DEFAULT NULL COMMENT 'lens_catalog.id — ไม่ผูก FK โดยตั้งใจ',
@@ -47,15 +55,5 @@ ALTER TABLE lens_requisitions
 UPDATE lens_requisitions lr JOIN custom_orders o ON o.id = lr.order_id
    SET lr.order_ref = o.invoice_code WHERE lr.order_ref IS NULL;
 
--- รายการเลนส์ตั้งต้น — ราคาเป็นตัวอย่าง แก้ได้ที่หน้า "รายการเลนส์" (ตรงกับ Migrate::seedLensCatalog)
-INSERT IGNORE INTO lens_catalog (code, lens_name, lens_type, lens_index, coating, cost_price, selling_price, sort_order) VALUES
-  ('LENS-SV156-HC',    'Single Vision 1.56 Hard Coat', 'Single Vision', '1.56', 'Hard Coat',    250,  800,  10),
-  ('LENS-SV156-MC',    'Single Vision 1.56 Multicoat', 'Single Vision', '1.56', 'Multicoat',    300,  1000, 20),
-  ('LENS-SV156-BLUE',  'Single Vision 1.56 Blue Cut',  'Single Vision', '1.56', 'Blue',         500,  1500, 30),
-  ('LENS-SV156-AUTO',  'Single Vision 1.56 Auto',      'Single Vision', '1.56', 'Auto',         600,  1800, 40),
-  ('LENS-SV156-ABLUE', 'Single Vision 1.56 Auto Blue', 'Single Vision', '1.56', 'Auto Blue',    750,  2200, 50),
-  ('LENS-SV160-MC',    'Single Vision 1.60 Multicoat', 'Single Vision', '1.60', 'Multicoat',    550,  1600, 60),
-  ('LENS-SV160-BLUE',  'Single Vision 1.60 Blue Cut',  'Single Vision', '1.60', 'Blue',         700,  2000, 70),
-  ('LENS-PG-MC',       'Progressive',                  'Progressive',   '1.56', 'Multicoat',    1200, 3500, 80),
-  ('LENS-PG-BLUE',     'Progressive Blue Cut',         'Progressive',   '1.56', 'Blue',         1500, 4500, 90),
-  ('LENS-PG-AUTO',     'Progressive Photochromic',     'Progressive',   '1.56', 'Photochromic', 1900, 5500, 100);
+-- รายชื่อเลนส์ (1,582 รายการเดิม) อยู่อีกไฟล์ — รันต่อจากไฟล์นี้:
+--   mysql -u <user> -p <database> < deploy/bewell-lens-catalog-mock.sql

@@ -60,6 +60,10 @@ function lensCatalogClean(array $b): array
         'lens_index'    => $text('lens_index', 10) ?: null,
         'coating'       => $text('coating', 80) ?: null,
         'brand'         => $text('brand', 80) ?: null,
+        /* ค่าสายตาของรุ่น (ถ้ามี) — ไว้กรองในหน้าขาย ว่าง = ใช้ได้ทุกค่า */
+        'sph'           => $text('sph', 10) ?: null,
+        'cyl'           => $text('cyl', 10) ?: null,
+        'add_power'     => $text('add_power', 10) ?: null,
         'cost_price'    => $money('cost_price', false),
         'selling_price' => $money('selling_price', true),
         'sort_order'    => (int) ($b['sort_order'] ?? 0),
@@ -106,8 +110,8 @@ POST('/api/lens-catalog', function (array $req) {
         bad('รหัสเลนส์นี้มีอยู่แล้ว');
     }
     $id = (int) Db::run(
-        'INSERT INTO lens_catalog (code, lens_name, lens_type, lens_index, coating, brand, cost_price, selling_price,
-           sort_order, created_by, updated_by) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+        'INSERT INTO lens_catalog (code, lens_name, lens_type, lens_index, coating, brand, sph, cyl, add_power,
+           cost_price, selling_price, sort_order, created_by, updated_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
         ...[...array_values($v), $emp, $emp]
     )['insertId'];
     return lensCatalogRow(Db::get('SELECT * FROM lens_catalog WHERE id = ?', $id), lensSeeCost());
@@ -130,7 +134,7 @@ PUT('/api/lens-catalog/:id', function (array $req) {
     }
     Db::run(
         'UPDATE lens_catalog SET code = ?, lens_name = ?, lens_type = ?, lens_index = ?, coating = ?, brand = ?,
-           cost_price = ?, selling_price = ?, sort_order = ?, updated_by = ? WHERE id = ?',
+           sph = ?, cyl = ?, add_power = ?, cost_price = ?, selling_price = ?, sort_order = ?, updated_by = ? WHERE id = ?',
         ...[...array_values($v), $emp, $id]
     );
     return lensCatalogRow(Db::get('SELECT * FROM lens_catalog WHERE id = ?', $id), lensSeeCost());

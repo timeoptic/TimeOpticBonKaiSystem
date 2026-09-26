@@ -305,17 +305,6 @@ export function OrderFormView({
   };
   const setP = (patch) => setPrices({ ...p, ...patch });
 
-  /* Bewell (LENS_SOURCE=catalog): เลนส์ส่วนใหญ่ขายเป็นคู่ — เลือกข้างแรกแล้วใส่อีกข้างให้ด้วย
-     ถ้าอีกข้างยังว่าง (ไม่มีเลนส์และไม่มีใบสั่งตัด) · เปลี่ยนอีกข้างเองได้ภายหลัง */
-  const pickCatalogLens = (slot, row) => {
-    const other = slot === 'lensOd' ? 'lensOs' : 'lensOd';
-    if (picked[other] || rxOf(other === 'lensOd' ? 'r' : 'l')) {
-      setPicked({ [slot]: row });
-      return;
-    }
-    setItems({ ...picked, lensOd: row, lensOs: row });
-    setP({ lens_od_price: row.product_price, lens_os_price: row.product_price });
-  };
 
   const total = n(p.frame_price) + n(p.lens_od_price) + n(p.lens_os_price) + n(p.options_price);
   const netTotal = total - n(p.discount);
@@ -681,7 +670,7 @@ export function OrderFormView({
         <Card title="เลนส์ — Lens">
           <p className="hint">
             {LENS_SOURCE === 'catalog'
-              ? 'เลือกเลนส์จากรายการเลนส์ — เลือกข้างแรกแล้วใส่ให้ทั้งคู่ · ค่าสายตาใช้ค่าสุดท้ายของเคส · บันทึกเป็น "ใช้เลนส์" เมื่อยืนยันขั้นขาย'
+              ? 'เลือกเลนส์จากรายการเลนส์ทีละข้าง · ไม่ตัดสต็อก — บันทึกเป็น "ใช้เลนส์" (ประวัติเลนส์) เมื่อยืนยันขั้นขาย'
               : 'ถ้ายังต้องสั่งเลนส์จากซัพพลายเออร์ ให้ข้ามการเลือกสต็อกไปก่อน'}
           </p>
           {/* mirror: ขวา/ซ้ายต้องกว้างเท่ากัน — ค่าเริ่มต้นของ .split ให้ฝั่งขวากว้าง
@@ -742,7 +731,7 @@ export function OrderFormView({
                       {LENS_SOURCE === 'catalog' ? (
                         <CatalogLensPicker
                           picked={item}
-                          onPick={(r) => pickCatalogLens(slot, r)}
+                          onPick={(r) => setPicked({ [slot]: r })}
                           onClear={() => setItems({ ...picked, [slot]: null })}
                         />
                       ) : (

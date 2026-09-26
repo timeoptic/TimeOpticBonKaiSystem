@@ -221,6 +221,17 @@ function LensCatalogInner() {
                     <Field label="ยี่ห้อ (ไม่บังคับ)">
                       <input name="brand" autoComplete="off" defaultValue={e.brand || ''} />
                     </Field>
+                    {/* ค่าสายตาของรุ่น — รายชื่อเดิมจากเว็บหลักแยกรุ่นตามค่าสายตา ใช้กรองในหน้าขาย
+                        เว้นว่าง = ใช้ได้ทุกค่า */}
+                    <Field label="SPH (ไม่บังคับ)">
+                      <input name="sph" autoComplete="off" defaultValue={e.sph || ''} placeholder="-2.00" />
+                    </Field>
+                    <Field label="CYL (ไม่บังคับ)">
+                      <input name="cyl" autoComplete="off" defaultValue={e.cyl || ''} placeholder="-0.50" />
+                    </Field>
+                    <Field label="ADD (ไม่บังคับ)">
+                      <input name="add_power" autoComplete="off" defaultValue={e.add_power || ''} placeholder="+2.00" />
+                    </Field>
                     <Field label="ลำดับในรายการ">
                       <input name="sort_order" type="number" defaultValue={e.sort_order ?? 0} />
                     </Field>

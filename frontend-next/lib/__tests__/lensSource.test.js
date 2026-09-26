@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { catalogOptions, toStockRow, requisitionItems } from '../lens/lensSource.js';
+import { searchCatalog, toStockRow, requisitionItems } from '../lens/lensSource.js';
 
 const BLUE = {
   id: 3, code: 'LENS-SV156-BLUE', lens_name: 'Single Vision 1.56 Blue Cut', lens_type: 'Single Vision',
@@ -24,13 +24,40 @@ test('toStockRow: ไม่ผูกล็อต ราคาข้างละ�
   assert.equal(r.coating, 'Blue');
 });
 
-test('catalogOptions: จัดกลุ่มตามชนิด บรรทัดรองมี Index Coating และราคาคู่', () => {
-  const opts = catalogOptions([BLUE, PG]);
-  assert.deepEqual(opts.map((o) => o[2].group), ['Progressive', 'Single Vision']);
-  const blue = opts.find((o) => o[0] === '3');
-  assert.equal(blue[1], 'Single Vision 1.56 Blue Cut');
-  assert.match(blue[2].hint, /1\.56 · Blue · 1,500 บาท\/คู่/);
-  assert.match(blue[2].keywords, /LENS-SV156-BLUE/);
+test('searchCatalog: ค้นหลายคำแบบ AND · Coating ตรงค่า · รุ่นที่ไม่ระบุค่าสายตาผ่านตัวกรอง SPH/CYL', () => {
+  assert.deepEqual(searchCatalog([BLUE, PG], 'single blue').map((c) => c.id), [3]);
+  assert.deepEqual(searchCatalog([BLUE, PG], 'lens-pg').map((c) => c.id), [8]);
+  assert.deepEqual(searchCatalog([BLUE, PG], '', { coating: 'Multicoat' }).map((c) => c.id), [8]);
+  assert.equal(searchCatalog([BLUE, PG], '', { sph: '-2.00', cyl: '-0.50' }).length, 2);
+});
+
+test('searchCatalog: รายชื่อเดิมที่แยกตามค่าสายตา — SPH/CYL เทียบตรงค่า (-2 = -2.00)', () => {
+  const rows = [
+    { id: 1, lens_name: 'G Auto (1.50) -2.00/-0.50', coating: 'Auto', sph: '-2.00', cyl: '-0.50' },
+    { id: 2, lens_name: 'G Auto (1.50) -2.00/0.00', coating: 'Auto', sph: '-2.00', cyl: '0.00' },
+    { id: 3, lens_name: 'G Auto (1.50) +0.50/0.00', coating: 'Auto', sph: '0.50', cyl: '0.00' },
+  ];
+  assert.deepEqual(searchCatalog(rows, '', { sph: '-2', cyl: '-0.50' }).map((r) => r.id), [1]);
+  assert.deepEqual(searchCatalog(rows, '', { sph: '-2.00' }).map((r) => r.id), [1, 2]);
+  assert.deepEqual(searchCatalog(rows, '', { cyl: '0' }).map((r) => r.id), [2, 3]);
+  const r = toStockRow({ ...rows[0], code: 'LNS-1', add_power: '+2.00', selling_price: 0 });
+  assert.deepEqual([r.sph, r.cyl, r.add, r.product_price], ['-2.00', '-0.50', '+2.00', 0]);
+});
+
+test('searchCatalog: ชื่อย่อ Coating ของตัวกรองเดิม (MC / Hard / Auto / Auto-Blue) ตรงกับชื่อเต็มในรายการ', () => {
+  const rows = [
+    { id: 1, lens_name: 'a', coating: 'Hard Coat' },
+    { id: 2, lens_name: 'b', coating: 'Multicoat' },
+    { id: 3, lens_name: 'c', coating: 'Photochromic' },
+    { id: 4, lens_name: 'd', coating: 'Auto Blue' },
+    { id: 5, lens_name: 'e', coating: 'Blue' },
+  ];
+  const ids = (c) => searchCatalog(rows, '', { coating: c }).map((r) => r.id);
+  assert.deepEqual(ids('Hard'), [1]);
+  assert.deepEqual(ids('MC'), [2]);
+  assert.deepEqual(ids('Auto'), [3]);
+  assert.deepEqual(ids('Auto-Blue'), [4]);
+  assert.deepEqual(ids('Blue'), [5]);
 });
 
 test('requisitionItems: สองข้างรุ่นเดียวกัน = 1 คู่ ราคารวมสองข้าง', () => {

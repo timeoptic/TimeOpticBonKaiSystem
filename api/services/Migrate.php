@@ -419,7 +419,8 @@ final class Migrate
               ) $c",
 
             /* รายการเลนส์ที่ Bewell ขายได้ — แอดมินเพิ่ม/แก้/ปิดเองที่หน้า /lens-catalog
-               ไม่ใช่คลัง: ไม่มีจำนวนคงเหลือ ไม่มีล็อต ไม่แยกแถวตามค่าสายตา (เลนส์สั่งตัดตามเคส)
+               ไม่ใช่คลัง: ไม่มีจำนวนคงเหลือ ไม่มีล็อต · sph / cyl / add_power เป็นแค่ป้ายของรุ่นนั้น
+               (รายชื่อจำลองจากเว็บหลักแยกรุ่นตามค่าสายตา) ใช้กรองในหน้าขาย ว่าง = ใช้ได้ทุกค่า
                ไม่มีการลบ — ปิดใช้งานแทน ใบเก่าคัดลอกค่าไว้เองอยู่แล้ว (lens_requisition_items) */
             'lens_catalog' => "CREATE TABLE IF NOT EXISTS lens_catalog (
                 id            int(10) unsigned NOT NULL AUTO_INCREMENT,
@@ -429,6 +430,9 @@ final class Migrate
                 lens_index    varchar(10)  DEFAULT NULL,
                 coating       varchar(80)  DEFAULT NULL,
                 brand         varchar(80)  DEFAULT NULL,
+                sph           varchar(10)  DEFAULT NULL,
+                cyl           varchar(10)  DEFAULT NULL,
+                add_power     varchar(10)  DEFAULT NULL,
                 cost_price    decimal(12,2) DEFAULT NULL COMMENT 'ต่อคู่',
                 selling_price decimal(12,2) NOT NULL DEFAULT 0 COMMENT 'ต่อคู่',
                 active        tinyint(1) NOT NULL DEFAULT 1,
@@ -616,24 +620,11 @@ final class Migrate
         if ((int) Db::get('SELECT COUNT(*) n FROM lens_catalog')['n'] > 0) {
             return;
         }
-        $rows = [
-            ['LENS-SV156-HC',    'Single Vision 1.56 Hard Coat',    'Single Vision', '1.56', 'Hard Coat',     250,  800],
-            ['LENS-SV156-MC',    'Single Vision 1.56 Multicoat',    'Single Vision', '1.56', 'Multicoat',     300,  1000],
-            ['LENS-SV156-BLUE',  'Single Vision 1.56 Blue Cut',     'Single Vision', '1.56', 'Blue',          500,  1500],
-            ['LENS-SV156-AUTO',  'Single Vision 1.56 Auto',         'Single Vision', '1.56', 'Auto',          600,  1800],
-            ['LENS-SV156-ABLUE', 'Single Vision 1.56 Auto Blue',    'Single Vision', '1.56', 'Auto Blue',     750,  2200],
-            ['LENS-SV160-MC',    'Single Vision 1.60 Multicoat',    'Single Vision', '1.60', 'Multicoat',     550,  1600],
-            ['LENS-SV160-BLUE',  'Single Vision 1.60 Blue Cut',     'Single Vision', '1.60', 'Blue',          700,  2000],
-            ['LENS-PG-MC',       'Progressive',                     'Progressive',   '1.56', 'Multicoat',     1200, 3500],
-            ['LENS-PG-BLUE',     'Progressive Blue Cut',            'Progressive',   '1.56', 'Blue',          1500, 4500],
-            ['LENS-PG-AUTO',     'Progressive Photochromic',        'Progressive',   '1.56', 'Photochromic',  1900, 5500],
-        ];
-        foreach ($rows as $i => [$code, $name, $type, $index, $coating, $cost, $price]) {
-            Db::run(
-                'INSERT IGNORE INTO lens_catalog (code, lens_name, lens_type, lens_index, coating, cost_price, selling_price, sort_order)
-                 VALUES (?,?,?,?,?,?,?,?)',
-                $code, $name, $type, $index, $coating, $cost, $price, ($i + 1) * 10
-            );
+        /* รายชื่อเลนส์จำลองเดิมของ Bewell (1,582 รายการจากเว็บหลัก TimeOptic) — ไฟล์เดียวกับที่ใช้
+           ตั้งบนเซิร์ฟเวอร์ · ตารางมีแถวแล้ว (รวมแถวที่ปิดไว้) จะไม่แตะอีก แอดมินแก้ต่อเองที่หน้าจอ */
+        $file = dirname(__DIR__, 2) . '/deploy/bewell-lens-catalog-mock.sql';
+        if (is_file($file)) {
+            Db::pdo()->exec((string) file_get_contents($file));
         }
     }
 
@@ -836,6 +827,11 @@ final class Migrate
                 'order_ref'     => 'varchar(30) DEFAULT NULL',
             ])
         );
+        $added = array_merge($added, self::addColumns('lens_catalog', [
+            'sph'       => 'varchar(10) DEFAULT NULL AFTER brand',
+            'cyl'       => 'varchar(10) DEFAULT NULL AFTER sph',
+            'add_power' => 'varchar(10) DEFAULT NULL AFTER cyl',
+        ]));
         self::seedLensCatalog();
         /* ใบที่ออกก่อนมีช่อง order_ref — จำเลขออเดอร์ไว้ตอนที่ออเดอร์ยังอยู่ */
         Db::run(
