@@ -1,5 +1,17 @@
 # ขึ้นระบบบน Hostinger
 
+> **Bewell** — ขั้นตอนทั้งหมดข้างล่างใช้ได้ตามเดิม ต่างกันแค่ค่าเหล่านี้:
+>
+> - เว็บอยู่ที่ **subdomain ของตัวเอง** (`bewell.controlsystem-timeoptic.com`) สร้างด้วย
+>   hPanel → Websites → **Add website** ให้ได้โฟลเดอร์ `domains/bewell.controlsystem-timeoptic.com/`
+>   **ห้ามใช้ subdomain ที่ซ้อนอยู่ใน `public_html` ของ TimeOptic** — `.env` จะถูกหาที่
+>   "เหนือ document root หนึ่งชั้น" ซึ่งกลายเป็น `public_html` ของ TimeOptic (เปิดจากเว็บได้)
+>   และ `.htaccess` ของ TimeOptic จะครอบ Bewell ไปด้วย
+> - ฐานของตัวเอง `u721081539_bewell` · ทุกที่ในหน้านี้ที่เขียน `controlsystem-timeoptic.com`
+>   หรือ `u721081539_timeoptic` ให้อ่านเป็นของ Bewell (`env.production.example` แก้ให้แล้ว)
+> - ประกอบก้อนจาก `C:\TimeOptic Bewell` ได้ `bewell-YYYYMMDD-HHmm.zip` · schema 58 ตาราง 7 view
+> - บอท Telegram ใช้ของ Be Well สามตัว ห้ามใส่โทเคนของ TimeOptic
+
 สำหรับแพ็กเกจ **Cloud Startup** (hPanel + LiteSpeed + MySQL + SSH) เว็บอยู่ที่โดเมนหลัก
 
 ทั้งระบบเป็นไฟล์นิ่ง (static export) กับ PHP ล้วน ไม่มี Node รันค้างบนเซิร์ฟเวอร์

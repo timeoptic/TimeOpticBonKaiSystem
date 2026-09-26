@@ -1,7 +1,7 @@
 ﻿<#
-    deploy/build.ps1 — ประกอบก้อนที่จะอัปขึ้น Hostinger
+    deploy/build.ps1 — ประกอบก้อน Bewell ที่จะอัปขึ้น Hostinger (subdomain ของตัวเอง)
 
-        cd C:\TimeOpticDigitalSystem
+        cd "C:\TimeOptic Bewell"
         .\deploy\build.ps1
 
     ผลลัพธ์อยู่ที่ deploy\dist\  (ไม่เข้า git):
@@ -9,11 +9,11 @@
         dist\
         ├── pkg\                         <- ของที่จะถูกซิป (หน้าตาเดียวกับโฟลเดอร์โดเมน)
         │   ├── public_html\             <- ทั้งก้อนนี้ไปเป็น public_html บนโฮสต์
-        │   ├── db\schema.sql            <- 53 ตาราง + 6 view โครงเปล่า ไม่มีข้อมูล
+        │   ├── db\schema.sql            <- 58 ตาราง + 7 view โครงเปล่า ไม่มีข้อมูล
         │   ├── db\reference-data.sql    <- แถวของตารางอ้างอิง 10 ตัว
         │   ├── .env.example             <- ไป rename เป็น .env *เหนือ* public_html
         │   └── build-info.txt
-        └── timeoptic-YYYYMMDD-HHmm.zip  <- อัปไฟล์นี้ไฟล์เดียว
+        └── bewell-YYYYMMDD-HHmm.zip     <- อัปไฟล์นี้ไฟล์เดียว
 
     ตัวซิปคลี่ออกมาเป็นหน้าตาของ "โฟลเดอร์โดเมน" ไม่ใช่ของ public_html โดยตั้งใจ
     เพราะ .env กับ db\ ต้องอยู่ *นอก* doc root — ดูขั้นตอนใน deploy\README.md
@@ -72,7 +72,7 @@ function Copy-Tree([string]$src, [string]$dst, [string[]]$xd, [string[]]$xf) {
     if ($code -ge 8) { Die "robocopy ล้มเหลว (code $code): $src -> $dst" }
 }
 
-Write-Host "`nTimeOptic — ประกอบก้อน deploy" -ForegroundColor White
+Write-Host "`nBewell — ประกอบก้อน deploy" -ForegroundColor White
 Say "จาก $repo"
 
 # ---------------------------------------------------------------- 1. build
@@ -162,7 +162,7 @@ if ($SkipDump) {
     $dbHost = if ($env0.DB_HOST) { $env0.DB_HOST } else { '127.0.0.1' }
     $dbPort = if ($env0.DB_PORT) { $env0.DB_PORT } else { '3306' }
     $dbUser = if ($env0.DB_USER) { $env0.DB_USER } else { 'root' }
-    $dbName = if ($env0.DB_NAME) { $env0.DB_NAME } else { 'timeoptic' }
+    $dbName = if ($env0.DB_NAME) { $env0.DB_NAME } else { 'bewell' }
     Say "$dbUser@${dbHost}:$dbPort/$dbName"
 
     # รหัสผ่านไปทาง environment ไม่ใช่ argument — argument โผล่ในรายการโปรเซส
@@ -241,9 +241,9 @@ if ($SkipDump) {
     Ok "reference-data.sql  $([math]::Round((Get-Item $refFile).Length / 1KB)) KB"
 
     <#  นับเอง ไม่เชื่อ exit code — ไฟล์อาจจบครึ่งทางแล้ว mysqldump ยังคืน 0 ได้
-        53 กับ 6 คือของที่ฐานนี้มีจริงวันที่เขียนสคริปต์ (8 view ลบสองตัวที่พัง) #>
-    if ($tables -lt 53) { Die "schema.sql มี $tables ตาราง คาดว่าอย่างน้อย 53 — ดัมป์ไม่ครบ" }
-    if ($views  -lt 6)  { Die "schema.sql มี $views view คาดว่าอย่างน้อย 6 — ดัมป์ไม่ครบ" }
+        58 กับ 7 คือของที่ฐาน bewell มีจริง ณ 26 ก.ย. 2026 (สองตัวที่พังไม่ได้ลอกมาตั้งแต่แรก) #>
+    if ($tables -lt 58) { Die "schema.sql มี $tables ตาราง คาดว่าอย่างน้อย 58 — ดัมป์ไม่ครบ" }
+    if ($views  -lt 7)  { Die "schema.sql มี $views view คาดว่าอย่างน้อย 7 — ดัมป์ไม่ครบ" }
 }
 
 # ---------------------------------------------------------------- 4. ตรวจ
@@ -287,7 +287,7 @@ $branch = (& git -C $repo rev-parse --abbrev-ref HEAD 2>$null)
 $global:LASTEXITCODE = 0
 $stamp = Get-Date -Format 'yyyy-MM-dd HH:mm'
 @(
-    "TimeOptic deploy"
+    "Bewell deploy"
     "ประกอบเมื่อ  $stamp"
     "branch       $branch"
     "commit       $commit"
@@ -313,7 +313,7 @@ Step '6/6  ซิป'
 Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 
-$zip = Join-Path $dist ("timeoptic-" + (Get-Date -Format 'yyyyMMdd-HHmm') + '.zip')
+$zip = Join-Path $dist ("bewell-" + (Get-Date -Format 'yyyyMMdd-HHmm') + '.zip')
 if (Test-Path $zip) { Remove-Item -LiteralPath $zip -Force }
 
 $stream  = [System.IO.File]::Open($zip, [System.IO.FileMode]::Create)
