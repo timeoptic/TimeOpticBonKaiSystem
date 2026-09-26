@@ -14,17 +14,6 @@ import ReceiptEditDialog from "@/stockmod/components/ReceiptEditDialog";
 import { qs, useApi } from "@/stockmod/lib/useApi";
 import { count, dateTime, money, shortName } from "@/stockmod/lib/format";
 import type { MovementRow, Page, Person } from "@/stockmod/lib/api";
-import { api as frontdesk } from "@/lib/apiClient";
-import {
-  LENS_USAGE,
-  LENS_USAGE_ON,
-  LensUsageList,
-  NO_LENS_FILTERS,
-  lensParams,
-  useFrontdesk,
-  type LensFilters,
-  type LensOptions,
-} from "./LensUsage";
 
 type Counts = Record<string, number>;
 type List = Page<MovementRow> & { counts: Counts };
@@ -65,12 +54,6 @@ const TYPES = [
   /* ร่องรอยของล็อตที่ถูกลบ (038) — จำนวนศูนย์ รายละเอียดอยู่ในหมายเหตุ */
   { key: "LOT_DELETE", label: "ลบล็อต", countKey: "LOT_DELETE" },
 ] as const;
-
-/* Bewell: "ใช้เลนส์" ไม่ใช่ชนิดใน inventory_logs — มาจากใบเบิกเลนส์ (ดู ./LensUsage.tsx)
-   ต่อท้ายรายการเฉพาะเมื่อเปิด NEXT_PUBLIC_LENS_SOURCE=catalog */
-const ALL_TYPES: readonly { key: string; label: string; countKey: string }[] = LENS_USAGE_ON
-  ? [...TYPES, { key: LENS_USAGE, label: "ใช้เลนส์ / ตัดเลนส์", countKey: LENS_USAGE }]
-  : TYPES;
 
 /** ใครเป็นคนเอาของไป — คนละคำถามกับ "ของขยับแบบไหน" ข้างบน */
 const WHO = [
@@ -113,36 +96,7 @@ export default function MovementsPage() {
   const onEdit = maySettle
     ? (r: MovementRow) => (r.actionType === "IN" ? setReceipt(r) : setEditing(r))
     : undefined;
-  /* Bewell: เลือก "ใช้เลนส์" = รายการมาจาก API ฝั่งหน้าร้าน ไม่ยิงสมุดของคลังเลย */
-  const lensMode = LENS_USAGE_ON && type === LENS_USAGE;
-  const [lensF, setLensF] = useState<LensFilters>(NO_LENS_FILTERS);
-  const [exporting, setExporting] = useState(false);
-  const [exportError, setExportError] = useState<string | null>(null);
-  /* ตัวกรองของรายการใช้เลนส์ — ช่วงวันใช้ร่วมกันเสมอ · คำค้นและตัวกรองเลนส์นับเฉพาะตอนดูใช้เลนส์
-     (คำค้นของสมุดคลังเป็น SKU / ล็อต ใช้กับใบเบิกเลนส์ไม่ได้) */
-  const lensQuery = lensParams(
-    { from: range.from, to: range.to, ...(lensMode ? { q: applied } : {}) },
-    lensMode ? lensF : NO_LENS_FILTERS,
-  );
-  const lensCount = useFrontdesk<{ count: number }>(LENS_USAGE_ON ? "/api/lens-usage/count" : null, lensQuery);
-  const lensOptions = useFrontdesk<LensOptions>(lensMode ? "/api/lens-usage/options" : null);
-  const lensN = lensCount.status === "ready" ? lensCount.data.count : undefined;
-
-  async function exportLens() {
-    setExporting(true);
-    setExportError(null);
-    try {
-      await frontdesk.download(`/api/lens-usage/export.xlsx${qs(lensQuery)}`, "Lens Usage - Be Well.xlsx");
-    } catch (e) {
-      setExportError(e instanceof Error ? e.message : "Export ไม่สำเร็จ");
-    } finally {
-      setExporting(false);
-    }
-  }
-
-  const list = useApi<List>(
-    lensMode ? null : `/movements${qs({ type, q: applied, who, from: range.from, to: range.to, sort, dir, page })}`,
-  );
+  const list = useApi<List>(`/movements${qs({ type, q: applied, who, from: range.from, to: range.to, sort, dir, page })}`);
   const rows = list.status === "ready" ? list.data.rows : [];
   const counts: Counts = list.status === "ready" ? list.data.counts : {};
 
@@ -181,18 +135,7 @@ export default function MovementsPage() {
             ค้นหา
           </button>
         </form>
-        {/* Bewell: Export รายการใช้เลนส์ตามตัวกรองที่เห็นอยู่ (ช่วงวัน + ตัวกรองเลนส์) */}
-        {LENS_USAGE_ON ? (
-          <button type="button" className="btn" onClick={exportLens} disabled={exporting}>
-            {exporting ? "กำลังสร้างไฟล์…" : "Export Lens Usage"}
-          </button>
-        ) : null}
       </WorkHead>
-      {exportError ? (
-        <p className="empty__body" role="alert">
-          Export ไม่สำเร็จ: {exportError}
-        </p>
-      ) : null}
 
       {/* Every tile counts the whole ledger, not the page on screen — a figure
           that changes when you turn the page is not a summary of anything. */}
@@ -200,11 +143,9 @@ export default function MovementsPage() {
         <div className="readout__cell readout__cell--pear">
           <p className="readout__label">ตรงกับเงื่อนไข</p>
           <p className="readout__figure">
-            {count(lensMode ? (lensN ?? 0) : list.status === "ready" ? list.data.total : 0)}
+            {count(list.status === "ready" ? list.data.total : 0)}
           </p>
-          <p className="readout__note">
-            {lensMode ? "รายการใช้เลนส์ · ไม่ใช่สต็อก" : `จาก ${count(counts.all ?? 0)} รายการทั้งหมด`}
-          </p>
+          <p className="readout__note">จาก {count(counts.all ?? 0)} รายการทั้งหมด</p>
         </div>
         <div className="readout__cell readout__cell--mint">
           <p className="readout__label">รับเข้า</p>
@@ -216,14 +157,6 @@ export default function MovementsPage() {
           <p className="readout__figure">{count(counts.OUT ?? 0)}</p>
           <p className="readout__note">รายการ · ขายและเบิก</p>
         </div>
-        {/* Bewell: นับจากใบเบิกเลนส์ตามตัวกรองปัจจุบัน — ไม่รวมกับจำนวนกรอบในการ์ดอื่น */}
-        {LENS_USAGE_ON ? (
-          <div className="readout__cell readout__cell--lav">
-            <p className="readout__label">ใช้เลนส์</p>
-            <p className="readout__figure">{count(lensN ?? 0)}</p>
-            <p className="readout__note">รายการ · เบิกจาก TimeOptic ไม่ตัดสต็อก</p>
-          </div>
-        ) : null}
         <div className="readout__cell readout__cell--coral">
           <p className="readout__label">ของเสีย</p>
           <p
@@ -252,34 +185,24 @@ export default function MovementsPage() {
             label="ประเภท"
             value={type}
             onChange={(v) => refine(() => setType(v))}
-            options={ALL_TYPES.map((t) => ({
+            options={TYPES.map((t) => ({
               value: t.key,
               label: withCount(
                 t.label,
-                t.key === LENS_USAGE
-                  ? lensN
-                  : list.status === "ready" ? (counts[t.countKey] ?? 0) : undefined,
+                list.status === "ready" ? (counts[t.countKey] ?? 0) : undefined,
               ),
             }))}
           />
 
           {/* การเบิกของสาขาตัดขวางประเภทข้างบน ไม่ใช่ประเภทหนึ่งในนั้น — แถวเดียว
               เป็นได้ทั้ง "จ่ายออก" และ "สาขาอื่นเบิก" พร้อมกัน จึงเป็นคนละช่อง */}
-          {lensMode ? (
-            <LensFilterFields
-              value={lensF}
-              options={lensOptions.status === "ready" ? lensOptions.data : null}
-              onChange={(patch) => refine(() => setLensF((f) => ({ ...f, ...patch })))}
-            />
-          ) : (
-            <Filter
-              id="mv-who"
-              label="ผู้เบิก"
-              value={who}
-              onChange={(v) => refine(() => setWho(v))}
-              options={WHO}
-            />
-          )}
+          <Filter
+            id="mv-who"
+            label="ผู้เบิก"
+            value={who}
+            onChange={(v) => refine(() => setWho(v))}
+            options={WHO}
+          />
         </FilterBar>
 
         {/* ไม่มีปุ่มกลับด้าน — ทุกคอลัมน์ในตารางข้างล่างกดเรียงได้ และกดซ้ำก็กลับด้าน
@@ -292,36 +215,19 @@ export default function MovementsPage() {
           placeholder="ทุกวัน"
           onApply={(r) => refine(() => setRange(r))}
         />
-        {lensMode ? null : <SortBar
+        <SortBar
           id="mov"
           columns={sorts(money$)}
           sort={sort}
           dir={dir}
           onSort={pick}
           dirToggle={false}
-        />}
+        />
       </div>
 
-      {lensMode ? (
-        <LensUsageList
-          query={lensQuery}
-          page={page}
-          onPage={setPage}
-          money={money$}
-          onClear={() =>
-            refine(() => {
-              setLensF(NO_LENS_FILTERS);
-              setRange({ from: "", to: "" });
-              setQ("");
-              setApplied("");
-            })
-          }
-        />
-      ) : null}
+      {list.status === "loading" ? <div className="skeleton" /> : null}
 
-      {!lensMode && list.status === "loading" ? <div className="skeleton" /> : null}
-
-      {!lensMode && list.status === "error" ? (
+      {list.status === "error" ? (
         <div className="empty">
           <p className="empty__title">โหลดความเคลื่อนไหวไม่ได้</p>
           <p className="empty__body">{list.error}</p>
@@ -331,7 +237,7 @@ export default function MovementsPage() {
         </div>
       ) : null}
 
-      {!lensMode && list.status === "ready" && rows.length === 0 ? (
+      {list.status === "ready" && rows.length === 0 ? (
         <div className="empty">
           <p className="empty__title">ไม่มีความเคลื่อนไหวที่ตรงกับเงื่อนไขนี้</p>
           <button
@@ -746,73 +652,5 @@ function Left({ n, block = false }: { n: number | null; block?: boolean }) {
     <span className={block ? "grid__sub" : "grid__muted"} style={block ? undefined : { marginInlineStart: 6 }}>
       เหลือ {count(n)}
     </span>
-  );
-}
-
-/** ตัวกรองของรายการใช้เลนส์ — แทนช่อง "ผู้เบิก" ของสมุดคลังตอนเลือกประเภท "ใช้เลนส์" */
-function LensFilterFields({
-  value,
-  options,
-  onChange,
-}: {
-  value: LensFilters;
-  options: LensOptions | null;
-  onChange: (patch: Partial<LensFilters>) => void;
-}) {
-  const list = (all: string, xs: string[] | undefined) => [
-    { value: "", label: all },
-    ...(xs ?? []).map((x) => ({ value: x, label: x })),
-  ];
-  return (
-    <>
-      <Filter
-        id="lu-type"
-        label="ชนิดเลนส์"
-        value={value.lens_type}
-        onChange={(v) => onChange({ lens_type: v })}
-        options={list("ทุกชนิด", options?.lens_types)}
-      />
-      <Filter
-        id="lu-name"
-        label="ชื่อเลนส์"
-        value={value.lens_name}
-        onChange={(v) => onChange({ lens_name: v })}
-        options={list("ทุกรุ่น", options?.names)}
-      />
-      <Filter
-        id="lu-index"
-        label="Index"
-        value={value.index}
-        onChange={(v) => onChange({ index: v })}
-        options={list("ทุก Index", options?.indexes)}
-      />
-      <Filter
-        id="lu-coating"
-        label="Coating"
-        value={value.coating}
-        onChange={(v) => onChange({ coating: v })}
-        options={list("ทุก Coating", options?.coatings)}
-      />
-      <Filter
-        id="lu-status"
-        label="สถานะ"
-        value={value.status}
-        onChange={(v) => onChange({ status: v })}
-        options={[
-          { value: "", label: "ทุกสถานะ" },
-          ...(options?.statuses ?? []).map((x) => ({ value: x.value, label: x.label })),
-        ]}
-      />
-      <Filter
-        id="lu-who"
-        label="ผู้ทำรายการ"
-        value={value.who}
-        onChange={(v) => onChange({ who: v })}
-        options={[
-          { value: "", label: "ทุกคน" },
-          ...(options?.people ?? []).map((x) => ({ value: String(x.id), label: x.name })),
-        ]}
-      />
-    </>
   );
 }

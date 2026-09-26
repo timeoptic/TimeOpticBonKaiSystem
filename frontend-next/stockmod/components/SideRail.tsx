@@ -7,6 +7,7 @@ import type { Actor } from "@/stockmod/lib/api";
 import { stockHref, trimSlash } from "@/stockmod/lib/paths";
 import { worksBothSides } from "@/lib/roles.js";
 import useScrollLock from "@/stockmod/lib/scrollLock";
+import { LENS_SOURCE } from "@/lib/lens/lensSource";
 
 /**
  * N3 side-rail — the app's one navigation surface.
@@ -17,6 +18,8 @@ import useScrollLock from "@/stockmod/lib/scrollLock";
  */
 
 type Item = { href: string; label: string; hint: string; icon: React.ReactNode };
+
+const LENS_USAGE_ON = LENS_SOURCE === "catalog";
 
 const stroke = {
   fill: "none",
@@ -87,6 +90,16 @@ const ICON = {
       <path d="M4 8.5 6.5 6M20 8.5 17.5 6" />
     </svg>
   ),
+  /* Bewell: ประวัติเลนส์ — แว่นกับนาฬิกาเล็ก = เลนส์ที่ใช้ไปแล้ว ไม่ใช่ของในคลัง */
+  lensHistory: (
+    <svg className="rail-icon" viewBox="0 0 24 24" aria-hidden="true" {...stroke}>
+      <circle cx="6.5" cy="14" r="3.5" />
+      <circle cx="14.5" cy="14" r="3.5" />
+      <path d="M10 13.5h1" />
+      <circle cx="18.5" cy="6.5" r="3.5" />
+      <path d="M18.5 5v1.7l1.1.8" />
+    </svg>
+  ),
   money: (
     <svg className="rail-icon" viewBox="0 0 24 24" aria-hidden="true" {...stroke}>
       <rect x="3" y="6.5" width="18" height="11" rx="2" />
@@ -123,6 +136,11 @@ const DAILY: Item[] = [
   /* ของที่ขายไปแล้วแต่ยังไม่มีในคลัง — งานประจำวัน ไม่ใช่รายงาน: รายการนี้คือของ
      ที่ต้องสั่งวันนี้ และหายไปเองเมื่อรับของเข้า */
   { href: "/backorders", label: "สินค้ารอสั่ง", hint: "ยอดติดลบ กับของที่เหลือต่ำกว่าขั้นต่ำ", icon: ICON.cart },
+  /* Bewell: เลนส์ไม่มีสต็อก — รายการเลนส์ที่ขายไป (ใช้/ตัดเลนส์) เพื่อเบิกจาก TimeOptic และ Export
+     แสดงเฉพาะเมื่อ NEXT_PUBLIC_LENS_SOURCE=catalog · ดู app/stock/(shell)/lens-history */
+  ...(LENS_USAGE_ON
+    ? [{ href: "/lens-history", label: "ประวัติเลนส์", hint: "เลนส์ที่ขายไป · เบิกจาก TimeOptic · Export", icon: ICON.lensHistory }]
+    : []),
 ];
 
 const STOCK: Item[] = [

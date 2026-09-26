@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Bewell: "ใช้เลนส์ / ตัดเลนส์" บนหน้าความเคลื่อนไหว
+ * Bewell: รายการใช้เลนส์ / ตัดเลนส์ ของหน้าประวัติเลนส์ (./page.tsx)
  *
  * ไม่ใช่ความเคลื่อนไหวของคลัง — เลนส์ของ Bewell ไม่มีสต็อก ข้อมูลจึงมาจากใบเบิกเลนส์ที่ยืนยัน
  * ขั้นขายแล้ว (API ฝั่งหน้าร้าน /api/lens-usage) ไม่ใช่ inventory_logs · ไม่มียอดคงเหลือ
@@ -17,7 +17,6 @@ import RecordCard, { CardList } from "@/stockmod/components/RecordCard";
 import { count, dateTime, money } from "@/stockmod/lib/format";
 
 export const LENS_USAGE_ON = LENS_SOURCE === "catalog";
-export const LENS_USAGE = "LENS_USAGE";
 
 export type LensFilters = {
   lens_type: string;
