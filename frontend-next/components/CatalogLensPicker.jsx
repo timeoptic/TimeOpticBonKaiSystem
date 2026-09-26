@@ -28,19 +28,23 @@ function loadCatalog() {
 /* รายการแสดงแค่ชื่อ (nameOnly) ช่องคงเหลือจึงไม่ถูกวาด — LensPicker ยังต้องการฟังก์ชันนี้อยู่ */
 const noStock = () => ({ text: '', tone: 'new' });
 
-export function CatalogLensPicker({ picked = null, onPick, onClear = null }) {
+/* locked = ข้อความเหตุผล เมื่อใบเบิกเลนส์ของออเดอร์นี้เบิกไปแล้วหรือยืนยันขั้นขายแล้ว
+   (GET /api/orders/:id → lens_locked) · การ์ดขึ้นเหมือนเดิมแต่ไม่มีปุ่มเปลี่ยน/ล้าง */
+export function CatalogLensPicker({ picked = null, onPick, onClear = null, locked = null }) {
   const [open, setOpen] = useState(false);
 
-  if (picked?.catalog && !open) {
+  if (picked?.catalog && (!open || locked)) {
     const sub = [picked.lens_type, picked.lens_index, picked.coating].filter(Boolean).join(' · ');
     return (
       <div className="picked-item">
-        <Icon name="glasses" />
+        <Icon name={locked ? 'lock' : 'glasses'} />
         <b>{picked.product_name}</b>
-        <span className="muted" title={sub}>{sub} · สั่งตัดตามเคส</span>
+        <span className="muted" title={locked || sub}>{locked || `${sub} · สั่งตัดตามเคส`}</span>
         <span className="p-id">{picked.sku}</span>
-        <button type="button" className="btn btn-sm btn-light" onClick={() => setOpen(true)}>เปลี่ยน</button>
-        {onClear && (
+        {!locked && (
+          <button type="button" className="btn btn-sm btn-light" onClick={() => setOpen(true)}>เปลี่ยน</button>
+        )}
+        {onClear && !locked && (
           <button type="button" className="btn btn-sm btn-light" onClick={onClear}>ล้าง</button>
         )}
       </div>

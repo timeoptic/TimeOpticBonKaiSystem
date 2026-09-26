@@ -82,6 +82,14 @@ export function searchCatalog(list, term = '', { coating = '', sph = '', cyl = '
     });
 }
 
+/** เลนส์ที่ออเดอร์เลือกไว้แล้ว (GET /api/orders/:id → lens_catalog_r / lens_catalog_l)
+ *  → แถวเดียวกับตอนกดเลือก หน้าแก้ออเดอร์จะขึ้นการ์ดเลนส์เดิมแทนช่องค้นหาว่าง ๆ
+ *  เลนส์จากคลัง (stockLot) ชนะเสมอ · Bewell เท่านั้น — ฝั่งสต็อกคืน null */
+export function savedLens(stockLot, catalogRow, source = LENS_SOURCE) {
+  if (stockLot) return stockLot;
+  return source === 'catalog' && catalogRow ? toStockRow(catalogRow) : null;
+}
+
 /**
  * รายการที่ส่งให้ POST /api/lens-requisitions/sync
  * สองข้างเป็นเลนส์รุ่นเดียวกัน = 1 คู่ (หน่วยที่ร้านเบิกจริง) · คนละรุ่น = ข้างละรายการ

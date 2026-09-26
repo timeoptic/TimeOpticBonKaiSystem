@@ -27,7 +27,7 @@ import {
 import { Picker } from '../../../components/Picker.jsx';
 import { StockPicker, stockLabel } from '../../../components/StockPicker.jsx';
 import { CatalogLensPicker } from '../../../components/CatalogLensPicker.jsx';
-import { LENS_SOURCE, requisitionItems } from '../../../lib/lens/lensSource.js';
+import { LENS_SOURCE, requisitionItems, savedLens } from '../../../lib/lens/lensSource.js';
 import { RxSets } from '../../../components/RxSets.jsx';
 import { RxArrival } from '../../../components/RxLensBadge.jsx';
 import { EyewearHistory } from '../../../components/EyewearHistory.jsx';
@@ -272,8 +272,8 @@ export function OrderFormView({
 
   const picked = items ?? {
     frame: o.frame || null,
-    lensOd: o.left_lens || null,
-    lensOs: o.right_lens || null,
+    lensOd: savedLens(o.left_lens, o.lens_catalog_r),
+    lensOs: savedLens(o.right_lens, o.lens_catalog_l),
   };
 
   /* ออเดอร์เก่าที่มีชื่อกรอบแต่ไม่ได้ผูกกับของในคลัง คือกรอบเดิมของลูกค้า —
@@ -445,7 +445,9 @@ export function OrderFormView({
          จึงนับเป็น "ใช้เลนส์") · `items` มีค่าเฉพาะตอนมีคนแตะตัวเลือกในรอบนี้ เปิดออเดอร์เก่า
          มาแก้เรื่องอื่นจึงไม่ล้างใบเบิกเดิม · เรียกพลาดไม่ทำให้ออเดอร์พัง */
       const lensItems = LENS_SOURCE === 'catalog' ? requisitionItems(items, p) : [];
-      if (lensItems.length) {
+      /* แตะตัวเลือกแล้วไม่เหลือเลนส์จากรายการสักข้าง (กด "ล้าง") ก็ต้องส่งไปด้วย — ส่ง [] =
+         ยกเลิกใบเดิม ไม่งั้นประวัติเลนส์ยังนับว่าใช้เลนส์ที่ไม่ได้อยู่ในออเดอร์แล้ว */
+      if (lensItems.length || (LENS_SOURCE === 'catalog' && items && editing)) {
         try {
           await api.post('/api/lens-requisitions/sync', { order_id: oid, items: lensItems });
         } catch (ex) {
@@ -682,7 +684,10 @@ export function OrderFormView({
             ].map(([slot, side, legend, priceKey, nameKey, skuKey, savedName, savedSku]) => {
               const item = picked[slot];
               const rx = item ? null : rxOf(side);
-              const cleared = rxLens[side] === null;
+              /* ว่าง = กดล้างใบสั่งตัด RX หรือกดล้างเลนส์จากรายการที่ออเดอร์เลือกไว้ — ช่องชื่อที่โผล่มา
+                 แทนการ์ดต้องว่าง ไม่ใช่ชื่อเลนส์ที่เพิ่งล้าง (บันทึกแล้วชื่อเดิมจะกลับเข้าออเดอร์) */
+              const fromCatalog = slot === 'lensOd' ? o.lens_catalog_r : o.lens_catalog_l;
+              const cleared = rxLens[side] === null || (!item && !!items && !!fromCatalog);
               return (
                 <Fieldset key={slot} legend={legend}>
                   {/* สั่งตัดแล้วขึ้นการ์ดแบบเดียวกับเลนส์ที่เลือกจากสต็อก — ช่องค้นหากับ
@@ -728,11 +733,12 @@ export function OrderFormView({
                   ) : (
                     <>
                       {/* Bewell (LENS_SOURCE=catalog): รายการเลนส์ ไม่ใช่ของในคลัง — ดู lib/lens/lensSource.js */}
+                      {/* ไม่มีปุ่ม "ล้าง" (ร้านขอ 26 ก.ย. 2026) — เลือกเลนส์แล้วเปลี่ยนเป็นตัวอื่นได้อย่างเดียว */}
                       {LENS_SOURCE === 'catalog' ? (
                         <CatalogLensPicker
                           picked={item}
+                          locked={o.lens_locked || null}
                           onPick={(r) => setPicked({ [slot]: r })}
-                          onClear={() => setItems({ ...picked, [slot]: null })}
                         />
                       ) : (
                         <StockPicker

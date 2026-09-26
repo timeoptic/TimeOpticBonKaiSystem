@@ -93,11 +93,13 @@ POST('/api/lens-requisitions/sync', function (array $req) {
     if (!$orderId) {
         bad('ต้องระบุออเดอร์');
     }
-    $raw      = $req['body']['items'] ?? [];
-    $items    = LensRequisition::cleanItems(is_array($raw) ? $raw : []);
+    $raw = $req['body']['items'] ?? [];
+    /* items ว่าง = หน้าขายกด "ล้าง" เลนส์ทั้งสองข้าง → ยกเลิกใบเดิม (ไม่ลบ) ไม่ใช่ออกใบว่าง */
+    $clear    = is_array($raw) && !$raw;
+    $items    = $clear ? [] : LensRequisition::cleanItems(is_array($raw) ? $raw : []);
     $employee = lensActorEmployee();
 
-    $id = Db::tx(function (Tx $q) use ($orderId, $items, $employee) {
+    $id = Db::tx(function (Tx $q) use ($orderId, $items, $clear, $employee) {
         $order = $q->get(
             'SELECT o.id, o.case_id, o.final_prescription_id, o.invoice_code, COALESCE(o.customer_id, c.customer_id) AS customer_id
                FROM custom_orders o LEFT JOIN cases c ON c.id = o.case_id
@@ -128,14 +130,21 @@ POST('/api/lens-requisitions/sync', function (array $req) {
                 ['reason' => 'lens_req_locked']
             );
         }
-        /* ยืนยันขั้นขายแล้ว = บันทึกการใช้เลนส์ไปแล้ว สำเนาต้องเป็นของวันที่ขาย
-           เหมือนกรอบที่ตัดสต็อกไปแล้ว — เปลี่ยนเลนส์ต้องเปิดขั้นขายกลับมาก่อน */
+        if ($clear) {
+            if ($open) {
+                LensRequisition::cancelFor($q, 'order', $orderId, 'lens_cleared', 'ล้างเลนส์ออกจากออเดอร์', $employee);
+            }
+            return null;
+        }
+        /* ยืนยันขั้นขายแล้วยังเปลี่ยนเลนส์ได้ (ร้านขอ 26 ก.ย. 2026) — ใบยังนับเป็น "ใช้เลนส์"
+           วันที่ขายเดิม (used_at ไม่แตะ) แค่รายการเป็นตัวใหม่ · ชื่อเดิม→ใหม่ลงไทม์ไลน์ไว้ตรวจย้อนหลัง
+           ใบที่ส่งรายการเบิกไปแล้วยังล็อกตามข้างบน เพราะ TimeOptic ได้รายการเดิมไปแล้ว */
+        $before = null;
         if ($open && $open['used_at']) {
-            throw new HttpError(
-                409,
-                'ยืนยันขั้นขายไปแล้ว รายการเลนส์ถูกบันทึกเป็นการใช้เลนส์แล้ว — เปิดขั้นขายกลับมาแก้ก่อนถ้าต้องการเปลี่ยนเลนส์',
-                ['reason' => 'lens_req_used']
-            );
+            $before = implode(' + ', array_column(
+                $q->all('SELECT COALESCE(lens_name, design) AS n FROM lens_requisition_items WHERE requisition_id = ? ORDER BY id', (int) $open['id']),
+                'n'
+            ));
         }
         if ($open) {
             $id = (int) $open['id'];
@@ -180,9 +189,30 @@ POST('/api/lens-requisitions/sync', function (array $req) {
             'entity_id'   => $id,
             'employee_id' => $employee,
         ]);
+        /* ใบใหม่ของเคสที่ยืนยันขั้นขายไปแล้ว (ล้างเลนส์แล้วเลือกใหม่) — จะไม่มีการยืนยันขาย
+           รอบใหม่มาเรียก markUsed ให้ จึงนับเป็นใช้เลนส์ตรงนี้เลย */
+        if (!$open) {
+            $sales = $q->get(
+                "SELECT status, completed_at FROM case_processes WHERE case_id = ? AND process = 'sales'",
+                (int) $order['case_id']
+            );
+            if ($sales && $sales['status'] === 'completed' && $sales['completed_at']) {
+                LensRequisition::markUsed($q, (int) $order['case_id'], $employee);
+            }
+        }
+        $after = implode(' + ', array_map(static fn($it) => (string) ($it['lens_name'] ?? $it['design'] ?? ''), $items));
+        if ($before !== null && $before !== $after) {
+            logEvent($q, (int) $order['case_id'], [
+                'action'      => 'lens_usage_changed',
+                'entity'      => 'lens_requisition',
+                'entity_id'   => $id,
+                'employee_id' => $employee,
+                'note'        => mb_substr("เปลี่ยนเลนส์หลังยืนยันขาย: $before → $after", 0, 250),
+            ]);
+        }
         return $id;
     });
-    return lensReqLoad($id);
+    return $id === null ? ['cleared' => true] : lensReqLoad($id);
 });
 
 POST('/api/lens-requisitions/:id/status', function (array $req) {

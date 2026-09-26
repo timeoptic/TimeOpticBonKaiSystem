@@ -179,6 +179,23 @@ function orderDetail(?int $id): array
     $o['left_lens']  = $item($o['lens_product_id']);
     $o['right_lens'] = $item($o['right_lens_product_id']);
     $o['frame']      = $item($o['frame_product_id']);
+    /* Bewell: เลนส์ที่เลือกจากรายการเลนส์ไม่ผูกล็อต left_lens/right_lens จึงว่างเสมอ —
+       หาเลนส์ในรายการจาก SKU ของแต่ละข้าง หน้าแก้ออเดอร์จะได้ขึ้นเลนส์ที่เลือกไว้แทนช่องว่าง
+       ไม่กรอง active: เลนส์ที่ปิดไปแล้วยังต้องเห็นในออเดอร์ที่ขายไปแล้ว */
+    $cat = fn($code) => $code ? (Db::get('SELECT * FROM lens_catalog WHERE code = ?', (string) $code) ?: null) : null;
+    $o['lens_catalog_r'] = $o['left_lens'] ? null : $cat($o['lens_r_sku'] ?? null);
+    $o['lens_catalog_l'] = $o['right_lens'] ? null : $cat($o['lens_l_sku'] ?? null);
+    /* ใบเบิกที่ส่งรายการเบิกไปแล้ว POST /api/lens-requisitions/sync ปฏิเสธ (lens_req_locked) —
+       บอกหน้าแก้ออเดอร์ก่อน จะได้ล็อกช่องเลนส์ไว้ แทนที่จะปล่อยให้เลือกใหม่แล้วชื่อในออเดอร์เปลี่ยน
+       แต่ใบเบิกยังเป็นตัวเดิม · ยืนยันขั้นขายแล้วยังเปลี่ยนได้ ไม่ล็อก (ดู /sync) */
+    $req = Db::get(
+        "SELECT status FROM lens_requisitions
+          WHERE order_id = ? AND status <> 'cancelled' ORDER BY id DESC LIMIT 1",
+        (int) $o['id']
+    );
+    $o['lens_locked'] = $req && $req['status'] !== 'pending'
+        ? 'ส่งรายการเบิกเลนส์ไปแล้ว — ยกเลิกใบเบิกเดิมก่อนถ้าต้องการเปลี่ยนเลนส์'
+        : null;
     /* รุ่นของเลนส์สั่งตัด RX — custom_orders ไม่มีคอลัมน์รุ่น เลนส์สต็อกได้รุ่นจากล็อตข้างบน
        RX ไม่มีล็อตจึงอ่านจากสินค้าในคลังตาม SKU · ใบสั่งซื้อพิมพ์ "Zeiss · Digital lenses …" */
     $o['lens_model'] = (string) (rxLensProduct($o)['attrs']['model'] ?? '') ?: null;

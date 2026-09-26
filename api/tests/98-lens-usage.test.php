@@ -96,16 +96,37 @@ test('ยังไม่ยืนยันขั้นขาย = ยังไ�
     });
 });
 
-test('ขายแล้ว sync เปลี่ยนเลนส์ไม่ได้ (409) · เปิดขั้นขายกลับมา ใบกลับเป็นร่างแล้วแก้ได้', function () {
+/* ร้านขอ 26 ก.ย. 2026: ยืนยันขายแล้วยังเปลี่ยนเลนส์ได้โดยไม่ต้องเปิดขั้นขายกลับ — ใบยังนับเป็น
+   "ใช้เลนส์" (used_at เดิม) แต่รายการเป็นตัวใหม่ และไทม์ไลน์จำว่าเปลี่ยนจากอะไรเป็นอะไร */
+test('ขายแล้ว sync เปลี่ยนเลนส์ได้: ยังนับเป็นใช้เลนส์ รายการเป็นตัวใหม่ ลงไทม์ไลน์', function () {
+    rollback(function (Tx $q) {
+        $f    = lrFixture($q);
+        $cat  = luCatalog($q);
+        $cat2 = luCatalog($q);
+        $q->run("UPDATE lens_catalog SET lens_name = 'Progressive (ทดสอบ)' WHERE id = ?", $cat2);
+        $r = lrSync($f['order'], luPair($cat));
+        LensRequisition::markUsed($q, $f['case'], null);
+        $usedAt = $q->get('SELECT used_at FROM lens_requisitions WHERE id = ?', (int) $r['id'])['used_at'];
+
+        $r2 = lrSync($f['order'], luPair($cat2, 2000));
+        eq((int) $r2['id'], (int) $r['id'], 'ใบเดิม ไม่ออกใบใหม่');
+        eq($r2['items'][0]['lens_name'], 'Progressive (ทดสอบ)', 'รายการเป็นเลนส์ตัวใหม่');
+        eq($q->get('SELECT used_at FROM lens_requisitions WHERE id = ?', (int) $r['id'])['used_at'], $usedAt, 'ยังนับเป็นใช้เลนส์ วันที่ขายเดิม');
+        eq(LensUsage::count(luCase($q, $f['case'])), 1, 'ประวัติเลนส์ยังมี 1 รายการ');
+        $ev = $q->get("SELECT note FROM case_events WHERE case_id = ? AND action = 'lens_usage_changed'", $f['case']);
+        ok(str_contains((string) ($ev['note'] ?? ''), 'Progressive (ทดสอบ)'), 'ไทม์ไลน์บอกเลนส์ตัวใหม่');
+        ok(str_contains((string) ($ev['note'] ?? ''), 'Single Vision 1.56 Blue Cut'), 'ไทม์ไลน์บอกเลนส์ตัวเดิม');
+    });
+});
+
+test('เปิดขั้นขายกลับมา: ใบกลับเป็นร่าง หายจากประวัติเลนส์ ลงไทม์ไลน์', function () {
     rollback(function (Tx $q) {
         $f   = lrFixture($q);
         $cat = luCatalog($q);
         lrSync($f['order'], luPair($cat));
         LensRequisition::markUsed($q, $f['case'], null);
-        eq(lrStatusCode(fn() => lrSync($f['order'], luPair($cat, 2000))), 409, 'หลังขาย');
         eq(LensRequisition::unmarkUsed($q, $f['case'], null), 1, 'ถอน 1 ใบ');
         eq(LensUsage::count(luCase($q, $f['case'])), 0, 'หายจากรายการใช้เลนส์');
-        eq((float) lrSync($f['order'], luPair($cat, 2000))['total'], 2000.0, 'แก้ได้อีกครั้ง');
         $ev = $q->get("SELECT COUNT(*) n FROM case_events WHERE case_id = ? AND action = 'lens_usage_reverted'", $f['case']);
         eq((int) $ev['n'], 1, 'ลงไทม์ไลน์');
     });
@@ -203,4 +224,90 @@ test('ตรวจค่ารายการเลนส์: รหัส ช�
     $v = lensCatalogClean(['code' => 'lens-x', 'lens_name' => 'B', 'lens_type' => 'C', 'selling_price' => '1500', 'cost_price' => '']);
     eq($v['code'], 'LENS-X', 'รหัสเป็นตัวใหญ่');
     eq($v['cost_price'], null, 'ต้นทุนว่างได้');
+});
+
+/* ออเดอร์ที่เลือกเลนส์จากรายการไม่มี lens_product_id (ไม่ผูกล็อต) — left_lens/right_lens
+   จึงว่างเสมอ เปิดออเดอร์กลับมาแก้แล้วช่องเลือกเลนส์ว่างเปล่าเหมือนยังไม่ได้เลือก
+   (ร้านเจอ 26 ก.ย. 2026 เคส 002–004) · ต้องหาเลนส์ในรายการจาก SKU ที่ออเดอร์เก็บไว้ */
+test('เปิดออเดอร์: เลนส์ที่เลือกจากรายการกลับมาตาม SKU ของแต่ละข้าง', function () {
+    rollback(function (Tx $q) {
+        $f    = lrFixture($q);
+        $cat  = luCatalog($q);
+        $code = $q->get('SELECT code FROM lens_catalog WHERE id = ?', $cat)['code'];
+        $q->run('UPDATE custom_orders SET lens_r_sku = ?, lens_l_sku = NULL WHERE id = ?', $code, $f['order']);
+        $o = Router::dispatch('GET', '/api/orders/' . $f['order']);
+        eq((int) ($o['lens_catalog_r']['id'] ?? 0), $cat, 'ข้างขวาได้เลนส์จากรายการ');
+        eq($o['lens_catalog_l'], null, 'ข้างซ้ายไม่มี SKU จึงว่าง');
+    });
+});
+
+/* ใบที่ส่งรายการเบิกไปแล้ว /sync ปฏิเสธ (lens_req_locked) — หน้าแก้ออเดอร์ต้องรู้ก่อนให้เลือก
+   ไม่งั้นชื่อเลนส์ในออเดอร์เปลี่ยนแต่ใบเบิกยังเป็นตัวเดิม · ยืนยันขายแล้วยังเปลี่ยนได้ ไม่ล็อก */
+test('เปิดออเดอร์: ใบที่ส่งเบิกแล้วล็อกเลนส์ · ร่างหรือยืนยันขายแล้วไม่ล็อก', function () {
+    rollback(function (Tx $q) {
+        $f   = lrFixture($q);
+        $cat = luCatalog($q);
+        $r   = lrSync($f['order'], luPair($cat));
+        $o   = Router::dispatch('GET', '/api/orders/' . $f['order']);
+        eq($o['lens_locked'], null, 'ร่าง แก้ได้');
+        $q->run('UPDATE lens_requisitions SET used_at = NOW() WHERE id = ?', (int) $r['id']);
+        $o = Router::dispatch('GET', '/api/orders/' . $f['order']);
+        eq($o['lens_locked'], null, 'ยืนยันขายแล้ว ยังแก้ได้');
+        $q->run("UPDATE lens_requisitions SET status = 'issued' WHERE id = ?", (int) $r['id']);
+        $o = Router::dispatch('GET', '/api/orders/' . $f['order']);
+        ok(is_string($o['lens_locked']) && $o['lens_locked'] !== '', 'ส่งเบิกแล้ว ล็อก');
+    });
+});
+
+/* กด "ล้าง" เลนส์ทั้งสองข้างแล้วบันทึก — หน้าขายส่ง items ว่าง · ใบเดิมต้องถูกยกเลิก (ไม่ลบ)
+   ประวัติเลนส์ขึ้นเป็น "ยกเลิก" ไม่ใช่ยังนับว่าใช้เลนส์ที่ไม่ได้อยู่ในออเดอร์แล้ว */
+test('ล้างเลนส์ (sync ว่าง): ใบเดิมถูกยกเลิก ยังอยู่ให้ตรวจย้อนหลัง', function () {
+    rollback(function (Tx $q) {
+        $f   = lrFixture($q);
+        $cat = luCatalog($q);
+        $r   = lrSync($f['order'], luPair($cat));
+        LensRequisition::markUsed($q, $f['case'], null);
+        lrSync($f['order'], []);
+        $row = $q->get('SELECT status, cancel_reason, used_at FROM lens_requisitions WHERE id = ?', (int) $r['id']);
+        eq($row['status'], 'cancelled', 'ใบเดิมยกเลิก');
+        ok($row['used_at'] !== null, 'ยังจำว่าเคยขายเมื่อไร');
+        ok(str_contains((string) $row['cancel_reason'], 'ล้าง'), 'เหตุผลบอกว่าล้างเลนส์');
+    });
+});
+
+test('ล้างเลนส์ตอนยังไม่มีใบ: ไม่มีอะไรเกิดขึ้น ไม่ error', function () {
+    rollback(function (Tx $q) {
+        $f = lrFixture($q);
+        lrSync($f['order'], []);
+        $n = $q->get('SELECT COUNT(*) n FROM lens_requisitions WHERE order_id = ?', $f['order']);
+        eq((int) $n['n'], 0, 'ไม่ออกใบว่าง');
+    });
+});
+
+/* ยืนยันขายไปแล้ว ล้างเลนส์ แล้วเลือกใหม่ — ใบใหม่ต้องนับเป็นใช้เลนส์ทันที เพราะจะไม่มีการ
+   ยืนยันขั้นขายรอบใหม่มาเรียก markUsed ให้อีก */
+test('ยืนยันขายแล้ว ล้างแล้วเลือกใหม่: ใบใหม่นับเป็นใช้เลนส์ทันที', function () {
+    rollback(function (Tx $q) {
+        $f   = lrFixture($q);
+        $cat = luCatalog($q);
+        $q->run("INSERT INTO case_processes (case_id, process, status, completed_at) VALUES (?, 'sales', 'completed', NOW())", $f['case']);
+        lrSync($f['order'], luPair($cat));
+        LensRequisition::markUsed($q, $f['case'], null);
+        lrSync($f['order'], []);
+        $r = lrSync($f['order'], luPair($cat, 1800));
+        $row = $q->get('SELECT used_at FROM lens_requisitions WHERE id = ?', (int) $r['id']);
+        ok($row['used_at'] !== null, 'ใบใหม่มีวันที่ใช้เลนส์');
+    });
+});
+
+test('บันทึกซ้ำโดยเลนส์เดิม: ไม่ลงไทม์ไลน์ว่าเปลี่ยนเลนส์', function () {
+    rollback(function (Tx $q) {
+        $f   = lrFixture($q);
+        $cat = luCatalog($q);
+        lrSync($f['order'], luPair($cat));
+        LensRequisition::markUsed($q, $f['case'], null);
+        lrSync($f['order'], luPair($cat));
+        $n = $q->get("SELECT COUNT(*) n FROM case_events WHERE case_id = ? AND action = 'lens_usage_changed'", $f['case']);
+        eq((int) $n['n'], 0, 'ไม่มีการเปลี่ยน');
+    });
 });

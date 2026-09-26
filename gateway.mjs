@@ -141,7 +141,10 @@ const server = http.createServer(async (req, res) => {
     const stat = await fsp.stat(file).catch(() => null);
     if (stat?.isDirectory()) {
       if (!urlPath.endsWith('/')) {
-        res.writeHead(308, { location: urlPath + '/' }).end();
+        /* ต้องพก ?query ไปด้วย — เดิมเด้งแค่ path ลิงก์ /cases/detail?id=9430 จึงไปจบที่
+           /cases/detail/ เปล่า ๆ หน้าเคสขึ้น "ไม่พบข้อมูล" (ร้านเจอ 26 ก.ย. 2026 จากหน้าประวัติเลนส์) */
+        const query = (req.url || '').slice(urlPath.length);
+        res.writeHead(308, { location: urlPath + '/' + query }).end();
         return;
       }
       return await serveFile(res, path.join(file, 'index.html'));

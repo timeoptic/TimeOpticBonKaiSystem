@@ -367,7 +367,7 @@ function FixAction({ row: r, onEdit }: { row: MovementRow; onEdit: (r: MovementR
   }
   if (r.caseId !== null) {
     return (
-      <a href={`/cases/detail?id=${r.caseId}`} className="grid__link">
+      <a href={`/cases/detail/?id=${r.caseId}`} className="grid__link">
         แก้ที่หน้าเคส
       </a>
     );

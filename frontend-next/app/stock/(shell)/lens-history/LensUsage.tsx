@@ -202,7 +202,7 @@ export function LensUsageList({
               r.status === "cancelled" ? { label: "ยกเลิก", value: cancelText(r) } : null,
             ]}
             actions={
-              <a href={`/cases/detail?id=${r.caseId}`} className="grid__link">
+              <a href={`/cases/detail/?id=${r.caseId}`} className="grid__link">
                 ดูเคส
               </a>
             }
@@ -230,7 +230,17 @@ export function LensUsageList({
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.id} className={r.status === "cancelled" ? "grid__row grid__row--void" : "grid__row"}>
+              /* กดตรงไหนของแถวก็ไปหน้าเคส — ลิงก์ชื่อลูกค้าข้างในเล็กเกินจะกดโดน
+                 ลิงก์ยังอยู่ให้คีย์บอร์ดกับคลิกขวาเปิดแท็บใหม่ · หน้าเคสอยู่คนละกลุ่ม CSS
+                 จึงโหลดหน้าใหม่ (location.assign) ไม่ใช่ router */
+              <tr
+                key={r.id}
+                className={`grid__row grid__row--clickable${r.status === "cancelled" ? " grid__row--void" : ""}`}
+                onClick={(e) => {
+                  if ((e.target as HTMLElement).closest("a, button")) return;
+                  location.assign(`/cases/detail/?id=${r.caseId}`);
+                }}
+              >
                 <th scope="row" className="grid__muted grid__when">
                   {dateTime(r.usedAt)}
                 </th>
@@ -248,7 +258,7 @@ export function LensUsageList({
                     {[r.lensCode, r.lensIndex, r.coating].filter(Boolean).join(" · ")}
                   </span>
                   <span className="grid__sub">
-                    <a href={`/cases/detail?id=${r.caseId}`} className="grid__link">
+                    <a href={`/cases/detail/?id=${r.caseId}`} className="grid__link">
                       {r.customerName} · {r.caseCode}
                     </a>
                   </span>

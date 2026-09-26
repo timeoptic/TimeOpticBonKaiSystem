@@ -10,9 +10,15 @@
 import { OrderFormView } from '../../../orders/OrderFormView.jsx';
 
 export function SalesPanel({ c, reload, actorId }) {
+  /* ยืนยัน / เปิดขั้นขายกลับมาแก้ เปลี่ยนสิ่งที่ออเดอร์แก้ได้ (Bewell: เลนส์ล็อกหลังยืนยันขาย —
+     lens_locked) แต่ reload() โหลดแค่เคสใหม่ ฟอร์มถือออเดอร์ชุดเดิมไว้ จึงเปลี่ยน key ตาม
+     สถานะขั้นขายให้ฟอร์มโหลดออเดอร์ใหม่ · ตอนสองจังหวะนี้ไม่มีอะไรค้างในฟอร์มให้หาย */
+  const sales = c.processes?.sales || {};
+  const salesKey = `${c.order?.id ?? 'new'}:${sales.status ?? ''}:${sales.completed_at ?? ''}`;
   return (
     <div className="stack">
       <OrderFormView
+        key={salesKey}
         embedded
         editing={!!c.order}
         orderId={c.order?.id}

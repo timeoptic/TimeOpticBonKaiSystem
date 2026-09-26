@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { searchCatalog, toStockRow, requisitionItems } from '../lens/lensSource.js';
+import { searchCatalog, toStockRow, requisitionItems, savedLens } from '../lens/lensSource.js';
 
 const BLUE = {
   id: 3, code: 'LENS-SV156-BLUE', lens_name: 'Single Vision 1.56 Blue Cut', lens_type: 'Single Vision',
@@ -82,4 +82,22 @@ test('requisitionItems: คนละรุ่นแยกข้าง · ข้�
 
 test('requisitionItems: ยังไม่มีใครแตะตัวเลือก (undefined) ไม่ส่งอะไร', () => {
   assert.deepEqual(requisitionItems(undefined, {}), []);
+});
+
+/* เปิดออเดอร์เก่ามาแก้แล้วช่องเลนส์ว่างทั้งที่เลือกไว้แล้ว (ร้านเจอ 26 ก.ย. 2026 เคส 002–004) */
+test('savedLens: ออเดอร์ที่เลือกจากรายการ เปิดกลับมาได้แถวเดิมพร้อมใช้กับการ์ดเลนส์', () => {
+  const r = savedLens(null, BLUE, 'catalog');
+  assert.equal(r.catalog, true);
+  assert.equal(r.lens_catalog_id, 3);
+  assert.equal(r.product_name, 'Single Vision 1.56 Blue Cut');
+});
+
+test('savedLens: ล็อตจากคลังชนะเสมอ · ไม่มีอะไรเลยได้ null', () => {
+  const lot = { id: 99, sku: 'STOCK' };
+  assert.equal(savedLens(lot, BLUE, 'catalog'), lot);
+  assert.equal(savedLens(null, null, 'catalog'), null);
+});
+
+test('savedLens: ฝั่งสต็อก (TimeOptic) ไม่หยิบรายการเลนส์มาใช้', () => {
+  assert.equal(savedLens(null, BLUE, 'stock'), null);
 });

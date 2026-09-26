@@ -36,6 +36,7 @@ final class LensRequisition
         'manual'         => 'ยกเลิกใบเบิก',
         'order_deleted'  => 'ลบออเดอร์',
         'case_cancelled' => 'ยกเลิกเคส',
+        'lens_cleared'   => 'ล้างเลนส์ในหน้าขาย',
     ];
 
     /** คอลัมน์เวลาที่ประทับตอนเข้าสถานะนั้น */
