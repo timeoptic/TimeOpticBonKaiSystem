@@ -227,7 +227,10 @@ code {
 .rail-brand__mark .rail-icon { inline-size: 20px; block-size: 20px; opacity: 1; }
 
 .rail-brand__text { display: flex; flex-direction: column; line-height: 1.2; min-width: 0; }
-.rail-brand__name { color: var(--color-ink); font-size: var(--text-md); font-weight: 650; letter-spacing: -0.2px; }
+.rail-brand__name { color: var(--color-ink); font-size: var(--text-md); font-weight: 650; letter-spacing: 0.6px; }
+
+/* บรรทัดสาขา — เท่ากับ .brand-at ของหน้าร้าน: เล็กกว่าชื่อร้านแต่เข้มกว่าบรรทัดล่าง */
+.rail-brand__at { color: var(--color-ink-soft); font-size: var(--text-sm); font-weight: 500; white-space: nowrap; }
 
 .rail-brand__sub {
   font-size: var(--text-xs);

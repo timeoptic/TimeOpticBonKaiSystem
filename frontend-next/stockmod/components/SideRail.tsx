@@ -377,12 +377,13 @@ export default function SideRail({ actor }: { actor: Actor }) {
     <PhoneTabs actor={actor} pathname={pathname} />
     <nav className="rail-nav wide-only" aria-label="ส่วนหลักของระบบ">
       <Link href="/stock" className="rail-brand">
-        <span className="rail-brand__mark" aria-hidden="true">{ICON.boxes}</span>
+        <span className="rail-brand__mark" aria-hidden="true">◎◎</span>
         {/* ชื่อแบรนด์อยู่บรรทัดบน ชื่อฝั่งอยู่บรรทัดล่าง — เรียงเหมือนหน้าร้าน
             (TimeOptic / ระบบจัดการร้านแว่นตา) เพราะแบรนด์คือของที่เหมือนกัน
             ส่วนบรรทัดล่างคือสิ่งที่บอกว่ากำลังยืนอยู่ฝั่งไหนของระบบเดียวกัน */}
         <span className="rail-brand__text">
-          <span className="rail-brand__name">TimeOptic</span>
+          <span className="rail-brand__name">TIME OPTIC</span>
+          <span className="rail-brand__at">@ Be Well Medical Center</span>
           <span className="rail-brand__sub">คลังและต้นทุน</span>
         </span>
       </Link>
