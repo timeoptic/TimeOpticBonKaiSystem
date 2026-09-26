@@ -273,9 +273,8 @@ final class LensUsage
                 Xlsx::t($r['note']),
             ]);
         }
-        $last = $sh->nextRow() - 1;
+        /* ไม่ใส่ปุ่มกรองที่หัวคอลัมน์ — ร้านไม่ต้องการ (26 ก.ย. 2026) กรองจากหน้าเว็บก่อน Export แทน */
         $sh->freeze(1);
-        $sh->filterFrom(1, count(self::HEAD), max($last, 1));
         return $book;
     }
 }

@@ -101,7 +101,8 @@ export function useFrontdesk<T>(path: string | null, query: Record<string, strin
 
 /** ค่าสายตาหนึ่งข้าง "-2.00 / -0.50 × 180 Add +2.00" */
 export function eyeText(e: Eye): string {
-  if (!e) return "—";
+  /* ไม่มีค่าสายตาในใบ (เคสยังไม่ยืนยันค่าสายตาสุดท้าย) = ขีด ไม่ใช่ 0.00 ให้เข้าใจผิด — ตรงกับไฟล์ Export */
+  if (!e || (!e.sph && !e.cyl && !e.axis && !e.add)) return "—";
   const sph = e.sph ?? "0.00";
   const main = e.cyl ? `${sph} / ${e.cyl}${e.axis ? ` × ${e.axis}` : ""}` : sph;
   return e.add ? `${main} Add ${e.add}` : main;
