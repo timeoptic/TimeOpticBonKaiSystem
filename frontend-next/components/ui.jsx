@@ -166,7 +166,8 @@ export function LinkTabs({ items, isActive }) {
 
 export function OrderStatusBadge({ order }) {
   if (Number(order.order_closed)) return <Badge kind="ok">ปิดการขายแล้ว</Badge>;
-  const unfilled = !order.lens_product_id || !order.right_lens_product_id || !order.frame_product_id;
+  // เกณฑ์เดียวกับ Sql::FILLED ฝั่ง API — มีชื่อกรอบ และมีชื่อเลนส์อย่างน้อยหนึ่งช่อง
+  const unfilled = !order.frame_name || !(order.lens_name || order.lens_r_name || order.lens_l_name);
   return unfilled
     ? <Badge kind="warn">รอของ / ยังไม่เติม</Badge>
     : <Badge kind="blue">รอลูกค้ารับ</Badge>;

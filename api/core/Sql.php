@@ -25,10 +25,36 @@ final class Sql
                  WHERE order_id IS NOT NULL AND cancelled_at IS NULL
                  GROUP BY order_id) pay ON pay.order_id = o.id';
 
-    /** an order still missing one of its three physical items */
-    public const UNFILLED = '(COALESCE(o.lens_product_id,0)=0
-                    OR COALESCE(o.right_lens_product_id,0)=0
-                    OR COALESCE(o.frame_product_id,0)=0)';
+    /**
+     * ออเดอร์ที่เลือกของครบแล้ว — เกณฑ์เดียวกับขั้น "ขาย" (processMissing() / caseStageMap()):
+     * มีชื่อกรอบ และมีชื่อเลนส์อย่างน้อยหนึ่งช่อง
+     *
+     * เคยนับจาก lens_product_id / right_lens_product_id / frame_product_id ซึ่งมีค่าเฉพาะ
+     * ออเดอร์ที่เติมผ่าน /fill ของระบบเก่า · ขั้นตอน 6 ขั้นเก็บเลนส์เป็นชื่อ + SKU และกรอบเดิม
+     * ของลูกค้าไม่มีรหัสสินค้าเลย ทุกออเดอร์จึงค้างอยู่ใน "ออเดอร์ว่าง" ตลอด
+     * (/fill ก็เขียน frame_name / lens_name ด้วย ออเดอร์เก่าจึงยังนับถูก)
+     */
+    public const FILLED = "(COALESCE(o.frame_name,'') <> ''
+                    AND (COALESCE(o.lens_name,'') <> ''
+                         OR COALESCE(o.lens_r_name,'') <> ''
+                         OR COALESCE(o.lens_l_name,'') <> ''))";
+
+    /** an order still missing its frame or its lenses */
+    public const UNFILLED = '(NOT ' . self::FILLED . ')';
+
+    /**
+     * ออเดอร์ที่ยังไม่ปิดการขาย ทั้งที่เคสจบแล้วและเงินครบแล้ว — ไว้ปิดให้อัตโนมัติ
+     * ดู closeOrdersOfCompletedCase() · ยอดค้าง > 0 ไม่ปิด ให้ค้างอยู่ใน "ยังไม่ปิดการขาย"
+     * ให้คนเห็นว่ายังต้องตามเงิน
+     */
+    public const SETTLED_OPEN_ORDERS = "
+      FROM custom_orders o
+      JOIN cases cs ON cs.id = o.case_id AND cs.status = 'completed'
+      LEFT JOIN (SELECT order_id, SUM(amount) paid FROM payments
+                 WHERE order_id IS NOT NULL AND cancelled_at IS NULL
+                 GROUP BY order_id) pay ON pay.order_id = o.id
+     WHERE o.order_closed = 0
+       AND o.total_price - o.discount - COALESCE(pay.paid, 0) <= 0";
 
     public const BOOKING_SELECT = '
       b.*, c.first_name AS cust_first_name, c.last_name AS cust_last_name,
@@ -102,6 +128,41 @@ function setStatus(Tx $q, ?int $caseId, ?string $toStatus, array $opt = []): voi
         'employee_id' => $opt['employee_id'] ?? null,
         'note'        => $opt['note'] ?? null,
     ]);
+}
+
+/**
+ * ปิดการขายให้ออเดอร์ของเคสที่จบแล้ว (status = completed) และจ่ายครบแล้ว
+ *
+ * "เคส" กับ "ออเดอร์" เก็บแยกกัน: ยืนยันขั้นส่งมอบแล้วเคสจบ แต่ order_closed ยังเป็น 0
+ * ออเดอร์เลยค้างอยู่บนหน้าแรกทั้งที่ทำครบทุกขั้น (เคส CASE-2026-00001, 26 ก.ย. 2026)
+ * · เรียกจากทุกจุดที่ทำให้เงื่อนไขครบได้: ยืนยันส่งมอบ และรับเงินเพิ่มหลังเคสจบ
+ *
+ * ไม่บันทึกรายการรับเงิน (order_close_income = 0) — เงินรับไปแล้วในขั้นชำระเงิน
+ * ต่างจาก POST /api/orders/:id/close ที่รับยอดค้างตอนปิด
+ */
+function closeOrdersOfCompletedCase(Tx $q, ?int $caseId, ?int $employeeId = null): void
+{
+    if (!$caseId) {
+        return;
+    }
+    $rows = $q->all('SELECT o.id ' . Sql::SETTLED_OPEN_ORDERS . ' AND o.case_id = ?', $caseId);
+    foreach ($rows as $r) {
+        $q->run(
+            'UPDATE custom_orders SET order_closed = 1, order_close_date = ?,
+               order_close_employee_id = COALESCE(?, employee_id), order_close_income = 0
+             WHERE id = ? AND order_closed = 0',
+            nowStamp(),
+            $employeeId,
+            (int) $r['id']
+        );
+        logEvent($q, $caseId, [
+            'action'      => 'order_closed',
+            'entity'      => 'custom_order',
+            'entity_id'   => (int) $r['id'],
+            'employee_id' => $employeeId,
+            'note'        => 'ปิดการขายอัตโนมัติ — เคสจบและชำระครบแล้ว',
+        ]);
+    }
 }
 
 /**

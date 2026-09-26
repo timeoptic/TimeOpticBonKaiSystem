@@ -396,6 +396,7 @@ POST('/api/cases/:id/processes/:process/complete', function (array $req) {
         /* ส่งมอบเป็นขั้นสุดท้าย — ยืนยันแล้วเคสจบ ไม่มีขั้น "จบงาน" ให้กดซ้ำอีกที */
         if ($process === 'delivery') {
             setStatus($q, $id, 'completed', ['action' => 'process_completed']);
+            closeOrdersOfCompletedCase($q, $id);
             return;
         }
         advanceCaseStatus($q, $c, caseDetail($id)['processes']);
@@ -458,6 +459,30 @@ POST('/api/cases/:id/processes/:process/reopen', function (array $req) {
             'action' => 'process_reopened', 'entity' => 'case_process',
             'note'   => $process . ($note ? " — $note" : ''),
         ]);
+        /* เปิดขั้นส่งมอบกลับมา = เคสยังไม่จบ · ถอยสถานะเคสกลับมาที่ขั้นส่งมอบ และเปิด
+           ออเดอร์ที่ closeOrdersOfCompletedCase() ปิดให้ (income 0) กลับด้วย ไม่งั้นเคส
+           เปิดอยู่แต่ออเดอร์ปิดแล้ว · ออเดอร์ที่ปิดด้วยมือพร้อมรับเงินไม่แตะ */
+        if ($process === 'delivery') {
+            $open = $q->all(
+                'SELECT id FROM custom_orders
+                  WHERE case_id = ? AND order_closed = 1 AND COALESCE(order_close_income, 0) = 0',
+                $id
+            );
+            foreach ($open as $o) {
+                $q->run(
+                    'UPDATE custom_orders SET order_closed = 0, order_close_date = NULL,
+                       order_close_income = NULL WHERE id = ?',
+                    (int) $o['id']
+                );
+                logEvent($q, $id, [
+                    'action' => 'order_reopened', 'entity' => 'custom_order',
+                    'entity_id' => (int) $o['id'], 'note' => 'เปิดขั้นส่งมอบกลับมาแก้',
+                ]);
+            }
+            setStatus($q, $id, 'waiting_pickup', [
+                'action' => 'process_reopened',
+            ]);
+        }
     });
     return caseDetail($id)['processes'];
 });
@@ -521,13 +546,12 @@ function caseStageMap(array $caseIds): array
            FROM prescriptions WHERE case_id IN ($in) GROUP BY case_id",
         ...$ids
     ));
+    $filled = Sql::FILLED;
     $orders = $flat(Db::all(
         "SELECT o.case_id,
                 -- เลนส์: เกณฑ์เดียวกับ orderHasLens() — ชื่อรวม หรือชื่อข้างขวา/ซ้าย (เลนส์ RX)
-                MAX(o.frame_name IS NOT NULL AND o.frame_name <> ''
-                    AND (COALESCE(o.lens_name, '') <> ''
-                         OR COALESCE(o.lens_r_name, '') <> ''
-                         OR COALESCE(o.lens_l_name, '') <> '')) AS filled,   -- ไม่ถามราคา: ราคา 0 ยืนยันขายได้ — เกณฑ์เดียวกับ processMissing()
+                -- Sql::FILLED ใช้ร่วมกับกล่อง \"ออเดอร์ว่าง\" บนหน้าแรก
+                MAX($filled) AS filled,   -- ไม่ถามราคา: ราคา 0 ยืนยันขายได้ — เกณฑ์เดียวกับ processMissing()
                 SUM(o.total_price - o.discount) AS net,
                 MAX(o.appointment_date IS NOT NULL) AS has_appt,
                 COUNT(*) AS n

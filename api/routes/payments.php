@@ -193,6 +193,12 @@ POST('/api/payments', function (array $req) {
             'employee_id' => $receivedBy,
             'note'        => $unpaid ? 'ยังไม่ชำระ — ลูกค้าจะชำระตอนรับของ' : "$kind $amount ($method)",
         ]);
+        /* ส่งมอบก่อนแล้วมาจ่ายส่วนที่ค้างทีหลัง — จ่ายครบเมื่อไหร่ออเดอร์ปิดเอง */
+        $caseOfOrder = int_or($body['case_id'] ?? null);
+        if (!$caseOfOrder && int_or($body['order_id'] ?? null)) {
+            $caseOfOrder = int_or($q->get('SELECT case_id FROM custom_orders WHERE id = ?', int_or($body['order_id']))['case_id'] ?? null);
+        }
+        closeOrdersOfCompletedCase($q, $caseOfOrder, $receivedBy);
         return $r['insertId'];
     });
 
@@ -343,6 +349,7 @@ PUT('/api/payments/:id', function (array $req) {
             'note'        => implode(' · ', $parts) . " — เหตุผล: $reason" . ($by !== '' ? " (แก้โดย $by)" : ''),
             'payload'     => ['before' => $before, 'after' => $after, 'reason' => $reason, 'by' => $by],
         ]);
+        closeOrdersOfCompletedCase($q, int_or($p['case_id']), $receivedBy);
 
         return $id;
     });

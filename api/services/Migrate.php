@@ -848,6 +848,23 @@ final class Migrate
 
         self::reshapeCaseStatuses();
         self::splitCustomerCategoryOutOfCaseType();
+        /* ซ่อมออเดอร์ที่ค้าง "ยังไม่ปิดการขาย" ทั้งที่เคสจบและจ่ายครบแล้ว — ก่อน 26 ก.ย. 2026
+           การยืนยันส่งมอบปิดแต่เคส ไม่ได้ปิดออเดอร์ (ดู closeOrdersOfCompletedCase())
+           รันซ้ำได้: เจอแต่ออเดอร์ที่ order_closed = 0 · เงื่อนไขเดียวกับ Sql::SETTLED_OPEN_ORDERS
+           (เขียนซ้ำตรงนี้เพราะ serve.php โหลด Migrate โดยไม่มี core/Sql.php) */
+        Db::run(
+            "UPDATE custom_orders o
+               JOIN cases cs ON cs.id = o.case_id AND cs.status = 'completed'
+               LEFT JOIN (SELECT order_id, SUM(amount) paid FROM payments
+                           WHERE order_id IS NOT NULL AND cancelled_at IS NULL
+                           GROUP BY order_id) pay ON pay.order_id = o.id
+                SET o.order_closed = 1,
+                    o.order_close_date = COALESCE(cs.closed_at, NOW()),
+                    o.order_close_employee_id = COALESCE(cs.closed_by, o.employee_id),
+                    o.order_close_income = 0
+              WHERE o.order_closed = 0
+                AND o.total_price - o.discount - COALESCE(pay.paid, 0) <= 0"
+        );
         /* พร้อมเพย์ / QR ไม่ได้ใช้แล้ว — ซ่อนจากตัวเลือก แต่แถวยังอยู่ให้ประวัติอ่านออก */
         Db::run("UPDATE list_pay_type SET is_active = 0 WHERE code = 'QR'");
 
