@@ -7,6 +7,7 @@
  */
 
 import { fileNameFromDisposition, saveBlob } from './download.js';
+import { shrinkImage } from './shrinkImage.js';
 
 function apiOrigin() {
   return process.env.NEXT_PUBLIC_API_ORIGIN || '';
@@ -69,7 +70,14 @@ function errorText(data) {
   return data.error || data.message || '';
 }
 
+/* ย่อรูปตรงนี้จุดเดียว — ทุกกล่องแนบไฟล์ (รูปการวัด สลิปโอนเงิน ไฟล์ส่งมอบ) ส่ง
+   ผ่าน upload() หมด กล่องที่เพิ่มทีหลังจึงได้รูปที่ย่อแล้วโดยไม่ต้องจำ */
 async function upload(path, formData) {
+  const file = formData.get('file');
+  if (file && typeof file === 'object') {
+    const small = await shrinkImage(file);
+    if (small !== file) formData.set('file', small, small.name);
+  }
   const res = await fetch(apiOrigin() + path, { method: 'POST', body: formData, credentials: 'include' });
   let data = null;
   try {
