@@ -70,7 +70,9 @@ export function LensItemsTable({ items }) {
             <tr key={it.id}>
               <td>{EYE_LABEL[it.eye] || it.eye}</td>
               <td>
-                {lensSpecText(it)}
+                {it.lens_name ? <b>{it.lens_name} </b> : null}
+                {it.lens_name ? [it.lens_index, it.coating].filter(Boolean).join(' · ') : lensSpecText(it)}
+                {it.lens_code ? <span className="muted"> · {it.lens_code}</span> : null}
                 {it.source === 'MOCK' ? <span className="badge gray" style={{ marginLeft: 6 }}>จำลอง</span> : null}
               </td>
               <td className="num">{it.quantity}</td>
@@ -123,8 +125,21 @@ export function LensRequisitionCard({ r, onChanged }) {
           ออกใบ {fmtDateTime(r.created_at)}
           {r.created_by_name ? ` · โดย ${r.created_by_name}` : ''}
           {r.invoice_code ? ` · ออเดอร์ ${r.invoice_code}` : ''}
-          {r.cancel_reason ? ` · เหตุผลที่ยกเลิก: ${r.cancel_reason}` : ''}
         </p>
+        {/* ใช้เลนส์จริง = ยืนยันขั้นขายแล้ว · ยังไม่ยืนยัน = ร่าง ยังไม่ขึ้นในรายการใช้เลนส์ */}
+        <p className="muted" style={{ margin: 0 }}>
+          {r.used_at
+            ? `ใช้เลนส์ (ยืนยันขั้นขาย) ${fmtDateTime(r.used_at)}${r.used_by_name ? ` · โดย ${r.used_by_name}` : ''}`
+            : 'ร่าง — นับเป็น "ใช้เลนส์" เมื่อยืนยันขั้นขาย'}
+        </p>
+        {r.status === 'cancelled' ? (
+          <p className="note danger" style={{ margin: 0 }}>
+            ยกเลิก {fmtDateTime(r.cancelled_at)}
+            {r.cancelled_by_name ? ` · โดย ${r.cancelled_by_name}` : ''}
+            {r.cancel_source_label ? ` · ${r.cancel_source_label}` : ''}
+            {r.cancel_reason ? ` · ${r.cancel_reason}` : ''}
+          </p>
+        ) : null}
         <RxSnapshotTable rx={r.rx_snapshot} />
         <LensItemsTable items={r.items || []} />
         <p style={{ margin: 0, textAlign: 'right' }}>

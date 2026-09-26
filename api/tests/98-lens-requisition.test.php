@@ -177,7 +177,7 @@ test('เปลี่ยนสถานะเขียนไทม์ไลน�
             "SELECT note FROM case_events WHERE case_id = ? AND action = 'lens_requisition_status' ORDER BY id DESC LIMIT 1",
             $f['case']
         );
-        ok($ev !== null && str_contains($ev['note'], 'ส่งผลิต'), 'ไทม์ไลน์: ' . json_encode($ev, JSON_UNESCAPED_UNICODE));
+        ok($ev !== null && str_contains($ev['note'], 'กำลังตัด/ผลิต'), 'ไทม์ไลน์: ' . json_encode($ev, JSON_UNESCAPED_UNICODE));
         eq(lrStatusCode(fn() => lrStatus((int) $a['id'], 'cancelled')), 400, 'ยกเลิกไม่มีเหตุผล');
     });
 });

@@ -114,7 +114,7 @@ export function homeFor(actor) {
  * ออกจากกลุ่มของตัวเอง
  */
 export const MONEY_PATHS = ['/income', '/expense', '/reports', '/suppliers'];
-export const SYSTEM_PATHS = ['/employees', '/users', '/settings', '/logs'];
+export const SYSTEM_PATHS = ['/employees', '/users', '/settings', '/logs', '/lens-catalog'];
 
 /* สองกลุ่มรวมกัน — ใช้ตอบว่ากำลังยืนอยู่ในโซนแอดมินไหม ไม่ได้ใช้ตัดสินสิทธิ์
    คำตอบเรื่องสิทธิ์อยู่ที่ `inMoneyZone` / `inSystemZone` ทีละหน้า */

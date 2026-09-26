@@ -54,8 +54,8 @@ foreach ([
     'workflow', 'processes', 'uploads', 'sales', 'pos', 'receipts', 'bill-parties',
     'cashflow', 'reports', 'analytics',
     'bookings', 'settings', 'logs',
-    /* ใบเบิกเลนส์ของ Bewell */
-    'lens',
+    /* ใบเบิกเลนส์ รายการเลนส์ และการใช้เลนส์ของ Bewell */
+    'lens', 'lens-catalog',
 ] as $group) {
     require __DIR__ . "/routes/$group.php";
 }

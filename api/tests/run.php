@@ -65,6 +65,7 @@ require __DIR__ . '/../routes/analytics.php';
 require __DIR__ . '/../routes/payments.php';
 /* ใบเบิกเลนส์ของ Bewell (98-lens-requisition) */
 require __DIR__ . '/../routes/lens.php';
+require __DIR__ . '/../routes/lens-catalog.php';
 require __DIR__ . '/harness.php';
 
 Db::configure($config['db']);

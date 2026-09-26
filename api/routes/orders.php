@@ -563,7 +563,13 @@ DELETE('/api/orders/:id', function (array $req) {
     if ((int) $o['order_closed']) {
         bad('ลบไม่ได้ — ออเดอร์ปิดการขายแล้ว');
     }
-    Db::tx(function (Tx $q) use ($id) {
+    Db::tx(function (Tx $q) use ($id, $o) {
+        /* Bewell: ใบเบิกเลนส์ของออเดอร์นี้ถูกยกเลิก ไม่ถูกลบ — ใบจำเลขออเดอร์ไว้ใน order_ref */
+        LensRequisition::cancelFor(
+            $q, 'order', $id, 'order_deleted',
+            'ลบออเดอร์ ' . ($o['invoice_code'] ?? ('#' . $id)),
+            LensRequisition::actorEmployee()
+        );
         $q->run('DELETE FROM payments WHERE order_id = ?', $id);
         $q->run('DELETE FROM custom_orders WHERE id = ?', $id);
     });

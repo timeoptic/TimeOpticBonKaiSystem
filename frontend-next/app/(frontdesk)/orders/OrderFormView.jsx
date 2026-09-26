@@ -26,7 +26,7 @@ import {
 } from '../../../components/ui.jsx';
 import { Picker } from '../../../components/Picker.jsx';
 import { StockPicker, stockLabel } from '../../../components/StockPicker.jsx';
-import { MockLensPicker } from '../../../components/MockLensPicker.jsx';
+import { CatalogLensPicker } from '../../../components/CatalogLensPicker.jsx';
 import { LENS_SOURCE, requisitionItems } from '../../../lib/lens/lensSource.js';
 import { RxSets } from '../../../components/RxSets.jsx';
 import { RxArrival } from '../../../components/RxLensBadge.jsx';
@@ -305,6 +305,18 @@ export function OrderFormView({
   };
   const setP = (patch) => setPrices({ ...p, ...patch });
 
+  /* Bewell (LENS_SOURCE=catalog): เลนส์ส่วนใหญ่ขายเป็นคู่ — เลือกข้างแรกแล้วใส่อีกข้างให้ด้วย
+     ถ้าอีกข้างยังว่าง (ไม่มีเลนส์และไม่มีใบสั่งตัด) · เปลี่ยนอีกข้างเองได้ภายหลัง */
+  const pickCatalogLens = (slot, row) => {
+    const other = slot === 'lensOd' ? 'lensOs' : 'lensOd';
+    if (picked[other] || rxOf(other === 'lensOd' ? 'r' : 'l')) {
+      setPicked({ [slot]: row });
+      return;
+    }
+    setItems({ ...picked, lensOd: row, lensOs: row });
+    setP({ lens_od_price: row.product_price, lens_os_price: row.product_price });
+  };
+
   const total = n(p.frame_price) + n(p.lens_od_price) + n(p.lens_os_price) + n(p.options_price);
   const netTotal = total - n(p.discount);
   /* ตั้งส่วนลดที่นี่ไม่ได้แล้ว เหลือไว้เตือนอย่างเดียวว่าค่าเดิมกินเกินราคารวม
@@ -440,10 +452,10 @@ export function OrderFormView({
         ? await api.put('/api/orders/' + id, body)
         : await api.post('/api/orders', body);
       const oid = editing ? id : saved.id;
-      /* Bewell: เลนส์จำลองที่เลือกในรอบนี้ → ใบเบิกเลนส์ · `items` มีค่าเฉพาะตอนมีคนแตะ
-         ตัวเลือกในรอบนี้ เปิดออเดอร์เก่ามาแก้เรื่องอื่นจึงไม่ล้างใบเบิกเดิม
-         เรียกพลาดไม่ทำให้ออเดอร์พัง — ออเดอร์บันทึกไปแล้วด้วยเส้นทางเดิม */
-      const lensItems = LENS_SOURCE === 'mock' ? requisitionItems(items, p) : [];
+      /* Bewell: เลนส์จากรายการเลนส์ที่เลือกในรอบนี้ → ใบเบิกเลนส์ (ร่าง จนกว่าจะยืนยันขั้นขาย
+         จึงนับเป็น "ใช้เลนส์") · `items` มีค่าเฉพาะตอนมีคนแตะตัวเลือกในรอบนี้ เปิดออเดอร์เก่า
+         มาแก้เรื่องอื่นจึงไม่ล้างใบเบิกเดิม · เรียกพลาดไม่ทำให้ออเดอร์พัง */
+      const lensItems = LENS_SOURCE === 'catalog' ? requisitionItems(items, p) : [];
       if (lensItems.length) {
         try {
           await api.post('/api/lens-requisitions/sync', { order_id: oid, items: lensItems });
@@ -668,7 +680,9 @@ export function OrderFormView({
 
         <Card title="เลนส์ — Lens">
           <p className="hint">
-            ถ้ายังต้องสั่งเลนส์จากซัพพลายเออร์ ให้ข้ามการเลือกสต็อกไปก่อน
+            {LENS_SOURCE === 'catalog'
+              ? 'เลือกเลนส์จากรายการเลนส์ — เลือกข้างแรกแล้วใส่ให้ทั้งคู่ · ค่าสายตาใช้ค่าสุดท้ายของเคส · บันทึกเป็น "ใช้เลนส์" เมื่อยืนยันขั้นขาย'
+              : 'ถ้ายังต้องสั่งเลนส์จากซัพพลายเออร์ ให้ข้ามการเลือกสต็อกไปก่อน'}
           </p>
           {/* mirror: ขวา/ซ้ายต้องกว้างเท่ากัน — ค่าเริ่มต้นของ .split ให้ฝั่งขวากว้าง
               กว่า 15% ซึ่งทำให้เลนส์รุ่นเดียวกันสองข้างขึ้นกล่องสูงไม่เท่ากัน */}
@@ -724,11 +738,11 @@ export function OrderFormView({
                     </div>
                   ) : (
                     <>
-                      {/* Bewell (LENS_SOURCE=mock): เลนส์จำลอง ไม่ใช่ของในคลัง — ดู lib/lens/lensSource.js */}
-                      {LENS_SOURCE === 'mock' ? (
-                        <MockLensPicker
+                      {/* Bewell (LENS_SOURCE=catalog): รายการเลนส์ ไม่ใช่ของในคลัง — ดู lib/lens/lensSource.js */}
+                      {LENS_SOURCE === 'catalog' ? (
+                        <CatalogLensPicker
                           picked={item}
-                          onPick={(r) => setPicked({ [slot]: r })}
+                          onPick={(r) => pickCatalogLens(slot, r)}
                           onClear={() => setItems({ ...picked, [slot]: null })}
                         />
                       ) : (
@@ -775,7 +789,9 @@ export function OrderFormView({
                       ['Index', item?.lens_index || '—'],
                       ['Coating', item?.coating || '—'],
                       ['SKU', item?.sku || '—'],
-                      ['คงเหลือในคลัง', item?.remaining_qty != null ? `${item.remaining_qty} ชิ้น` : '—'],
+                      item?.catalog
+                        ? ['ราคาขาย (คู่)', `${Number(item.pair_price || 0).toLocaleString('th-TH')} บาท`]
+                        : ['คงเหลือในคลัง', item?.remaining_qty != null ? `${item.remaining_qty} ชิ้น` : '—'],
                     ]}
                   >
                     {rx ? null : (

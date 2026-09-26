@@ -417,6 +417,30 @@ final class Migrate
                 KEY idx_lri_req (requisition_id),
                 CONSTRAINT fk_lri_req FOREIGN KEY (requisition_id) REFERENCES lens_requisitions (id) ON DELETE CASCADE
               ) $c",
+
+            /* รายการเลนส์ที่ Bewell ขายได้ — แอดมินเพิ่ม/แก้/ปิดเองที่หน้า /lens-catalog
+               ไม่ใช่คลัง: ไม่มีจำนวนคงเหลือ ไม่มีล็อต ไม่แยกแถวตามค่าสายตา (เลนส์สั่งตัดตามเคส)
+               ไม่มีการลบ — ปิดใช้งานแทน ใบเก่าคัดลอกค่าไว้เองอยู่แล้ว (lens_requisition_items) */
+            'lens_catalog' => "CREATE TABLE IF NOT EXISTS lens_catalog (
+                id            int(10) unsigned NOT NULL AUTO_INCREMENT,
+                code          varchar(40)  NOT NULL,
+                lens_name     varchar(160) NOT NULL,
+                lens_type     varchar(60)  NOT NULL,
+                lens_index    varchar(10)  DEFAULT NULL,
+                coating       varchar(80)  DEFAULT NULL,
+                brand         varchar(80)  DEFAULT NULL,
+                cost_price    decimal(12,2) DEFAULT NULL COMMENT 'ต่อคู่',
+                selling_price decimal(12,2) NOT NULL DEFAULT 0 COMMENT 'ต่อคู่',
+                active        tinyint(1) NOT NULL DEFAULT 1,
+                sort_order    int(11) NOT NULL DEFAULT 0,
+                created_by    int(10) unsigned DEFAULT NULL,
+                updated_by    int(10) unsigned DEFAULT NULL,
+                created_at    datetime NOT NULL DEFAULT current_timestamp(),
+                updated_at    datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+                PRIMARY KEY (id),
+                UNIQUE KEY uq_lens_catalog_code (code),
+                KEY idx_lens_catalog_active (active, sort_order)
+              ) $c",
         ];
     }
 
@@ -581,6 +605,36 @@ final class Migrate
         $list = implode(',', array_map(fn($v) => "'" . str_replace("'", "''", $v) . "'", array_merge($have, $missing)));
         Db::pdo()->exec("ALTER TABLE `$table` MODIFY COLUMN `$column` enum($list) $tail");
         return array_map(fn($v) => "$table.$column+$v", $missing);
+    }
+
+    /**
+     * รายการเลนส์ตั้งต้นของ Bewell — ใส่ครั้งเดียวตอนตารางยังว่าง แอดมินแก้ต่อเองที่หน้าจอ
+     * ราคาเป็นตัวอย่าง ร้านต้องแก้ก่อนใช้จริง · ตารางมีแถวแล้ว (รวมแถวที่ปิดไว้) จะไม่แตะอีก
+     */
+    private static function seedLensCatalog(): void
+    {
+        if ((int) Db::get('SELECT COUNT(*) n FROM lens_catalog')['n'] > 0) {
+            return;
+        }
+        $rows = [
+            ['LENS-SV156-HC',    'Single Vision 1.56 Hard Coat',    'Single Vision', '1.56', 'Hard Coat',     250,  800],
+            ['LENS-SV156-MC',    'Single Vision 1.56 Multicoat',    'Single Vision', '1.56', 'Multicoat',     300,  1000],
+            ['LENS-SV156-BLUE',  'Single Vision 1.56 Blue Cut',     'Single Vision', '1.56', 'Blue',          500,  1500],
+            ['LENS-SV156-AUTO',  'Single Vision 1.56 Auto',         'Single Vision', '1.56', 'Auto',          600,  1800],
+            ['LENS-SV156-ABLUE', 'Single Vision 1.56 Auto Blue',    'Single Vision', '1.56', 'Auto Blue',     750,  2200],
+            ['LENS-SV160-MC',    'Single Vision 1.60 Multicoat',    'Single Vision', '1.60', 'Multicoat',     550,  1600],
+            ['LENS-SV160-BLUE',  'Single Vision 1.60 Blue Cut',     'Single Vision', '1.60', 'Blue',          700,  2000],
+            ['LENS-PG-MC',       'Progressive',                     'Progressive',   '1.56', 'Multicoat',     1200, 3500],
+            ['LENS-PG-BLUE',     'Progressive Blue Cut',            'Progressive',   '1.56', 'Blue',          1500, 4500],
+            ['LENS-PG-AUTO',     'Progressive Photochromic',        'Progressive',   '1.56', 'Photochromic',  1900, 5500],
+        ];
+        foreach ($rows as $i => [$code, $name, $type, $index, $coating, $cost, $price]) {
+            Db::run(
+                'INSERT IGNORE INTO lens_catalog (code, lens_name, lens_type, lens_index, coating, cost_price, selling_price, sort_order)
+                 VALUES (?,?,?,?,?,?,?,?)',
+                $code, $name, $type, $index, $coating, $cost, $price, ($i + 1) * 10
+            );
+        }
     }
 
     /** @return string[] "table.column" names actually added this run */
@@ -759,6 +813,35 @@ final class Migrate
         /* "ยังไม่ชำระ" — รายการรับเงิน 0 บาท ลูกค้าจะมาจ่ายตอนรับของ (ร้านขอ 14 ก.ย. 2026)
            บน Hostinger ไม่มีอะไรเรียก run() ต้องสั่งเพิ่มเอง — ดู deploy/README.md */
         $added = array_merge($added, self::extendEnum('payments', 'kind', ['unpaid'], "NOT NULL DEFAULT 'deposit'"));
+
+        /* Bewell: ใบเบิกเลนส์ = บันทึกการใช้เลนส์ (Lens Usage) — ดู services/LensRequisition.php
+           ค่าเลนส์ในรายการเป็นสำเนา ณ วันที่ขาย แอดมินแก้ชื่อหรือราคาใน lens_catalog ทีหลัง
+           ใบเก่าต้องไม่เปลี่ยนตาม · lens_catalog_id ไม่ผูก FK โดยตั้งใจ ด้วยเหตุผลเดียวกัน */
+        $added = array_merge(
+            $added,
+            self::addColumns('lens_requisition_items', [
+                'lens_catalog_id' => "int(10) unsigned DEFAULT NULL COMMENT 'lens_catalog.id — ไม่ผูก FK โดยตั้งใจ'",
+                'lens_code'       => 'varchar(40)  DEFAULT NULL',
+                'lens_name'       => 'varchar(160) DEFAULT NULL',
+                'cost_price'      => "decimal(12,2) DEFAULT NULL COMMENT 'ต้นทุนต่อหน่วย ณ วันที่ขาย'",
+            ]),
+            self::addColumns('lens_requisitions', [
+                /* ใช้เลนส์จริง = ยืนยันขั้นขายแล้ว (จังหวะเดียวกับที่ตัดสต็อกกรอบ) · NULL = ยังเป็นแค่ร่าง */
+                'used_at'       => 'datetime DEFAULT NULL',
+                'used_by'       => 'int(10) unsigned DEFAULT NULL',
+                /* ใครยกเลิก และยกเลิกเพราะอะไร — ไม่มีการลบใบทิ้ง */
+                'cancelled_by'  => 'int(10) unsigned DEFAULT NULL',
+                'cancel_source' => "varchar(30) DEFAULT NULL COMMENT 'manual | order_deleted | case_cancelled'",
+                /* เลขออเดอร์ ณ วันที่ออกใบ — ลบออเดอร์ทิ้งแล้ว order_id เป็น NULL แต่ยังย้อนดูได้ว่าใบไหน */
+                'order_ref'     => 'varchar(30) DEFAULT NULL',
+            ])
+        );
+        self::seedLensCatalog();
+        /* ใบที่ออกก่อนมีช่อง order_ref — จำเลขออเดอร์ไว้ตอนที่ออเดอร์ยังอยู่ */
+        Db::run(
+            'UPDATE lens_requisitions lr JOIN custom_orders o ON o.id = lr.order_id
+                SET lr.order_ref = o.invoice_code WHERE lr.order_ref IS NULL'
+        );
 
         /* Views come after addColumns, not before: v_case_board selects columns that
            addColumns() is what puts there, so on a database that has not seen this

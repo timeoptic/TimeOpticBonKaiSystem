@@ -892,6 +892,12 @@ button.grid__link { border: 0; background: none; padding: 0; font: inherit; }
    they share one outline chip that reads as bookkeeping beside the traded ones. */
 .tag--cost,
 .tag--settle   { background: transparent; color: var(--color-ink-soft); border-color: var(--color-rule-2); }
+/* Bewell: ใช้เลนส์ — ไม่ใช่ของออกจากคลัง (เลนส์ไม่มีสต็อก) จึงเป็นเส้นประ ไม่ใช่ป้ายทึบของการเคลื่อนของ
+   สีม่วงเดียวกับงานสั่งตัด RX เพราะเป็นเลนส์ที่ตัดตามค่าสายตาของเคสเหมือนกัน */
+.tag--lens-usage { background: var(--tint-lav); color: var(--color-lav-ink); border-color: var(--edge-lav); border-style: dashed; }
+.readout__cell--lav .readout__figure { color: var(--color-lav-ink); }
+.grid__row--void { opacity: 0.6; }
+.grid__rx { font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 /* สถานะของสินค้าเป็นป้ายพื้นจางชุดเดียวกับ tag ไม่ใช่พื้นสีสดทึบ — สีสดทึบ
    ในคอลัมน์เดียวของตารางยาว ๆ อ่านเป็นแถบไฟกระพริบ และดังกว่าปุ่มหลักในหน้า

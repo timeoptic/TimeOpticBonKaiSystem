@@ -1,98 +1,84 @@
 /**
  * แหล่งข้อมูลเลนส์ของหน้าขาย
  *
- *   NEXT_PUBLIC_LENS_SOURCE=mock  Bewell — เลือกจากเลนส์จำลอง (mockLenses.js = รายชื่อเลนส์จากเว็บหลัก
- *                                 TimeOptic) ไม่แตะคลังของ Bewell
- *   ไม่ตั้ง                         TimeOptic — เลือกเลนส์จากคลังแบบเดิม (StockPicker)
+ *   NEXT_PUBLIC_LENS_SOURCE=catalog  Bewell — เลือกจากรายการเลนส์ (lens_catalog ที่แอดมินแก้เองได้
+ *                                    ที่หน้า /lens-catalog) ไม่ใช่คลัง: ไม่มีจำนวนคงเหลือ ไม่ตัดสต็อก
+ *                                    ('mock' ค่าเดิมก่อนมีรายการในฐาน ถือเป็นค่าเดียวกัน)
+ *   ไม่ตั้ง                            TimeOptic — เลือกเลนส์จากคลังแบบเดิม (StockPicker)
  *
- * วันที่ Bewell มีฐานเลนส์จริง ให้เปลี่ยนแหล่งที่ searchMockLenses อ่าน แต่คืนรูปแถวเดิม
- * (toStockRow) หน้าขายก็ไม่ต้องแก้
+ * แถวที่ส่งให้ OrderFormView อยู่รูปเดียวกับแถวสต็อก (toStockRow) หน้าขายจึงแก้น้อยที่สุด
+ * ขายแล้วระบบบันทึกเป็น "ใช้เลนส์" ในใบเบิกเลนส์ (ดู api/services/LensRequisition.php)
  */
-import { MOCK_LENSES } from './mockLenses.js';
 
-export const LENS_SOURCE = process.env.NEXT_PUBLIC_LENS_SOURCE === 'mock' ? 'mock' : 'stock';
+const SOURCE = process.env.NEXT_PUBLIC_LENS_SOURCE;
+export const LENS_SOURCE = SOURCE === 'catalog' || SOURCE === 'mock' ? 'catalog' : 'stock';
 
-/** ค่าสายตาให้อยู่รูปเดียวกับที่ตัวกรองส่งมา ("-2.00" · "0.25" · "0.00") */
-const powerKey = (v) => {
-  if (v === '' || v === null || v === undefined) return '';
-  const n = Number(v);
-  if (!Number.isFinite(n)) return '';
-  return (Math.abs(n) < 0.005 ? 0 : n).toFixed(2);
-};
-
-/** รุ่นของเลนส์ = ชื่อที่ตัดแบรนด์ข้างหน้าและ "(Index) ค่าสายตา" ข้างหลังออก — "Crystal FT Auto Bifocal (1.56) ..." → "FT Auto Bifocal" */
-const modelOf = (l) => {
-  let m = l.name.replace(/\s*\(\d\.\d{2}\).*$/, '').trim();
-  if (l.brand && m.toLowerCase().startsWith(l.brand.toLowerCase() + ' ')) m = m.slice(l.brand.length + 1);
-  return m;
-};
-
-/**
- * เลนส์จำลอง → รูปแถวที่ LensPicker และ OrderFormView อ่าน
- * id เป็น null เสมอ: ออเดอร์ไม่ผูกล็อต ขั้นขายจึงไม่ตัดสต็อกเลนส์
- * ไฟล์ต้นทางไม่มีราคาขาย product_price จึงเป็น 0 — พนักงานกรอกราคาเองในหน้าขาย
- */
-export function toStockRow(l) {
+/** แถวจาก GET /api/lens-catalog → รูปแถวที่ OrderFormView อ่าน
+ *  id เป็น null เสมอ: ออเดอร์ไม่ผูกล็อต ขั้นขายจึงไม่ตัดสต็อกเลนส์
+ *  product_price = ราคาข้างละครึ่ง เพราะหน้าขายแยกขวา/ซ้าย แถบราคาคู่รวมกลับเป็นราคาคู่พอดี */
+export function toStockRow(c) {
+  const pair = Number(c.selling_price) || 0;
   return {
     id: null,
-    mock: true,
-    mock_code: l.mock_code,
-    sku: l.mock_code,
-    product_name: l.name,
-    brand: l.brand,
-    model: modelOf(l),
-    lens_type: l.lens_type,
-    lens_design: l.lens_type,
-    lens_index: l.lens_index,
-    coating: l.coating,
-    sph: l.sph,
-    cyl: l.cyl,
-    add: l.add,
+    catalog: true,
+    lens_catalog_id: c.id,
+    sku: c.code,
+    product_name: c.lens_name,
+    brand: c.brand || '',
+    model: c.lens_name,
+    lens_type: c.lens_type,
+    lens_design: c.lens_type,
+    lens_index: c.lens_index || '',
+    coating: c.coating || '',
     tint: '',
-    product_price: 0,
+    pair_price: pair,
+    product_price: Math.round((pair / 2) * 100) / 100,
   };
 }
 
-/** ค้นหลายคำแบบ AND ในชื่อ/รหัส · Coating / SPH / CYL เทียบตรงค่า เหมือนตัวกรองของคลัง */
-export function searchMockLenses(term = '', { coating = '', sph = '', cyl = '' } = {}, list = MOCK_LENSES) {
-  const words = String(term).toLowerCase().split(/\s+/).filter(Boolean);
-  const wantSph = powerKey(sph);
-  const wantCyl = powerKey(cyl);
-  return list
-    .filter((l) => !coating || l.coating === coating)
-    .filter((l) => wantSph === '' || powerKey(l.sph) === wantSph)
-    .filter((l) => wantCyl === '' || powerKey(l.cyl) === wantCyl)
-    .filter((l) => {
-      const hay = `${l.name} ${l.mock_code}`.toLowerCase();
-      return words.every((w) => hay.includes(w));
-    })
-    .map(toStockRow);
+/** ตัวเลือกของช่องเลือกเลนส์ — จัดกลุ่มตามชนิด บรรทัดรองคือ Index · Coating · ราคาคู่ */
+export function catalogOptions(list) {
+  return [...list]
+    .sort((a, b) => String(a.lens_type).localeCompare(String(b.lens_type)) || a.sort_order - b.sort_order)
+    .map((c) => [
+      String(c.id),
+      c.lens_name,
+      {
+        group: c.lens_type,
+        hint: [c.lens_index, c.coating, `${Number(c.selling_price || 0).toLocaleString('th-TH')} บาท/คู่`]
+          .filter(Boolean).join(' · '),
+        keywords: [c.code, c.brand, c.coating, c.lens_index].filter(Boolean).join(' '),
+      },
+    ]);
 }
 
 /**
- * รายการที่ส่งให้ POST /api/lens-requisitions/sync — หนึ่งแถวต่อข้างที่เลือกเลนส์จำลอง
+ * รายการที่ส่งให้ POST /api/lens-requisitions/sync
+ * สองข้างเป็นเลนส์รุ่นเดียวกัน = 1 คู่ (หน่วยที่ร้านเบิกจริง) · คนละรุ่น = ข้างละรายการ
+ * ต้นทุน ชื่อ และชนิด ฝั่ง API อ่านจากรายการเลนส์เอง ที่นี่ส่งแค่ id กับราคาขายในออเดอร์
  * `items` คือ state ตัวเลือกของ OrderFormView (undefined = รอบนี้ยังไม่มีใครแตะ)
  */
 export function requisitionItems(items, prices) {
-  const out = [];
-  for (const [slot, eye, priceKey] of [['lensOd', 'R', 'lens_od_price'], ['lensOs', 'L', 'lens_os_price']]) {
-    const r = items?.[slot];
-    if (!r?.mock) continue;
-    out.push({
-      eye,
-      source: 'MOCK',
-      mock_code: r.mock_code,
-      brand: r.brand,
-      lens_type: r.lens_type,
-      design: r.model,
-      lens_index: r.lens_index,
-      coating: r.coating,
-      option_name: '',
-      photochromic: '',
-      color: '',
-      quantity: 1,
-      unit_price: Number(prices?.[priceKey]) || 0,
-    });
+  const od = items?.lensOd?.catalog ? items.lensOd : null;
+  const os = items?.lensOs?.catalog ? items.lensOs : null;
+  const price = (k) => Number(prices?.[k]) || 0;
+  const row = (eye, r, unitPrice) => ({
+    eye,
+    source: 'CATALOG',
+    lens_catalog_id: r.lens_catalog_id,
+    brand: r.brand,
+    lens_type: r.lens_type,
+    design: r.product_name,
+    lens_index: r.lens_index,
+    coating: r.coating,
+    quantity: 1,
+    unit_price: unitPrice,
+  });
+  if (od && os && od.lens_catalog_id === os.lens_catalog_id) {
+    return [row('pair', od, price('lens_od_price') + price('lens_os_price'))];
   }
-  return out;
+  return [
+    ...(od ? [row('R', od, price('lens_od_price'))] : []),
+    ...(os ? [row('L', os, price('lens_os_price'))] : []),
+  ];
 }

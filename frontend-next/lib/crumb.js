@@ -60,6 +60,7 @@ export const TITLES = [
   ['/reports', 'รายงาน'],
   ['/print/order', 'ใบสั่งตัดแว่น'],
   ['/lens-requisitions', 'ใบเบิกเลนส์'],
+  ['/lens-catalog', 'รายการเลนส์'],
   ['/print/lens-requisition', 'พิมพ์ใบเบิกเลนส์'],
   ['/print/prescription', 'ใบวัดสายตา'],
 ];

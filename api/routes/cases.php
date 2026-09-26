@@ -674,6 +674,14 @@ POST('/api/cases/:id/status', function (array $req) {
         if ($to === 'cancelled' && nul($body['note'] ?? null) !== null) {
             $q->run('UPDATE cases SET cancelled_reason = ? WHERE id = ?', str_or($body['note']), $id);
         }
+        /* Bewell: ยกเลิกเคส = ยกเลิกใบเบิกเลนส์ของเคสด้วย (ไม่ลบ) */
+        if ($to === 'cancelled' && $before && $before['status'] !== 'cancelled') {
+            LensRequisition::cancelFor(
+                $q, 'case', $id, 'case_cancelled',
+                'ยกเลิกเคส' . (nul($body['note'] ?? null) !== null ? ' · ' . str_or($body['note']) : ''),
+                LensRequisition::actorEmployee() ?? int_or($body['employee_id'] ?? null)
+            );
+        }
         $target = $q->get('SELECT is_terminal FROM case_statuses WHERE code = ?', $to);
         if ($target && (int) $target['is_terminal'] === 1 && $before && $before['status'] !== $to) {
             $q->run('UPDATE cases SET closed_by = ? WHERE id = ?', int_or($body['employee_id'] ?? null), $id);

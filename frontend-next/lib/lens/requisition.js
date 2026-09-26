@@ -6,9 +6,9 @@ export const FLOW = ['pending', 'issued', 'ordered', 'received', 'assembled'];
 
 export const STATUS_LABEL = {
   pending: 'รอเบิก',
-  issued: 'เบิกแล้ว',
-  ordered: 'ส่งผลิต / สั่งเลนส์',
-  received: 'ได้รับเลนส์',
+  issued: 'ส่งรายการเบิกแล้ว',
+  ordered: 'กำลังตัด/ผลิต',
+  received: 'ได้รับเลนส์แล้ว',
   assembled: 'ประกอบแล้ว',
   cancelled: 'ยกเลิก',
 };
@@ -21,6 +21,16 @@ export const STATUS_TONE = {
   received: 'mint',
   assembled: 'ok',
   cancelled: 'danger',
+};
+
+/** รหัสสถานะที่ใช้คุยกับ TimeOptic และในไฟล์ Export — ตรงกับ LensRequisition::CODE */
+export const STATUS_CODE = {
+  pending: 'PENDING',
+  issued: 'REQUESTED',
+  ordered: 'PROCESSING',
+  received: 'RECEIVED',
+  assembled: 'ASSEMBLED',
+  cancelled: 'CANCELLED',
 };
 
 export const EYE_LABEL = { R: 'ขวา (R)', L: 'ซ้าย (L)', pair: 'คู่' };

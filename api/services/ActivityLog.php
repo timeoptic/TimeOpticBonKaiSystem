@@ -80,6 +80,7 @@ final class ActivityLog
         '/api/uploads'       => 'case_photos',
         '/api/settings'      => 'app_settings',
         '/api/lens-requisitions' => 'lens_requisitions',
+        '/api/lens-catalog'      => 'lens_catalog',
         /* บัญชีผู้ใช้อยู่ในตาราง `admins` ซึ่งเป็นของ API ฝั่งคลัง แต่หน้าจอที่ใช้
            เปิดมันคือ /users ของหน้าร้าน · การเพิ่ม-ลบสิทธิ์คือสิ่งที่ล็อกต้องเห็น
            ที่สุดอย่างหนึ่ง จึงตามข้ามไปอีกฝั่ง ทำได้เพราะสองฝั่งใช้ PDO ตัวเดียวกัน */
@@ -107,6 +108,7 @@ final class ActivityLog
         'app_settings'      => 'การตั้งค่าระบบ',
         'admins'            => 'บัญชีผู้ใช้',
         'lens_requisitions' => 'ใบเบิกเลนส์',
+        'lens_catalog'      => 'รายการเลนส์',
     ];
 
     /** ชื่อไทยของ action — ที่ไม่มีในนี้ใช้ชื่อดิบจาก path ไปเลย */

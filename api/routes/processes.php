@@ -423,6 +423,9 @@ POST('/api/cases/:id/processes/:process/complete', function (array $req) {
             });
             throw $e;
         }
+        /* Bewell: เลนส์ไม่มีสต็อก — ขายแล้วบันทึกเป็น "ใช้เลนส์" แทนการตัดของ (ใบเบิกเลนส์ของเคส)
+           หลังตัดกรอบสำเร็จเท่านั้น ตัดไม่ผ่านขั้นขายถูกเปิดกลับ เลนส์ก็ต้องยังไม่นับว่าใช้ */
+        Db::tx(fn(Tx $q) => LensRequisition::markUsed($q, $id, LensRequisition::actorEmployee()));
     }
 
     return caseDetail($id)['processes'];
@@ -440,6 +443,8 @@ POST('/api/cases/:id/processes/:process/reopen', function (array $req) {
        ให้ตรงกับของที่ยังออกไปจากคลังจริง ๆ */
     if ($process === 'sales') {
         CaseStock::returnForCase(caseDetail($id), 'เปิดขั้นการขายกลับมาแก้');
+        /* Bewell: ใบเบิกที่ยังรอเบิกกลับไปเป็นร่าง — ดู LensRequisition::unmarkUsed() */
+        Db::tx(fn(Tx $q) => LensRequisition::unmarkUsed($q, $id, LensRequisition::actorEmployee()));
     }
 
     Db::tx(function (Tx $q) use ($id, $process, $note) {

@@ -14,11 +14,28 @@ final class LensRequisition
 
     public const LABEL = [
         'pending'   => 'รอเบิก',
-        'issued'    => 'เบิกแล้ว',
-        'ordered'   => 'ส่งผลิต / สั่งเลนส์',
-        'received'  => 'ได้รับเลนส์',
+        'issued'    => 'ส่งรายการเบิกแล้ว',
+        'ordered'   => 'กำลังตัด/ผลิต',
+        'received'  => 'ได้รับเลนส์แล้ว',
         'assembled' => 'ประกอบแล้ว',
         'cancelled' => 'ยกเลิก',
+    ];
+
+    /** รหัสสถานะในไฟล์ Export — ชื่อที่ใช้คุยกับ TimeOptic ตอนเบิกเลนส์ */
+    public const CODE = [
+        'pending'   => 'PENDING',
+        'issued'    => 'REQUESTED',
+        'ordered'   => 'PROCESSING',
+        'received'  => 'RECEIVED',
+        'assembled' => 'ASSEMBLED',
+        'cancelled' => 'CANCELLED',
+    ];
+
+    /** ที่มาของการยกเลิก — ยกเลิกด้วยมือ หรือระบบยกเลิกให้เพราะออเดอร์/เคสถูกยกเลิก */
+    public const CANCEL_SOURCE = [
+        'manual'         => 'ยกเลิกใบเบิก',
+        'order_deleted'  => 'ลบออเดอร์',
+        'case_cancelled' => 'ยกเลิกเคส',
     ];
 
     /** คอลัมน์เวลาที่ประทับตอนเข้าสถานะนั้น */
@@ -105,7 +122,8 @@ final class LensRequisition
                 bad("รายการที่ $n: ข้างของเลนส์ไม่ถูกต้อง");
             }
             $brand = $text($it['brand'] ?? '', 80);
-            if ($brand === '') {
+            /* เลนส์จาก lens_catalog ยี่ห้อไม่บังคับ — withCatalog() เติมค่าจากฐานให้ */
+            if ($brand === '' && !int_or($it['lens_catalog_id'] ?? null)) {
                 bad("รายการที่ $n: ไม่มียี่ห้อเลนส์");
             }
             $qty   = max(1, (int) ($it['quantity'] ?? 1));
@@ -116,7 +134,7 @@ final class LensRequisition
             $source = strtoupper((string) ($it['source'] ?? 'MOCK'));
             $out[] = [
                 'eye'          => $eye === 'PAIR' ? 'pair' : $eye,
-                'source'       => in_array($source, ['MOCK', 'DATABASE'], true) ? $source : 'MOCK',
+                'source'       => in_array($source, ['MOCK', 'CATALOG', 'DATABASE'], true) ? $source : 'MOCK',
                 'mock_code'    => $text($it['mock_code'] ?? '', 120) ?: null,
                 'brand'        => $brand,
                 'lens_type'    => $text($it['lens_type'] ?? '', 80) ?: null,
@@ -129,8 +147,165 @@ final class LensRequisition
                 'quantity'     => $qty,
                 'unit_price'   => $price,
                 'line_total'   => round($qty * $price, 2),
+                'lens_catalog_id' => int_or($it['lens_catalog_id'] ?? null) ?: null,
+                'lens_code'       => null,
+                'lens_name'       => null,
+                'cost_price'      => null,
             ];
         }
         return $out;
+    }
+
+    /**
+     * เติมค่าจาก lens_catalog ลงรายการ — สำเนา ณ วันที่ขาย ไม่ใช่ลิงก์
+     *
+     * ชื่อ ชนิด Index Coating ยี่ห้อ และต้นทุน อ่านจากฐานเสมอ ไม่เชื่อค่าที่หน้าเว็บส่งมา
+     * (พนักงานขายไม่เห็นต้นทุนด้วยซ้ำ) · ราคาขายเป็นของหน้าขาย เพราะร้านแก้ราคาในออเดอร์ได้
+     * ต้นทุนในตารางเป็นต่อคู่ ข้างเดียวจึงคิดครึ่งหนึ่ง
+     */
+    public static function withCatalog(Tx $q, array $items): array
+    {
+        foreach ($items as $n => &$it) {
+            if (!$it['lens_catalog_id']) {
+                continue;
+            }
+            $c = $q->get('SELECT * FROM lens_catalog WHERE id = ?', $it['lens_catalog_id']);
+            if (!$c) {
+                bad('รายการที่ ' . ($n + 1) . ': ไม่พบเลนส์นี้ในรายการเลนส์');
+            }
+            $cost = $c['cost_price'] === null ? null : (float) $c['cost_price'];
+            $it['source']     = 'CATALOG';
+            $it['mock_code']  = $c['code'];
+            $it['lens_code']  = $c['code'];
+            $it['lens_name']  = $c['lens_name'];
+            $it['brand']      = (string) ($c['brand'] ?? '');
+            $it['lens_type']  = $c['lens_type'];
+            $it['design']     = $c['lens_name'];
+            $it['lens_index'] = $c['lens_index'];
+            $it['coating']    = $c['coating'];
+            $it['cost_price'] = $cost === null ? null : round($it['eye'] === 'pair' ? $cost : $cost / 2, 2);
+        }
+        unset($it);
+        return $items;
+    }
+
+    /** ผู้ใช้ที่ล็อกอินอยู่ (employees.id) — null ตอนรันจากเทสต์หรือ CLI */
+    public static function actorEmployee(): ?int
+    {
+        $a = class_exists('StockModule') ? StockModule::actor() : null;
+        return isset($a['employeeId']) ? (int) $a['employeeId'] : null;
+    }
+
+    /**
+     * ยืนยันขั้นขายแล้ว = ใช้เลนส์จริง · ใบของเคสที่ยังไม่ยกเลิกถูกประทับ used_at
+     * เรียกหลังตัดสต็อกกรอบสำเร็จ (routes/processes.php) — จังหวะเดียวกับที่ของออกจากร้าน
+     * กดยืนยันซ้ำไม่ประทับทับของเดิม
+     */
+    public static function markUsed(Tx $q, int $caseId, ?int $employee): int
+    {
+        $rows = $q->all(
+            "SELECT lr.id, lr.req_no, lr.rx_snapshot, lr.status, o.final_prescription_id, lr.case_id
+               FROM lens_requisitions lr LEFT JOIN custom_orders o ON o.id = lr.order_id
+              WHERE lr.case_id = ? AND lr.status <> 'cancelled' AND lr.used_at IS NULL FOR UPDATE",
+            $caseId
+        );
+        foreach ($rows as $r) {
+            /* ค่าสายตาเพิ่งยืนยันหลังออกใบ — ถึงตอนขายต้องมีสำเนาค่าสายตาติดใบไปด้วย */
+            if (!$r['rx_snapshot']) {
+                $rx = self::finalRx($q, $r);
+                if ($rx) {
+                    $q->run(
+                        'UPDATE lens_requisitions SET prescription_id = ?, rx_snapshot = ? WHERE id = ?',
+                        (int) $rx['id'],
+                        json_encode(self::snapshot($rx), JSON_UNESCAPED_UNICODE),
+                        (int) $r['id']
+                    );
+                }
+            }
+            $q->run('UPDATE lens_requisitions SET used_at = NOW(), used_by = ? WHERE id = ?', $employee, (int) $r['id']);
+            logEvent($q, $caseId, [
+                'action'      => 'lens_usage_recorded',
+                'entity'      => 'lens_requisition',
+                'entity_id'   => (int) $r['id'],
+                'employee_id' => $employee,
+                'note'        => $r['req_no'] . ': บันทึกการใช้เลนส์ (ยืนยันขั้นขาย)',
+            ]);
+        }
+        return count($rows);
+    }
+
+    /**
+     * เปิดขั้นขายกลับมาแก้ = ยังไม่ได้ขาย · ใบที่ยังรอเบิกกลับไปเป็นร่าง (used_at = NULL)
+     * ใบที่ส่งรายการเบิกไปแล้วไม่แตะ — TimeOptic ได้รายการไปแล้ว ต้องยกเลิกใบเองถ้าไม่เอา
+     * ทุกครั้งลงไทม์ไลน์เคสว่าใครทำเมื่อไร
+     */
+    public static function unmarkUsed(Tx $q, int $caseId, ?int $employee): int
+    {
+        $rows = $q->all(
+            "SELECT id, req_no FROM lens_requisitions
+              WHERE case_id = ? AND status = 'pending' AND used_at IS NOT NULL FOR UPDATE",
+            $caseId
+        );
+        foreach ($rows as $r) {
+            $q->run('UPDATE lens_requisitions SET used_at = NULL, used_by = NULL WHERE id = ?', (int) $r['id']);
+            logEvent($q, $caseId, [
+                'action'      => 'lens_usage_reverted',
+                'entity'      => 'lens_requisition',
+                'entity_id'   => (int) $r['id'],
+                'employee_id' => $employee,
+                'note'        => $r['req_no'] . ': ถอนการใช้เลนส์ (เปิดขั้นขายกลับมาแก้)',
+            ]);
+        }
+        return count($rows);
+    }
+
+    /**
+     * ยกเลิกใบเบิกทุกใบที่ยังไม่ยกเลิกของออเดอร์หรือเคส — แทนการลบ ใบยังอยู่ให้ตรวจย้อนหลัง
+     * ว่าใครยกเลิก เมื่อไร เพราะอะไร และอ้างถึงออเดอร์ไหน (order_ref ติดใบไว้แล้ว)
+     * ใบที่ประกอบแล้วไม่ยกเลิก (กติกาเดียวกับ transitionError) แต่ลงไทม์ไลน์ไว้ให้เห็น
+     *
+     * @param 'order'|'case' $by
+     */
+    public static function cancelFor(Tx $q, string $by, int $id, string $source, string $reason, ?int $employee): int
+    {
+        $col  = $by === 'order' ? 'order_id' : 'case_id';
+        $rows = $q->all(
+            "SELECT id, req_no, case_id, status FROM lens_requisitions
+              WHERE `$col` = ? AND status <> 'cancelled' FOR UPDATE",
+            $id
+        );
+        $done = 0;
+        foreach ($rows as $r) {
+            if ($r['status'] === 'assembled') {
+                logEvent($q, (int) $r['case_id'], [
+                    'action'      => 'lens_requisition_kept',
+                    'entity'      => 'lens_requisition',
+                    'entity_id'   => (int) $r['id'],
+                    'employee_id' => $employee,
+                    'note'        => $r['req_no'] . ': ประกอบแล้ว ไม่ยกเลิกให้อัตโนมัติ · ' . $reason,
+                ]);
+                continue;
+            }
+            $q->run(
+                'UPDATE lens_requisitions
+                    SET status = ?, cancelled_at = NOW(), cancelled_by = ?, cancel_source = ?, cancel_reason = ?
+                  WHERE id = ?',
+                'cancelled',
+                $employee,
+                $source,
+                mb_substr($reason, 0, 255),
+                (int) $r['id']
+            );
+            logEvent($q, (int) $r['case_id'], [
+                'action'      => 'lens_requisition_status',
+                'entity'      => 'lens_requisition',
+                'entity_id'   => (int) $r['id'],
+                'employee_id' => $employee,
+                'note'        => $r['req_no'] . ': ' . self::LABEL[$r['status']] . ' → ยกเลิก · ' . $reason,
+                'payload'     => ['from' => $r['status'], 'to' => 'cancelled', 'source' => $source],
+            ]);
+            $done++;
+        }
+        return $done;
     }
 }
