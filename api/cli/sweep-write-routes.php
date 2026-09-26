@@ -64,6 +64,8 @@ foreach ([
     'workflow', 'processes', 'uploads', 'sales', 'pos', 'receipts', 'bill-parties',
     'cashflow', 'reports', 'analytics',
     'bookings', 'settings', 'logs',
+    /* ใบเบิกเลนส์ รายการเลนส์ และการใช้เลนส์ของ Bewell — ต้องตรงกับ api/index.php */
+    'lens', 'lens-catalog',
 ] as $group) {
     require "$root/api/routes/$group.php";
 }
@@ -203,11 +205,14 @@ try {
     $rx = hit('บันทึกค่าสายตา', 'POST', '/api/prescriptions', [
         'customer_id' => $customerId, 'case_id' => $caseId,
         'od_sph' => '-1.25', 'os_sph' => '-1.50',
+        /* ยืนยันค่าสายตาต้องมี Test For (prescriptions.php) — ไม่มีแล้วเส้น confirm ข้างล่างตอบ 400 */
+        'test_for' => 'Distance',
     ]);
     $rxId = (int) ($rx['id'] ?? 0);
     if ($rxId) {
         hit('แก้ค่าสายตา', 'PUT', "/api/prescriptions/$rxId", [
             'customer_id' => $customerId, 'case_id' => $caseId, 'od_sph' => '-1.75',
+            'test_for' => 'Distance',
         ]);
         hit('ยืนยันค่าสายตา', 'POST', "/api/prescriptions/$rxId/confirm", []);
     }

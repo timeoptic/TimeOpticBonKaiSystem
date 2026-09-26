@@ -19,7 +19,8 @@ import { ROUTES } from './routes.js';
 
 /* ปุ่มที่กดไม่ได้ในเทสต์ พร้อมเหตุผลที่จะขึ้นในรายงาน */
 const SKIP = [
-  [/ออกจากระบบ|ล็อกเอาต์/, 'จะทำให้เทสต์ที่เหลือหลุดล็อกอิน'],
+  /* ปุ่มบนแถบบนเขียนแค่ "ออก" — ไม่กันไว้ เทสต์กดออกจากระบบเองแล้วทุกปุ่มหลังจากนั้นตกหมด */
+  [/^ออก$|ออกจากระบบ|ล็อกเอาต์/, 'จะทำให้เทสต์ที่เหลือหลุดล็อกอิน'],
   [/พิมพ์|print/i, 'เปิดกล่องพิมพ์ของระบบปฏิบัติการซึ่งปิดเองไม่ได้'],
   [/^ลบ|ลบ$|ลบทิ้ง|ยกเลิกบิล|void/i, 'ลบข้อมูลจริง'],
   [/บันทึก|ยืนยัน|สร้าง(?!ใหม่)|ออกใบ|ส่งมอบ|ตัดจ่าย|รับเงิน|จ่ายเงิน|ปิดเคส|ปิดงาน/, 'เขียนข้อมูลลงฐาน'],
@@ -33,12 +34,16 @@ const skipReason = (label) => SKIP.find(([re]) => re.test(label))?.[1] ?? null;
 /** ปุ่มทุกตัวที่ผู้ใช้เห็นและกดได้ พร้อมป้ายกำกับที่ใช้อ้างถึงมัน */
 const collectButtons = () => {
   const sel = 'button, [role="button"], input[type="submit"], input[type="button"], a[class*="btn"]';
+  /* i = ลำดับในเอกสารทั้งหมด (ก่อนกรองตัวที่มองไม่เห็น) — ต้องตรงกับ locator(...).nth(i)
+     ที่นับทุกตัว · เคยนับหลังกรอง ปุ่มเมนูมือถือที่ซ่อนอยู่หน้าสุดทำให้เลื่อนไปหนึ่งช่อง
+     แล้วทุกครั้งที่ตั้งใจกดปุ่มที่สอง ไปโดนปุ่ม "ออก" จนหลุดล็อกอินทั้งชุด */
   return [...document.querySelectorAll(sel)]
-    .filter((el) => {
+    .map((el, i) => ({ el, i }))
+    .filter(({ el }) => {
       const r = el.getBoundingClientRect();
       return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden';
     })
-    .map((el, i) => ({
+    .map(({ el, i }) => ({
       i,
       label: (el.getAttribute('aria-label') || el.textContent || el.value || '').trim().replace(/\s+/g, ' '),
       disabled: el.disabled === true || el.getAttribute('aria-disabled') === 'true',
@@ -77,6 +82,22 @@ test.describe('ปุ่มทุกปุ่มกดแล้วไม่พ�
 
         const before = errors.length;
         const before5 = server5xx.length;
+        /* ลำดับปุ่มเลื่อนได้หลังกดปุ่มก่อนหน้า (กล่องเปิดค้าง แท็บเปลี่ยน รายการโหลดเพิ่ม) —
+           กดตามลำดับเดิมโดยไม่ดูชื่อเคยไปโดนปุ่ม "ออก" แล้วหลุดล็อกอินทั้งชุด
+           จึงเช็กชื่อก่อนทุกครั้ง ไม่ตรงก็เปิดหน้าใหม่แล้วเช็กอีกรอบ */
+        const now = () => page.evaluate(collectButtons).then((all) => all.find((x) => x.i === b.i) ?? null);
+        let cur = await now();
+        if (cur?.label !== b.label) {
+          await page.goto(path);
+          await page.waitForTimeout(1500);
+          cur = await now();
+          if (cur?.label !== b.label) {
+            report.push(`  ⤳ ข้าม "${b.label}" — ตำแหน่งปุ่มเปลี่ยนหลังเปิดหน้าใหม่`);
+            continue;
+          }
+        }
+        /* ปุ่มที่กดก่อนหน้าปิดปุ่มนี้ไปแล้ว (เช่นกดหน้าสุดท้ายแล้ว "หน้าถัดไป" ถูกปิด) — ถูกต้อง ไม่ใช่พัง */
+        if (cur.disabled) { report.push(`  · "${b.label}" ปิดใช้งานอยู่ (หลังกดปุ่มก่อนหน้า)`); continue; }
         const el = page.locator(
           'button, [role="button"], input[type="submit"], input[type="button"], a[class*="btn"]',
         ).nth(b.i);
@@ -99,7 +120,8 @@ test.describe('ปุ่มทุกปุ่มกดแล้วไม่พ�
         /* กลับสู่สภาพเดิมก่อนกดปุ่มถัดไป: ปิดกล่องที่เพิ่งเปิด แล้วถ้าหลุดไปหน้าอื่น
            ให้เดินกลับมา — ไม่งั้นลำดับปุ่มที่เก็บไว้จะไม่ตรงกับหน้าที่อยู่ */
         await page.keyboard.press('Escape').catch(() => {});
-        if (!page.url().includes(path)) {
+        /* เทียบ pathname ตรงตัว — includes('/') เป็นจริงทุกหน้า หน้าแรกจึงไม่เคยเดินกลับ */
+        if (new URL(page.url()).pathname !== path) {
           await page.goto(path);
           await page.waitForTimeout(800);
         }

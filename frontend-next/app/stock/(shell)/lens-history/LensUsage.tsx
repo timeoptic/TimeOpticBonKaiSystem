@@ -175,8 +175,10 @@ export function LensUsageList({
     );
   }
 
+  /* lens-usage: แท็บเล็ต (ถึง 1200px) ใช้การ์ดด้วย — ตารางเจ็ดคอลัมน์บีบชื่อเลนส์จนอ่านไม่ได้
+     (ดู .lens-usage ใน app/stock/globals.css) */
   return (
-    <>
+    <div className="lens-usage">
       <CardList label="รายการใช้เลนส์">
         {rows.map((r) => (
           <RecordCard
@@ -287,6 +289,6 @@ export function LensUsageList({
       </div>
 
       <Paginator page={list.data.page} perPage={list.data.perPage} total={list.data.total} onPage={onPage} label="รายการ" />
-    </>
+    </div>
   );
 }

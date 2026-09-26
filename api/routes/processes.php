@@ -14,6 +14,9 @@
  */
 declare(strict_types=1);
 
+/* Bewell: ใบเบิกเลนส์ — บันทึกการใช้เลนส์ / ยกเลิกเมื่อออเดอร์หรือเคสถูกยกเลิก (ไม่พึ่งลำดับโหลด routes/lens.php) */
+require_once __DIR__ . '/../services/LensRequisition.php';
+
 /** canonical order — matches case_statuses.stage_group, so the board agrees */
 const CASE_PROCESSES = ['reception', 'exam', 'sales', 'payment', 'centering', 'delivery'];
 

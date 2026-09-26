@@ -2,6 +2,9 @@
 /** The case board — one case is one customer's job from reception to pickup. */
 declare(strict_types=1);
 
+/* Bewell: ใบเบิกเลนส์ — บันทึกการใช้เลนส์ / ยกเลิกเมื่อออเดอร์หรือเคสถูกยกเลิก (ไม่พึ่งลำดับโหลด routes/lens.php) */
+require_once __DIR__ . '/../services/LensRequisition.php';
+
 GET('/api/cases', function (array $req) {
     $q = $req['query'];
     $where = [];

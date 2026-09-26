@@ -7,6 +7,9 @@
  */
 declare(strict_types=1);
 
+/* Bewell: ใบเบิกเลนส์ — บันทึกการใช้เลนส์ / ยกเลิกเมื่อออเดอร์หรือเคสถูกยกเลิก (ไม่พึ่งลำดับโหลด routes/lens.php) */
+require_once __DIR__ . '/../services/LensRequisition.php';
+
 const ORDER_COLS = ['case_id', 'customer_id', 'employee_id', 'recorded_by',
     'final_prescription_id', 'order_date', 'appointment_date', 'appointment_time',
     'lens_type', 'frame_product_id', 'frame_name', 'frame_brand', 'frame_model',

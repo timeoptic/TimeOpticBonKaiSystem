@@ -74,7 +74,7 @@ function PrescriptionListInner() {
                 label: '',
                 cls: 'nowrap',
                 mobile: 'extra',
-                render: (t) => <Link className="btn btn-sm btn-light" href={'/print/prescription?id=' + t.id}><Icon name="printer" /></Link>,
+                render: (t) => <Link className="btn btn-sm btn-light" href={'/print/prescription?id=' + t.id} aria-label="พิมพ์ใบค่าสายตา" title="พิมพ์ใบค่าสายตา"><Icon name="printer" /></Link>,
               },
             ]}
             rows={all}
