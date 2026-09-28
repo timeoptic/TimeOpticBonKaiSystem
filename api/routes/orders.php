@@ -290,7 +290,28 @@ POST('/api/orders', function (array $req) {
     $code = str_or($body['invoice_code'] ?? null)
         ?: nextCode('INV', 'custom_orders', 'invoice_code');
 
-    $id = Db::tx(function (Tx $q) use ($body, $code) {
+    $id = Db::tx(function (Tx $q) use ($body, $code, $cid) {
+        /* กันกดปุ่ม "เปิดออเดอร์" ซ้ำ — ปุ่มไม่ล็อกระหว่างรอ กดสองทีได้ออเดอร์สองใบ
+           ใบแรกไม่มีเงินไม่มีสต็อก แต่รายงานนับยอดขายและยอดค้างซ้ำ (เจอ 12 เคสบนร้าน
+           เช่น CASE-2026-00140, 00159 เมื่อ 28 ก.ย. 2026) · ล็อกแถวลูกค้าให้คำขอที่ยิง
+           มาพร้อมกันเข้าคิวทีละคำขอ แล้วถ้ามีใบของลูกค้า+เคสเดียวกัน ราคาเท่ากัน เพิ่งเปิด
+           ไม่เกิน 30 วินาที ให้ส่งใบเดิมกลับไปแทนการเปิดใบใหม่ */
+        $q->get('SELECT id FROM customers WHERE id = ? FOR UPDATE', $cid);
+        $dup = $q->get(
+            'SELECT id FROM custom_orders
+              WHERE customer_id = ? AND case_id <=> ? AND total_price = ?
+                AND created_at >= NOW() - INTERVAL 30 SECOND
+              ORDER BY id DESC LIMIT 1',
+            $cid,
+            int_or($body['case_id'] ?? null),
+            /* ราคาจาก orderVals() ไม่ใช่ body ตรง ๆ — ฟอร์มบางหน้าไม่ส่ง total_price
+               มา ให้ API รวมจากราคาชิ้นเอง */
+            orderVals($body)[array_search('total_price', ORDER_COLS, true)]
+        );
+        if ($dup) {
+            return (int) $dup['id'];
+        }
+
         $names = implode(',', ORDER_COLS);
         $marks = implode(',', array_fill(0, count(ORDER_COLS), '?'));
         $r = $q->run(
