@@ -678,6 +678,135 @@ POST('/api/pos/sales/:id/payments', function (array $req) {
 });
 
 /**
+ * แก้งวดเงินที่บันทึกผิด — วันเวลารับ จำนวนเงิน ช่องทาง (ร้านขอ 29 ก.ย. 2026)
+ *
+ * ข้อยกเว้นเดียวของกฎข้อ 2 ในหัวไฟล์ · เกิดจากบิลที่ลูกค้าจ่ายวันหนึ่งแต่พนักงานมา
+ * กดรับเงินอีกวัน (POS-2026-00033) รายงานการรับเงินจึงนับผิดวัน · ด่านเดียวกับ
+ * แก้รายการรับเงินของเคส (PUT /api/payments/:id): แอดมินขึ้นไป · บังคับเหตุผล ·
+ * งวดที่ยกเลิกแล้วแก้ไม่ได้ · ยอดรวมทุกงวดเกินยอดสุทธิไม่ได้ · ห้ามวันในอนาคต ·
+ * ค่าก่อน → หลังกับเหตุผลลง activity_log (หน้า "บันทึกการใช้งาน")
+ */
+PUT('/api/pos/sales/:id/payments/:pid', function (array $req) {
+    $actor = posActor();
+    if (!posIsAdminUp($actor)) {
+        throw new HttpError(403, 'แก้ไขการรับเงินได้เฉพาะแอดมินหรือเจ้าของร้าน', ['reason' => 'forbidden']);
+    }
+    $id   = int_or($req['params']['id']) ?? 0;
+    $pid  = int_or($req['params']['pid']) ?? 0;
+    $body = $req['body'];
+
+    $reason = trim((string) ($body['reason'] ?? ''));
+    if ($reason === '') {
+        bad('กรุณาใส่เหตุผลที่แก้ไข');
+    }
+    if (!is_numeric(trim((string) ($body['amount'] ?? '')))) {
+        bad('กรุณาใส่จำนวนเงิน');
+    }
+    $amount = round2(num($body['amount']));
+    if ($amount <= 0) {
+        bad('จำนวนเงินต้องมากกว่า 0');
+    }
+    $method = str_or($body['method'] ?? null);
+    if (!in_array($method, POS_METHODS, true)) {
+        bad('ช่องทางชำระเงินไม่ถูกต้อง');
+    }
+    $paidAt = str_or($body['paid_at'] ?? null);
+    if (!preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})?$/', $paidAt)
+        || !DateTime::createFromFormat('Y-m-d H:i', substr($paidAt, 0, 16))) {
+        bad('วันเวลาที่รับเงินไม่ถูกต้อง');
+    }
+    if (strlen($paidAt) === 16) {
+        $paidAt .= ':00';
+    }
+    /* เผื่อนาฬิกาเครื่องหน้าร้านเร็วกว่าเซิร์ฟเวอร์นิดหน่อย — เกินห้านาทีคือพิมพ์ผิดแน่ */
+    if ($paidAt > nowStamp(new DateTime('+5 minutes'))) {
+        bad('วันเวลาที่รับเงินต้องไม่เป็นเวลาในอนาคต');
+    }
+
+    Db::tx(function (Tx $q) use ($id, $pid, $amount, $method, $paidAt, $reason, $actor) {
+        $sale = $q->get('SELECT * FROM pos_sales WHERE id = ? FOR UPDATE', $id);
+        if (!$sale) {
+            missing();
+        }
+        if ($sale['status'] === 'void') {
+            bad('ใบขายนี้ถูกยกเลิกแล้ว แก้ไขไม่ได้');
+        }
+        $p = $q->get('SELECT * FROM pos_payments WHERE id = ? AND sale_id = ? FOR UPDATE', $pid, $id);
+        if (!$p) {
+            missing();
+        }
+        if ($p['cancelled_at']) {
+            bad('รายการนี้ถูกยกเลิกไปแล้ว แก้ไขไม่ได้');
+        }
+
+        /* ยอดคงเหลือไม่นับงวดนี้ — แก้ 300 เป็น 400 บนใบที่ค้าง 100 ขยับได้อีก 100 */
+        $others = round2($q->get(
+            'SELECT COALESCE(SUM(amount), 0) s FROM pos_payments
+              WHERE sale_id = ? AND cancelled_at IS NULL AND id <> ?',
+            $id, $pid
+        )['s']);
+        $max = round2(max(0, (float) $sale['total_amount'] - $others));
+        if ($amount > $max + 0.001) {
+            throw new HttpError(
+                400,
+                'แก้เกินยอดของใบไม่ได้ — รายการนี้แก้ได้ไม่เกิน ' . number_format($max, 2) . ' บาท',
+                ['reason' => 'over_balance', 'balance' => $max]
+            );
+        }
+
+        /* เงินทอนผูกกับเงินสด · เปลี่ยนเป็นโอน/บัตรแล้ว "รับมา/ทอน" ไม่มีความหมาย ·
+           ยอดใหม่เกินเงินที่รับมา แปลว่าตัวเลขรับมาเดิมใช้ไม่ได้แล้ว ล้างทิ้ง */
+        $received = $p['amount_received'] !== null ? round2($p['amount_received']) : null;
+        if ($method !== 'cash' || ($received !== null && $received < $amount - 0.001)) {
+            $received = null;
+        }
+        $change = $received !== null ? round2(max(0, $received - $amount)) : null;
+
+        $before = [
+            'amount'         => round2($p['amount']),
+            'payment_method' => (string) $p['payment_method'],
+            'paid_at'        => (string) $p['paid_at'],
+        ];
+        $after = ['amount' => $amount, 'payment_method' => $method, 'paid_at' => $paidAt];
+        $changed = array_keys(array_filter(
+            $before,
+            fn($v, $k) => (string) $v !== (string) $after[$k],
+            ARRAY_FILTER_USE_BOTH
+        ));
+        if (!$changed) {
+            bad('ไม่มีอะไรเปลี่ยน');
+        }
+
+        $q->run(
+            'UPDATE pos_payments
+                SET amount = ?, payment_method = ?, paid_at = ?, amount_received = ?, change_amount = ?
+              WHERE id = ?',
+            $amount, $method, $paidAt, $received, $change, $pid
+        );
+        posRecalc($q, $id);
+
+        ActivityLog::record(
+            array_map(fn($k) => [
+                'field'  => "pos_payments.$k",
+                'before' => (string) $before[$k],
+                'after'  => (string) $after[$k],
+            ], $changed),
+            [
+                'pos_no'     => $sale['pos_no'],
+                'payment_id' => $pid,
+                'before'     => $before,
+                'after'      => $after,
+                'reason'     => $reason,
+                'by'         => (string) ($actor['displayName'] ?? $actor['username'] ?? ''),
+            ],
+            'payment_edit'
+        );
+    });
+
+    return posSaleFull($id);
+});
+
+/**
  * ส่งมอบ / ยกเลิกการส่งมอบ
  *
  * ไม่มีการตรวจยอดค้างตรงนี้โดยตั้งใจ — ปล่อยของทั้งที่ยังค้างเงินเป็นเรื่องปกติ

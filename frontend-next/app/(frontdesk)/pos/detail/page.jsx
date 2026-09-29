@@ -2,9 +2,9 @@
 /**
  * รายละเอียดใบขาย POS + เก็บยอดค้าง
  *
- * ประวัติการรับเงินเป็นรายการที่งอกเพิ่มอย่างเดียว — รับเพิ่มทีหลังสร้างแถวใหม่เสมอ
- * ไม่มีปุ่มไหนในหน้านี้แก้งวดที่รับไปแล้ว เพราะการเขียนทับทำให้ตอบไม่ได้ว่าเงิน
- * ก้อนไหนรับวันไหนโดยใคร ซึ่งเป็นคำถามแรกเวลายอดไม่ตรง
+ * ประวัติการรับเงินเป็นรายการที่งอกเพิ่มอย่างเดียว — รับเพิ่มทีหลังสร้างแถวใหม่เสมอ ·
+ * ข้อยกเว้นเดียวคือปุ่ม "แก้ไข" ของแอดมิน สำหรับงวดที่บันทึกผิด (ร้านขอ 29 ก.ย. 2026)
+ * บังคับเหตุผล และค่าก่อน → หลังลงบันทึกการใช้งาน จึงยังตอบได้ว่าเดิมเป็นอะไร
  *
  * ปุ่มส่งมอบไม่สนใจว่าจ่ายครบหรือยัง — ร้านนี้ปล่อยของทั้งที่ค้างเงินได้
  */
@@ -13,8 +13,8 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Icon } from '../../../../components/Icon.jsx';
 
-import { useAsync } from '../../../../lib/hooks.js';
-import { fmtDateTime, money } from '../../../../lib/format.js';
+import { useAsync, useNowLocal } from '../../../../lib/hooks.js';
+import { fmtDateTime, money, toStamp } from '../../../../lib/format.js';
 import { useAuth } from '../../../../contexts/AuthContext.jsx';
 import { inSystemZone } from '../../../../lib/roles.js';
 import {
@@ -26,6 +26,8 @@ import { useToast } from '../../../../components/Toast.jsx';
 import { posApi, PAY_METHODS, payMethodLabel } from '../../../../lib/pos/posApi.js';
 import { PaymentBadge, FulfillmentBadge } from '../../../../components/pos/PosStatusBadge.jsx';
 import { Select } from '../../../../components/Selects.jsx';
+import { DateTimeField } from '../../../../components/DateTimeField.jsx';
+import { useConfirm } from '../../../../components/Confirm.jsx';
 
 const ITEM_COLS = [
   { label: 'สินค้า', mobile: 'title', render: (r) => (
@@ -57,6 +59,130 @@ const PAY_COLS = [
   { label: 'ผู้รับเงิน', key: 'created_by_name', mobile: 'meta' },
 ];
 
+/** เวลาจาก DateTimeField ('YYYY-MM-DDTHH:MM') หรือจาก API ('YYYY-MM-DD HH:MM:SS') ให้เป็นรูปเดียวกัน */
+const stampOf = (v) => {
+  const s = toStamp(v || '').slice(0, 19);
+  return s.length === 16 ? `${s}:00` : s;
+};
+
+const CHANGE_TH = { textAlign: 'left', fontWeight: 400, color: 'var(--ink-faint)', padding: '5px 12px 5px 0', whiteSpace: 'nowrap' };
+
+/**
+ * แก้งวดเงินที่บันทึกผิด — วันเวลารับ ยอด ช่องทาง (แอดมิน/เจ้าของร้าน · ร้านขอ 29 ก.ย. 2026)
+ *
+ * แบบเดียวกับ "แก้ไขรายการรับเงิน" ของหน้าเคส · ยอดแก้ได้ไม่เกินยอดใบลบงวดอื่น ·
+ * ห้ามวันในอนาคต · สรุปว่าเปลี่ยนอะไรก่อนยืนยัน · ด่านจริงอยู่ที่
+ * PUT /api/pos/sales/:id/payments/:pid ที่นี่แค่บอกคนแก้ก่อนกด
+ */
+function PosPaymentEditDialog({ sale, p, onClose, onSaved }) {
+  const toast = useToast();
+  const confirm = useConfirm();
+  const now = useNowLocal();
+
+  const [amount, setAmount] = useState(String(Number(p.amount)));
+  const [method, setMethod] = useState(p.payment_method);
+  const [paidAt, setPaidAt] = useState(p.paid_at || '');
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const others = (sale.payments || [])
+    .filter((x) => x.id !== p.id && !x.cancelled_at)
+    .reduce((s, x) => s + Number(x.amount), 0);
+  const max = Math.max(0, Number(sale.total_amount) - others);
+  const entered = Number(amount) || 0;
+
+  /* [ป้าย, ค่าเดิม, ค่าใหม่, เปลี่ยนไหม] — ใช้ทั้งตัดสินว่ามีอะไรให้บันทึก และสรุปก่อนยืนยัน */
+  const rows = [
+    ['รับเมื่อ', fmtDateTime(p.paid_at), fmtDateTime(stampOf(paidAt)), stampOf(p.paid_at) !== stampOf(paidAt)],
+    ['จำนวนเงิน', money(p.amount), money(entered), Number(p.amount) !== entered],
+    ['ช่องทาง', payMethodLabel(p.payment_method), payMethodLabel(method), p.payment_method !== method],
+  ];
+  const changes = rows.filter((r) => r[3]);
+  const blocked = amount.trim() === '' || !(entered > 0)
+    ? 'จำนวนเงินต้องมากกว่า 0'
+    : entered > max + 0.001
+      ? `แก้เกินยอดของใบไม่ได้ — รายการนี้แก้ได้ไม่เกิน ${money(max)}`
+      : !stampOf(paidAt)
+        ? 'เลือกวันเวลาที่รับเงิน'
+        : stampOf(paidAt) > stampOf(now) ? 'วันเวลาที่รับเงินต้องไม่เป็นเวลาในอนาคต' : null;
+  const canSave = !busy && !blocked && changes.length > 0 && reason.trim() !== '';
+
+  const save = async () => {
+    if (!canSave) return;
+    const sure = await confirm('ยืนยันแก้ไขการรับเงิน', (
+      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <tbody>
+          {changes.map(([label, from, to]) => (
+            <tr key={label}>
+              <th style={CHANGE_TH}>{label}</th>
+              <td style={{ textAlign: 'right', padding: '5px 0' }}>
+                <span className="muted">{from}</span> → <b>{to}</b>
+              </td>
+            </tr>
+          ))}
+          <tr>
+            <th style={CHANGE_TH}>เหตุผล</th>
+            <td style={{ textAlign: 'right', padding: '5px 0' }}>{reason.trim()}</td>
+          </tr>
+        </tbody>
+      </table>
+    ), { confirmText: 'ยืนยันแก้ไข' });
+    if (!sure) return;
+
+    setBusy(true);
+    try {
+      await posApi.editPayment(sale.id, p.id, {
+        amount: entered,
+        method,
+        paid_at: stampOf(paidAt),
+        reason: reason.trim(),
+      });
+      toast.ok('แก้ไขการรับเงินแล้ว');
+      onSaved();
+    } catch (e) {
+      toast.err(e);
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="modal-back" onClick={(e) => { if (e.target === e.currentTarget && !busy) onClose(); }}>
+      <div className="modal" role="dialog" aria-modal="true" aria-label="แก้ไขการรับเงิน">
+        <h3>แก้ไขการรับเงิน</h3>
+        <div className="m-body">
+          <Field label="รับเมื่อ">
+            <div style={{ maxWidth: 380 }}>
+              <DateTimeField value={paidAt} onChange={setPaidAt} max={now} />
+            </div>
+          </Field>
+          <Field label={`จำนวนเงิน (บาท) — แก้ได้ไม่เกิน ${money(max)}`}>
+            <input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} />
+          </Field>
+          <Field label="ช่องทางชำระเงิน">
+            <Select value={method} onChange={(e) => setMethod(e.target.value)} options={PAY_METHODS} />
+          </Field>
+          <Field label="เหตุผลที่แก้ไข *">
+            <input
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="เช่น ลูกค้าจ่ายวันที่ 25 แต่มากดรับเงินวันที่ 26"
+              autoComplete="off"
+            />
+          </Field>
+        </div>
+        <div className="m-foot">
+          {blocked ? <span className="process-blockers" style={{ marginRight: 'auto' }}>{blocked}</span> : null}
+          <button type="button" className="btn btn-light" onClick={onClose} disabled={busy}>ยกเลิก</button>
+          <button type="button" className="btn" onClick={save} disabled={!canSave}>
+            <Icon name="check" />
+            {busy ? ' กำลังบันทึก…' : ' บันทึกการแก้ไข'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PosDetail() {
   const id = useSearchParams().get('id');
   const { actor } = useAuth();
@@ -71,12 +197,25 @@ function PosDetail() {
   const [method, setMethod] = useState('cash');
   const [received, setReceived] = useState('');
   const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState(null);
 
   if (loading) return <Loading />;
   if (error) return <Card><p className="muted">{error.message}</p></Card>;
   if (!sale) return <Card><p className="muted">ไม่พบใบขายนี้</p></Card>;
 
   const balance = Number(sale.balance_amount);
+  /* แก้งวดได้เฉพาะแอดมินขึ้นไป บนใบที่ยังไม่ยกเลิก — API ตรวจซ้ำอีกชั้น */
+  const payCols = inSystemZone(actor) && sale.status !== 'void'
+    ? [...PAY_COLS, {
+      label: '',
+      mobile: 'meta',
+      render: (r) => (r.cancelled_at ? null : (
+        <button type="button" className="btn btn-sm btn-light" onClick={() => setEditing(r)}>
+          <Icon name="pencil" /> แก้ไข
+        </button>
+      )),
+    }]
+    : PAY_COLS;
 
   async function collect() {
     setBusy(true);
@@ -173,8 +312,17 @@ function PosDetail() {
       </Card>
 
       <Card title="ประวัติการรับเงิน" tight>
-        <DataTable columns={PAY_COLS} rows={sale.payments} empty="ยังไม่มีการรับเงิน" />
+        <DataTable columns={payCols} rows={sale.payments} empty="ยังไม่มีการรับเงิน" />
       </Card>
+
+      {editing && (
+        <PosPaymentEditDialog
+          sale={sale}
+          p={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => { setEditing(null); reload(); }}
+        />
+      )}
 
       {sale.status !== 'void' && balance > 0 && (
         <Card title={`+ รับชำระเพิ่ม (ค้างอยู่ ${money(balance)})`}>

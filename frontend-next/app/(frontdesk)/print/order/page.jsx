@@ -185,6 +185,13 @@ const lensSpec = (o) => {
 };
 
 /**
+ * เลนส์สั่งตัด RX ขึ้น "(RX)" หน้าชื่อ — ช่างกับลูกค้าเห็นทันทีว่าข้างไหนต้องรอแล็บ
+ * (ร้านขอ 28 ก.ย. 2026) · ดูจากใบสั่งตัดที่ผูกกับข้างนั้น (lens_r_rx_id / lens_l_rx_id)
+ * ไม่ใช่จากชื่อ · ชื่อว่างแต่เป็น RX ก็ยังขึ้น "(RX)" ให้รู้
+ */
+const withRx = (isRx, text) => [isRx && '(RX)', text].filter(Boolean).join(' ');
+
+/**
  * หมายเหตุที่พิมพ์ลงใบ — มาจากคนละหน้าจอกัน จึงพิมพ์แยกบรรทัดพร้อมป้ายว่ามาจากขั้นไหน
  * ช่างอ่านแล้วต้องรู้ทันทีว่าข้อไหนมาจากหมอวัด ข้อไหนมาจากคนขาย
  *
@@ -357,7 +364,7 @@ function OrderSheet() {
                 <F k="Name" v={name} />
                 <F k="TestFor" v={glassesUseOf(rx)} />
                 <F k="Frame" v={frameLabel(o)} />
-                <F k="Lens" v={lensSpec(o)} />
+                <F k="Lens" v={withRx(o.lens_r_rx_id || o.lens_l_rx_id, lensSpec(o))} />
               </div>
               <div className="iv-col iv-money">
                 {moneyRows.map(([k, v]) => <F key={k} k={k} v={v} />)}
@@ -423,8 +430,8 @@ function OrderSheet() {
               <div className="iv-col">
                 <F k="TestFor" v={glassesUseOf(rx)} />
                 <F k="Frame" v={frameLabel(o)} />
-                <F k="RightLen" v={o.lens_r_name} />
-                <F k="LeftLen" v={o.lens_l_name} />
+                <F k="RightLen" v={withRx(o.lens_r_rx_id, o.lens_r_name)} />
+                <F k="LeftLen" v={withRx(o.lens_l_rx_id, o.lens_l_name)} />
               </div>
               <div className="iv-col iv-money">
                 {moneyRows.map(([k, v]) => <F key={k} k={k} v={v} />)}

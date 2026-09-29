@@ -131,6 +131,7 @@ final class ActivityLog
         'confirm'      => 'ยืนยัน',
         'deliver'      => 'ส่งมอบ',
         'payments'     => 'รับชำระเงิน',
+        'payment_edit' => 'แก้ไขการรับเงิน',
         'appointment'  => 'นัดหมาย',
         'open-case'    => 'เปิดเคสจากคิว',
         'remind'       => 'ส่งเตือนคิว',
@@ -195,6 +196,8 @@ final class ActivityLog
     private static ?int $entityId  = null;
     private static ?string $action = null;
     private static ?array $before  = null;
+    /** [changes, payload] ที่ handler ส่งมาเอง — ดู record() */
+    private static ?array $extra   = null;
 
     /**
      * เริ่มจับคำขอนี้ · เรียกครั้งเดียวใน `index.php` ก่อนด่านตรวจสิทธิ์
@@ -286,9 +289,32 @@ final class ActivityLog
                 $payload = self::redact($body) ?: null;
             }
 
+            if ($ok && self::$extra !== null) {
+                [$extraChanges, $extraPayload] = self::$extra;
+                $changes = array_merge($extraChanges, $changes ?? []) ?: null;
+                $payload = self::redact($extraPayload) ?: $payload;
+            }
+
             self::write($kind, $status, $changes, $payload);
         } catch (Throwable) {
             /* ล็อกพัง = ไม่มีอะไรเกิดขึ้น · คำตอบของคำขอนี้ส่งไปแล้วด้วยซ้ำ */
+        }
+    }
+
+    /**
+     * ค่าก่อน → หลังที่ handler รู้เอง — สำหรับเส้นที่แก้แถวพ่วง ไม่ใช่แถวหลักของเส้นทาง
+     *
+     * เช่นแก้งวดเงิน POS: เส้นทางชี้ที่ pos_sales แต่แถวที่เปลี่ยนคือ pos_payments ·
+     * ประตูเทียบได้แค่ใบ จึงไม่เห็นว่าวันที่รับเงินขยับ · ใช้เฉพาะเมื่อคำขอสำเร็จ
+     *
+     * @param array $changes [{field, before, after}] รูปเดียวกับที่ diff() ให้
+     * @param ?string $action แทนชื่อที่แยกจาก path (`/payments/9` อ่านได้ว่า "รับชำระเงิน")
+     */
+    public static function record(array $changes, array $payload = [], ?string $action = null): void
+    {
+        self::$extra = [$changes, $payload];
+        if ($action !== null) {
+            self::$action = $action;
         }
     }
 
