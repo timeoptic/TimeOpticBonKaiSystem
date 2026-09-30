@@ -1,0 +1,38 @@
+/* คำเตือน "ยังไม่ได้ยืนยันรายการขาย" ของหน้าเคส (ขั้นชำระเงิน / ส่งมอบ)
+ *
+ * ยืม .modal-back / .modal / .m-body / .m-foot / .btn ของระบบทั้งชุด ไฟล์นี้มีแค่
+ * ส่วนที่คำเตือนนี้มีเพิ่ม · เป็น CSS module ของหน้า /cases/detail หน้าเดียว แก้ที่นี่
+ * ไม่เปลี่ยนไฟล์ CSS กลางที่อีกสองร้อยกว่าหน้าอ้างชื่อไว้ (ดู deploy/README.md)
+ */
+
+/* แถบเตือนเหนือกรอบขั้นตอน — ค้างอยู่หลังปิดหน้าต่าง */
+.notice {
+  display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+  padding: 12px 16px; margin-bottom: 12px; border-radius: var(--radius);
+  background: var(--warn-soft); color: #8A3F07; border: 1px solid #FDE68A;
+}
+.notice > :global(.ico) { flex: none; }
+.noticeText { display: flex; flex-direction: column; gap: 2px; font-size: 13px; min-width: 0; flex: 1 1 260px; }
+.noticeActions { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* หน้าต่างลอย — ต้องเด่นกว่ากล่องถามทั่วไป: แถบบนสีเตือน ไอคอนใหญ่ ข้อความกลาง
+   :global(.modal) นำหน้า — ต้องชนะ .modal{max-width:520px} ของกลางทุกลำดับการโหลด */
+:global(.modal).dialog { max-width: 460px; text-align: center; }
+/* แถบสีเป็นชิ้นข้างในกล่อง ไม่ใช่ border-top — border บนมุมโค้งจะงอเป็นเขาสองข้าง */
+:global(.modal).dialog::before { content: ''; flex: none; height: 6px; background: var(--warn); }
+
+.icon {
+  width: 64px; height: 64px; margin: 22px auto 0; border-radius: 50%; flex: none;
+  display: flex; align-items: center; justify-content: center; line-height: 0;
+  background: var(--warn-soft); color: var(--warn);
+}
+.icon svg { width: 32px; height: 32px; display: block; position: relative; top: -1px; }
+
+:global(.modal).dialog h3 { border-bottom: 0; padding: 12px 18px 0; font-size: 20px; }
+:global(.modal).dialog :global(.m-body) { padding: 8px 18px 20px; font-size: 14.5px; }
+:global(.modal).dialog :global(.m-body) p { margin: 0 0 4px; }
+
+/* ปุ่มเต็มแถวชิดขอบซ้าย-ขวาเท่ากัน · ปุ่มยืนยันกว้างสุด · จอแคบปุ่มยืนยันลงไปเต็มบรรทัดของตัวเอง */
+:global(.modal).dialog :global(.m-foot) { flex-wrap: wrap; justify-content: stretch; padding: 14px 18px; }
+:global(.modal).dialog :global(.m-foot) :global(.btn) { flex: 1 1 0; justify-content: center; margin: 0; white-space: nowrap; }
+:global(.modal).dialog :global(.m-foot) :global(.btn):not(:global(.btn-light)) { flex: 1.5 1 190px; }

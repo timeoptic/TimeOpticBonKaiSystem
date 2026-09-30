@@ -50,6 +50,7 @@ import { NotifyPanel } from './panels/NotifyPanel.jsx';
 import { TimelinePanel } from './panels/TimelinePanel.jsx';
 import { LensRequisitionPanel } from './panels/LensRequisitionPanel.jsx';
 import { ChangeCustomerDialog } from './panels/ChangeCustomerDialog.jsx';
+import ns from './SalesUnconfirmed.module.css';
 
 /** one panel per process — ids come from lib/caseProcesses.js */
 const PROCESS_PANELS = {
@@ -91,6 +92,104 @@ function ItemCard({ title, name, sub, price, inStock }) {
         ]}
       />
     </Card>
+  );
+}
+
+/** ขั้นที่ต้องเตือนว่ายังไม่ได้ยืนยันรายการขาย — ขั้นที่เงินเข้ากับขั้นที่ของออกจากร้าน */
+const SALES_NOTICE_STEPS = ['payment', 'delivery'];
+
+/**
+ * เตือน "ยังไม่ได้ยืนยันรายการขาย" บนขั้นชำระเงิน / ส่งมอบ — หน้าต่างลอยตอนเปิดขั้น
+ * แล้วเหลือเป็นแถบค้างไว้เหนือกรอบขั้นตอนหลังกดปิด
+ *
+ * ของออกจากคลังตอนกดยืนยันขั้นขายเท่านั้น แต่ขั้นอื่นไม่รอขั้นขาย (ตั้งใจ — ดู
+ * processBlocking) คนกด "บันทึกการแก้ไข" แล้วเดินต่อจนจบเคสได้โดยสต็อกไม่ถูกตัด
+ * (30 ก.ย. 2026: 70 จาก 216 เคสไม่ได้ยืนยัน) · ที่นี่แค่เตือนและให้กดยืนยันได้เลย
+ * ไม่กันขั้นตอน · ข้อมูลยังไม่ครบ = พาไปขั้นขายแทน เพราะยืนยันไปก็โดน API ปฏิเสธ
+ *
+ * เคสที่นำเข้าจากระบบเก่า (OLD-) ไม่เตือน — ไม่มีใบไหนเคยกดยืนยัน และของพวกนั้น
+ * ไม่ได้อยู่ในคลังของระบบนี้
+ */
+function SalesUnconfirmedNotice({ c, goSales, reload }) {
+  const { ok, err } = useToast();
+  const [busy, setBusy] = useState(false);
+  /* เปิดหน้าต่างทุกครั้งที่เข้ามาขั้นนี้ · ปิดแล้วไม่เด้งซ้ำจนกว่าจะออกไปขั้นอื่นแล้วกลับมา */
+  const [popup, setPopup] = useState(true);
+  const st = (c.processes || {}).sales || {};
+  /* เกณฑ์เดียวกับ ProcessShell: completed ที่ไม่มีแถวเก็บไว้ = ข้อมูลครบแต่ยังไม่มีใครกด */
+  const confirmed = st.status === 'completed' && !!Number(st.stored) && !!st.completed_at;
+  if (!c.order || confirmed || c.status === 'cancelled') return null;
+  if (c.process_list && !c.process_list.includes('sales')) return null;
+  if (String(c.case_code || '').startsWith('OLD-')) return null;
+
+  const label = processInfo('sales').completeLabel;
+  const missing = [...(st.blocking || []), ...(st.missing || [])];
+  const detail = missing.length
+    ? `รายการขายยังขาด: ${missing.join(', ')}`
+    : 'บันทึกออเดอร์ไว้แล้ว แต่ยังไม่มีใครกดยืนยัน';
+
+  const complete = async () => {
+    setBusy(true);
+    try {
+      await api.post(`/api/cases/${c.id}/processes/sales/complete`, {});
+      ok(`${label} แล้ว`);
+      reload();
+    } catch (ex) { err(ex); } finally { setBusy(false); }
+  };
+
+  const actions = (
+    <>
+      <button type="button" className="btn btn-light" onClick={goSales} disabled={busy}>
+        ดูรายการขาย
+      </button>
+      {!missing.length && (
+        <button type="button" className="btn" onClick={complete} disabled={busy}>
+          <Icon name="check" /> {busy ? 'กำลังยืนยัน…' : label}
+        </button>
+      )}
+    </>
+  );
+
+  return (
+    <>
+      <div className={`process-notice ${ns.notice}`} role="alert">
+        <Icon name="warning" />
+        <div className={ns.noticeText}>
+          <b>ยังไม่ได้ยืนยันรายการขาย — ของยังไม่ถูกตัดออกจากสต็อก</b>
+          <span>{detail}</span>
+        </div>
+        <div className={ns.noticeActions}>{actions}</div>
+      </div>
+
+      {popup && (
+        <div className="modal-back">
+          <div className={`modal sales-unconfirmed-modal ${ns.dialog}`} role="alertdialog" aria-labelledby="sales-unconfirmed-title">
+            {/* เส้นโค้งมนวาดเอง — รูป warning ใน lib/icons.js เป็นสามเหลี่ยมทึบ ขยายใหญ่แล้วดูเป็นอิโมจิ ⚠ */}
+            <div className={ns.icon}>
+              <svg
+                viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" strokeWidth="2"
+                strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"
+              >
+                <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" />
+                <path d="M12 9v4" />
+                <path d="M12 17h.01" />
+              </svg>
+            </div>
+            <h3 id="sales-unconfirmed-title">ยังไม่ได้ยืนยันรายการขาย</h3>
+            <div className="m-body">
+              <p><b>ของยังไม่ถูกตัดออกจากสต็อก</b></p>
+              <p>{detail}</p>
+            </div>
+            <div className="m-foot">
+              <button type="button" className="btn btn-light" onClick={() => setPopup(false)} disabled={busy}>
+                ไว้ทีหลัง
+              </button>
+              {actions}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -450,6 +549,10 @@ function CaseDetailInner() {
         {step === 'overview' ? (
           <OverviewTab c={c} showTab={requestStep} />
         ) : isProcess(step) ? (
+          <>
+          {SALES_NOTICE_STEPS.includes(step) && (
+            <SalesUnconfirmedNotice c={c} goSales={() => requestStep('sales')} reload={reload} />
+          )}
           <ProcessShell
             process={info}
             state={processes[step]}
@@ -460,6 +563,7 @@ function CaseDetailInner() {
           >
             <ProcessPanel {...panelProps} />
           </ProcessShell>
+          </>
         ) : <ExtraPanel {...panelProps} />}
       </div>
 

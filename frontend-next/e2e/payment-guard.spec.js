@@ -55,7 +55,20 @@ function reply(route, body, status = 200) {
  * (คืน [status, body]) · ยอดของเคสขยับตามการรับเงินที่ผ่าน เหมือน API จริง
  */
 async function openPayment(page, { patch = {}, onPay } = {}) {
-  const state = { ...CASE, ...patch, order: { ...CASE.order, ...(patch.order || {}) } };
+  const state = {
+    ...CASE,
+    ...patch,
+    order: { ...CASE.order, ...(patch.order || {}) },
+    /* ขั้นขายยืนยันแล้ว — ไม่งั้นหน้าต่าง "ยังไม่ได้ยืนยันรายการขาย" เด้งมาบังฟอร์มรับเงิน
+       (เรื่องนั้นตรวจใน sales-unconfirmed.spec.js) */
+    processes: {
+      ...CASE.processes,
+      sales: {
+        ...CASE.processes.sales, status: 'completed', stored: 1, missing: [],
+        started_at: '2026-09-11 10:00:00', completed_at: '2026-09-11 10:00:00',
+      },
+    },
+  };
   const posts = [];
 
   await page.route('**/api/**', async (route) => {
