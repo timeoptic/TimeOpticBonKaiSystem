@@ -321,6 +321,18 @@ POST('/api/orders', function (array $req) {
         $oid     = $r['insertId'];
         $deposit = num($body['deposit'] ?? null);
 
+        /* เลขใบเสร็จออกพร้อมออเดอร์ ไม่ใช่ตอนเปิดหน้าใบเสร็จ — ชุดเลข Bill จึงเรียงตาม
+           วันที่บนใบ (order_date) ดูเหตุผลที่หัว routes/receipts.php */
+        $vals = array_combine(ORDER_COLS, orderVals($body));
+        issueReceiptIn(
+            $q,
+            'order',
+            (int) $oid,
+            (string) ($vals['order_date'] ?: nowStamp()),
+            round2((float) $vals['total_price'] - (float) ($vals['discount'] ?? 0)),
+            int_or(StockModule::actor()['id'] ?? null)
+        );
+
         if ($deposit > 0) {
             $q->run(
                 'INSERT INTO payments (case_id, order_id, kind, method, amount, received_by, notes)
@@ -611,6 +623,14 @@ DELETE('/api/orders/:id', function (array $req) {
             'ลบออเดอร์ ' . ($o['invoice_code'] ?? ('#' . $id)),
             LensRequisition::actorEmployee()
         );
+        /* เลขใบเสร็จของออเดอร์นี้ไม่ลบตาม — ตีตรายกเลิกแล้วเก็บไว้ในชุดเลข
+           ไม่งั้นทะเบียนใบเสร็จของบัญชีมีเลขหลุดโดยไม่มีใครอธิบายได้ */
+        $case = $o['case_id'] ? $q->get('SELECT case_code FROM cases WHERE id = ?', (int) $o['case_id']) : null;
+        voidReceiptIn($q, 'order', $id, trim(sprintf(
+            'ลบออเดอร์ %s %s',
+            (string) ($o['invoice_code'] ?? ''),
+            (string) ($case['case_code'] ?? '')
+        )), true);
         $q->run('DELETE FROM payments WHERE order_id = ?', $id);
         $q->run('DELETE FROM custom_orders WHERE id = ?', $id);
     });

@@ -594,6 +594,10 @@ POST('/api/pos/sales', function (array $req) {
         );
         $saleId = (int) $r['insertId'];
 
+        /* เลขใบเสร็จ BillP ออกพร้อมการขาย ไม่ใช่ตอนเปิดหน้าใบเสร็จ — ชุดเลขเรียงตาม
+           วันที่ขาย ดูเหตุผลที่หัว routes/receipts.php */
+        issueReceiptIn($q, 'sale', $saleId, $stamp, $total, int_or($actor['id'] ?? null));
+
         foreach ($clean as $n => $c) {
             $q->run(
                 'INSERT INTO pos_sale_items (sale_id, product_id, pos_item_id, product_name_snapshot,
@@ -893,6 +897,7 @@ POST('/api/pos/sales/:id/void', function (array $req) {
             'UPDATE pos_sales SET status = ?, void_reason = ?, void_by = ?, void_at = ? WHERE id = ?',
             'void', $reason, int_or($actor['id'] ?? null), nowStamp(), $id
         );
+        voidReceiptIn($q, 'sale', $id, "ยกเลิกใบขาย {$sale['pos_no']} — $reason");
     });
     return posSaleFull($id);
 });

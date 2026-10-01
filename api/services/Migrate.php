@@ -325,8 +325,21 @@ final class Migrate
                 UNIQUE KEY uq_receipt_no (receipt_no),
                 UNIQUE KEY uq_receipt_order (order_id),
                 UNIQUE KEY uq_receipt_sale (sale_id),
-                CONSTRAINT fk_receipt_order FOREIGN KEY (order_id) REFERENCES custom_orders (id) ON DELETE CASCADE,
-                CONSTRAINT fk_receipt_sale  FOREIGN KEY (sale_id)  REFERENCES pos_sales (id)     ON DELETE CASCADE
+                CONSTRAINT fk_receipt_order FOREIGN KEY (order_id) REFERENCES custom_orders (id) ON DELETE SET NULL,
+                CONSTRAINT fk_receipt_sale  FOREIGN KEY (sale_id)  REFERENCES pos_sales (id)     ON DELETE SET NULL
+              ) $c",
+
+            /* ตัวนับเลขใบเสร็จ หนึ่งแถวต่อชุดต่อปี (Bill/2026, BillP/2026)
+             *
+             * ทำไมไม่ MAX()+1 จาก receipts เหมือนชุดเลขอื่น: เลขใบเสร็จออกพร้อมการเปิด
+             * ออเดอร์ใน transaction เดียวกัน สองเครื่องเปิดออเดอร์พร้อมกันได้ MAX เดียวกัน
+             * ฝั่งที่แพ้ชน UNIQUE แล้วทั้งออเดอร์ rollback · แถวนี้ถูกล็อกด้วย FOR UPDATE
+             * คำขอที่มาพร้อมกันจึงเข้าคิวรับเลขทีละใบแทนการชนกัน */
+            'receipt_counters' => "CREATE TABLE IF NOT EXISTS receipt_counters (
+                prefix  varchar(10) NOT NULL,
+                year    smallint(5) unsigned NOT NULL,
+                last_no int(10) unsigned NOT NULL DEFAULT 0,
+                PRIMARY KEY (prefix, year)
               ) $c",
 
             /* ชื่อที่พิมพ์ลงบล็อกลูกค้าของใบเสร็จ — คนละคนกับลูกค้าในเคสได้
@@ -629,6 +642,49 @@ final class Migrate
     }
 
     /** @return string[] "table.column" names actually added this run */
+    /**
+     * โครงของเลขใบเสร็จแบบออกตอนเปิดออเดอร์: ตารางตัวนับ + doc_date/voided_at
+     * และ FK ของ receipts ที่เดิมเป็น ON DELETE CASCADE — ลบออเดอร์แล้วเลขใบเสร็จ
+     * หายไปด้วย ชุดเลขจึงมีหลุด เปลี่ยนเป็น SET NULL ให้แถวอยู่ต่อในฐานะใบยกเลิก
+     * รันซ้ำได้ ส่วนที่ทำไปแล้วข้าม
+     * @return string[]
+     */
+    public static function receiptNumbering(): array
+    {
+        /* เรียกจาก cli/renumber-receipts.php บน Hostinger ได้ด้วย (ที่นั่นไม่มีใครเรียก
+           run()) จึงต้องสร้างตารางตัวนับ + คอลัมน์ใหม่เองด้วย ไม่พึ่งว่า run() ทำให้แล้ว */
+        Db::pdo()->exec(self::tables()['receipt_counters']);
+        $changed = self::addColumns('receipts', [
+            'doc_date'    => "date DEFAULT NULL COMMENT 'วันที่บนใบ — order_date / sale_date'",
+            'voided_at'   => 'datetime DEFAULT NULL',
+            'void_reason' => 'varchar(255) DEFAULT NULL',
+        ]);
+        /* บิลก่อน RECEIPT_START (1 ก.ย. 2026) ไม่มีเลข Bill — แถวยังต้องมีไว้จำชื่อที่พิมพ์ลงใบ
+           จึงให้ receipt_no ว่างได้ (UNIQUE ยอมให้ NULL ซ้ำ) */
+        $nullable = Db::get(
+            "SELECT IS_NULLABLE n FROM information_schema.columns
+              WHERE table_schema = DATABASE() AND table_name = 'receipts' AND column_name = 'receipt_no'"
+        );
+        if (($nullable['n'] ?? 'YES') === 'NO') {
+            Db::pdo()->exec("ALTER TABLE receipts MODIFY receipt_no varchar(40) DEFAULT NULL COMMENT 'Bill-2026-09-00042 (เคส) / BillP-... (POS) · NULL = บิลก่อนเริ่มชุดเลข'");
+            $changed[] = 'receipts.receipt_no nullable';
+        }
+        foreach (['fk_receipt_order' => ['order_id', 'custom_orders'], 'fk_receipt_sale' => ['sale_id', 'pos_sales']] as $fk => [$col, $ref]) {
+            $rule = Db::get(
+                'SELECT DELETE_RULE r FROM information_schema.referential_constraints
+                  WHERE constraint_schema = DATABASE() AND table_name = ? AND constraint_name = ?',
+                'receipts',
+                $fk
+            );
+            if ($rule && $rule['r'] !== 'SET NULL') {
+                Db::pdo()->exec("ALTER TABLE receipts DROP FOREIGN KEY `$fk`");
+                Db::pdo()->exec("ALTER TABLE receipts ADD CONSTRAINT `$fk` FOREIGN KEY (`$col`) REFERENCES `$ref` (id) ON DELETE SET NULL");
+                $changed[] = "receipts.$fk";
+            }
+        }
+        return $changed;
+    }
+
     private static function addColumns(string $table, array $columns): array
     {
         $added = [];
@@ -801,6 +857,11 @@ final class Migrate
                 'bill_party_id' => "int(10) unsigned DEFAULT NULL COMMENT 'bill_parties.id — ไม่ผูก FK โดยตั้งใจ'",
             ])
         );
+        /* เลขใบเสร็จออกตอนเปิดออเดอร์/ขาย (ตั้งแต่ 1 ต.ค. 2026) ไม่ใช่ตอนเปิดหน้าใบเสร็จ
+           ชุดเลขจึงเรียงตามวันที่บนใบ · doc_date คือวันที่บนใบ ณ ตอนออกเลข
+           ใบที่ออเดอร์ถูกลบหรือใบขายถูกยกเลิก ไม่ลบแถว แต่ตีตรายกเลิก เลขจึงไม่หลุด
+           และ void_reason เก็บว่าเคยเป็นของออเดอร์ไหน เพราะ order_id กลายเป็น NULL */
+        $added = array_merge($added, self::receiptNumbering());
         /* "ยังไม่ชำระ" — รายการรับเงิน 0 บาท ลูกค้าจะมาจ่ายตอนรับของ (ร้านขอ 14 ก.ย. 2026)
            บน Hostinger ไม่มีอะไรเรียก run() ต้องสั่งเพิ่มเอง — ดู deploy/README.md */
         $added = array_merge($added, self::extendEnum('payments', 'kind', ['unpaid'], "NOT NULL DEFAULT 'deposit'"));
