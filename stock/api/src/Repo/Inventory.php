@@ -585,9 +585,10 @@ final class Inventory
         }
 
         if (!empty($filter['q'])) {
-            $where[] = '(l.lot_number LIKE ? OR p.sku LIKE ? OR p.name LIKE ?)';
+            // หมายเหตุของล็อตด้วย — ร้านขอ 3 ต.ค. 2026
+            $where[] = '(l.lot_number LIKE ? OR p.sku LIKE ? OR p.name LIKE ? OR l.notes LIKE ?)';
             $like = '%' . $filter['q'] . '%';
-            array_push($args, $like, $like, $like);
+            array_push($args, $like, $like, $like, $like);
         }
         // ช่วงวันรับเข้า — ปฏิทินเดียวกับทุกหน้า (ร้านขอ 18 ก.ย. 2026)
         if (self::isDate($filter['from'] ?? null)) {

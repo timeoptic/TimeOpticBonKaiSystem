@@ -209,6 +209,10 @@ final class ProductSearch
                 $parts[] = "{$col} LIKE ?";
                 $args[] = $like;
             }
+            /* หมายเหตุของล็อต (เลขใบส่งของที่จดตอนรับเข้า) — สินค้าไม่มีหมายเหตุของตัวเอง
+               ร้านขอ 3 ต.ค. 2026 ให้ทุกช่องค้นหาของคลังหาจากหมายเหตุได้ */
+            $parts[] = 'EXISTS (SELECT 1 FROM stock_lots ln WHERE ln.product_id = p.id AND ln.notes LIKE ?)';
+            $args[] = $like;
         }
         return ['(' . implode(' OR ', $parts) . ')', $args];
     }

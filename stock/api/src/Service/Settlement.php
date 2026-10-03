@@ -73,9 +73,11 @@ final class Settlement
         }
 
         if (!empty($filter['q'])) {
-            $where[] = '(i.sku LIKE ? OR i.taken_by LIKE ? OR b.name LIKE ? OR p.name LIKE ?)';
+            // หมายเหตุตอนเบิก (เลขบิล) กับหมายเหตุตอนรับเงิน — ร้านขอ 3 ต.ค. 2026
+            $where[] = '(i.sku LIKE ? OR i.taken_by LIKE ? OR b.name LIKE ? OR p.name LIKE ?
+                         OR i.note LIKE ? OR i.settled_note LIKE ?)';
             $like = '%' . $filter['q'] . '%';
-            array_push($args, $like, $like, $like, $like);
+            array_push($args, $like, $like, $like, $like, $like, $like);
         }
 
         // ช่วงวันที่เบิก — `< ถึง + 1 วัน` ไม่ใช่ `<= ถึง 23:59:59` ซึ่งทำใบที่เบิก
