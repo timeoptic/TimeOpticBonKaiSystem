@@ -372,8 +372,51 @@ PUT('/api/orders/:id', function (array $req) {
     }
     $set = implode(',', array_map(fn($c) => "$c=?", ORDER_COLS));
     Db::run("UPDATE custom_orders SET $set WHERE id=?", ...[...orderVals($req['body']), $id]);
+    syncSoldStock($id, int_or($req['body']['employee_id'] ?? null));
     return orderDetail($id);
 });
+
+/**
+ * ออเดอร์ที่ยืนยันขายไปแล้ว — บันทึกแก้ไขแล้วสต็อกต้องตามทันที
+ *
+ * ของออกจากคลังตอนยืนยันขั้นขาย (processes.php) แต่หลังจากนั้นฟอร์มขายยังแก้ได้
+ * เดิมเปลี่ยนเลนส์แล้วกด "บันทึกการแก้ไข" ชิ้นเก่าไม่คืน ชิ้นใหม่ไม่ตัด จนกว่าจะเปิด
+ * ขั้นขายแล้วยืนยันใหม่ (ร้านเจอ 3 ต.ค. 2026) · issueForCase เทียบกับที่ตัดไว้แล้วเอง:
+ * ช่องเดิมข้าม ช่องที่เปลี่ยนคืนชิ้นเก่าแล้วตัดชิ้นใหม่ ช่องที่ล้างทิ้งคืนของ
+ *
+ * ยังไม่ยืนยันขาย = ยังไม่มีอะไรถูกตัด ไม่แตะ (ตัดตอนกดยืนยันตามเดิม)
+ * ตัดไม่สำเร็จ = ทำแบบเดียวกับตอนยืนยัน: เปิดขั้นขายกลับเป็น "กำลังทำ" แล้วโยนสาเหตุ
+ * ให้คนกดเห็น · ออเดอร์ที่แก้ถูกบันทึกไปแล้ว แก้สาเหตุแล้วกดยืนยันขายใหม่ได้
+ *
+ * @return array|null ผลของ issueForCase หรือ null เมื่อไม่ต้องทำอะไร
+ */
+function syncSoldStock(int $orderId, ?int $employeeId): ?array
+{
+    $caseId = (int) (Db::get('SELECT case_id FROM custom_orders WHERE id = ?', $orderId)['case_id'] ?? 0);
+    if (!$caseId) {
+        return null;
+    }
+    $sold = Db::get(
+        "SELECT id FROM case_processes
+          WHERE case_id = ? AND process = 'sales' AND status = 'completed' AND completed_at IS NOT NULL",
+        $caseId
+    );
+    if (!$sold) {
+        return null;
+    }
+    try {
+        return CaseStock::issueForCase(caseDetail($caseId), $employeeId);
+    } catch (Throwable $e) {
+        Db::tx(function (Tx $q) use ($caseId, $e) {
+            saveProcess($q, $caseId, 'sales', ['status' => 'in_progress', 'completed_at' => null]);
+            logEvent($q, $caseId, [
+                'action' => 'stock_issue_failed', 'entity' => 'case_process',
+                'note'   => mb_substr('บันทึกแก้ไขออเดอร์: ' . $e->getMessage(), 0, 250),
+            ]);
+        });
+        throw $e;
+    }
+}
 
 /**
  * วันนัดรับ — คอลัมน์เดียวของออเดอร์ ไม่ใช่ทั้งใบ

@@ -1,0 +1,77 @@
+<?php
+
+declare(strict_types=1);
+
+/**
+ * บันทึกแก้ไขออเดอร์หลังยืนยันรายการขายแล้ว — สต็อกต้องตามออเดอร์ทันที
+ *
+ * ร้านเจอ 3 ต.ค. 2026: ยืนยันขายไปแล้ว กลับมาเปลี่ยนเลนส์ กด "บันทึกการแก้ไข" ของเก่าไม่คืน
+ * ของใหม่ไม่ตัด ต้องกดแก้ไขขั้นขายแล้วยืนยันอีกรอบสต็อกถึงขยับ · PUT /api/orders/:id
+ * เขียนแค่ออเดอร์ ไม่เคยเรียก CaseStock
+ *
+ * ทดสอบในโหมด dry — ไม่ยิงคลังจริง แค่ดูว่าตอนบันทึกระบบไปเรียกตัดสต็อกหรือไม่
+ */
+
+group('บันทึกแก้ไขออเดอร์ = ปรับสต็อกตามเมื่อยืนยันขายแล้ว');
+
+function stockSyncCase(Tx $q, bool $salesConfirmed): int
+{
+    $tag  = bin2hex(random_bytes(3));
+    $cust = (int) $q->run('INSERT INTO customers (first_name, last_name) VALUES (?, ?)', 'ทดสอบ', "SYNC-$tag")['insertId'];
+    $case = (int) $q->run('INSERT INTO cases (case_code, customer_id) VALUES (?, ?)', "TEST-SYNC-$tag", $cust)['insertId'];
+    $order = (int) $q->run(
+        'INSERT INTO custom_orders (customer_id, case_id, order_date, frame_name, total_price) VALUES (?,?,NOW(),?,?)',
+        $cust,
+        $case,
+        'กรอบทดสอบ',
+        1000
+    )['insertId'];
+    if ($salesConfirmed) {
+        $q->run(
+            "INSERT INTO case_processes (case_id, process, status, completed_at) VALUES (?, 'sales', 'completed', NOW())",
+            $case
+        );
+    }
+    return $order;
+}
+
+function withDryStock(callable $fn): void
+{
+    StockClient::configure(['mode' => 'dry']);
+    try {
+        $fn();
+    } finally {
+        StockClient::configure(['mode' => 'live']); // ค่าเดียวกับ run.php
+    }
+}
+
+test('ยืนยันขายแล้ว กดบันทึกแก้ไข → เรียกปรับสต็อก', function () {
+    withDryStock(fn() => rollback(function (Tx $q) {
+        $order = stockSyncCase($q, true);
+        $res = syncSoldStock($order, null);
+        ok(is_array($res), 'ต้องเรียก CaseStock::issueForCase');
+        eq($res['mode'] ?? null, 'dry', 'โหมด');
+    }));
+});
+
+test('ยังไม่ยืนยันขาย กดบันทึกแก้ไข → ไม่แตะสต็อก (ตัดตอนยืนยัน)', function () {
+    withDryStock(fn() => rollback(function (Tx $q) {
+        $order = stockSyncCase($q, false);
+        eq(syncSoldStock($order, null), null, 'ไม่ควรเรียกตัดสต็อก');
+    }));
+});
+
+test('ออเดอร์ไม่ผูกเคส → ไม่แตะสต็อก', function () {
+    withDryStock(fn() => rollback(function (Tx $q) {
+        $cust = (int) $q->run('INSERT INTO customers (first_name, last_name) VALUES (?, ?)', 'ทดสอบ', 'SYNC-nocase')['insertId'];
+        $order = (int) $q->run('INSERT INTO custom_orders (customer_id, order_date, frame_name) VALUES (?,NOW(),?)', $cust, 'x')['insertId'];
+        eq(syncSoldStock($order, null), null, 'ไม่มีเคส');
+    }));
+});
+
+test('PUT /api/orders/:id เรียกปรับสต็อกจริง (ไม่ใช่แค่มีฟังก์ชัน)', function () {
+    $src = file_get_contents(__DIR__ . '/../routes/orders.php');
+    $put = substr($src, strpos($src, "PUT('/api/orders/:id', function"));
+    $put = substr($put, 0, strpos($put, "\n});"));
+    ok(str_contains($put, 'syncSoldStock('), 'PUT ต้องเรียก syncSoldStock');
+});
