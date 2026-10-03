@@ -93,10 +93,12 @@ final class CaseStock
     public static function issueForCase(array $case, ?int $employeeId = null): array
     {
         $order = $case['order'] ?? null;
-        $lines = self::plan($case);
-        if (!$lines) {
+        if (!$order || !($order['id'] ?? null)) {
             return ['done' => [], 'skipped' => [], 'mode' => StockClient::mode()];
         }
+        /* ไม่เหลือช่องสต็อกเลยก็ยังต้องไปต่อ — เปลี่ยนเลนส์สต็อกเป็นเลนส์สั่งตัด RX ทุกช่องแล้ว
+           ของที่ตัดไว้ต้องคืน · เดิมออกตรงนี้เลย ของเก่าค้างอยู่ (CASE-2026-00243, 3 ต.ค. 2026) */
+        $lines = self::plan($case);
 
         $caseId   = (int) $case['id'];
         $orderId  = (int) $order['id'];
@@ -141,6 +143,7 @@ final class CaseStock
             /* dry / off — จดไว้ว่าจะส่งอะไร แล้วไม่ยิง ของจริงไม่ขยับ */
             return [
                 'done'    => array_map(fn($l) => $l + ['dry' => true], $todo),
+                'undo'    => array_values(array_map(fn($prev) => (string) $prev['slot'], $undo)),
                 'skipped' => $skipped,
                 'mode'    => $mode,
             ];
