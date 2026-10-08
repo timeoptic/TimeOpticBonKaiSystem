@@ -275,7 +275,7 @@ function ReceiptSheet() {
         api.get(`/api/orders/${orderId}`),
         api.post('/api/receipts', { order_id: Number(orderId) }),
       ]);
-      return { sheet: orderReceipt(o, rc.receipt_no), receipt: rc };
+      return { sheet: orderReceipt(o, rc.receipt_no), receipt: rc, caseId: o.case_id || null };
     }
     if (saleId) {
       const [s, rc] = await Promise.all([
@@ -487,6 +487,14 @@ function ReceiptSheet() {
         >
           <Icon name="pencil" /> กรอกข้อมูลลูกค้า
         </button>
+
+        {/* ออกใบเสร็จมักเป็นขั้นท้าย ๆ ของเคส — พากลับไปเคสได้ตรง ไม่ต้องผ่านหน้าออเดอร์
+            ใบขาย POS ไม่ผูกเคส และออเดอร์ที่ไม่มีเคส (มีไม่กี่ใบ) ก็ไม่มีที่ให้กลับ */}
+        {data.caseId ? (
+          <Link className="btn btn-light" href={`/cases/detail?id=${data.caseId}`}>
+            <Icon name="board" /> กลับไปที่เคส
+          </Link>
+        ) : null}
 
         <Link className="btn btn-light" href={back.href}>
           <Icon name={back.icon} /> {back.label}
