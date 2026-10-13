@@ -32,6 +32,12 @@ if (PHP_SAPI !== 'cli') {
     exit("cli only\n");
 }
 
+/* เลิกใช้ตั้งแต่ 13 ต.ค. 2026 — สคริปต์นี้แจกเลขให้ทุกออเดอร์/ใบขายของปี ซึ่งขัดกับกติกาใหม่
+   ที่เลขเกิดเมื่อกด "ออกใบเสร็จ" เท่านั้น · ใช้ api/cli/receipt-tracking.php แทน */
+if (!in_array('--legacy-renumber', $argv, true)) {
+    exit("เลิกใช้แล้ว — ใช้ api/cli/receipt-tracking.php (ถ้าจำเป็นจริง ใส่ --legacy-renumber)\n");
+}
+
 $config = require dirname(__DIR__) . '/config.php';
 require dirname(__DIR__) . '/core/Http.php';
 require dirname(__DIR__) . '/core/Db.php';

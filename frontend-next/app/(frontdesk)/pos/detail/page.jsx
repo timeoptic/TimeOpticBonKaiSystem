@@ -28,6 +28,7 @@ import { PaymentBadge, FulfillmentBadge } from '../../../../components/pos/PosSt
 import { Select } from '../../../../components/Selects.jsx';
 import { DateTimeField } from '../../../../components/DateTimeField.jsx';
 import { useConfirm } from '../../../../components/Confirm.jsx';
+import { ReceiptPanel } from '../../../../components/ReceiptPanel.jsx';
 
 const ITEM_COLS = [
   { label: 'สินค้า', mobile: 'title', render: (r) => (
@@ -314,6 +315,9 @@ function PosDetail() {
       <Card title="ประวัติการรับเงิน" tight>
         <DataTable columns={payCols} rows={sale.payments} empty="ยังไม่มีการรับเงิน" />
       </Card>
+
+      {/* ใบขายที่ยกเลิกแล้วยังเห็นใบเสร็จเดิมได้ แต่ออกใบใหม่ไม่ได้ */}
+      <ReceiptPanel query={{ sale_id: sale.id }} disabled={sale.status === 'void'} />
 
       {editing && (
         <PosPaymentEditDialog

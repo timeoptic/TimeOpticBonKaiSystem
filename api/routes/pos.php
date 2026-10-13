@@ -594,9 +594,8 @@ POST('/api/pos/sales', function (array $req) {
         );
         $saleId = (int) $r['insertId'];
 
-        /* เลขใบเสร็จ BillP ออกพร้อมการขาย ไม่ใช่ตอนเปิดหน้าใบเสร็จ — ชุดเลขเรียงตาม
-           วันที่ขาย ดูเหตุผลที่หัว routes/receipts.php */
-        issueReceiptIn($q, 'sale', $saleId, $stamp, $total, int_or($actor['id'] ?? null));
+        /* ไม่ออกเลขใบเสร็จ BillP ตรงนี้แล้ว (ตั้งแต่ 13 ต.ค. 2026) — เลขเกิดเมื่อกด
+           "ออกใบเสร็จ" เท่านั้น ดู routes/receipts.php */
 
         foreach ($clean as $n => $c) {
             $q->run(

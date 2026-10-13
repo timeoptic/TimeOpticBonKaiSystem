@@ -50,6 +50,7 @@ import { NotifyPanel } from './panels/NotifyPanel.jsx';
 import { TimelinePanel } from './panels/TimelinePanel.jsx';
 import { LensRequisitionPanel } from './panels/LensRequisitionPanel.jsx';
 import { ChangeCustomerDialog } from './panels/ChangeCustomerDialog.jsx';
+import { ReceiptPanel } from '../../../../components/ReceiptPanel.jsx';
 import ns from './SalesUnconfirmed.module.css';
 
 /** one panel per process — ids come from lib/caseProcesses.js */
@@ -356,6 +357,10 @@ function OverviewTab({ c, showTab }) {
           <p className="muted">ยังไม่มีออเดอร์ — เปิดออเดอร์ที่ขั้น ขาย/เลือกกรอบ</p>
         </Card>
       )}
+
+      {/* ใบเสร็จของทุกออเดอร์ในเคส — เลขเดิม วันที่ออก สถานะการพิมพ์ (ร้านขอ 13 ต.ค. 2026)
+          เคสที่ยังไม่มีออเดอร์ไม่มีอะไรให้ออกใบ จึงไม่ต้องโชว์ */}
+      {o ? <ReceiptPanel query={{ case_id: c.id }} /> : null}
 
       <Split>
         <Card title="หมายเหตุจากเคส">

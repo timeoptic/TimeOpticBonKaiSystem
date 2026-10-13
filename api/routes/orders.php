@@ -321,17 +321,8 @@ POST('/api/orders', function (array $req) {
         $oid     = $r['insertId'];
         $deposit = num($body['deposit'] ?? null);
 
-        /* เลขใบเสร็จออกพร้อมออเดอร์ ไม่ใช่ตอนเปิดหน้าใบเสร็จ — ชุดเลข Bill จึงเรียงตาม
-           วันที่บนใบ (order_date) ดูเหตุผลที่หัว routes/receipts.php */
-        $vals = array_combine(ORDER_COLS, orderVals($body));
-        issueReceiptIn(
-            $q,
-            'order',
-            (int) $oid,
-            (string) ($vals['order_date'] ?: nowStamp()),
-            round2((float) $vals['total_price'] - (float) ($vals['discount'] ?? 0)),
-            int_or(StockModule::actor()['id'] ?? null)
-        );
+        /* ไม่ออกเลขใบเสร็จตรงนี้แล้ว (ตั้งแต่ 13 ต.ค. 2026) — เลขเกิดเมื่อกด "ออกใบเสร็จ"
+           เท่านั้น ดู routes/receipts.php */
 
         if ($deposit > 0) {
             $q->run(

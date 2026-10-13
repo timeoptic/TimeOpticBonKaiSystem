@@ -22,7 +22,7 @@
  * CSS อยู่ในไฟล์นี้ ไม่ใช่ globals.css เพราะ @page ตั้งขนาดกระดาษให้ทั้งแอปไม่ได้
  * (เหมือน /print/order และ /print/prescription) กฎต้องมีผลเฉพาะตอนเปิดหน้านี้
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { api } from '../../../../lib/apiClient.js';
@@ -33,7 +33,8 @@ import { QueryParamPage } from '../../../../components/QueryParamPage.jsx';
 import { PaperView } from '../../../../components/PaperView.jsx';
 import { Icon } from '../../../../components/Icon.jsx';
 import { useConfirm } from '../../../../components/Confirm.jsx';
-import { fmtDate } from '../../../../lib/format.js';
+import { fmtDate, fmtDateTime } from '../../../../lib/format.js';
+import { PrintStatusBadge, newKey, useIssueReceipt } from '../../../../components/ReceiptPanel.jsx';
 import { bahtText, bahtTextEn } from '../../../../lib/bahttext.js';
 import { hasRx, orderReceipt, saleReceipt, vatBreakdown, withoutRx } from '../../../../lib/receipt.js';
 
@@ -48,11 +49,11 @@ const SHOP = {
   tel: '+66 32 511 360, +66 81 643 9282',
   taxId: '3101800278601',
   th: {
-    name: 'ร้านแว่นตาไทม์ออพติก',
+    name: 'ร้านแว่นตาไทม์ออพติก (สำนักงานใหญ่)',
     address: '106/4 ถ.เพชรเกษม อ.หัวหิน จ.ประจวบคีรีขันธ์',
   },
   en: {
-    name: 'Timeoptic Optical shop',
+    name: 'Timeoptic Optical shop (Head Office)',
     address: '106/4 Phechkasem Rd. Hua-Hin  Prachuabkhirikhan',
   },
 };
@@ -69,7 +70,7 @@ const SHOP = {
  */
 const TEXT = {
   th: {
-    title: 'ใบเสร็จ', original: 'ต้นฉบับ', dup: 'สำเนา',
+    title: 'ใบกำกับภาษี/ใบเสร็จรับเงิน', original: 'ต้นฉบับ', dup: 'สำเนา',
     tel: 'โทร', shopTaxId: 'เลขประจำตัวผู้เสียภาษี',
     billNo: 'เลขที่', date: 'วันที่',
     custName: 'ชื่อลูกค้า', custTaxId: 'เลขประจำตัวผู้เสียภาษี',
@@ -79,7 +80,7 @@ const TEXT = {
     approvedBy: 'ผู้อนุมัติเอกสาร',
   },
   en: {
-    title: 'RECEIPT', original: 'Original', dup: 'Copy',
+    title: 'TAX INVOICE/RECEIPT', original: 'Original', dup: 'Copy',
     tel: 'Tel', shopTaxId: 'Tax ID',
     billNo: 'Bill No.', date: 'Date',
     custName: 'Customer name', custTaxId: 'Tax ID Number',
@@ -240,6 +241,11 @@ function Copy({ r, cust, t, lang, vat, kind }) {
   );
 }
 
+/** วันที่บนใบ = วันที่กดออกใบเสร็จ (doc_date) — ยังไม่ออกใช้วันที่บนบิลไปพลาง */
+function withIssueDate(sheet, rc) {
+  return rc?.id && rc.doc_date ? { ...sheet, date: rc.doc_date } : sheet;
+}
+
 function ReceiptSheet() {
   const confirm = useConfirm();
   const params = useSearchParams();
@@ -263,29 +269,37 @@ function ReceiptSheet() {
   const [showRx, setShowRx] = useState(true);
 
   /**
-   * เปิดหน้านี้ = ออกเลขใบเสร็จ
+   * เปิดหน้านี้ = ดูใบเสร็จ ไม่ใช่ออกเลข (ตั้งแต่ 13 ต.ค. 2026)
    *
-   * POST /api/receipts เรียกซ้ำได้ปลอดภัย — ใบที่เคยออกเลขแล้วจะคืนเลขเดิมเสมอ
-   * เปิดดูเฉย ๆ ไม่ได้พิมพ์ เลขนั้นก็ยังจองไว้ให้ใบนี้ วันหลังลูกค้ามาขอก็ได้เลขเดิม
-   * ยอดเงินบนเลขถูกคิดที่ฝั่ง API จากข้อมูลในฐาน ไม่ได้ส่งจากหน้านี้ไป
+   * POST /api/receipts แค่อ่านใบที่ออกไว้แล้ว ยังไม่ออกได้ status NOT_ISSUED กลับมา
+   * เลขเกิดเมื่อกดปุ่ม "ออกใบเสร็จ" เท่านั้น · ใบที่ออกแล้วเปิดกี่ครั้งก็ได้เลขเดิม วันที่เดิม
+   * `print=1` (ปุ่มพิมพ์ซ้ำจากหน้าเคส/POS) = เปิดแล้วสั่งพิมพ์ทันทีหนึ่งครั้ง
    */
+  const autoPrint = params.get('print') === '1';
+  const [tick, setTick] = useState(0);
+  const { issue, busy: issuing } = useIssueReceipt();
+  /* การสั่งพิมพ์ครั้งล่าสุดที่รอพนักงานบอกผล — { id, attempt, closed } · null = ไม่มีอะไรค้าง */
+  const [pending, setPending] = useState(null);
+  const pendingRef = useRef(null);
+  const autoDone = useRef(false);
+  const printRef = useRef(null);
   const { data, loading, error } = useAsync(async () => {
     if (orderId) {
       const [o, rc] = await Promise.all([
         api.get(`/api/orders/${orderId}`),
         api.post('/api/receipts', { order_id: Number(orderId) }),
       ]);
-      return { sheet: orderReceipt(o, rc.receipt_no), receipt: rc, caseId: o.case_id || null };
+      return { sheet: withIssueDate(orderReceipt(o, rc.receipt_no), rc), receipt: rc, caseId: o.case_id || null, label: o.invoice_code };
     }
     if (saleId) {
       const [s, rc] = await Promise.all([
         api.get(`/api/pos/sales/${saleId}`),
         api.post('/api/receipts', { sale_id: Number(saleId) }),
       ]);
-      return { sheet: saleReceipt(s, rc.receipt_no), receipt: rc };
+      return { sheet: withIssueDate(saleReceipt(s, rc.receipt_no), rc), receipt: rc, label: s.pos_no };
     }
     throw new Error('ไม่ได้ระบุว่าจะออกใบเสร็จของออเดอร์หรือใบขาย POS');
-  }, [orderId, saleId]);
+  }, [orderId, saleId, tick]);
 
   /** เอานามหนึ่งรายมาลงช่องทั้งสี่ พร้อมจำไว้ว่ามาจากแถวไหน */
   const applyParty = (p) => {
@@ -338,11 +352,22 @@ function ReceiptSheet() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data]);
 
-  if (loading) return <Loading text="กำลังเตรียมใบเสร็จ…" />;
+  /* ปุ่ม "พิมพ์ซ้ำ" จากหน้าเคส/POS — สั่งพิมพ์ครั้งเดียวหลังโหลดใบเสร็จที่ออกแล้วเสร็จ
+     หน่วงนิดเดียวให้บล็อกลูกค้าที่เคยพิมพ์ไว้ลงช่องก่อน */
+  useEffect(() => {
+    if (!autoPrint || autoDone.current || data?.receipt?.status !== 'ISSUED') return undefined;
+    autoDone.current = true;
+    const t = setTimeout(() => printRef.current?.(), 400);
+    return () => clearTimeout(t);
+  }, [autoPrint, data]);
+
+  if (loading && !data) return <Loading text="กำลังเตรียมใบเสร็จ…" />;
   if (error) return <Card><p className="muted">{error.message}</p></Card>;
 
   const t = TEXT[lang];
   const { sheet: full, receipt } = data;
+  const issued = Boolean(receipt?.id) && receipt.status === 'ISSUED';
+  const voided = receipt?.status === 'VOIDED';
   /* แก้ช่องเองแล้วถือว่าหลุดจากนามในรายชื่อ — ไม่งั้นใบจะผูกกับแถวที่หน้าตาไม่ตรง
      กับสิ่งที่พิมพ์ออกมา และปุ่ม "จำไว้" จะเดาผิดว่ากำลังแก้แถวไหน */
   const setField = (key) => (e) => {
@@ -393,6 +418,7 @@ function ReceiptSheet() {
    * ไม่ได้รอคำตอบจากเซิร์ฟเวอร์
    */
   const printSheet = () => {
+    if (!issued) return;
     api.put(`/api/receipts/${receipt.id}/bill`, {
       bill_name: cust.name,
       bill_tax_id: cust.taxId,
@@ -400,7 +426,53 @@ function ReceiptSheet() {
       bill_phone: cust.phone,
       bill_party_id: partyId,
     }).catch(() => {});
+    /* ทุกการกดพิมพ์ = หนึ่งแถวในประวัติ (REQUESTED) · ไม่ได้ออกเลขใหม่ ไม่แตะยอด/วันที่ */
+    const req = api.post(`/api/receipts/${receipt.id}/prints`, { client_key: newKey() })
+      .then((log) => {
+        const p = { id: log.id, attempt: log.attempt_no, closed: false };
+        pendingRef.current = p;
+        setPending(p);
+        return log;
+      })
+      .catch(() => null);
+    /* กล่องพิมพ์ของเบราว์เซอร์ปิดแล้ว = ไม่รู้ว่ากดพิมพ์หรือกดยกเลิก → UNKNOWN
+       แล้วให้พนักงานบอกผลเอง ห้ามถือว่าพิมพ์สำเร็จจากการเปิดกล่องพิมพ์ */
+    const after = () => {
+      window.removeEventListener('afterprint', after);
+      req.then((log) => {
+        if (!log) return;
+        api.put(`/api/receipt-prints/${log.id}`, { status: 'UNKNOWN' }).catch(() => {});
+        const p = { id: log.id, attempt: log.attempt_no, closed: true };
+        pendingRef.current = p;
+        setPending(p);
+      });
+    };
+    window.addEventListener('afterprint', after);
     window.print();
+  };
+
+  printRef.current = printSheet;
+
+  /** พนักงานบอกผลการพิมพ์ครั้งล่าสุด — CONFIRMED / FAILED */
+  const resolvePrint = async (status) => {
+    const p = pendingRef.current;
+    if (!p) return;
+    try {
+      await api.put(`/api/receipt-prints/${p.id}`, {
+        status,
+        failure_reason: status === 'FAILED' ? 'พนักงานแจ้งว่ากระดาษไม่ออก' : null,
+      });
+    } catch {
+      /* บอกผลไม่สำเร็จ ประวัติยังเป็น "ไม่ทราบผล" ซึ่งไม่ผิด แค่ไม่ครบ */
+    }
+    pendingRef.current = null;
+    setPending(null);
+    setTick((t) => t + 1);
+  };
+
+  const onIssue = async () => {
+    const rc = await issue(orderId ? 'CASE' : 'POS', Number(orderId || saleId), data.label);
+    if (rc) setTick((t) => t + 1);
   };
   /* ล้างทั้งสี่ช่อง — ใบจะพิมพ์ออกมาเป็นเส้นประเปล่าให้เขียนมือ ซึ่งเป็นวิธีที่
      ฟอร์ม Excel เดิมของร้านใช้ กดผิดก็กด "ดึงชื่อ+เบอร์จากระบบ" เอาคืนได้ */
@@ -429,10 +501,52 @@ function ReceiptSheet() {
     <>
       <style>{sheetCss}</style>
 
+      {/* ยังไม่ออกใบ — ไม่มีปุ่มพิมพ์ ใบเสร็จที่ไม่มีเลขต้องไม่หลุดออกไปเป็นกระดาษ */}
+      {!receipt?.id ? (
+        <div className="rc-state no-print">
+          <div>
+            <b>ยังไม่ได้ออกใบเสร็จ</b>
+            <p>เปิดหน้านี้ไม่ได้ออกเลขให้ — กด &quot;ออกใบเสร็จ&quot; เมื่อจะออกใบให้ลูกค้าจริง เลขจะผูกกับบิลนี้ถาวร</p>
+          </div>
+          <button type="button" className="btn btn-accent" disabled={issuing} onClick={() => void onIssue()}>
+            <Icon name="receipt" /> ออกใบเสร็จ
+          </button>
+        </div>
+      ) : (
+        <div className="rc-state is-issued no-print">
+          <div>
+            <b>{receipt.receipt_no || 'ใบเสร็จ'}</b>{' '}
+            {voided ? <span className="badge danger">ยกเลิกแล้ว</span> : null}
+            <p>
+              ออกเมื่อ {fmtDateTime(receipt.issued_at)}
+              {receipt.issued_by_name ? ` โดย ${receipt.issued_by_name}` : ''}
+              {receipt.print_count ? ` · สั่งพิมพ์แล้ว ${receipt.print_count} ครั้ง` : ''}
+            </p>
+          </div>
+          <PrintStatusBadge status={receipt.print_status} />
+        </div>
+      )}
+
+      {/* ถามผลหลังกล่องพิมพ์ปิด — เบราว์เซอร์ไม่บอกว่ากระดาษออกจริงไหม */}
+      {pending?.closed ? (
+        <div className="rc-state is-ask no-print">
+          <div>
+            <b>พิมพ์ครั้งที่ {pending.attempt} — กระดาษออกมาหรือไม่?</b>
+            <p>ระบบไม่รู้ผลจากเครื่องพิมพ์ ถ้าไม่ตอบ ประวัติจะบันทึกว่า &quot;ไม่ทราบผลการพิมพ์&quot;</p>
+          </div>
+          <span>
+            <button type="button" className="btn btn-accent" onClick={() => void resolvePrint('CONFIRMED')}>ออกแล้ว</button>{' '}
+            <button type="button" className="btn btn-light" onClick={() => void resolvePrint('FAILED')}>ไม่ออก / ยกเลิก</button>
+          </span>
+        </div>
+      ) : null}
+
       <div className="rc-actions no-print">
-        <button type="button" className="btn" onClick={printSheet}>
-          <Icon name="printer" /> พิมพ์ใบเสร็จ (A4 แนวนอน — ต้นฉบับ + สำเนา)
-        </button>
+        {issued ? (
+          <button type="button" className="btn" onClick={printSheet}>
+            <Icon name="printer" /> {receipt.print_count ? 'พิมพ์ซ้ำ' : 'พิมพ์ใบเสร็จ'} (A4 แนวนอน — ต้นฉบับ + สำเนา)
+          </button>
+        ) : null}
 
         {/* สองช่องติดกัน ไม่ใช่ dropdown — เห็นได้ทันทีว่าใบตอนนี้เป็นภาษาอะไร
             และสลับได้ในคลิกเดียว ไม่ต้องกดเปิดดูก่อน */}
@@ -772,6 +886,11 @@ const sheetCss = `
 
 /* ---- เปลือกหน้าจอ (ไม่ติดไปกับกระดาษ) ---- */
 .rc-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.rc-state{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;
+  padding:12px 16px;margin-bottom:12px;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
+.rc-state p{margin:2px 0 0;color:var(--ink-soft);font-size:13px}
+.rc-state.is-issued{background:transparent}
+.rc-state.is-ask{border-color:#e0b400;background:#fff8e1}
 .rc-hint{max-width:297mm;margin:0 auto 12px;padding:10px 14px;font-size:13px;line-height:1.6;
   border:1px solid #e3c98a;border-radius:8px;background:#fdf7e6;color:#5b4a1d}
 .rc-hint ol{margin:6px 0 0;padding-left:20px}

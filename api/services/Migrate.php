@@ -685,6 +685,112 @@ final class Migrate
         return $changed;
     }
 
+    /** ตารางของ receiptTracking() — แยกจาก tables() เพราะอ้าง FK ไป payments/pos_payments
+        ซึ่ง run() ไม่ได้เป็นคนสร้าง ฐานใหม่จะสร้างไม่ผ่านถ้ารวมไว้ในลูปเดียวกัน */
+    private static function trackingTables(): array
+    {
+        $c = self::CHARSET;
+        return [
+            /* ประวัติการสั่งพิมพ์ใบเสร็จ — หนึ่งแถวต่อการกดพิมพ์หนึ่งครั้ง (ร้านขอ 13 ต.ค. 2026)
+             *
+             * เบราว์เซอร์ไม่บอกว่ากระดาษออกจริงหรือคนกดยกเลิกในกล่องพิมพ์ ระบบจึงรู้ได้แค่
+             * REQUESTED (กดพิมพ์แล้ว) → UNKNOWN (กล่องพิมพ์ปิดแล้ว ไม่รู้ผล) · CONFIRMED / FAILED
+             * มาจากพนักงานกดยืนยันเองเท่านั้น ห้ามตั้งให้เองจากการเปิดหน้าหรือ preview
+             * "ยังไม่เคยสั่งพิมพ์" (NOT_REQUESTED) คือไม่มีแถวในตารางนี้ ไม่ได้เก็บเป็นแถว
+             *
+             * receipt_no / source_* ซ้ำกับใน receipts โดยตั้งใจ — ประวัติต้องอ่านออกได้เอง
+             * แม้ใบเสร็จจะถูกปลดจากออเดอร์ไปแล้ว · client_key กันกดพิมพ์ซ้อนสองทีเป็นสองแถว */
+            'receipt_print_logs' => "CREATE TABLE IF NOT EXISTS receipt_print_logs (
+                id             int(10) unsigned NOT NULL AUTO_INCREMENT,
+                receipt_id     int(10) unsigned NOT NULL,
+                receipt_no     varchar(40) DEFAULT NULL,
+                source_type    varchar(4) DEFAULT NULL COMMENT 'CASE | POS',
+                source_id      int(10) unsigned DEFAULT NULL,
+                attempt_no     int(10) unsigned NOT NULL,
+                status         varchar(12) NOT NULL DEFAULT 'REQUESTED' COMMENT 'REQUESTED | UNKNOWN | CONFIRMED | FAILED',
+                requested_at   datetime NOT NULL DEFAULT current_timestamp(),
+                requested_by   int(10) unsigned DEFAULT NULL COMMENT 'admins.id',
+                printer_name   varchar(120) DEFAULT NULL,
+                failure_reason varchar(255) DEFAULT NULL,
+                resolved_at    datetime DEFAULT NULL,
+                resolved_by    int(10) unsigned DEFAULT NULL,
+                client_key     varchar(64) DEFAULT NULL,
+                PRIMARY KEY (id),
+                UNIQUE KEY uq_print_attempt (receipt_id, attempt_no),
+                UNIQUE KEY uq_print_client (receipt_id, client_key),
+                CONSTRAINT fk_print_receipt FOREIGN KEY (receipt_id) REFERENCES receipts (id)
+              ) $c",
+
+            /* การรับเงินที่ใบเสร็จนี้ครอบ — หนึ่งใบต่อเคส แต่เคสรับเงินได้หลายครั้ง (มัดจำ + ส่วนที่เหลือ)
+             * จึงตอบได้ว่าใบนี้อ้างเงินก้อนไหนบ้าง · เคสอ้าง payments · POS อ้าง pos_payments
+             * สองคอลัมน์มี FK จริงทั้งคู่ ไม่ใช่คอลัมน์เดียวที่เดาเอาว่าชี้ตารางไหน */
+            'receipt_payments' => "CREATE TABLE IF NOT EXISTS receipt_payments (
+                id             int(10) unsigned NOT NULL AUTO_INCREMENT,
+                receipt_id     int(10) unsigned NOT NULL,
+                payment_id     int(10) unsigned DEFAULT NULL,
+                pos_payment_id int(10) unsigned DEFAULT NULL,
+                linked_at      datetime NOT NULL DEFAULT current_timestamp(),
+                PRIMARY KEY (id),
+                UNIQUE KEY uq_rp_payment (payment_id),
+                UNIQUE KEY uq_rp_pos_payment (pos_payment_id),
+                KEY idx_rp_receipt (receipt_id),
+                CONSTRAINT fk_rp_receipt FOREIGN KEY (receipt_id) REFERENCES receipts (id),
+                CONSTRAINT fk_rp_payment FOREIGN KEY (payment_id) REFERENCES payments (id) ON DELETE CASCADE,
+                CONSTRAINT fk_rp_pos_payment FOREIGN KEY (pos_payment_id) REFERENCES pos_payments (id) ON DELETE CASCADE
+              ) $c",
+
+        ];
+    }
+
+    /**
+     * ใบเสร็จออกเมื่อกด "ออกใบเสร็จ" + ติดตามการพิมพ์ (ร้านขอ 13 ต.ค. 2026)
+     *
+     * เรียกจาก cli/receipt-tracking.php บน Hostinger ได้ด้วย · ทำซ้ำได้ ไม่เปลี่ยนอะไรรอบสอง
+     *   source_type/source_id  เคสหรือ POS ไหน — คงอยู่ถาวร แม้ order_id/sale_id ถูกปลดเป็น NULL
+     *   status                 ISSUED | VOIDED (ยกเลิก ยังเก็บแถวไว้)
+     *   idem_key               กดออกใบซ้ำ/สองเครื่องพร้อมกัน ได้ใบเดิม
+     *   legacy_no              เลขเดิมก่อนรีเซ็ตเลข ต.ค. 2569 — ปล่อยเลขให้ชุดใหม่ แต่ไม่ลืมว่าเคยเป็นเลขอะไร
+     */
+    public static function receiptTracking(): array
+    {
+        $changed = self::receiptNumbering();
+        foreach (['receipt_print_logs', 'receipt_payments'] as $t) {
+            $has = Db::get(
+                'SELECT COUNT(*) n FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?',
+                $t
+            );
+            if (!(int) ($has['n'] ?? 0)) {
+                Db::pdo()->exec(self::trackingTables()[$t]);
+                $changed[] = $t;
+            }
+        }
+        $cols = self::addColumns('receipts', [
+            'source_type' => "varchar(4) DEFAULT NULL COMMENT 'CASE | POS'",
+            'source_id'   => "int(10) unsigned DEFAULT NULL COMMENT 'custom_orders.id / pos_sales.id — ไม่ถูกปลด'",
+            'status'      => "varchar(10) NOT NULL DEFAULT 'ISSUED' COMMENT 'ISSUED | VOIDED'",
+            'idem_key'    => 'varchar(120) DEFAULT NULL',
+            'legacy_no'   => "varchar(40) DEFAULT NULL COMMENT 'เลขเดิมก่อนรีเซ็ต'",
+        ]);
+        if ($cols) {
+            $changed = array_merge($changed, $cols);
+            Db::pdo()->exec(
+                "UPDATE receipts SET source_type = IF(sale_id IS NOT NULL, 'POS', 'CASE'),
+                        source_id = COALESCE(order_id, sale_id)
+                  WHERE source_type IS NULL AND (order_id IS NOT NULL OR sale_id IS NOT NULL)"
+            );
+            Db::pdo()->exec("UPDATE receipts SET status = 'VOIDED' WHERE voided_at IS NOT NULL");
+        }
+        $idx = Db::get(
+            "SELECT COUNT(*) n FROM information_schema.statistics
+              WHERE table_schema = DATABASE() AND table_name = 'receipts' AND index_name = 'uq_receipt_idem'"
+        );
+        if (!(int) ($idx['n'] ?? 0)) {
+            Db::pdo()->exec('ALTER TABLE receipts ADD UNIQUE KEY uq_receipt_idem (idem_key)');
+            $changed[] = 'receipts.uq_receipt_idem';
+        }
+        return $changed;
+    }
+
     private static function addColumns(string $table, array $columns): array
     {
         $added = [];
@@ -861,7 +967,7 @@ final class Migrate
            ชุดเลขจึงเรียงตามวันที่บนใบ · doc_date คือวันที่บนใบ ณ ตอนออกเลข
            ใบที่ออเดอร์ถูกลบหรือใบขายถูกยกเลิก ไม่ลบแถว แต่ตีตรายกเลิก เลขจึงไม่หลุด
            และ void_reason เก็บว่าเคยเป็นของออเดอร์ไหน เพราะ order_id กลายเป็น NULL */
-        $added = array_merge($added, self::receiptNumbering());
+        $added = array_merge($added, self::receiptTracking());
         /* "ยังไม่ชำระ" — รายการรับเงิน 0 บาท ลูกค้าจะมาจ่ายตอนรับของ (ร้านขอ 14 ก.ย. 2026)
            บน Hostinger ไม่มีอะไรเรียก run() ต้องสั่งเพิ่มเอง — ดู deploy/README.md */
         $added = array_merge($added, self::extendEnum('payments', 'kind', ['unpaid'], "NOT NULL DEFAULT 'deposit'"));

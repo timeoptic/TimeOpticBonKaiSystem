@@ -282,7 +282,7 @@ export default function PosPage() {
               </div>
             </div>
             <button type="button" className="pos-btn primary" onClick={resetAll}><Icon name="bag" /> ขายรายการใหม่</button>
-            {/* หน้าพิมพ์ใบเสร็จเดียวกับปุ่ม 🧾 ใบเสร็จ ในหน้ารายละเอียดใบขาย — ออกเลขใบเสร็จให้เองตอนเปิด */}
+            {/* หน้าพิมพ์ใบเสร็จเดียวกับปุ่ม 🧾 ใบเสร็จ ในหน้ารายละเอียดใบขาย — เลขออกเมื่อกด "ออกใบเสร็จ" ที่หน้านั้น */}
             <Link className="pos-btn link" href={`/print/receipt?sale=${done.id}`}><Icon name="receipt" /> พิมพ์ใบเสร็จ</Link>
             <Link className="pos-btn link" href={`/pos/detail/?id=${done.id}`}>ดูรายละเอียดใบนี้</Link>
             <Link className="pos-btn link" href="/pos/history/"><Icon name="refresh" /> ดูประวัติการขาย POS</Link>
