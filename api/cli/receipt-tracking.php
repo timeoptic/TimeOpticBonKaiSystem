@@ -14,7 +14,7 @@
  *
  * รีเซ็ตไม่ลบแถว: เลขเดิมย้ายไป legacy_no · status = VOIDED · ปลด order_id/sale_id
  * (source_type/source_id ยังจำว่าเป็นของบิลไหน) · ชื่อที่เคยพิมพ์ลงใบอยู่ในแถวเดิม
- * แล้วตัวนับของปีถอยกลับไปที่เลขสูงสุดที่ยังเหลืออยู่ เลขใหม่จึงต่อจากชุด ก.ย.
+ * แล้วตัวนับของเดือนนั้นถอยกลับไปที่เลขสูงสุดที่ยังเหลืออยู่ (เลขท้ายเริ่มใหม่ทุกเดือน — ปกติคือ 0)
  *
  * ไม่มี print log ในระบบเดิม — "เคยกดพิมพ์" ดูจากหลักฐานเดียวที่มี คือชื่อลูกค้าบนใบ
  * (bill_name) ซึ่งถูกเขียนตอนกดปุ่มพิมพ์เท่านั้น · ไม่มีชื่อ ไม่ได้แปลว่าไม่เคยพิมพ์
@@ -162,10 +162,11 @@ if (!$apply) {
 }
 
 $why = "รีเซ็ตเลข $tag — ออกใบใหม่ (ร้านสั่ง 13 ต.ค. 2026)";
-$res = Db::tx(function (Tx $q) use ($rows, $year, $why) {
+$mon = (int) $m[2];
+$res = Db::tx(function (Tx $q) use ($rows, $year, $mon, $why) {
     foreach (RECEIPT_PREFIX as $prefix) {
-        $q->run('INSERT IGNORE INTO receipt_counters (prefix, year, last_no) VALUES (?, ?, 0)', $prefix, $year);
-        $q->get('SELECT last_no FROM receipt_counters WHERE prefix = ? AND year = ? FOR UPDATE', $prefix, $year);
+        $q->run('INSERT IGNORE INTO receipt_counters (prefix, year, month, last_no) VALUES (?, ?, ?, 0)', $prefix, $year, $mon);
+        $q->get('SELECT last_no FROM receipt_counters WHERE prefix = ? AND year = ? AND month = ? FOR UPDATE', $prefix, $year, $mon);
     }
     foreach ($rows as $r) {
         $q->run(
@@ -185,9 +186,9 @@ $res = Db::tx(function (Tx $q) use ($rows, $year, $why) {
         $max = (int) $q->get(
             "SELECT COALESCE(MAX(CAST(SUBSTRING_INDEX(receipt_no, '-', -1) AS UNSIGNED)), 0) n
                FROM receipts WHERE receipt_no LIKE ?",
-            "$prefix-$year-%"
+            sprintf('%s-%d-%02d-%%', $prefix, $year, $mon)
         )['n'];
-        $q->run('UPDATE receipt_counters SET last_no = ? WHERE prefix = ? AND year = ?', $max, $prefix, $year);
+        $q->run('UPDATE receipt_counters SET last_no = ? WHERE prefix = ? AND year = ? AND month = ?', $max, $prefix, $year, $mon);
         $counters[$prefix] = $max;
     }
     return $counters;

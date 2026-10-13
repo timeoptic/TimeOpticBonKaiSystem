@@ -132,6 +132,16 @@ test('TEST 04: POS ออกใบเสร็จถัดมา → ชุด B
     });
 });
 
+test('เลขท้ายเริ่ม 00001 ใหม่ทุกเดือน แยกชุด Bill / BillP', function () {
+    rollback(function (Tx $q) {
+        eq(nextReceiptNo($q, 'Bill', '2031-03-05 10:00:00'), 'Bill-2031-03-00001', 'ใบแรกของเดือน');
+        eq(nextReceiptNo($q, 'Bill', '2031-03-28 10:00:00'), 'Bill-2031-03-00002', 'ใบถัดไปเดือนเดียวกัน');
+        eq(nextReceiptNo($q, 'BillP', '2031-03-28 10:00:00'), 'BillP-2031-03-00001', 'POS ชุดของตัวเอง');
+        eq(nextReceiptNo($q, 'Bill', '2031-04-01 09:00:00'), 'Bill-2031-04-00001', 'เดือนใหม่เริ่ม 00001');
+        eq(nextReceiptNo($q, 'Bill', '2031-03-30 10:00:00'), 'Bill-2031-03-00003', 'เดือนเก่ายังเดินต่อของมันเอง');
+    });
+});
+
 test('TEST 05 + 10: เปิดใบเดิมวันหลัง/เดือนหลัง → เลขเดิม ไม่สร้างเลขของเดือนปัจจุบัน', function () {
     rollback(function (Tx $q) {
         $o  = rcptOrder(rcptCustomer($q), '800');

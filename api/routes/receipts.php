@@ -12,7 +12,8 @@
  *
  * รูปแบบ  Bill-2026-10-00042   ใบเสร็จของเคสแว่น
  *         BillP-2026-10-00007  ใบเสร็จของการขาย POS  (คนละชุด เดินเลขแยกกัน — ร้านเลือกเอง)
- * เลขท้ายเดินยาวทั้งปี ไม่รีเซ็ตรายเดือน · เลขที่ออกแล้วไม่นำกลับมาใช้
+ * เลขท้ายเริ่ม 00001 ใหม่ทุกเดือน แยกชุด Bill / BillP (ร้านขอ 13 ต.ค. 2026 — เดิมเดินยาวทั้งปี)
+ * เดือนในเลข = เดือนที่กดออกใบ · เลขที่ออกแล้วไม่นำกลับมาใช้
  *
  * ลบออเดอร์ / ยกเลิกใบขาย: แถวยังอยู่ status = VOIDED เลขจึงไม่หลุดจากชุด
  * source_type/source_id จำว่าเคยเป็นของใคร แม้ order_id/sale_id จะถูกปลดเป็น NULL
@@ -47,31 +48,42 @@ function receiptFor(string $kind, int $id): ?array
 }
 
 /**
- * เลขถัดไปของชุดนี้ในปีของ $docDate — ต้องเรียกใน transaction
+ * เลขถัดไปของชุดนี้ในเดือนของ $docDate — ต้องเรียกใน transaction
  *
- * แถวตัวนับถูกล็อก FOR UPDATE จนจบ transaction ของคนเรียก สองเครื่องที่กดออกใบ
- * พร้อมกันจึงได้เลขต่อกัน ไม่ใช่เลขเดียวกัน
- * ปีที่ยังไม่มีแถวตัวนับ ตั้งต้นจากเลขสูงสุดที่มีอยู่ใน receipts ของปีนั้น
+ * หนึ่งแถวตัวนับต่อชุดต่อเดือน (prefix, year, month) เดือนใหม่เริ่มที่ 1
+ * แถวถูกล็อก FOR UPDATE จนจบ transaction ของคนเรียก สองเครื่องที่กดออกใบพร้อมกันจึงได้
+ * เลขต่อกัน ไม่ใช่เลขเดียวกัน · เดือนที่ยังไม่มีแถว ตั้งต้นจากเลขสูงสุดของเดือนนั้นใน receipts
+ * (ปกติไม่มี = 0) เลขที่ถูกยกเลิกแล้วยังถือเลขอยู่ จึงไม่ถูกแจกซ้ำ
  */
 function nextReceiptNo(Tx $q, string $prefix, string $docDate): string
 {
-    $ts   = strtotime($docDate) ?: time();
-    $year = (int) date('Y', $ts);
+    $ts    = strtotime($docDate) ?: time();
+    $year  = (int) date('Y', $ts);
+    $month = (int) date('n', $ts);
+    $mm    = date('m', $ts);
     $q->run(
-        "INSERT IGNORE INTO receipt_counters (prefix, year, last_no)
-         SELECT ?, ?, COALESCE(MAX(CAST(SUBSTRING_INDEX(receipt_no, '-', -1) AS UNSIGNED)), 0)
+        "INSERT IGNORE INTO receipt_counters (prefix, year, month, last_no)
+         SELECT ?, ?, ?, COALESCE(MAX(CAST(SUBSTRING_INDEX(receipt_no, '-', -1) AS UNSIGNED)), 0)
            FROM receipts WHERE receipt_no LIKE ?",
         $prefix,
         $year,
-        "$prefix-$year-%"
+        $month,
+        "$prefix-$year-$mm-%"
     );
     $n = (int) $q->get(
-        'SELECT last_no FROM receipt_counters WHERE prefix = ? AND year = ? FOR UPDATE',
+        'SELECT last_no FROM receipt_counters WHERE prefix = ? AND year = ? AND month = ? FOR UPDATE',
         $prefix,
-        $year
+        $year,
+        $month
     )['last_no'] + 1;
-    $q->run('UPDATE receipt_counters SET last_no = ? WHERE prefix = ? AND year = ?', $n, $prefix, $year);
-    return sprintf('%s-%d-%s-%0' . CODE_PAD . 'd', $prefix, $year, date('m', $ts), $n);
+    $q->run(
+        'UPDATE receipt_counters SET last_no = ? WHERE prefix = ? AND year = ? AND month = ?',
+        $n,
+        $prefix,
+        $year,
+        $month
+    );
+    return sprintf('%s-%d-%s-%0' . CODE_PAD . 'd', $prefix, $year, $mm, $n);
 }
 
 /**

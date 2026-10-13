@@ -780,6 +780,14 @@ final class Migrate
             );
             Db::pdo()->exec("UPDATE receipts SET status = 'VOIDED' WHERE voided_at IS NOT NULL");
         }
+        /* เลขท้ายเริ่มใหม่ทุกเดือน (ร้านขอ 13 ต.ค. 2026) — ตัวนับหนึ่งแถวต่อชุดต่อเดือน
+           แถวเดิม (ทั้งปี) ได้ month = 0 ค้างไว้เฉย ๆ ไม่มีใครอ่านแล้ว */
+        if (self::addColumns('receipt_counters', [
+            'month' => "tinyint(3) unsigned NOT NULL DEFAULT 0 COMMENT '1–12 · 0 = ตัวนับทั้งปีแบบเดิม'",
+        ])) {
+            Db::pdo()->exec('ALTER TABLE receipt_counters DROP PRIMARY KEY, ADD PRIMARY KEY (prefix, year, month)');
+            $changed[] = 'receipt_counters.month';
+        }
         $idx = Db::get(
             "SELECT COUNT(*) n FROM information_schema.statistics
               WHERE table_schema = DATABASE() AND table_name = 'receipts' AND index_name = 'uq_receipt_idem'"
