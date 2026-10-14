@@ -14,12 +14,14 @@
  *   - ระบบ "ชวนให้ตรวจสอบ" ไม่ได้ตัดสินว่าค่าผิด
  */
 
+/* เกณฑ์ของร้าน (ผู้ใช้กำหนด 14 ต.ค. 2026): SPH/CYL/ADD เหลือง ≥ 0.50 แดง ≥ 0.75 ·
+   AXIS เหลือง ≥ 10° แดง ≥ 20° (เฉพาะเมื่อ |CYL| ทั้งสองชุด ≥ min_cyl) · SE ปิดไว้ แต่ยังแสดงค่าในตาราง */
 export const DEFAULT_RULES = Object.freeze({
-  sph: { enabled: true, warn: 0.75, critical: 1.5 },
-  cyl: { enabled: true, warn: 0.75, critical: 1.5 },
-  se: { enabled: true, warn: 1.0, critical: 2.0 },
-  add: { enabled: true, warn: 0.5, critical: 1.0 },
-  axis: { enabled: true, warn: 20, min_cyl: 0.75 },
+  sph: { enabled: true, warn: 0.5, critical: 0.75 },
+  cyl: { enabled: true, warn: 0.5, critical: 0.75 },
+  se: { enabled: false, warn: 1.0, critical: 2.0 },
+  add: { enabled: true, warn: 0.5, critical: 0.75 },
+  axis: { enabled: true, warn: 10, critical: 20, min_cyl: 0.75 },
 });
 
 /** เลนส์หลายระยะ — ต้องมี ADD */
@@ -133,7 +135,9 @@ const fmtV = (k, v) => (v == null ? '—' : k === 'axis' ? `${v}°` : fmtD(v));
 function changeMessage(eye, k, level, row) {
   const label = FIELD_LABEL[ROW_FIELD[k]];
   if (k === 'axis') {
-    return `แกน AXIS ${EYE_NAME[eye]} ต่างจากแว่นเดิม ${row.delta}° (${row.old}° → ${row.final}°) กรุณาตรวจสอบผลการวัดอีกครั้ง`;
+    return level === 'critical'
+      ? `แกน AXIS ${EYE_NAME[eye]} ต่างจากแว่นเดิมมาก ${row.delta}° (${row.old}° → ${row.final}°) กรุณาตรวจสอบผลการวัดและความสบายของลูกค้าก่อนยืนยัน`
+      : `แกน AXIS ${EYE_NAME[eye]} ต่างจากแว่นเดิม ${row.delta}° (${row.old}° → ${row.final}°) กรุณาตรวจสอบผลการวัดอีกครั้ง`;
   }
   const head = level === 'critical'
     ? `ค่าสายตา${EYE_NAME[eye]} ${label} เปลี่ยนมาก ${fmtD(row.delta)} D`
@@ -231,7 +235,8 @@ export function evaluate({ old, final, testFor, rules }) {
         if (row.key === 'axis') {
           const rule = R.axis;
           const bigCyl = Math.abs(o.cyl) + 1e-9 >= rule.min_cyl && Math.abs(f.cyl) + 1e-9 >= rule.min_cyl;
-          row.level = rule.enabled && bigCyl && row.delta + 1e-9 >= rule.warn ? 'warning' : null;
+          /* ไม่เตือนจากองศาอย่างเดียว — ค่าเอียงเล็ก แกนเปลี่ยนแทบไม่มีผลต่อการมองเห็น */
+          row.level = bigCyl ? levelOf(row.delta, rule) : null;
         } else {
           row.level = levelOf(Math.abs(row.delta), R[row.key]);
         }

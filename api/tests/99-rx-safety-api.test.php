@@ -180,7 +180,7 @@ test('ใบค่าสายตาของเคสอื่น → 404', fun
 test('GET เกณฑ์: version · rules · defaults · history', function () {
     $out = rxaCall('GET', '/api/settings/rx-alert-rules');
     ok($out['version'] >= 1, 'version');
-    eq($out['defaults']['sph']['warn'], 0.75, 'defaults');
+    eq($out['defaults']['sph']['warn'], 0.5, 'defaults');
     ok(count($out['history']) >= 1, 'history');
 });
 

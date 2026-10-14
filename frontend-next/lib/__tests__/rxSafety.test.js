@@ -89,8 +89,8 @@ test('ข้อมูลผิด = blocking · WARNING/CRITICAL ไม่ block
   });
   assert.equal(res.alerts.find((a) => a.level === 'critical').blocking, false);
   assert.equal(res.alerts.find((a) => a.level === 'error').blocking, true);
-  /* ตาซ้ายข้อมูลผิดจึงไม่คำนวณผลต่าง แต่ตาขวายังคำนวณตามปกติ (sph + se) */
-  assert.equal(res.counts.critical, 2);
+  /* ตาซ้ายข้อมูลผิดจึงไม่คำนวณผลต่าง แต่ตาขวายังคำนวณตามปกติ (sph · SE ปิดโดยค่าเริ่มต้น) */
+  assert.equal(res.counts.critical, 1);
   assert.equal(res.counts.error, 1);
   assert.equal(res.compare.l.comparable, false);
 });

@@ -15,12 +15,13 @@ declare(strict_types=1);
 
 final class RxSafety
 {
+    /* เกณฑ์ของร้าน (ผู้ใช้กำหนด 14 ต.ค. 2026) — ต้องตรงกับ DEFAULT_RULES ใน lib/rxSafety.js */
     public const DEFAULT_RULES = [
-        'sph'  => ['enabled' => true, 'warn' => 0.75, 'critical' => 1.5],
-        'cyl'  => ['enabled' => true, 'warn' => 0.75, 'critical' => 1.5],
-        'se'   => ['enabled' => true, 'warn' => 1.0,  'critical' => 2.0],
-        'add'  => ['enabled' => true, 'warn' => 0.5,  'critical' => 1.0],
-        'axis' => ['enabled' => true, 'warn' => 20,   'min_cyl' => 0.75],
+        'sph'  => ['enabled' => true,  'warn' => 0.5, 'critical' => 0.75],
+        'cyl'  => ['enabled' => true,  'warn' => 0.5, 'critical' => 0.75],
+        'se'   => ['enabled' => false, 'warn' => 1.0, 'critical' => 2.0],
+        'add'  => ['enabled' => true,  'warn' => 0.5, 'critical' => 0.75],
+        'axis' => ['enabled' => true,  'warn' => 10,  'critical' => 20, 'min_cyl' => 0.75],
     ];
 
     public const MULTIFOCAL = ['Progressive', 'Bi-focal', 'Degressive'];
@@ -197,7 +198,9 @@ final class RxSafety
         $label = self::FIELD_LABEL[self::ROW_FIELD[$k]];
         $name  = self::EYE_NAME[$eye];
         if ($k === 'axis') {
-            return "แกน AXIS {$name} ต่างจากแว่นเดิม {$row['delta']}° ({$row['old']}° → {$row['final']}°) กรุณาตรวจสอบผลการวัดอีกครั้ง";
+            return $level === 'critical'
+                ? "แกน AXIS {$name} ต่างจากแว่นเดิมมาก {$row['delta']}° ({$row['old']}° → {$row['final']}°) กรุณาตรวจสอบผลการวัดและความสบายของลูกค้าก่อนยืนยัน"
+                : "แกน AXIS {$name} ต่างจากแว่นเดิม {$row['delta']}° ({$row['old']}° → {$row['final']}°) กรุณาตรวจสอบผลการวัดอีกครั้ง";
         }
         $head = $level === 'critical'
             ? "ค่าสายตา{$name} {$label} เปลี่ยนมาก " . self::fmtD($row['delta']) . ' D'
@@ -327,7 +330,8 @@ final class RxSafety
                         $rule   = $R['axis'];
                         $minCyl = (float) $rule['min_cyl'];
                         $bigCyl = abs($o['cyl']) + 1e-9 >= $minCyl && abs($f['cyl']) + 1e-9 >= $minCyl;
-                        $row['level'] = !empty($rule['enabled']) && $bigCyl && $row['delta'] + 1e-9 >= (float) $rule['warn'] ? 'warning' : null;
+                        /* ไม่เตือนจากองศาอย่างเดียว — ค่าเอียงเล็ก แกนเปลี่ยนแทบไม่มีผลต่อการมองเห็น */
+                        $row['level'] = $bigCyl ? self::levelOf((float) $row['delta'], $rule) : null;
                     } else {
                         $row['level'] = self::levelOf(abs((float) $row['delta']), $R[$row['key']]);
                     }

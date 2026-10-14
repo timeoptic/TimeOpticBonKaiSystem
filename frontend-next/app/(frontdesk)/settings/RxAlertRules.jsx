@@ -17,19 +17,21 @@ const RULES = [
   { key: 'cyl', label: 'CYL', unit: 'D', cols: [['warn', 'เตือน'], ['critical', 'ทบทวน']] },
   { key: 'se', label: 'SE', unit: 'D', cols: [['warn', 'เตือน'], ['critical', 'ทบทวน']] },
   { key: 'add', label: 'ADD', unit: 'D', cols: [['warn', 'เตือน'], ['critical', 'ทบทวน']] },
-  { key: 'axis', label: 'AXIS', unit: '°', cols: [['warn', 'เตือน'], ['min_cyl', 'เมื่อ |CYL| ≥']] },
+  { key: 'axis', label: 'AXIS', unit: '°', cols: [['warn', 'เตือน'], ['critical', 'ทบทวน']], extra: ['min_cyl', 'เมื่อ |CYL| ≥', 'D'] },
 ];
 
-const toForm = (rules) => Object.fromEntries(RULES.map(({ key, cols }) => [key, {
-  enabled: !!rules?.[key]?.enabled,
-  ...Object.fromEntries(cols.map(([f]) => [f, rules?.[key]?.[f] == null ? '' : String(rules[key][f])])),
+const fieldsOf = ({ cols, extra }) => (extra ? [...cols, extra] : cols);
+const toForm = (rules) => Object.fromEntries(RULES.map((rule) => [rule.key, {
+  enabled: !!rules?.[rule.key]?.enabled,
+  ...Object.fromEntries(fieldsOf(rule).map(([f]) => [f, rules?.[rule.key]?.[f] == null ? '' : String(rules[rule.key][f])])),
 }]));
 
 /** ตรวจก่อนส่ง — ฝั่ง API ตรวจซ้ำด้วยกติกาเดียวกัน (RxSafetyStore::save) */
 function problemsOf(form) {
   const out = [];
-  for (const { key, label, cols } of RULES) {
-    for (const [f, fl] of cols) {
+  for (const rule of RULES) {
+    const { key, label, cols } = rule;
+    for (const [f, fl] of fieldsOf(rule)) {
       const v = form[key][f];
       if (v === '' || !Number.isFinite(Number(v)) || Number(v) < 0) out.push(`${label} ${fl}: ต้องเป็นตัวเลขตั้งแต่ 0`);
     }
@@ -40,10 +42,10 @@ function problemsOf(form) {
   return out;
 }
 
-const summary = (rules) => RULES.map(({ key, label, cols }) => {
+const summary = (rules) => RULES.map(({ key, label, cols, unit }) => {
   const r = rules?.[key] || {};
   if (!r.enabled) return `${label} ปิด`;
-  return `${label} ${cols.map(([f]) => r[f]).join('/')}`;
+  return `${label} ${cols.map(([f]) => r[f]).join('/')}${unit}`;
 }).join(' · ');
 
 export function RxAlertRules() {
@@ -68,9 +70,9 @@ export function RxAlertRules() {
   const save = async () => {
     setBusy(true);
     try {
-      const rules = Object.fromEntries(RULES.map(({ key, cols }) => [key, {
-        enabled: form[key].enabled,
-        ...Object.fromEntries(cols.map(([f]) => [f, Number(form[key][f])])),
+      const rules = Object.fromEntries(RULES.map((rule) => [rule.key, {
+        enabled: form[rule.key].enabled,
+        ...Object.fromEntries(fieldsOf(rule).map(([f]) => [f, Number(form[rule.key][f])])),
       }]));
       const d = await api.put('/api/settings/rx-alert-rules', { rules, note });
       setData((x) => ({ ...x, ...d }));
@@ -94,10 +96,10 @@ export function RxAlertRules() {
         <div className="rxs-table-wrap">
           <table className="rxs-table rxs-rules">
             <thead>
-              <tr><th>กฎ</th><th>เปิดใช้</th><th>เตือน (เหลือง)</th><th>ทบทวน (แดง)</th></tr>
+              <tr><th>กฎ</th><th>เปิดใช้</th><th>เตือน (เหลือง)</th><th>ทบทวน (แดง)</th><th>เงื่อนไข</th></tr>
             </thead>
             <tbody>
-              {RULES.map(({ key, label, unit, cols }) => (
+              {RULES.map(({ key, label, unit, cols, extra }) => (
                 <tr key={key}>
                   <th scope="row">{label}</th>
                   <td>
@@ -111,7 +113,6 @@ export function RxAlertRules() {
                   {cols.map(([f, fl]) => (
                     <td key={f}>
                       <span className="rxs-rule-cell">
-                        {f === 'min_cyl' && <small className="muted">{fl}</small>}
                         <input
                           inputMode="decimal"
                           aria-label={`${label} ${fl}`}
@@ -119,10 +120,25 @@ export function RxAlertRules() {
                           disabled={!form[key].enabled}
                           onChange={(e) => set(key, f, e.target.value)}
                         />
-                        <small className="muted">{f === 'min_cyl' ? 'D' : unit}</small>
+                        <small className="muted">{unit}</small>
                       </span>
                     </td>
                   ))}
+                  <td>
+                    {extra ? (
+                      <span className="rxs-rule-cell">
+                        <small className="muted">{extra[1]}</small>
+                        <input
+                          inputMode="decimal"
+                          aria-label={`${label} ${extra[1]}`}
+                          value={form[key][extra[0]]}
+                          disabled={!form[key].enabled}
+                          onChange={(e) => set(key, extra[0], e.target.value)}
+                        />
+                        <small className="muted">{extra[2]}</small>
+                      </span>
+                    ) : <span className="rxs-ok">—</span>}
+                  </td>
                 </tr>
               ))}
             </tbody>

@@ -95,10 +95,10 @@ test('บันทึกเกณฑ์ = เวอร์ชันใหม่ �
     rollback(function (Tx $q) {
         $before = RxSafetyStore::current();
         $rules  = $before['rules'];
-        $rules['sph']['warn'] = 1.0;
+        $rules['sph']['warn'] = 0.25;
         $saved = RxSafetyStore::save($rules, 'ทดสอบ', ['id' => null, 'displayName' => 'tester']);
         eq($saved['version'], $before['version'] + 1, 'เวอร์ชันเพิ่ม');
-        eq(RxSafetyStore::current()['rules']['sph']['warn'], 1.0, 'ค่าใหม่');
+        eq(RxSafetyStore::current()['rules']['sph']['warn'], 0.25, 'ค่าใหม่');
         $old = $q->get('SELECT rules FROM rx_alert_rule_versions WHERE version = ?', $before['version']);
         eq(json_decode($old['rules'], true)['sph']['warn'], $before['rules']['sph']['warn'], 'เวอร์ชันเก่าไม่ถูกแก้');
     });

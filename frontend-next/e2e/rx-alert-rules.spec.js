@@ -23,7 +23,7 @@ const DEFAULTS = {
   cyl: { enabled: true, warn: 0.75, critical: 1.5 },
   se: { enabled: true, warn: 1, critical: 2 },
   add: { enabled: true, warn: 0.5, critical: 1 },
-  axis: { enabled: true, warn: 20, min_cyl: 0.75 },
+  axis: { enabled: true, warn: 10, critical: 20, min_cyl: 0.75 },
 };
 const V1 = { version: 1, rules: DEFAULTS, note: 'ค่าเริ่มต้นสำหรับทดลอง', changed_by_name: null, changed_at: '2026-10-14 09:00:00' };
 

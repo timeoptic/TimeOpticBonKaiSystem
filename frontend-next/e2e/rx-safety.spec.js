@@ -133,7 +133,7 @@ test.describe('Prescription Safety Alert', () => {
 
   test('WARNING อย่างเดียว — ยืนยันได้โดยไม่ต้องใส่เหตุผล และไม่บันทึก review', async ({ page }) => {
     const calls = await openExam(page, {
-      measured: rxRow(9002, 'measured', { test_for: 'Distance', r_sphere: '-2.75', l_sphere: '-2.00' }),
+      measured: rxRow(9002, 'measured', { test_for: 'Distance', r_sphere: '-2.50', l_sphere: '-2.00' }),
     });
     await expect(banner(page)).toContainText('WARNING');
     await confirmExam(page);
