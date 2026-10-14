@@ -52,7 +52,7 @@ StockClient::configure($config['stock_api']);
 foreach ([
     'auth', 'meta', 'dashboard', 'cases', 'customers', 'employees', 'prescriptions',
     'stock', 'locations', 'suppliers', 'orders', 'payments',
-    'workflow', 'processes', 'uploads', 'sales', 'pos', 'receipts', 'bill-parties',
+    'workflow', 'processes', 'uploads', 'sales', 'pos', 'receipts', 'bill-parties', 'rx-safety',
     'cashflow', 'reports', 'analytics',
     'bookings', 'settings', 'logs',
     /* ใบเบิกเลนส์ รายการเลนส์ และการใช้เลนส์ของ Bewell */
