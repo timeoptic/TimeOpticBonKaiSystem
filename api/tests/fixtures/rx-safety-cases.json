@@ -1,0 +1,198 @@
+{
+  "_comment": "กรณีทดสอบกลางของ Prescription Safety Alert — ใช้ร่วมกันโดย frontend-next/lib/__tests__/rxSafety.test.js และ api/tests/99-rx-safety-engine.test.php · ค่าตาที่ไม่ระบุ = {sphere:'-1.00', cylinder:'', axis:'', add:'', va:'1.0'} · test_for ไม่ระบุ = 'Distance' · rules เติมทับค่าเริ่มต้นทีละกฎ · expect.alerts = [eye, field, level] ครบทุกตัว (ลำดับไม่สำคัญ)",
+  "cases": [
+    {
+      "name": "1 SPH เปลี่ยน 0.50 — ไม่มี alert",
+      "old":   {"r": {"sphere": "-2.00"}, "l": {"sphere": "-2.00"}},
+      "final": {"r": {"sphere": "-2.50"}, "l": {"sphere": "-2.00"}},
+      "expect": {"alerts": [], "deltas": {"r.sph": -0.5, "l.sph": 0}}
+    },
+    {
+      "name": "2 SPH เปลี่ยน 0.75 — WARNING",
+      "old":   {"r": {"sphere": "-2.00"}, "l": {"sphere": "-2.00"}},
+      "final": {"r": {"sphere": "-2.75"}, "l": {"sphere": "-2.00"}},
+      "expect": {"alerts": [["r", "sphere", "warning"]], "deltas": {"r.sph": -0.75, "r.se": -0.75}}
+    },
+    {
+      "name": "3 SPH เปลี่ยน 1.50 — CRITICAL (ไม่มี warning sph ซ้ำ) + SE warning",
+      "old":   {"r": {"sphere": "-2.00"}, "l": {"sphere": "-2.00"}},
+      "final": {"r": {"sphere": "-3.50"}, "l": {"sphere": "-2.00"}},
+      "expect": {"alerts": [["r", "sphere", "critical"], ["r", "se", "warning"]], "deltas": {"r.sph": -1.5}}
+    },
+    {
+      "name": "4 CYL เปลี่ยนมาก — CRITICAL cyl",
+      "old":   {"r": {"sphere": "-1.00", "cylinder": "-0.50", "axis": "90"}, "l": {"sphere": "-1.00"}},
+      "final": {"r": {"sphere": "-1.00", "cylinder": "-2.25", "axis": "90"}, "l": {"sphere": "-1.00"}},
+      "expect": {"alerts": [["r", "cylinder", "critical"]], "deltas": {"r.cyl": -1.75, "r.se": -0.88}}
+    },
+    {
+      "name": "5 CYL ไม่เป็นศูนย์ แต่ AXIS ว่าง — ERROR",
+      "old": null,
+      "final": {"r": {"sphere": "-1.00"}, "l": {"sphere": "-1.00", "cylinder": "-1.00", "axis": ""}},
+      "expect": {"alerts": [["l", "axis", "error"]], "hasOld": false}
+    },
+    {
+      "name": "6 AXIS 181 — ERROR",
+      "old": null,
+      "final": {"r": {"sphere": "-1.00", "cylinder": "-1.00", "axis": "181"}, "l": {"sphere": "-1.00"}},
+      "expect": {"alerts": [["r", "axis", "error"]]}
+    },
+    {
+      "name": "6b AXIS 0 เมื่อมี CYL — ERROR (ช่วง 1–180)",
+      "old": null,
+      "final": {"r": {"sphere": "-1.00", "cylinder": "-1.00", "axis": "0"}, "l": {"sphere": "-1.00"}},
+      "expect": {"alerts": [["r", "axis", "error"]]}
+    },
+    {
+      "name": "7 AXIS 175 → 5 ต่างกัน 10° — ไม่มี alert",
+      "old":   {"r": {"sphere": "-1.00", "cylinder": "-1.00", "axis": "175"}, "l": {"sphere": "-1.00"}},
+      "final": {"r": {"sphere": "-1.00", "cylinder": "-1.00", "axis": "5"}, "l": {"sphere": "-1.00"}},
+      "expect": {"alerts": [], "deltas": {"r.axis": 10}}
+    },
+    {
+      "name": "7b AXIS 10 → 40 ต่างกัน 30° เมื่อ CYL ≥ 0.75 — WARNING axis",
+      "old":   {"r": {"sphere": "-1.00", "cylinder": "-1.00", "axis": "10"}, "l": {"sphere": "-1.00"}},
+      "final": {"r": {"sphere": "-1.00", "cylinder": "-1.00", "axis": "40"}, "l": {"sphere": "-1.00"}},
+      "expect": {"alerts": [["r", "axis", "warning"]], "deltas": {"r.axis": 30}}
+    },
+    {
+      "name": "7c AXIS ต่าง 60° แต่ CYL เล็ก (-0.50) — ไม่เตือนจากองศาอย่างเดียว",
+      "old":   {"r": {"sphere": "-1.00", "cylinder": "-0.50", "axis": "10"}, "l": {"sphere": "-1.00"}},
+      "final": {"r": {"sphere": "-1.00", "cylinder": "-0.50", "axis": "70"}, "l": {"sphere": "-1.00"}},
+      "expect": {"alerts": [], "deltas": {"r.axis": 60}}
+    },
+    {
+      "name": "8 SPH/CYL 0.00 และ plano ไม่ใช่ข้อมูลหาย",
+      "old":   {"r": {"sphere": "0.00", "cylinder": "0.00"}, "l": {"sphere": "plano"}},
+      "final": {"r": {"sphere": "0.00", "cylinder": "0.00"}, "l": {"sphere": "plano"}},
+      "expect": {"alerts": [], "deltas": {"r.sph": 0, "l.sph": 0, "r.cyl": 0}}
+    },
+    {
+      "name": "9 ไม่มี Old Rx — ไม่เตือนผลต่าง",
+      "old": null,
+      "final": {"r": {"sphere": "-6.00"}, "l": {"sphere": "-6.00"}},
+      "expect": {"alerts": [], "hasOld": false, "comparable": {"r": false, "l": false}}
+    },
+    {
+      "name": "9b Old Rx มีแต่ช่องว่างทั้งหมด = ไม่มี Old Rx",
+      "old":   {"r": {"sphere": "", "va": ""}, "l": {"sphere": "", "va": ""}},
+      "final": {"r": {"sphere": "-6.00"}, "l": {"sphere": "-6.00"}},
+      "expect": {"alerts": [], "hasOld": false}
+    },
+    {
+      "name": "9c แว่นเดิมมีแต่ตาขวา — ตาซ้ายเปรียบเทียบไม่ได้",
+      "old":   {"r": {"sphere": "-2.00"}, "l": {"sphere": ""}},
+      "final": {"r": {"sphere": "-2.00"}, "l": {"sphere": "-6.00"}},
+      "expect": {"alerts": [], "hasOld": true, "comparable": {"r": true, "l": false}}
+    },
+    {
+      "name": "10 OD/OS คำนวณแยก — CRITICAL เฉพาะ OD",
+      "old":   {"r": {"sphere": "-2.00"}, "l": {"sphere": "-2.00"}},
+      "final": {"r": {"sphere": "-4.00"}, "l": {"sphere": "-2.00"}},
+      "expect": {"alerts": [["r", "sphere", "critical"], ["r", "se", "critical"]], "deltas": {"r.sph": -2, "l.sph": 0, "r.se": -2, "l.se": 0}}
+    },
+    {
+      "name": "13 Plus/Minus cylinder ที่สมมูลกัน — ไม่เตือน",
+      "old":   {"r": {"sphere": "+1.00", "cylinder": "-2.00", "axis": "90"}, "l": {"sphere": "0.00"}},
+      "final": {"r": {"sphere": "-1.00", "cylinder": "+2.00", "axis": "180"}, "l": {"sphere": "0.00"}},
+      "expect": {"alerts": [], "deltas": {"r.sph": 0, "r.cyl": 0, "r.se": 0, "r.axis": 0}}
+    },
+    {
+      "name": "14 Final SPH ว่าง — INFO และไม่คำนวณ Δ ของตานั้น",
+      "old":   {"r": {"sphere": "-2.00"}, "l": {"sphere": "-2.00"}},
+      "final": {"r": {"sphere": ""}, "l": {"sphere": "-2.00"}},
+      "expect": {"alerts": [["r", "sphere", "info"]], "comparable": {"r": false, "l": true}}
+    },
+    {
+      "name": "14b SPH เป็นช่องว่างล้วน = ว่าง",
+      "old": null,
+      "final": {"r": {"sphere": "   "}, "l": {"sphere": "-2.00"}},
+      "expect": {"alerts": [["r", "sphere", "info"]]}
+    },
+    {
+      "name": "parse ข้อมูลเก่า +02.00 / -00.50 / 090",
+      "old":   {"r": {"sphere": "+02.00", "cylinder": "-00.50", "axis": "090"}, "l": {"sphere": "-1.00"}},
+      "final": {"r": {"sphere": "2.00", "cylinder": "-0.50", "axis": "90"}, "l": {"sphere": "-1.00"}},
+      "expect": {"alerts": [], "deltas": {"r.sph": 0, "r.cyl": 0, "r.axis": 0}}
+    },
+    {
+      "name": "SPH ไม่ใช่ตัวเลข — ERROR",
+      "old": null,
+      "final": {"r": {"sphere": "abc"}, "l": {"sphere": "-1.00"}},
+      "expect": {"alerts": [["r", "sphere", "error"]]}
+    },
+    {
+      "name": "AXIS มีแต่ CYL ว่าง — ERROR ที่ CYL",
+      "old": null,
+      "final": {"r": {"sphere": "-1.00", "cylinder": "", "axis": "90"}, "l": {"sphere": "-1.00"}},
+      "expect": {"alerts": [["r", "cylinder", "error"]]}
+    },
+    {
+      "name": "CYL 0 ไม่บังคับ AXIS และไม่สนใจ AXIS ที่กรอกมา",
+      "old": null,
+      "final": {"r": {"sphere": "-1.00", "cylinder": "0.00", "axis": ""}, "l": {"sphere": "-1.00", "cylinder": "0", "axis": "200"}},
+      "expect": {"alerts": []}
+    },
+    {
+      "name": "VA ว่าง — INFO",
+      "old": null,
+      "final": {"r": {"sphere": "-1.00", "va": ""}, "l": {"sphere": "-1.00"}},
+      "expect": {"alerts": [["r", "va", "info"]]}
+    },
+    {
+      "name": "ไม่ได้เลือก Test For — INFO",
+      "old": null,
+      "test_for": "",
+      "final": {"r": {"sphere": "-1.00"}, "l": {"sphere": "-1.00"}},
+      "expect": {"alerts": [[null, "test_for", "info"]]}
+    },
+    {
+      "name": "Progressive ไม่มี ADD — INFO ทั้งสองตา",
+      "old": null,
+      "test_for": "Progressive",
+      "final": {"r": {"sphere": "-1.00"}, "l": {"sphere": "-1.00"}},
+      "expect": {"alerts": [["r", "add", "info"], ["l", "add", "info"]]}
+    },
+    {
+      "name": "Distance ไม่มี ADD — ไม่เตือน",
+      "old": null,
+      "test_for": "Distance",
+      "final": {"r": {"sphere": "-1.00"}, "l": {"sphere": "-1.00"}},
+      "expect": {"alerts": []}
+    },
+    {
+      "name": "ADD เปลี่ยน 1.00 — CRITICAL add",
+      "old":   {"r": {"sphere": "-1.00", "add": "1.00"}, "l": {"sphere": "-1.00", "add": "1.00"}},
+      "test_for": "Progressive",
+      "final": {"r": {"sphere": "-1.00", "add": "2.00"}, "l": {"sphere": "-1.00", "add": "1.50"}},
+      "expect": {"alerts": [["r", "add", "critical"], ["l", "add", "warning"]], "deltas": {"r.add": 1, "l.add": 0.5}}
+    },
+    {
+      "name": "แว่นเดิมไม่มี ADD — ไม่คำนวณ ΔADD",
+      "old":   {"r": {"sphere": "-1.00"}, "l": {"sphere": "-1.00"}},
+      "test_for": "Progressive",
+      "final": {"r": {"sphere": "-1.00", "add": "2.50"}, "l": {"sphere": "-1.00", "add": "2.50"}},
+      "expect": {"alerts": [], "deltas": {"r.add": null}}
+    },
+    {
+      "name": "SE ถึงเกณฑ์ขณะ SPH ไม่ถึง (เกณฑ์ SE ปรับเป็น 0.50)",
+      "old":   {"r": {"sphere": "-2.00"}, "l": {"sphere": "-2.00"}},
+      "final": {"r": {"sphere": "-2.50"}, "l": {"sphere": "-2.00"}},
+      "rules": {"se": {"enabled": true, "warn": 0.5, "critical": 2}},
+      "expect": {"alerts": [["r", "se", "warning"]]}
+    },
+    {
+      "name": "ปิดกฎ sph — เหลือแต่ SE",
+      "old":   {"r": {"sphere": "-2.00"}, "l": {"sphere": "-2.00"}},
+      "final": {"r": {"sphere": "-4.00"}, "l": {"sphere": "-2.00"}},
+      "rules": {"sph": {"enabled": false, "warn": 0.75, "critical": 1.5}},
+      "expect": {"alerts": [["r", "se", "critical"]]}
+    },
+    {
+      "name": "แว่นเดิม CYL ว่าง (ทรงกลม) vs Final มี CYL — เทียบได้",
+      "old":   {"r": {"sphere": "-2.00"}, "l": {"sphere": "-2.00"}},
+      "final": {"r": {"sphere": "-2.00", "cylinder": "-1.00", "axis": "180"}, "l": {"sphere": "-2.00"}},
+      "expect": {"alerts": [["r", "cylinder", "warning"]], "deltas": {"r.cyl": -1, "r.se": -0.5}}
+    }
+  ]
+}
