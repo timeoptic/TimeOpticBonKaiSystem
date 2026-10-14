@@ -39,6 +39,10 @@ import {
 import { Icon } from '../../../../../components/Icon.jsx';
 import { DateField } from '../../../../../components/DateField.jsx';
 import { DateTimeField } from '../../../../../components/DateTimeField.jsx';
+import { RxSafetyBanner, newAlerts } from '../../../../../components/RxSafetyBanner.jsx';
+import { RxSafetyDialog } from '../../../../../components/RxSafetyDialog.jsx';
+import { evaluate as evaluateRx } from '../../../../../lib/rxSafety.js';
+import { useRxSafety } from '../../../../../lib/useRxSafety.js';
 import { PhotoUpload } from '../../../../../components/PhotoUpload.jsx';
 
 const HEALTH = [
@@ -524,6 +528,71 @@ export function ExamPanel({ c, reload }) {
     return { cells, labels: [...short] };
   }, [finalValues, form.test_for]);
 
+  /*
+   * Prescription Safety Alert (spec 2026-10-14-rx-safety-alert-design.md) — ส่วนเพิ่มล้วน
+   * การตรวจเดิมข้างบนไม่ถูกแตะ: ด่านนี้ทำงานต่อท้ายใน beforeComplete เมื่อการตรวจเดิมผ่านแล้ว
+   * และบันทึก Clinical Review ผ่านเส้นทางของมันเองหลัง /confirm เดิมสำเร็จ
+   */
+  const rxs = useRxSafety(c.id);
+  const rxsOld = useMemo(() => bothEyes(oldForm), [oldForm]);
+  const rxsResult = useMemo(() => evaluateRx({
+    old: rxsOld,
+    final: shownFinal,
+    testFor: confirmed && finalRow ? finalRow.test_for : form.test_for,
+    rules: rxs.rules,
+  }), [rxsOld, shownFinal, confirmed, finalRow, form.test_for, rxs.rules]);
+  const rxsReviewOf = (fp) => rxs.reviews.find((r) => r.fingerprint === fp) || null;
+  const [rxsDialog, setRxsDialog] = useState(null);
+  const rxsAsk = (result, alerts, reviewed) => new Promise((resolve) => {
+    setRxsDialog({ result, alerts, reviewed, resolve });
+  });
+  const rxsDone = (v) => {
+    const d = rxsDialog;
+    setRxsDialog(null);
+    if (v.pick) rxsFocus(v.pick);
+    d?.resolve(v);
+  };
+  /* ไปที่ช่องของการแจ้งเตือน — Final ที่ไม่ได้ "ปรับค่าเอง" แก้ที่ชุดต้นทาง (Measured / Old)
+     ป้ายของช่องซ้ำกันทุกตาราง จึงเลือกตารางตามชุดที่ Final ใช้อยู่ */
+  const rxsFocus = (a) => {
+    let el = null;
+    if (a.field === 'test_for') {
+      el = document.querySelector('select[name="test_for"]');
+    } else if (a.eye) {
+      const field = a.field === 'se' ? 'sphere' : a.field;
+      const all = document.querySelectorAll(`input[aria-label="${EYE_LABEL[a.eye]} ${field}"]`);
+      el = finalSource === 'old' ? all[0] : all[all.length - 1];
+    }
+    if (el) {
+      el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      el.focus({ preventScroll: true });
+    }
+  };
+  /** ด่านต่อท้ายการตรวจเดิม · คืน {ok, reason, result} */
+  const rxsGate = async () => {
+    const result = evaluateRx({ old: rxsOld, final: finalValues, testFor: form.test_for, rules: rxs.rules });
+    const alerts = newAlerts(result.alerts).filter((a) => a.blocking || a.level === 'warning' || a.level === 'critical');
+    if (!alerts.length) return { ok: true, reason: '', result };
+    const v = await rxsAsk(result, alerts, !!rxsReviewOf(result.fingerprint));
+    return { ...v, result };
+  };
+  /** หลัง /confirm เดิมสำเร็จ — บันทึกเหตุผลการทบทวน · ล้มก็ไม่ย้อนการยืนยัน (ป้าย "ยังไม่ได้ทบทวน" จะขึ้นให้เห็น) */
+  const rxsRecord = async (prescriptionId, gate) => {
+    if (!gate?.result || gate.result.counts.critical === 0 || !gate.reason) return;
+    try {
+      await api.post(`/api/cases/${c.id}/rx-reviews`, { prescription_id: prescriptionId, reason: gate.reason });
+    } catch (e) {
+      err(`ยืนยันค่าสายตาแล้ว แต่บันทึกเหตุผลการทบทวนไม่สำเร็จ — ${e.message || e}`);
+    }
+    rxs.reload();
+  };
+  /* ค่าที่ยืนยันไปแล้วแต่ยังไม่มีบันทึกการทบทวน (เช่นบันทึกล้ม) — บันทึกย้อนหลังได้จากกล่องแจ้งเตือน */
+  const rxsRecordLater = async () => {
+    const alerts = newAlerts(rxsResult.alerts).filter((a) => a.level === 'critical' || a.level === 'warning');
+    const v = await rxsAsk(rxsResult, alerts, false);
+    if (v.ok && finalRow) await rxsRecord(finalRow.id, { ...v, result: rxsResult });
+  };
+
   const saveDraft = async () => {
     const stamp = toStamp(form.test_date ? dtLocal(form.test_date) : nowLocal());
     const measuredBody = {
@@ -593,6 +662,9 @@ export function ExamPanel({ c, reload }) {
       err([...new Set(rxWrong)].join('\n'));
       return false;
     }
+    /* Prescription Safety Alert — ต่อท้ายการตรวจเดิม (spec ข้อ 8.3) */
+    const rxsPass = await rxsGate();
+    if (!rxsPass.ok) return false;
     const saved = await saveDraft();
     const originId = finalSource === 'old'
       ? (saved.old?.id || oldRow?.id || null)
@@ -627,6 +699,7 @@ export function ExamPanel({ c, reload }) {
       ? await api.put('/api/prescriptions/' + finalRow.id, body)
       : await api.post('/api/prescriptions', body);
     await api.post(`/api/prescriptions/${final.id}/confirm`, {});
+    await rxsRecord(final.id, rxsPass);
     dropFinalDraft(c.id);
     return true;
   };
@@ -948,6 +1021,25 @@ export function ExamPanel({ c, reload }) {
           )}
         </Section>
       </fieldset>
+
+      {/* Prescription Safety Alert — นอก fieldset ด้วยเหตุผลเดียวกับรูปข้างล่าง: หลังยืนยันยังต้องกด
+          ดูประวัติการทบทวน / บันทึกการทบทวนย้อนหลังได้ */}
+      <RxSafetyBanner
+        result={rxsResult}
+        confirmed={confirmed}
+        review={rxsReviewOf(rxsResult.fingerprint)}
+        reviews={rxs.reviews}
+        onPick={rxsFocus}
+        onRecordReview={finalRow ? rxsRecordLater : undefined}
+      />
+      {rxsDialog && (
+        <RxSafetyDialog
+          result={rxsDialog.result}
+          alerts={rxsDialog.alerts}
+          reviewed={rxsDialog.reviewed}
+          onDone={rxsDone}
+        />
+      )}
 
       {/* อยู่นอก fieldset ที่ล็อกหลังยืนยัน — fieldset disabled ปิดทุกปุ่มข้างใน รวมปุ่ม
           กดดูรูปใหญ่ด้วย ถ้าวางไว้ข้างในรูปจะเปิดดูไม่ได้เลยหลังยืนยันผล

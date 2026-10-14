@@ -5031,3 +5031,53 @@ html,body{overflow-x:clip}
   .measure-grid{gap:8px}
   .measure-grid .measure-input input{min-height:44px;font-size:16px}
 }
+
+/* ── Prescription Safety Alert (spec 2026-10-14-rx-safety-alert) ─────────────────────────
+   สถานะบอกด้วย สี + ไอคอน + ข้อความ เสมอ · น้ำเงิน = ข้อมูลยังไม่ครบ, เหลือง = ควรตรวจสอบ,
+   แดง = ต้องทบทวน / ข้อมูลผิด · ตารางผลต่างเลื่อนแนวนอนในกรอบตัวเองบนจอแคบ */
+.rxs-banner{margin:14px 0 4px;padding:12px 14px;border:1px solid var(--line);border-radius:var(--radius-sm);
+  background:var(--card);display:flex;flex-direction:column;gap:10px;min-width:0}
+.rxs-banner-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.rxs-title{font-weight:600;display:inline-flex;align-items:center;gap:6px}
+.rxs-counts{display:inline-flex;gap:6px;flex-wrap:wrap}
+.rxs-tag{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;
+  font-size:var(--t-xs);font-weight:600;white-space:nowrap;border:1px solid transparent}
+.rxs-tag .ico{width:13px;height:13px}
+.rxs-info{color:var(--cyan-deep);background:var(--cyan-tint);border-color:var(--cyan-edge)}
+.rxs-warning{color:var(--warn);background:var(--warn-soft);border-color:#FCD34D}
+.rxs-critical,.rxs-error{color:var(--danger);background:var(--danger-soft);border-color:#FDA4AF}
+.rxs-ok-line,.rxs-reviewed{color:var(--ok);display:inline-flex;align-items:center;gap:4px;margin:0;font-size:var(--t-sm)}
+.rxs-note{margin:4px 0 0;color:var(--ink-faint);font-size:var(--t-sm)}
+.rxs-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.rxs-item{border-radius:var(--radius-xs);background:transparent;border:0}
+.rxs-item-btn{all:unset;box-sizing:border-box;width:100%;cursor:pointer;display:flex;gap:8px;align-items:flex-start;
+  padding:6px 8px;border-radius:var(--radius-xs);font-size:var(--t-sm);color:var(--ink);line-height:1.5}
+.rxs-item-btn:hover,.rxs-item-btn:focus-visible{background:var(--surface-alt)}
+.rxs-item-btn:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.rxs-eyes{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;min-width:0}
+.rxs-eye{min-width:0}
+.rxs-eye-head{font-weight:600;font-size:var(--t-sm);margin-bottom:4px}
+.rxs-table-wrap{overflow-x:auto;max-width:100%}
+.rxs-table{width:100%;border-collapse:collapse;font-size:var(--t-sm);font-variant-numeric:tabular-nums}
+.rxs-table th,.rxs-table td{padding:4px 8px;border-bottom:var(--rule-hair);text-align:right;white-space:nowrap}
+.rxs-table th:first-child,.rxs-table thead th{text-align:left;color:var(--ink-soft);font-weight:600}
+.rxs-table thead th:not(:first-child){text-align:right}
+.rxs-row-warning td{background:var(--warn-soft)}
+.rxs-row-critical td{background:var(--danger-soft)}
+.rxs-ok{color:var(--ink-dim)}
+.rxs-missing-review{display:flex;gap:8px;align-items:center;flex-wrap:wrap;color:var(--danger);font-size:var(--t-sm)}
+.rxs-history ul{margin:6px 0 0;padding-left:18px;font-size:var(--t-sm);color:var(--ink-soft)}
+.rxs-link{all:unset;cursor:pointer;color:var(--accent);font-size:var(--t-sm);text-decoration:underline}
+.rxs-dialog{max-width:min(760px,calc(100vw - 32px));width:100%}
+.rxs-dialog h3{display:flex;align-items:center;gap:8px}
+.rxs-dialog .m-body{display:flex;flex-direction:column;gap:12px;max-height:70vh;overflow-y:auto;min-width:0}
+.rxs-block-note{margin:0;color:var(--danger);display:flex;align-items:center;gap:6px;font-weight:600}
+.rxs-reason{display:flex;flex-direction:column;gap:6px;font-size:var(--t-sm)}
+.rxs-reason textarea{width:100%;box-sizing:border-box}
+.rxs-disclaimer{margin:0;font-size:var(--t-xs);color:var(--ink-faint)}
+@media (max-width:640px){
+  .rxs-dialog{max-width:100vw}
+  .rxs-dialog .m-body{max-height:65vh}
+  .rxs-dialog .m-foot{flex-wrap:wrap}
+  .rxs-dialog .m-foot .btn{flex:1 1 auto}
+}
