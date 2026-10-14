@@ -73,6 +73,11 @@ test('fingerprint: ค่าสมมูล (+cyl/−cyl) ได้ค่าเ�
   assert.equal(a.fingerprint, b.fingerprint);
   assert.notEqual(a.fingerprint, c.fingerprint);
   assert.equal(typeof canonical, 'function');
+  /* สตริงเดียวกับที่ 99-rx-safety-engine.test.php ตรวจ — review ที่ PHP บันทึกต้องจับคู่กับค่าบนหน้าเว็บได้ */
+  assert.equal(
+    b.fingerprint,
+    '[["-2.00","0.00",null,null,"-2.00","0.00",null,null],["1.00","-2.00","90",null,"-1.00","0.00",null,null],"Distance"]',
+  );
 });
 
 test('ข้อมูลผิด = blocking · WARNING/CRITICAL ไม่ blocking', () => {

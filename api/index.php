@@ -38,6 +38,7 @@ require __DIR__ . '/services/SalesExport.php';
 require __DIR__ . '/services/PaymentExport.php';
 require __DIR__ . '/services/CaseSource.php';
 require __DIR__ . '/services/ActivityLog.php';
+require __DIR__ . '/services/RxSafety.php';
 
 Db::configure($config['db']);
 /* โหลดโค้ดฝั่งคลังจาก stock/ แล้วยกคอนเนกชันกับ session ให้ใช้ตัวเดียวกัน
