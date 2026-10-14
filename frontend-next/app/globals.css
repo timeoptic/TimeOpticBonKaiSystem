@@ -5081,3 +5081,7 @@ html,body{overflow-x:clip}
   .rxs-dialog .m-foot{flex-wrap:wrap}
   .rxs-dialog .m-foot .btn{flex:1 1 auto}
 }
+.rxs-rules td,.rxs-rules th{text-align:left}
+.rxs-rule-cell{display:inline-flex;align-items:center;gap:6px}
+.rxs-rule-cell input{width:80px}
+.rxs-rule-history{list-style:none;margin:0;padding:8px 14px;display:flex;flex-direction:column;gap:8px;font-size:var(--t-sm)}

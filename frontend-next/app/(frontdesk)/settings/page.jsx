@@ -11,6 +11,7 @@ import { fmtDate, fmtDateTime } from '../../../lib/format.js';
 import { Icon } from '../../../components/Icon.jsx';
 import { AdminOnly } from '../../../components/AdminOnly.jsx';
 import { TimeField } from '../../../components/TimeField.jsx';
+import { RxAlertRules } from './RxAlertRules.jsx';
 
 function SettingsPageInner() {
   const { ok, err } = useToast();
@@ -284,6 +285,8 @@ function SettingsPageInner() {
           </FormActions>
         </form>
       </div>
+
+      <RxAlertRules />
 
       <Card title="วิธีตั้งค่า Telegram">
         <ol style={{ margin: 0, paddingLeft: 20, lineHeight: 1.9 }}>
