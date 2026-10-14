@@ -46,7 +46,7 @@ function reply(route, body, status = 200) {
 }
 
 /** เปิดขั้นวัดสายตาของเคสจำลอง · คืนรายการคำขอที่หน้าเว็บยิงไป */
-async function openExam(page, { old = OLD, measured }) {
+async function openExam(page, { old = OLD, measured, reviewReply = { review: { id: 1 } } }) {
   const state = { ...CASE, prescriptions: [old, measured].filter(Boolean) };
   const calls = { confirm: [], reviews: [], complete: [] };
 
@@ -60,7 +60,7 @@ async function openExam(page, { old = OLD, measured }) {
     if (p.endsWith(`/api/cases/${CASE.id}/rx-reviews`)) {
       if (m === 'POST') {
         calls.reviews.push(req.postDataJSON());
-        return reply(route, { review: { id: 1 } });
+        return reply(route, reviewReply);
       }
       return reply(route, []);
     }
@@ -166,5 +166,17 @@ test.describe('Prescription Safety Alert', () => {
     await confirmExam(page);
     await expect.poll(() => calls.complete.length).toBe(1);
     await expect(dialog(page)).toHaveCount(0);
+  });
+
+  test('เซิร์ฟเวอร์ไม่ถือว่าต้องทบทวน (เกณฑ์ไม่ตรงกัน) — แจ้งผู้ใช้ ไม่เงียบ', async ({ page }) => {
+    const calls = await openExam(page, {
+      measured: rxRow(9002, 'measured', { test_for: 'Distance', r_sphere: '-4.00', l_sphere: '-2.00' }),
+      reviewReply: { review: null, alerts: [] },
+    });
+    await confirmExam(page);
+    await dialog(page).locator('textarea').fill('ตรวจแล้ว');
+    await dialog(page).getByRole('button', { name: 'ยืนยันหลังตรวจสอบ' }).click();
+    await expect.poll(() => calls.reviews.length).toBe(1);
+    await expect(page.getByText('ไม่ได้บันทึกเหตุผลการทบทวน')).toBeVisible();
   });
 });

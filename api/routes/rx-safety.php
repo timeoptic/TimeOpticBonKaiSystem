@@ -41,7 +41,9 @@ function rxCaseSets(int $caseId, int $finalId): array
     if (!$final) {
         missing('ไม่พบใบค่าสายตานี้ในเคส');
     }
-    $oldRow = Db::get("SELECT * FROM prescriptions WHERE case_id = ? AND kind = 'old' ORDER BY id DESC LIMIT 1", $caseId);
+    /* เรียงแบบเดียวกับ caseDetail() (test_date DESC) — หน้าวัดสายตาเลือกแถว old แถวแรกของรายการนั้น
+       ต้องเป็นแถวเดียวกัน ไม่งั้น fingerprint ของหน้าเว็บกับของที่บันทึกไม่มีวันตรงกัน */
+    $oldRow = Db::get("SELECT * FROM prescriptions WHERE case_id = ? AND kind = 'old' ORDER BY test_date DESC, id DESC LIMIT 1", $caseId);
     $measuredRow = Db::get(
         "SELECT * FROM prescriptions WHERE case_id = ? AND kind NOT IN ('old', 'final') ORDER BY id DESC LIMIT 1",
         $caseId

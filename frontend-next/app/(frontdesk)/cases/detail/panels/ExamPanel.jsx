@@ -580,7 +580,10 @@ export function ExamPanel({ c, reload }) {
   const rxsRecord = async (prescriptionId, gate) => {
     if (!gate?.result || gate.result.counts.critical === 0 || !gate.reason) return;
     try {
-      await api.post(`/api/cases/${c.id}/rx-reviews`, { prescription_id: prescriptionId, reason: gate.reason });
+      const r = await api.post(`/api/cases/${c.id}/rx-reviews`, { prescription_id: prescriptionId, reason: gate.reason });
+      /* เซิร์ฟเวอร์คำนวณจากค่าในฐาน + เกณฑ์ล่าสุด แล้วไม่ถือว่าต้องทบทวน (เช่นเกณฑ์เพิ่งถูกแก้)
+         — บอกให้รู้ ไม่ปล่อยให้คิดว่าบันทึกเหตุผลไปแล้ว */
+      if (r && r.review === null) err('ไม่ได้บันทึกเหตุผลการทบทวน — เกณฑ์ล่าสุดไม่ถือว่าค่านี้ต้องทบทวน (โหลดเกณฑ์ใหม่แล้ว)');
     } catch (e) {
       err(`ยืนยันค่าสายตาแล้ว แต่บันทึกเหตุผลการทบทวนไม่สำเร็จ — ${e.message || e}`);
     }

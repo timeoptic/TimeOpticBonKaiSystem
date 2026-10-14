@@ -174,7 +174,7 @@
       }
     },
     {
-      "name": "6b AXIS 0 เมื่อมี CYL — ERROR (ช่วง 1–180)",
+      "name": "6b AXIS 0 เมื่อมี CYL = 180° (ระบบเดิมยอมรับ 0–180) — ไม่ใช่ ERROR",
       "old": null,
       "final": {
         "r": {
@@ -187,13 +187,7 @@
         }
       },
       "expect": {
-        "alerts": [
-          [
-            "r",
-            "axis",
-            "error"
-          ]
-        ]
+        "alerts": []
       }
     },
     {
@@ -944,6 +938,42 @@
         "deltas": {
           "r.add": 0.75,
           "l.add": 0.25
+        }
+      }
+    },
+    {
+      "name": "AXIS 0 ในแว่นเดิม เทียบกับ 180 = ต่าง 0° และยังเทียบ SPH ได้",
+      "old": {
+        "r": {
+          "sphere": "-1.00",
+          "cylinder": "-1.00",
+          "axis": "000"
+        },
+        "l": {
+          "sphere": "-1.00"
+        }
+      },
+      "final": {
+        "r": {
+          "sphere": "-2.00",
+          "cylinder": "-1.00",
+          "axis": "180"
+        },
+        "l": {
+          "sphere": "-1.00"
+        }
+      },
+      "expect": {
+        "alerts": [
+          [
+            "r",
+            "sphere",
+            "critical"
+          ]
+        ],
+        "deltas": {
+          "r.axis": 0,
+          "r.sph": -1
         }
       }
     }

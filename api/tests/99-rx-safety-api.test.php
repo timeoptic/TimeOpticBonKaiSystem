@@ -192,3 +192,18 @@ test('PUT เกณฑ์ผิดรูป → 422 rules_invalid', function () 
         eq([$err['status'], $err['reason']], [422, 'rules_invalid'], 'ด่าน');
     });
 });
+
+test('แว่นเดิมสองแถว — ใช้แถวเดียวกับหน้าเว็บ (test_date ล่าสุด ไม่ใช่ id ล่าสุด)', function () {
+    rollback(function (Tx $q) {
+        /* แถว old ที่ id ใหม่กว่าแต่ test_date เก่ากว่า — หน้าเว็บ (cases.php เรียง test_date DESC)
+           เลือกแถวที่ test_date ใหม่สุด ฝั่งนี้ต้องเลือกแถวเดียวกัน ไม่งั้น fingerprint ไม่มีวันตรง */
+        $f = rxaFixtures($q, ['r_sphere' => '-4.00', 'l_sphere' => '-2.00', 'test_date' => '2026-10-14 09:00:00'], ['r_sphere' => '-4.00', 'l_sphere' => '-2.00']);
+        $q->run(
+            "INSERT INTO prescriptions (case_id, customer_id, kind, test_date, r_sphere, l_sphere)
+             SELECT case_id, customer_id, 'old', '2026-01-01 09:00:00', '-2.00', '-2.00' FROM prescriptions WHERE id = ?",
+            $f['final']
+        );
+        $out = rxaCall('POST', "/api/cases/{$f['case']}/rx-reviews", ['prescription_id' => $f['final']]);
+        eq($out['review'], null, 'เทียบกับแถว test_date ล่าสุด (-4.00) → ไม่เปลี่ยน ไม่มี CRITICAL');
+    });
+});

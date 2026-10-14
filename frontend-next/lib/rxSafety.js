@@ -103,8 +103,9 @@ export function eyeRx(eye) {
     if (cylV !== 0) {
       if (axis.state === 'missing') bad('axis', 'cyl_without_axis', `มี CYL ${String(e.cylinder).trim()} แต่ยังไม่กรอก AXIS`);
       else if (axis.state === 'invalid') bad('axis', 'invalid', 'AXIS ต้องเป็นจำนวนเต็ม');
-      else if (axis.value < 1 || axis.value > 180) bad('axis', 'axis_range', `AXIS ${axis.value}° อยู่นอกช่วง 1–180°`);
-      else axisV = axis.value;
+      else if (axis.value > 180) bad('axis', 'axis_range', `AXIS ${axis.value}° อยู่นอกช่วง 0–180°`);
+      /* 0° กับ 180° คือแกนเดียวกัน — ระบบเดิม (normAxis) ยอมรับ 0 จึงไม่บล็อก แค่นับเป็น 180 ตอนเทียบ */
+      else axisV = axis.value === 0 ? 180 : axis.value;
     }
   }
 
