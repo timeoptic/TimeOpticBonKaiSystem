@@ -95,7 +95,7 @@ final class ShopIssue
             // (initial 0 ยอดติดลบ) กลับขึ้นมาที่ศูนย์พอดีด้วยกฎเดียวกันนี้
             $put = $pdo->prepare(
                 'UPDATE stock_lots SET remaining_qty = remaining_qty + ?
-                 WHERE id = ? AND remaining_qty + ? <= initial_qty'
+                 WHERE id = ? AND remaining_qty + ? <= ' . Stock::RETURN_CEILING_SQL
             );
             $put->execute([$qty, $lotId, $qty]);
             if ($put->rowCount() !== 1) {

@@ -30,6 +30,21 @@ use PDO;
  */
 final class Stock
 {
+    /**
+     * เพดานยอดคงเหลือตอนคืนของเข้าล็อต — ใช้ใน WHERE ของ UPDATE stock_lots
+     *
+     * เดิมเพดานคือ `initial_qty` อย่างเดียว แต่ร้านเพิ่มของเข้าล็อตเดิมด้วยการแก้ยอด
+     * คงเหลือ (แถว ADJUST เลขเอกสาร `ADJ-<ล็อต>`) ไม่ได้ทำใบรับเข้าใหม่ · ล็อต
+     * L260910-01 รับเข้า 1 แต่ปรับขึ้นเป็น 117 พอเคส CASE-2026-00335 เปลี่ยนกรอบ
+     * (19 ต.ค. 2026) การคืนกรอบเดิมเลยติด "คืนแล้วยอดจะเกิน" ทั้งที่ของไม่ได้เกิน
+     *
+     * ยอดที่ปรับด้วยมือ (บวกและลบ) จึงนับรวมในเพดาน · แถว ADJUST ของการหักกลบ
+     * ค้างส่งตอนรับของ (`GRN-…`) ไม่นับ — ล็อตค้างส่งยังกลับขึ้นมาได้แค่ศูนย์ตามเดิม
+     */
+    public const RETURN_CEILING_SQL = "initial_qty + (SELECT COALESCE(SUM(adj.quantity), 0)
+        FROM inventory_logs adj
+        WHERE adj.lot_id = stock_lots.id AND adj.action_type = 'ADJUST' AND adj.reference_doc LIKE 'ADJ-%')";
+
     private const ACTION_LOG = [
         'ISSUE'  => 'OUT',
         'SCRAP'  => 'SCRAP',
@@ -774,7 +789,7 @@ final class Stock
             // ไม่คืนเกินกว่าที่ล็อตนั้นเคยรับเข้า — เหมือนเส้นทางคืนของปกติ
             $put = $pdo->prepare(
                 'UPDATE stock_lots SET remaining_qty = remaining_qty + ?
-                 WHERE id = ? AND remaining_qty + ? <= initial_qty'
+                 WHERE id = ? AND remaining_qty + ? <= ' . self::RETURN_CEILING_SQL
             );
             $put->execute([$qty, $cut['lot_id'], $qty]);
             if ($put->rowCount() !== 1) {
@@ -946,7 +961,7 @@ final class Stock
                 // Never put back more than the lot originally held.
                 $changed = $pdo->prepare(
                     'UPDATE stock_lots SET remaining_qty = remaining_qty + ?
-                     WHERE id = ? AND remaining_qty + ? <= initial_qty'
+                     WHERE id = ? AND remaining_qty + ? <= ' . self::RETURN_CEILING_SQL
                 );
                 $changed->execute([$cut['quantity'], $cut['lot_id'], $cut['quantity']]);
                 if ($changed->rowCount() !== 1) {
