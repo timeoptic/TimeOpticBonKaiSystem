@@ -37,6 +37,7 @@ import { Card, Loading } from '../../../../components/ui.jsx';
 import { QueryParamPage } from '../../../../components/QueryParamPage.jsx';
 import { PaperView } from '../../../../components/PaperView.jsx';
 import { Icon } from '../../../../components/Icon.jsx';
+import { useAuth } from '../../../../contexts/AuthContext.jsx';
 import {
   addPower, custName, cylPower, dominantEyeLabel, fmtDate, glassesUseOf, money, rxNum, sphPower,
 } from '../../../../lib/format.js';
@@ -266,6 +267,9 @@ function Qr({ src, label }) {
 }
 
 function OrderSheet() {
+  /* User บนใบสั่ง = บัญชีที่ล็อกอินและกดพิมพ์ ไม่ใช่คนคีย์หรือพนักงานในออเดอร์ (ร้านขอ 21 ต.ค. 2026) */
+  const { actor } = useAuth();
+  const printedBy = actor?.displayName || actor?.username || '';
   const id = useSearchParams().get('id');
 
   /* ปุ่มส่งมาแค่เลขออเดอร์ แต่ PD อยู่ที่ขั้นวัด Center ของเคส และใบ Final ที่เป็น
@@ -435,7 +439,7 @@ function OrderSheet() {
               </div>
               <div className="iv-col iv-money">
                 {moneyRows.map(([k, v]) => <F key={k} k={k} v={v} />)}
-                <F k="Employee" v={o.employee_name} />
+                <F k="User" v={printedBy || o.employee_name} />
               </div>
             </div>
 
