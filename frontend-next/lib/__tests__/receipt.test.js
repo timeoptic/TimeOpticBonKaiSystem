@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  vatBreakdown, orderReceipt, saleReceipt, linesTotal, hasRx, withoutRx,
+  vatBreakdown, orderReceipt, saleReceipt, linesTotal, hasRx, withoutRx, hasLensSides, splitLens,
 } from '../receipt.js';
 
 test('vatBreakdown: ถอด VAT ออกจากราคาที่รวมแล้ว ไม่ใช่บวกเพิ่ม', () => {
@@ -303,4 +303,40 @@ test('saleReceipt: พา customer_id ของใบขายติดมาก
    undefined เพราะหน้าใบเสร็จใช้ค่านี้ตัดสินว่าจะยิงถามนามที่เคยใช้หรือไม่ */
 test('saleReceipt: ใบขายที่ไม่ได้ผูกลูกค้า customerId เป็น null', () => {
   assert.equal(saleReceipt(SALE).customerId, null);
+});
+
+/* ปุ่ม "ราคาเลนส์รวม / แยกข้าง R / L" — แยกแล้วราคาต้องเป็นของจริงรายข้าง ไม่ใช่หารครึ่ง
+   และยอดท้ายใบต้องเท่าเดิมเป๊ะ */
+test('splitLens: ย้ายค่าเลนส์ลง Lens R / Lens L ตามราคาจริงแต่ละข้าง ยอดไม่ขยับ', () => {
+  const full = orderReceipt({
+    ...ORDER, lens_od_price: '2000.00', lens_os_price: '2550.00', total_price: '8450.00',
+  }, 'Bill-1');
+  const split = splitLens(full);
+  const priced = split.lines.filter((l) => typeof l.amount === 'number');
+  assert.deepEqual(priced.map((l) => [l.desc, l.qty, l.unit, l.amount]), [
+    ['Frame : Ray-Ban RB2140', 1, 3900, 3900],
+    ['Lens R : Hoya Nulux', 1, 2000, 2000],
+    ['Lens L : Hoya Nulux', 1, 2550, 2550],
+  ]);
+  const lensHead = split.lines.find((l) => l.desc === 'Lens');
+  assert.equal(lensHead.amount, null);
+  assert.equal(lensHead.qty, null);
+  assert.deepEqual(split.lines.map((l) => l.desc), full.lines.map((l) => l.desc));
+  assert.equal(linesTotal(split.lines), linesTotal(full.lines));
+  assert.equal(split.total, full.total);
+});
+
+test('splitLens: ใช้ร่วมกับ withoutRx ได้ ค่าสายตาหายแต่ราคารายข้างยังอยู่', () => {
+  const r = withoutRx(splitLens(orderReceipt(ORDER)));
+  assert.equal(r.lines.some((l) => l.rx), false);
+  assert.equal(r.lines.find((l) => l.desc === 'Lens R : Hoya Nulux').amount, 2550);
+});
+
+test('hasLensSides: ขึ้นปุ่มเฉพาะใบที่มีเลนส์ครบสองข้าง', () => {
+  assert.equal(hasLensSides(orderReceipt(ORDER)), true);
+  assert.equal(hasLensSides(orderReceipt({
+    ...ORDER, lens_name: '', lens_r_name: 'Hoya Nulux', lens_os_price: '0.00', total_price: '6450.00',
+  })), false);
+  assert.equal(hasLensSides(orderReceipt(OLD_ORDER)), false);
+  assert.equal(hasLensSides(saleReceipt(SALE)), false);
 });

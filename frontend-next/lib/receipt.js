@@ -129,12 +129,14 @@ function glassesLines(o) {
   const rName = o?.lens_r_name || oneName || '';
   const lName = o?.lens_l_name || oneName || '';
   const sides = [];
-  if (rName || odP > 0) sides.push(`Lens R : ${rName || DASH}`);
-  if (lName || osP > 0) sides.push(`Lens L : ${lName || DASH}`);
+  if (rName || odP > 0) sides.push([`Lens R : ${rName || DASH}`, odP]);
+  if (lName || osP > 0) sides.push([`Lens L : ${lName || DASH}`, osP]);
   if (sides.length) {
     const lensP = round2(odP + osP);
-    out.push(line('Lens', 1, lensP, lensP, true));
-    for (const desc of sides) out.push(note(desc, 2));
+    out.push({ ...line('Lens', 1, lensP, lensP, true), lensTotal: true });
+    /* ราคาของข้างนั้นติดไว้ที่ note (sidePrice) แต่ไม่อยู่ในช่องราคา — ใช้ตอนกดปุ่ม
+       "แยกราคาเลนส์" เท่านั้น ดู splitLens() ข้างล่าง */
+    for (const [desc, p] of sides) out.push({ ...note(desc, 2), sidePrice: p });
   }
 
   /* ดัชนีหักเหไม่มีช่องราคาของตัวเองในฐาน — ค่าใช้จ่ายส่วนเพิ่มทั้งหมดรวมอยู่ที่
@@ -265,3 +267,25 @@ export const hasRx = (r) => (r?.lines || []).some((l) => l.rx);
  * (ธง rx อยู่บน note ล้วน ๆ ที่ amount เป็น null ดู rxNote ข้างบน)
  */
 export const withoutRx = (r) => ({ ...r, lines: (r?.lines || []).filter((l) => !l.rx) });
+
+/**
+ * ใบนี้แยกราคาเลนส์รายข้างได้ไหม — ต้องมีราคาครบสองข้าง ตัดข้างเดียวแยกก็ได้ตัวเลขเดิม
+ * ปุ่มจึงไม่ต้องขึ้นให้กดเปล่า ๆ (ใบขาย POS กับใบเก่าจาก Access ไม่มีราคาแยกข้าง)
+ */
+export const hasLensSides = (r) =>
+  (r?.lines || []).filter((l) => l.sidePrice > 0).length >= 2;
+
+/**
+ * ใบเดิมแต่ย้ายค่าเลนส์จากบรรทัด "Lens" ลงไปที่ Lens R / Lens L ข้างละบรรทัด
+ * (ร้านขอ 22 ต.ค. 2026 — ปกติพิมพ์แบบรวม กดปุ่มถึงแยก)
+ * บรรทัด Lens เหลือเป็นหัวข้อเปล่า ราคาแต่ละข้างเป็นราคาจริงที่กรอกไว้ (lens_od_price /
+ * lens_os_price) ไม่ใช่หารครึ่ง สองข้างบวกกันเท่าบรรทัด Lens เดิม ยอดท้ายใบจึงไม่ขยับ
+ */
+export const splitLens = (r) => ({
+  ...r,
+  lines: (r?.lines || []).map((l) => {
+    if (l.lensTotal) return note(l.desc, l.indent);
+    if (typeof l.sidePrice === 'number') return line(l.desc, 1, l.sidePrice, l.sidePrice, l.indent);
+    return l;
+  }),
+});

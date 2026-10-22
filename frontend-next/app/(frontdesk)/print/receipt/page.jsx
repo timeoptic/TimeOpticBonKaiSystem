@@ -36,7 +36,9 @@ import { useConfirm } from '../../../../components/Confirm.jsx';
 import { fmtDate, fmtDateTime } from '../../../../lib/format.js';
 import { PrintStatusBadge, newKey, useIssueReceipt } from '../../../../components/ReceiptPanel.jsx';
 import { bahtText, bahtTextEn } from '../../../../lib/bahttext.js';
-import { hasRx, orderReceipt, saleReceipt, vatBreakdown, withoutRx } from '../../../../lib/receipt.js';
+import {
+  hasLensSides, hasRx, orderReceipt, saleReceipt, splitLens, vatBreakdown, withoutRx,
+} from '../../../../lib/receipt.js';
 
 /* ที่ติดต่อของร้านบนหัวใบ — ยังไม่มีช่องเก็บในตาราง settings (มีแค่ shop_name
    กับเวลาเปิด-ปิด) เหมือน /print/order แก้ตรงนี้ที่เดียวเมื่อร้านย้ายหรือเปลี่ยนเบอร์
@@ -267,6 +269,9 @@ function ReceiptSheet() {
      ที่ต้องเลือกได้เพราะใบเดียวกันถูกเอาไปใช้สองแบบ: เก็บไว้เองกับยื่นเบิก/ยื่นภาษี
      แบบหลังเป็นเอกสารที่ผ่านมือคนอื่น ค่าสายตาเป็นข้อมูลสุขภาพ ไม่ใช่รายการที่ต้องมี */
   const [showRx, setShowRx] = useState(true);
+  /* ค่าเลนส์พิมพ์รวมที่บรรทัด Lens (ค่าตั้งต้น) หรือแยกราคาลง Lens R / Lens L
+     กลับเป็น "รวม" ทุกครั้งที่เปิดหน้า เพราะแบบรวมคือแบบที่ร้านใช้ประจำ */
+  const [splitLensPrice, setSplitLensPrice] = useState(false);
 
   /**
    * เปิดหน้านี้ = ดูใบเสร็จ ไม่ใช่ออกเลข (ตั้งแต่ 13 ต.ค. 2026)
@@ -488,8 +493,10 @@ function ReceiptSheet() {
 
   /* ตัดบรรทัดค่าสายตาที่ lib/receipt.js ไม่ใช่ตอนวาด — <Copy> ยังรับ "ใบหนึ่งใบ" เหมือนเดิม
      และเติมแถวเปล่าให้ครบความสูงเองอยู่แล้ว ซ่อนแล้วใบจึงไม่เตี้ยลง */
-  const sheet = showRx ? full : withoutRx(full);
+  const withLens = splitLensPrice ? splitLens(full) : full;
+  const sheet = showRx ? withLens : withoutRx(withLens);
   const rxAvailable = hasRx(full);
+  const lensSplitAvailable = hasLensSides(full);
 
   /* ยอดคิดจากใบเต็ม ไม่ใช่ sheet — ค่าสายตาไม่มีราคา ซ่อนแล้วยอดต้องเท่าเดิมเป๊ะ */
   const vat = vatBreakdown(full.total);
@@ -589,6 +596,28 @@ function ReceiptSheet() {
               onClick={() => setShowRx(false)}
             >
               ไม่โชว์
+            </button>
+          </div>
+        ) : null}
+
+        {/* ราคาเลนส์รวมสองข้าง หรือแยกรายข้าง — ขึ้นเฉพาะใบที่มีเลนส์ครบสองข้างพร้อมราคา */}
+        {lensSplitAvailable ? (
+          <div className="rc-seg" role="group" aria-label="ราคาเลนส์บนใบเสร็จ">
+            <button
+              type="button"
+              aria-pressed={!splitLensPrice}
+              className={`rc-seg-b${!splitLensPrice ? ' is-on' : ''}`}
+              onClick={() => setSplitLensPrice(false)}
+            >
+              ราคาเลนส์รวม
+            </button>
+            <button
+              type="button"
+              aria-pressed={splitLensPrice}
+              className={`rc-seg-b${splitLensPrice ? ' is-on' : ''}`}
+              onClick={() => setSplitLensPrice(true)}
+            >
+              แยกข้าง R / L
             </button>
           </div>
         ) : null}
