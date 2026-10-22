@@ -49,13 +49,102 @@ GET('/api/frame-fittings/:case_id', fn(array $r) => Db::get(
  * the case. Saving only moves the case's own status onto ส่งมอบ so the board
  * stops showing it as still waiting to be collected.
  */
-POST('/api/case-deliveries', upsertFactory([
+$saveDelivery = upsertFactory([
     'table'  => 'case_deliveries',
     'action' => 'delivered',
     'status' => 'pickup',
     'cols'   => ['order_id', 'delivered_at', 'handed_over_by', 'received_by_customer_name', 'note'],
     'intCols' => ['order_id', 'handed_over_by'],
-]));
+]);
+
+/**
+ * วันส่งมอบ — พนักงานทั่วไปได้ "ตอนนี้" ของเซิร์ฟเวอร์เสมอ ค่าที่หน้าเว็บส่งมาไม่นับ
+ * แอดมินขึ้นไป (system.zone) ลงย้อนหลังได้ เช่น ส่งแว่นไปแล้วแต่ลืมกด (ร้านขอ 22 ต.ค. 2026)
+ * ส่งมอบไปแล้วบันทึกซ้ำ วันเดิมต้องอยู่ — แก้วันที่บันทึกแล้วต้องผ่าน PUT ข้างล่างที่บังคับเหตุผล
+ */
+POST('/api/case-deliveries', function (array $req) use ($saveDelivery) {
+    $caseId = int_or($req['body']['case_id'] ?? null);
+    $ex = $caseId ? Db::get('SELECT delivered_at FROM case_deliveries WHERE case_id = ?', $caseId) : null;
+    $actor = StockModule::actor();
+    if (!empty($ex['delivered_at'])) {
+        $req['body']['delivered_at'] = $ex['delivered_at'];
+    } elseif ($actor && \Optic\Roles::systemZone($actor['roles'] ?? [])) {
+        $at = str_or($req['body']['delivered_at'] ?? null);
+        $req['body']['delivered_at'] = $at === null ? nowStamp() : deliveryStamp($at);
+    } else {
+        $req['body']['delivered_at'] = nowStamp();
+    }
+    return $saveDelivery($req);
+});
+
+/** วันเวลาส่งมอบที่แอดมินพิมพ์มา → 'Y-m-d H:i:s' · ห้ามอนาคต (เผื่อนาฬิกาเครื่องเร็ว 5 นาที) */
+function deliveryStamp(string $at): string
+{
+    $at = str_replace('T', ' ', trim($at));
+    if (!preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})?$/', $at)
+        || !DateTime::createFromFormat('Y-m-d H:i', substr($at, 0, 16))) {
+        bad('วันเวลาส่งมอบไม่ถูกต้อง');
+    }
+    if (strlen($at) === 16) {
+        $at .= ':00';
+    }
+    if ($at > nowStamp(new DateTime('+5 minutes'))) {
+        bad('วันเวลาส่งมอบต้องไม่เป็นเวลาในอนาคต');
+    }
+    return $at;
+}
+
+/**
+ * แก้วันส่งมอบที่บันทึกไปแล้ว — แอดมินขึ้นไปเท่านั้น (ด่านเดียวกับแก้รายการรับเงิน)
+ *
+ * บังคับเหตุผล · ค่าเก่า → ค่าใหม่ลงไทม์ไลน์ของเคส · บิลของเคสที่ปิดตอนส่งมอบ
+ * (วันปิด = วันส่งมอบเดิม) ขยับวันปิดตาม เพราะรายงานยอดขายนับตามวันปิดบิล ·
+ * บิลที่ปิดด้วยมือคนละวันไม่ถูกแตะ
+ */
+PUT('/api/case-deliveries/:case_id/date', function (array $req) {
+    $caseId = int_or($req['params']['case_id']) ?? 0;
+    $body   = $req['body'];
+    $actor  = StockModule::actor();
+    if (!$actor || !\Optic\Roles::systemZone($actor['roles'] ?? [])) {
+        throw new HttpError(403, 'แก้วันส่งมอบได้เฉพาะแอดมินหรือเจ้าของร้าน', ['reason' => 'forbidden']);
+    }
+    $reason = trim((string) ($body['reason'] ?? ''));
+    if ($reason === '') {
+        bad('กรุณาใส่เหตุผลที่แก้ไข');
+    }
+    $at = deliveryStamp((string) ($body['delivered_at'] ?? ''));
+
+    Db::tx(function (Tx $q) use ($caseId, $at, $reason, $actor) {
+        $d = $q->get('SELECT id, delivered_at FROM case_deliveries WHERE case_id = ? FOR UPDATE', $caseId);
+        if (!$d || empty($d['delivered_at'])) {
+            bad('เคสนี้ยังไม่ได้ส่งมอบ');
+        }
+        $old = (string) $d['delivered_at'];
+        if ($old === $at) {
+            bad('ไม่มีอะไรเปลี่ยน');
+        }
+        $q->run('UPDATE case_deliveries SET delivered_at = ? WHERE id = ?', $at, (int) $d['id']);
+        $moved = $q->run(
+            'UPDATE custom_orders SET order_close_date = ?
+              WHERE case_id = ? AND order_closed = 1 AND order_close_date = ?',
+            $at, $caseId, $old
+        );
+
+        $by = (string) ($actor['displayName'] ?? $actor['username'] ?? '');
+        logEvent($q, $caseId, [
+            'action'      => 'delivery_date_edited',
+            'entity'      => 'case_deliveries',
+            'entity_id'   => (int) $d['id'],
+            'employee_id' => $actor['employeeId'] ?? null,
+            'note'        => 'วันส่งมอบ ' . substr($old, 0, 16) . ' → ' . substr($at, 0, 16)
+                . " — เหตุผล: $reason" . ($by !== '' ? " (แก้โดย $by)" : ''),
+            'payload'     => ['before' => $old, 'after' => $at, 'reason' => $reason, 'by' => $by,
+                'orders_moved' => (int) ($moved['affected'] ?? 0)],
+        ]);
+    });
+
+    return Db::get('SELECT * FROM case_deliveries WHERE case_id = ?', $caseId);
+});
 
 GET('/api/case-deliveries/:case_id', fn(array $r) => Db::get(
     'SELECT * FROM case_deliveries WHERE case_id = ?',

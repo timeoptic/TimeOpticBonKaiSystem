@@ -37,6 +37,8 @@ import { DateTimeField } from '../../../../../components/DateTimeField.jsx';
 import { Lightbox } from '../../../../../components/Lightbox.jsx';
 import { isPreviewable } from '../../../../../lib/lightbox.js';
 import { isUnpaidRow } from '../../../../../lib/paymentUnpaid.js';
+import { useAuth } from '../../../../../contexts/AuthContext.jsx';
+import { inSystemZone } from '../../../../../lib/roles.js';
 
 /* ไอคอนต่อวิธีจ่าย — ชุดเดียวกับขั้น "ชำระเงิน" ตัวเลือกจริงมาจาก meta.lists.pay_type
    ไม่ได้พิมพ์รายการไว้เอง ร้านเพิ่มช่องทางใหม่แล้วที่นี่ขึ้นตาม */
@@ -77,6 +79,84 @@ function lensBlocks(order) {
   return [{ label: 'LENS', name: order.lens_name, sub }];
 }
 
+/** เวลาจาก DateTimeField ('YYYY-MM-DDTHH:MM') หรือจาก API ('YYYY-MM-DD HH:MM:SS') ให้เป็นรูปเดียวกัน */
+const stampOf = (v) => {
+  const s = toStamp(v || '');
+  return s.length === 16 ? `${s}:00` : s;
+};
+
+/**
+ * แก้วันส่งมอบที่บันทึกไปแล้ว — แอดมินขึ้นไป (ร้านขอ 22 ต.ค. 2026)
+ * บังคับเหตุผล · บิลที่ปิดตอนส่งมอบขยับวันปิดตาม · ด่านจริงอยู่ที่
+ * PUT /api/case-deliveries/:case_id/date ที่นี่แค่บอกคนแก้ก่อนกด
+ */
+function DeliveryDateDialog({ c, d, onClose, onSaved }) {
+  const { ok, err } = useToast();
+  const confirm = useConfirm();
+  const [at, setAt] = useState(d.delivered_at || '');
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const changed = stampOf(at) !== stampOf(d.delivered_at);
+  const future = stampOf(at) > stampOf(nowLocal());
+  const blocked = !at ? 'เลือกวันเวลาส่งมอบ' : future ? 'วันส่งมอบต้องไม่เป็นเวลาในอนาคต' : null;
+  const canSave = !busy && !blocked && changed && reason.trim() !== '';
+
+  const save = async () => {
+    if (!canSave) return;
+    const sure = await confirm('ยืนยันแก้วันส่งมอบ', (
+      <Kv
+        rows={[
+          ['ส่งมอบเมื่อ', <><span className="muted">{fmtDateTime(d.delivered_at)}</span> → <b>{fmtDateTime(stampOf(at))}</b></>],
+          ['เหตุผล', reason.trim()],
+        ]}
+      />
+    ), { confirmText: 'ยืนยันแก้ไข' });
+    if (!sure) return;
+    setBusy(true);
+    try {
+      await api.put(`/api/case-deliveries/${c.id}/date`, { delivered_at: stampOf(at), reason: reason.trim() });
+      ok('แก้วันส่งมอบแล้ว');
+      onSaved();
+    } catch (ex) {
+      err(ex);
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="modal-back" onClick={(e) => { if (e.target === e.currentTarget && !busy) onClose(); }}>
+      <div className="modal" role="dialog" aria-modal="true" aria-label="แก้วันส่งมอบ">
+        <h3>แก้วันส่งมอบ</h3>
+        <div className="m-body">
+          <Field label="ส่งมอบเมื่อ">
+            <div style={{ maxWidth: 380 }}>
+              <DateTimeField value={at} onChange={setAt} />
+            </div>
+          </Field>
+          <Field label="เหตุผลที่แก้ไข *">
+            <input
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="เช่น ส่งแว่นจริงเมื่อวาน แต่ลืมกดส่งมอบ"
+              autoComplete="off"
+            />
+          </Field>
+          <p className="hint">วันปิดบิลในรายงานยอดขายจะขยับตามวันส่งมอบใหม่</p>
+        </div>
+        <div className="m-foot">
+          {blocked ? <span className="process-blockers" style={{ marginRight: 'auto' }}>{blocked}</span> : null}
+          <button type="button" className="btn btn-light" onClick={onClose} disabled={busy}>ยกเลิก</button>
+          <button type="button" className="btn" onClick={save} disabled={!canSave}>
+            <Icon name="check" />
+            {busy ? ' กำลังบันทึก…' : ' บันทึกการแก้ไข'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function DeliveryPanel({ c, reload }) {
   const { ok, err } = useToast();
   const confirm = useConfirm();
@@ -85,6 +165,11 @@ export function DeliveryPanel({ c, reload }) {
   const [ask, setAsk] = useState(false);
   const [busy, setBusy] = useState(false);
   const decide = useRef(null);
+  const { actor } = useAuth();
+  /* ลงวันส่งมอบย้อนหลัง / แก้วันที่บันทึกแล้ว ได้เฉพาะแอดมินขึ้นไป — ซ่อนปุ่มเป็นแค่มารยาท
+     API ตรวจสิทธิ์เอง และพนักงานทั่วไปส่งวันอะไรไปก็ได้เวลาเซิร์ฟเวอร์ */
+  const mayEditDate = inSystemZone(actor);
+  const [editingDate, setEditingDate] = useState(false);
 
   const d = c.delivery || {};
   const o = c.order || {};
@@ -221,6 +306,8 @@ export function DeliveryPanel({ c, reload }) {
      กดยืนยัน เดินตามนาฬิกาไปเรื่อย ๆ จะได้ไม่โชว์เวลาหนึ่งแต่บันทึกอีกเวลาหนึ่ง
      เมื่อเปิดหน้าค้างไว้ทั้งเช้า */
   const [deliveredAt, setDeliveredAt] = useState(nowLocal());
+  /* แอดมินเลือกวันเองแล้ว (ย้อนหลัง) — null = ใช้ "ตอนนี้" ตามเดิม */
+  const [pickedAt, setPickedAt] = useState(null);
   useEffect(() => {
     if (delivered) return undefined;
     const t = setInterval(() => setDeliveredAt(nowLocal()), 15000);
@@ -233,8 +320,8 @@ export function DeliveryPanel({ c, reload }) {
       await api.post('/api/case-deliveries', {
         case_id: c.id,
         order_id: o.id || null,
-        /* ประทับเวลาตอนกดจริง ไม่ใช่ตอนเปิดหน้า */
-        delivered_at: toStamp(nowLocal()),
+        /* ประทับเวลาตอนกดจริง ไม่ใช่ตอนเปิดหน้า — เว้นแต่แอดมินเลือกวันย้อนหลังไว้ */
+        delivered_at: toStamp(pickedAt && mayEditDate ? pickedAt : nowLocal()),
         handed_over_by: handedBy,
         employee_id: handedBy,
         received_by_customer_name: name,
@@ -351,7 +438,14 @@ export function DeliveryPanel({ c, reload }) {
         <Card title="ส่งมอบแล้ว" badge={<Badge kind="ok"><Icon name="check" /> เรียบร้อย</Badge>}>
           <Kv
             rows={[
-              ['ส่งมอบเมื่อ', fmtDateTime(d.delivered_at)],
+              ['ส่งมอบเมื่อ', mayEditDate ? (
+                <Row style={{ gap: 8 }}>
+                  <span>{fmtDateTime(d.delivered_at)}</span>
+                  <button type="button" className="btn btn-sm btn-light" onClick={() => setEditingDate(true)}>
+                    <Icon name="pencil" /> แก้ไข
+                  </button>
+                </Row>
+              ) : fmtDateTime(d.delivered_at)],
               ['ผู้รับสินค้า', d.received_by_customer_name || '—'],
               ['ผู้ส่งมอบ', d.handed_over_by_name || empName(d.handed_over_by)],
               ...(d.note ? [['หมายเหตุ', d.note]] : []),
@@ -364,6 +458,14 @@ export function DeliveryPanel({ c, reload }) {
           />
         </Card>
         {history}
+        {editingDate ? (
+          <DeliveryDateDialog
+            c={c}
+            d={d}
+            onClose={() => setEditingDate(false)}
+            onSaved={() => { setEditingDate(false); reload?.(); }}
+          />
+        ) : null}
       </Stack>
     );
   }
@@ -604,7 +706,18 @@ export function DeliveryPanel({ c, reload }) {
               />
             </Field>
             <Field label="วันที่ส่งมอบ">
-              <div className="dlv-stamp">{fmtDateTime(deliveredAt)}</div>
+              {mayEditDate ? (
+                <div style={{ maxWidth: 380 }}>
+                  <DateTimeField value={pickedAt ?? deliveredAt} onChange={setPickedAt} />
+                  {pickedAt ? (
+                    <button type="button" className="btn btn-sm btn-light" onClick={() => setPickedAt(null)}>
+                      ใช้เวลาตอนนี้
+                    </button>
+                  ) : null}
+                </div>
+              ) : (
+                <div className="dlv-stamp">{fmtDateTime(deliveredAt)}</div>
+              )}
             </Field>
           </FormGrid>
           <Field label="หมายเหตุ" className="full">
