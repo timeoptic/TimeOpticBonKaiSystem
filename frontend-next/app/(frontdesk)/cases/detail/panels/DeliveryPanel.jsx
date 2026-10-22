@@ -142,7 +142,6 @@ function DeliveryDateDialog({ c, d, onClose, onSaved }) {
               autoComplete="off"
             />
           </Field>
-          <p className="hint">วันปิดบิลในรายงานยอดขายจะขยับตามวันส่งมอบใหม่</p>
         </div>
         <div className="m-foot">
           {blocked ? <span className="process-blockers" style={{ marginRight: 'auto' }}>{blocked}</span> : null}

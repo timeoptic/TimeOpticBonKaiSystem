@@ -147,7 +147,8 @@ test('PUT แก้วัน: ต้องมีเหตุผล และเ�
 test('PUT แก้วัน: บิลที่ปิดตอนส่งมอบขยับวันปิดตาม ลงไทม์ไลน์ บิลที่ปิดคนละวันไม่แตะ', function () {
     rollback(function (Tx $q) {
         $f = ddFixtures($q, '2026-10-05 09:00:00');
-        closeOrdersOnDelivery($q, $f['case']);
+        /* Bewell ไม่ได้ปิดบิลตอนส่งมอบ — จำลองบิลที่ถูกปิดด้วยวันเดียวกับวันส่งมอบ */
+        $q->run("UPDATE custom_orders SET order_closed = 1, order_close_date = '2026-10-05 09:00:00' WHERE id = ?", $f['order']);
         $other = (int) $q->run(
             "INSERT INTO custom_orders (customer_id, case_id, order_date, total_price, discount, deposit,
                order_closed, order_close_date)
