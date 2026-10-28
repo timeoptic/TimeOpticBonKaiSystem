@@ -12,10 +12,11 @@ import { Lightbox } from './Lightbox.jsx';
 
 /* max = null แปลว่ากล่องนี้ไม่จำกัดจำนวน (สลิปโอนเงิน, ไฟล์ส่งมอบ)
    actions / actionsHint / onPhotos ใช้เฉพาะกล่องที่มีปุ่มของตัวเองต่อท้ายปุ่มเพิ่มรูป
-   (ปุ่ม "ส่งรูป" ของขั้นวัด Center) — กล่องอื่นไม่ส่งมา หน้าตาเหมือนเดิมทุกอย่าง */
+   (ปุ่ม "ส่งรูป" ของขั้นวัด Center) — กล่องอื่นไม่ส่งมา หน้าตาเหมือนเดิมทุกอย่าง
+   sentIds = id รูปที่ส่งออกไปแล้ว ขึ้น ✓ เขียวที่มุมรูปย่อ (เฉพาะขั้นวัด Center) */
 export function PhotoUpload({
   caseId, kind = 'other', centeringId = null, paymentId = null, takenBy = null, max = null,
-  actions = null, actionsHint = null, onPhotos = null,
+  actions = null, actionsHint = null, onPhotos = null, sentIds = null,
 }) {
   const { ok, err } = useToast();
   const confirm = useConfirm();
@@ -139,6 +140,19 @@ export function PhotoUpload({
                   </button>
                 )
                 : <a href={api.url('/api/uploads/' + p.id)} target="_blank" rel="noreferrer"><Icon name="file" /> {p.original_name}</a>}
+              {sentIds && sentIds.includes(Number(p.id)) ? (
+                <span
+                  title="ส่งแล้ว"
+                  aria-label="ส่งแล้ว"
+                  style={{
+                    position: 'absolute', left: 2, bottom: 2, width: 20, height: 20, borderRadius: '50%',
+                    background: 'var(--green-ink)', color: '#fff', display: 'grid', placeItems: 'center',
+                    fontSize: 12, boxShadow: '0 0 0 2px #fff', pointerEvents: 'none',
+                  }}
+                >
+                  <Icon name="check" />
+                </span>
+              ) : null}
               <button type="button" className="photo-thumb-del" onClick={() => remove(p)}><Icon name="x" /></button>
             </div>
           ))}

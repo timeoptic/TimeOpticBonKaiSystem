@@ -259,7 +259,10 @@ final class Auth
             'roleText'    => Roles::text($roles),
             /* สิทธิ์ที่ได้จริงหลังรวมทุกบทบาท — หน้าเว็บใช้ตัวนี้ตัดสินว่าจะวาด
                เมนูไหน แทนที่จะถือสำเนาของกฎไว้อีกชุดแล้วลืมแก้ตอนเพิ่มบทบาท */
-            'perms'       => Roles::permsOf($roles),
+            'perms'       => [
+                ...Roles::permsOf($roles),
+                ...(Roles::issueReceipt($roles, $row['username']) ? ['receipt.issue'] : []),
+            ],
             /* หน้าแรกของคนนี้ ตอบจากที่เดียวกับที่ตัดสินสิทธิ์ */
             'home'        => Roles::home($roles),
             'employeeId'  => $row['employee_id'] === null ? null : (int) $row['employee_id'],

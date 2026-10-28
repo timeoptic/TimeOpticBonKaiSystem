@@ -57,6 +57,11 @@ function rcptAsOwner(callable $fn): mixed
         failTest('ไม่มีบัญชี owner ในฐาน');
     }
     $roles = \Optic\Auth::rolesOf((int) $r['id']);
+    /* ปุ่มออกใบเสร็จกดได้เฉพาะรายชื่อใน Roles::RECEIPT_ISSUERS (หรือ superuser) — owner
+       ในฐานทดสอบอาจชื่ออื่น จึงเติม superuser ให้ ไม่งั้นทุกเทสต์ที่ออกใบได้ 403 */
+    if (!\Optic\Roles::issueReceipt($roles, $r['username'])) {
+        $roles[] = 'superuser';
+    }
     return \Optic\Auth::as([
         'id'          => (int) $r['id'],
         'username'    => $r['username'],
@@ -287,5 +292,28 @@ test('ส่วนใบเสร็จของหน้าเคส: ทุก
         eq(count($list), 2, 'สองออเดอร์');
         ok($list[0]['receipt'] !== null && $list[0]['receipt']['print_status'] === 'NOT_REQUESTED', 'ใบแรกออกแล้ว ยังไม่เคยสั่งพิมพ์');
         eq($list[1]['receipt'], null, 'ใบสองยังไม่ออก');
+    });
+});
+
+test('ปุ่มออกใบเสร็จ: ออกได้เฉพาะ Pom Tik Bow Japiica + superuser — sales คนอื่นได้ 403 ไม่เกิดเลข', function () {
+    ok(\Optic\Roles::issueReceipt(['sales', 'stock'], 'Bow'), 'Bow (sales) ออกได้');
+    ok(\Optic\Roles::issueReceipt(['owner'], ' pom '), 'ชื่อไม่สนตัวพิมพ์/ช่องว่าง');
+    ok(\Optic\Roles::issueReceipt(['superuser'], 'admin'), 'superuser ออกได้เสมอ');
+    ok(!\Optic\Roles::issueReceipt(['sales'], 'Mild'), 'sales คนอื่นออกไม่ได้');
+    ok(!\Optic\Roles::issueReceipt(['owner', 'admin'], 'someone'), 'owner ที่ไม่อยู่ในรายชื่อออกไม่ได้');
+
+    rollback(function (Tx $q) {
+        $order = rcptOrder(rcptCustomer($q), '1000');
+        $status = null;
+        try {
+            \Optic\Auth::as([
+                'id' => 0, 'username' => 'Mild', 'displayName' => 'Mild',
+                'roles' => ['sales'], 'perms' => \Optic\Roles::permsOf(['sales']), 'employeeId' => null,
+            ], fn() => Router::dispatch('POST', '/api/receipts/issue', [], ['order_id' => (int) $order['id']]));
+        } catch (HttpError $e) {
+            $status = $e->status;
+        }
+        eq($status, 403, 'sales ที่ไม่อยู่ในรายชื่อโดน 403');
+        eq($q->get('SELECT COUNT(*) n FROM receipts WHERE order_id = ?', (int) $order['id'])['n'] ?? null, 0, 'ไม่เกิดเลข');
     });
 });

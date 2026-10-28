@@ -317,6 +317,20 @@ final class Roles
     public static function manageSystem(array $roles): bool { return self::has($roles, 'system.manage'); }
 
     /**
+     * คนที่กด "ออกใบเสร็จ" ได้ — ร้านกำหนดเป็นรายคน ไม่ใช่ตามบทบาท (28 ต.ค. 2026: Pom Tik Bow
+     * + Japiica) เพราะ Bow เป็น sales แต่ sales คนอื่นห้ามออก · superuser ได้เสมอไว้แก้ปัญหา
+     * ไม่ได้อยู่ใน PERMS เพราะตารางนั้นผูกกับบทบาท · Auth::shape เติม 'receipt.issue' ให้ actor
+     */
+    public const RECEIPT_ISSUERS = ['pom', 'tik', 'bow', 'japiica'];
+
+    /** @param list<string> $roles */
+    public static function issueReceipt(array $roles, ?string $username): bool
+    {
+        return self::manageSystem($roles)
+            || in_array(mb_strtolower(trim((string) $username)), self::RECEIPT_ISSUERS, true);
+    }
+
+    /**
      * Anything that touches money: RX_ORDER unit_cost and a lot's cost_per_unit.
      *
      * เจ้าของร้านเท่านั้น · แอดมินเห็นตัวเลขได้ (`seeCost`) แต่เป็นคนตั้งมันไม่ได้ —

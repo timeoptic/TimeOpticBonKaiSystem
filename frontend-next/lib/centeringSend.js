@@ -67,6 +67,68 @@ export const sentToast = ({ caseCode, count }) => ({
 export const noteUnsaved = (current, saved) => clean(current) !== clean(saved);
 
 /**
+ * รูปที่เคยส่งสำเร็จแล้ว อ่านจากไทม์ไลน์เคส (c.events) — API ลงทุกครั้งที่ส่งสำเร็จ
+ * พร้อม id รูปใน payload.centerImages · รีเฟรชหน้าหรือเปิดจากอีกเครื่องก็ยังรู้ว่าส่งแล้ว
+ * @param {Array<{ action?: string, payload?: unknown, created_at?: string }>|null|undefined} events
+ * @returns {{ ids: number[], last: { at: string, count: number } | null }}
+ */
+export function sentHistory(events) {
+  const ids = new Set();
+  let last = null;
+  for (const ev of events || []) {
+    if (ev?.action !== 'centering_photos_sent') continue;
+    let p = ev.payload;
+    if (typeof p === 'string') {
+      try { p = JSON.parse(p); } catch { p = null; }
+    }
+    if (!p || p.ok === false) continue;
+    const imgs = Array.isArray(p.centerImages) ? p.centerImages.map(Number) : [];
+    imgs.forEach((id) => ids.add(id));
+    const at = p.sentAt || ev.created_at || '';
+    if (!last || at > last.at) last = { at, count: imgs.length };
+  }
+  return { ids: [...ids], last };
+}
+
+/** '2026-10-28 14:38:05' → '14:38' ถ้าเป็นวันนี้ ไม่งั้น '27/10 14:38' */
+export function sentStamp(at, today) {
+  const s = String(at || '');
+  if (s.length < 16) return '';
+  const time = s.slice(11, 16);
+  return s.slice(0, 10) === today ? time : `${s.slice(8, 10)}/${s.slice(5, 7)} ${time}`;
+}
+
+/**
+ * หน้าตาปุ่ม "ส่งรูป" — คนหน้าร้านต้องรู้ได้จากปุ่มเลยว่าส่งไปแล้วหรือยัง
+ *   first = ยังไม่เคยส่ง (เขียว) · sent = ส่งครบทุกใบแล้ว (เทา ยังกดส่งซ้ำได้)
+ *   more  = ส่งไปแล้วแต่มีรูปใหม่ในกล่อง (เขียว) — API ส่งทั้งกล่องเสมอ จึงบอกตรงๆ ว่าส่งทั้งชุด
+ * @param {{ photos: CasePhoto[]|null, sent: { ids: number[], last: { at: string, count: number } | null }, today: string }} p
+ * @returns {{ tone: 'first'|'sent'|'more', label: string, hint: string|null }}
+ */
+export function sendButtonState({ photos, sent, today }) {
+  const list = photos || [];
+  if (list.length === 0) {
+    return { tone: 'first', label: 'ส่งรูป', hint: photos ? 'กรุณาเพิ่มรูปภาพก่อนส่ง' : null };
+  }
+  if (!sent.last) return { tone: 'first', label: 'ส่งรูป', hint: null };
+  const done = new Set(sent.ids);
+  const fresh = list.filter((p) => !done.has(Number(p.id))).length;
+  const when = sentStamp(sent.last.at, today);
+  if (fresh === 0) {
+    return {
+      tone: 'sent',
+      label: `ส่งแล้ว ${list.length} รูป${when ? ` · ${when}` : ''}`,
+      hint: 'ส่งครบแล้ว — กดอีกครั้งได้ถ้าต้องการส่งซ้ำ',
+    };
+  }
+  return {
+    tone: 'more',
+    label: `ส่งอีกครั้ง · มีรูปใหม่ ${fresh} รูป`,
+    hint: `ส่งล่าสุด ${when || '—'} · กดแล้วจะส่งทั้งชุด ${list.length} รูป`,
+  };
+}
+
+/**
  * @param {unknown} ex  ข้อผิดพลาดจาก api.post (มี status / reason / data)
  * @returns {CenteringSendFailure}
  */

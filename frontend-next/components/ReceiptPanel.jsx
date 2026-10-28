@@ -21,6 +21,8 @@ import { Badge, Card, Loading } from './ui.jsx';
 import { Icon } from './Icon.jsx';
 import { useConfirm } from './Confirm.jsx';
 import { useToast } from './Toast.jsx';
+import { useAuth } from '../contexts/AuthContext.jsx';
+import { can } from '../lib/roles.js';
 
 export const PRINT_STATUS = {
   NOT_REQUESTED: ['gray', 'ยังไม่เคยสั่งพิมพ์'],
@@ -29,6 +31,12 @@ export const PRINT_STATUS = {
   CONFIRMED: ['ok', 'ยืนยันว่าพิมพ์ออกแล้ว'],
   FAILED: ['danger', 'พิมพ์ไม่สำเร็จ'],
 };
+
+/* กดปุ่ม "ออกใบเสร็จ" ได้ — ร้านกำหนดเป็นรายคน (Roles::RECEIPT_ISSUERS ฝั่ง PHP ซึ่งกันซ้ำอีกชั้น)
+   คนอื่นไม่เห็นปุ่ม เห็นข้อความนี้แทน จะได้รู้ว่าต้องเรียกใคร · อยู่ที่นี่ ไม่ใช่ lib/roles.js
+   เพราะไฟล์นั้นอยู่ใน chunk ที่แทบทุกหน้าโหลด */
+export const mayIssueReceipt = (actor) => can(actor, 'receipt.issue');
+export const RECEIPT_ISSUER_TEXT = 'ออกใบเสร็จได้เฉพาะ Pom, Tik';
 
 export function PrintStatusBadge({ status }) {
   const [kind, label] = PRINT_STATUS[status] || PRINT_STATUS.NOT_REQUESTED;
@@ -135,6 +143,7 @@ export function ReceiptPanel({ query, title = 'ใบเสร็จรับเ
   const [tick, setTick] = useState(0);
   const [history, setHistory] = useState(null);
   const { issue, busy } = useIssueReceipt();
+  const canIssue = mayIssueReceipt(useAuth().actor);
   const key = JSON.stringify(query);
   const { data, loading, error } = useAsync(() => api.get('/api/receipts/for', query), [key, tick]);
 
@@ -175,11 +184,12 @@ export function ReceiptPanel({ query, title = 'ใบเสร็จรับเ
                     : ''}
                 </div>
                 <div className="rcp-acts">
-                  {!rc && !disabled ? (
+                  {!rc && !disabled && canIssue ? (
                     <button type="button" className="btn btn-sm btn-accent" disabled={busy} onClick={() => onIssue(row)}>
                       <Icon name="receipt" /> ออกใบเสร็จ
                     </button>
                   ) : null}
+                  {!rc && !disabled && !canIssue ? <span className="muted">{RECEIPT_ISSUER_TEXT}</span> : null}
                   {rc ? (
                     <>
                       <Link className="btn btn-sm btn-light" href={receiptHref(row.source_type, row.source_id)}>ดูใบเสร็จ</Link>

@@ -27,9 +27,9 @@ import { PhotoUpload } from '../../../../../components/PhotoUpload.jsx';
 import { CENTERING_PHOTO_MAX } from '../../../../../lib/photos.js';
 import { Icon } from '../../../../../components/Icon.jsx';
 import { useProcessActions } from '../../../../../components/ProcessShell.jsx';
-import { dtLocal, nowLocal, toStamp } from '../../../../../lib/format.js';
+import { dtLocal, nowLocal, toStamp, todayISO } from '../../../../../lib/format.js';
 import { DateTimeField } from '../../../../../components/DateTimeField.jsx';
-import { noteUnsaved, sentToast } from '../../../../../lib/centeringSend.js';
+import { noteUnsaved, sendButtonState, sentHistory, sentToast } from '../../../../../lib/centeringSend.js';
 import { CenteringSendModal, SendIcon, SentToast } from './CenteringSendModal.jsx';
 
 const NOTE_MAX = 500;
@@ -95,6 +95,10 @@ export function CenteringPanel({ c, reload }) {
   const [photos, setPhotos] = useState(null);
   const [photoRev, setPhotoRev] = useState(0);
   const [sendOpen, setSendOpen] = useState(false);
+  /* การส่งที่เพิ่งสำเร็จในหน้านี้ — ส่งเสร็จไม่ reload เคส (ดู onSent) c.events จึงยังไม่มี
+     รอบนี้ เก็บไว้ในรูปเดียวกับเหตุการณ์ของไทม์ไลน์ ให้ sentHistory อ่านรวมกันได้ */
+  const [localSends, setLocalSends] = useState([]);
+  const sent = useMemo(() => sentHistory([...localSends, ...(c.events || [])]), [localSends, c.events]);
 
   useEffect(() => {
     setForm({
@@ -178,11 +182,16 @@ export function CenteringPanel({ c, reload }) {
 
   const note = form.center_point_note || '';
   const photoCount = photos ? photos.length : 0;
+  const btn = sendButtonState({ photos, sent, today: todayISO() });
 
   /* ส่งสำเร็จไม่ reload เคส — reload จะรีเซ็ตฟอร์มจากค่าที่บันทึกไว้ หมายเหตุที่พิมพ์ค้าง
      (ซึ่งเพิ่งถูกส่งออกไป) จะหายไปจากช่องทันที */
   const onSent = (res) => {
     setSendOpen(false);
+    setLocalSends((l) => [...l, {
+      action: 'centering_photos_sent',
+      payload: { centerImages: (photos || []).map((p) => p.id), sentAt: res?.sent_at || toStamp(nowLocal()) + ':00', ok: true },
+    }]);
     ok(<SentToast {...sentToast({ caseCode: res?.case_code || c.case_code, count: res?.count ?? photoCount })} />);
   };
   const onSendFailed = (f) => {
@@ -240,14 +249,18 @@ export function CenteringPanel({ c, reload }) {
             actions={(
               <button
                 type="button"
-                className="btn btn-sm btn-accent"
+                className={btn.tone === 'sent' ? 'btn btn-sm' : 'btn btn-sm btn-accent'}
+                style={btn.tone === 'sent'
+                  ? { background: 'var(--panel)', color: 'var(--ink-dim)', borderColor: 'var(--line)', boxShadow: 'none' }
+                  : undefined}
                 onClick={() => setSendOpen(true)}
                 disabled={photoCount === 0}
               >
-                <SendIcon /> ส่งรูป
+                {btn.tone === 'sent' ? <Icon name="check" /> : <SendIcon />} {btn.label}
               </button>
             )}
-            actionsHint={photos && photos.length === 0 ? 'กรุณาเพิ่มรูปภาพก่อนส่ง' : null}
+            actionsHint={btn.hint}
+            sentIds={sent.ids}
           />
         </Card>
       </Stack>

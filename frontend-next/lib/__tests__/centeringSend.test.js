@@ -6,7 +6,10 @@ import {
   noteUnsaved,
   photoCountText,
   sendFailure,
+  sendButtonState,
   sendPayload,
+  sentHistory,
+  sentStamp,
   sentToast,
 } from '../centeringSend.js';
 
@@ -93,5 +96,45 @@ test('sendFailure: Telegram ปฏิเสธ แสดงสาเหตุจ
 test('sendFailure: เน็ตหลุด (ไม่มีคำตอบจาก API) ไม่มีรายละเอียดทางเทคนิค', () => {
   assert.deepEqual(sendFailure(new TypeError('Failed to fetch')), {
     title: 'ส่งรูปไม่สำเร็จ กรุณาลองอีกครั้ง', detail: null, refresh: false,
+  });
+});
+
+const EV = (ids, sentAt, ok = true) => ({
+  action: 'centering_photos_sent',
+  created_at: sentAt,
+  payload: JSON.stringify({ centerImages: ids, sentAt, ok }),
+});
+
+test('sentHistory: รวม id รูปจากทุกครั้งที่ส่งสำเร็จ และจำครั้งล่าสุด', () => {
+  const h = sentHistory([
+    EV([33, 31, 30], '2026-10-28 14:38:00'),
+    { action: 'centering_photos_send_failed', payload: '{"centerImages":[99]}' },
+    { action: 'status_changed', payload: null },
+    EV([33], '2026-10-27 09:00:00'),
+  ]);
+  assert.deepEqual(h.ids.sort(), [30, 31, 33]);
+  assert.deepEqual(h.last, { at: '2026-10-28 14:38:00', count: 3 });
+  assert.deepEqual(sentHistory(null), { ids: [], last: null });
+});
+
+test('sentStamp: วันนี้โชว์แค่เวลา วันอื่นโชว์วัน/เดือนด้วย', () => {
+  assert.equal(sentStamp('2026-10-28 14:38:05', '2026-10-28'), '14:38');
+  assert.equal(sentStamp('2026-10-27 09:05:00', '2026-10-28'), '27/10 09:05');
+});
+
+test('sendButtonState: ยังไม่ส่ง / ส่งครบ / มีรูปใหม่', () => {
+  const today = '2026-10-28';
+  const none = { ids: [], last: null };
+  assert.equal(sendButtonState({ photos: PHOTOS, sent: none, today }).tone, 'first');
+  assert.equal(sendButtonState({ photos: [], sent: none, today }).hint, 'กรุณาเพิ่มรูปภาพก่อนส่ง');
+
+  const all = sentHistory([EV([33, 31, 30], '2026-10-28 14:38:00')]);
+  assert.deepEqual(sendButtonState({ photos: PHOTOS, sent: all, today }), {
+    tone: 'sent', label: 'ส่งแล้ว 3 รูป · 14:38', hint: 'ส่งครบแล้ว — กดอีกครั้งได้ถ้าต้องการส่งซ้ำ',
+  });
+
+  const part = sentHistory([EV([33], '2026-10-27 09:00:00')]);
+  assert.deepEqual(sendButtonState({ photos: PHOTOS, sent: part, today }), {
+    tone: 'more', label: 'ส่งอีกครั้ง · มีรูปใหม่ 2 รูป', hint: 'ส่งล่าสุด 27/10 09:00 · กดแล้วจะส่งทั้งชุด 3 รูป',
   });
 });

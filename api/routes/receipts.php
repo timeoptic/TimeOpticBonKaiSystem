@@ -308,6 +308,10 @@ POST('/api/receipts', function (array $req) {
  */
 POST('/api/receipts/issue', function (array $req) {
     $by  = receiptActorId();
+    $actor = StockModule::actor();
+    if (!\Optic\Roles::issueReceipt($actor['roles'] ?? [], $actor['username'] ?? null)) {
+        throw new HttpError(403, 'ออกใบเสร็จได้เฉพาะ Pom, Tik', ['reason' => 'forbidden']);
+    }
     [$kind, $id] = receiptSource($req['body']);
     $key = nul($req['body']['idem_key'] ?? null);
     $rc  = issueReceipt($kind, $id, $key === null ? null : mb_substr($key, 0, 120), $by ?: null);

@@ -34,7 +34,10 @@ import { PaperView } from '../../../../components/PaperView.jsx';
 import { Icon } from '../../../../components/Icon.jsx';
 import { useConfirm } from '../../../../components/Confirm.jsx';
 import { fmtDate, fmtDateTime } from '../../../../lib/format.js';
-import { PrintStatusBadge, newKey, useIssueReceipt } from '../../../../components/ReceiptPanel.jsx';
+import {
+  PrintStatusBadge, RECEIPT_ISSUER_TEXT, mayIssueReceipt, newKey, useIssueReceipt,
+} from '../../../../components/ReceiptPanel.jsx';
+import { useAuth } from '../../../../contexts/AuthContext.jsx';
 import { bahtText, bahtTextEn } from '../../../../lib/bahttext.js';
 import {
   hasLensSides, hasRx, orderReceipt, saleReceipt, splitLens, vatBreakdown, withoutRx,
@@ -283,6 +286,7 @@ function ReceiptSheet() {
   const autoPrint = params.get('print') === '1';
   const [tick, setTick] = useState(0);
   const { issue, busy: issuing } = useIssueReceipt();
+  const canIssue = mayIssueReceipt(useAuth().actor);
   /* การสั่งพิมพ์ครั้งล่าสุดที่รอพนักงานบอกผล — { id, attempt, closed } · null = ไม่มีอะไรค้าง */
   const [pending, setPending] = useState(null);
   const pendingRef = useRef(null);
@@ -515,9 +519,11 @@ function ReceiptSheet() {
             <b>ยังไม่ได้ออกใบเสร็จ</b>
             <p>เปิดหน้านี้ไม่ได้ออกเลขให้ — กด &quot;ออกใบเสร็จ&quot; เมื่อจะออกใบให้ลูกค้าจริง เลขจะผูกกับบิลนี้ถาวร</p>
           </div>
-          <button type="button" className="btn btn-accent" disabled={issuing} onClick={() => void onIssue()}>
-            <Icon name="receipt" /> ออกใบเสร็จ
-          </button>
+          {canIssue ? (
+            <button type="button" className="btn btn-accent" disabled={issuing} onClick={() => void onIssue()}>
+              <Icon name="receipt" /> ออกใบเสร็จ
+            </button>
+          ) : <b className="muted">{RECEIPT_ISSUER_TEXT}</b>}
         </div>
       ) : (
         <div className="rc-state is-issued no-print">
