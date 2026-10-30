@@ -300,6 +300,7 @@ export function DeliveryPanel({ c, reload }) {
 
   /* ---- ส่งมอบ ---------------------------------------------------------- */
   const [handedBy, setHandedBy] = useState('');
+  const [grinderId, setGrinderId] = useState('');
   const [dNote, setDNote] = useState('');
   /* เวลาส่งมอบคือ "ตอนนี้" เสมอ — จอโชว์เฉย ๆ แก้ไม่ได้ ของจริงจะถูกประทับตอน
      กดยืนยัน เดินตามนาฬิกาไปเรื่อย ๆ จะได้ไม่โชว์เวลาหนึ่งแต่บันทึกอีกเวลาหนึ่ง
@@ -323,6 +324,7 @@ export function DeliveryPanel({ c, reload }) {
         delivered_at: toStamp(pickedAt && mayEditDate ? pickedAt : nowLocal()),
         handed_over_by: handedBy,
         employee_id: handedBy,
+        grinder_employee_id: grinderId || null,
         received_by_customer_name: name,
         note: dNote.trim() || null,
       });
@@ -447,6 +449,9 @@ export function DeliveryPanel({ c, reload }) {
               ) : fmtDateTime(d.delivered_at)],
               ['ผู้รับสินค้า', d.received_by_customer_name || '—'],
               ['ผู้ส่งมอบ', d.handed_over_by_name || empName(d.handed_over_by)],
+              ...(d.grinder_employee_id
+                ? [['คนเจีย', d.grinder_name || empName(d.grinder_employee_id)]]
+                : []),
               ...(d.note ? [['หมายเหตุ', d.note]] : []),
               /* ส่งมอบแล้วแต่ยังค้างเงินได้ — สองสถานะนี้แยกกัน ไม่ได้ปิดตามกัน */
               ['ยอดคงเหลือ', balance > 0
@@ -694,7 +699,7 @@ export function DeliveryPanel({ c, reload }) {
 
         {/* บันทึกการส่งมอบ — ฟอร์มอยู่ที่นี่ แต่ปุ่มยืนยันยังเป็นปุ่มเดียวของ
             ProcessShell ด้านบน จะได้ไม่มีปุ่ม "ส่งมอบเสร็จ" สองอันบนจอเดียวกัน */}
-        <Card title="บันทึกการส่งมอบ">
+        <Card title={<><Icon name="file" /> บันทึกการส่งมอบ</>}>
           <FormGrid>
             <Field label="ผู้ส่งมอบ *">
               <EmployeeSelect
@@ -717,6 +722,24 @@ export function DeliveryPanel({ c, reload }) {
               ) : (
                 <div className="dlv-stamp">{fmtDateTime(deliveredAt)}</div>
               )}
+            </Field>
+          </FormGrid>
+          <FormGrid>
+            <Field
+              label={(
+                <>
+                  คนเจีย / ผู้ดำเนินการเจีย{' '}
+                  <span title="พนักงานที่เจียเลนส์ของงานนี้ — ไม่บังคับกรอก">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true" style={{ verticalAlign: '-2px' }}><path fillRule="evenodd" d="M12 2.5a9.5 9.5 0 1 0 0 19 9.5 9.5 0 0 0 0-19zM10.9 7h2.2v2.2h-2.2zm0 4h2.2v6h-2.2z" /></svg>
+                  </span>
+                </>
+              )}
+            >
+              <EmployeeSelect
+                name="grinder_employee_id"
+                value={grinderId}
+                onChange={(e) => setGrinderId(e.target.value)}
+              />
             </Field>
           </FormGrid>
           <Field label="หมายเหตุ" className="full">

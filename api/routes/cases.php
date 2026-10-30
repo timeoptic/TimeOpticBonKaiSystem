@@ -396,7 +396,8 @@ function caseDetail(?int $id): array
     $centering = Db::get('SELECT * FROM centerings WHERE case_id = ? ORDER BY id DESC LIMIT 1', $id);
     $fitting   = Db::get('SELECT * FROM frame_fittings WHERE case_id = ? ORDER BY id DESC LIMIT 1', $id);
     $delivery  = Db::get(
-        'SELECT d.*, e.employee_name AS handed_over_by_name FROM case_deliveries d
+        'SELECT d.*, e.employee_name AS handed_over_by_name, g.employee_name AS grinder_name FROM case_deliveries d
+           LEFT JOIN employees g ON g.id = d.grinder_employee_id
            LEFT JOIN employees e ON e.id = d.handed_over_by
           WHERE d.case_id = ?',
         $id

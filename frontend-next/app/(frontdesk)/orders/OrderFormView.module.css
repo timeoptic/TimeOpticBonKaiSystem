@@ -1,0 +1,73 @@
+/* การ์ดกรอบและแถบย้อมสีของฟอร์มออเดอร์
+   แยกเป็น CSS module ไม่ใส่ globals.css — ไฟล์ CSS กลางที่ทุกหน้าโหลดร่วมกันจะได้ไม่เปลี่ยนชื่อ */
+
+.tintBar{
+  display:flex;flex-wrap:wrap;align-items:center;gap:14px 24px;margin-bottom:16px;padding:14px 18px;
+  border-radius:var(--radius-sm);background:var(--accent-soft);border:1px solid var(--green-edge);
+}
+
+.tintHead{display:flex;align-items:center;gap:12px;flex:1 1 260px;min-width:0;color:var(--accent-deep)}
+.tintHead svg{flex:none;width:28px;height:28px}
+.tintHead b{display:block;font-size:15px}
+.tintHead small{display:block;margin-top:2px;font-size:12px;color:var(--ink-soft)}
+
+.tintOptions{display:flex;flex-wrap:wrap;gap:12px;flex:2 1 400px}
+
+.tintOption{
+  display:flex;align-items:center;gap:12px;flex:1 1 180px;padding:10px 14px;cursor:pointer;
+  border-radius:var(--radius-sm);background:#fff;border:1px solid var(--green-edge);
+}
+.tintOption.on{border-color:var(--accent)}
+.tintOption input{flex:none;width:18px;height:18px;accent-color:var(--accent);cursor:pointer}
+.tintOption b{display:block;font-size:13.5px;color:var(--ink)}
+.tintOption small{display:block;font-size:12px;color:var(--ink-soft)}
+
+.swatches{display:flex;flex-wrap:wrap;gap:8px;flex:1 1 100%}
+
+.swatch{
+  display:inline-flex;align-items:center;gap:7px;padding:6px 12px;cursor:pointer;font:inherit;font-size:13px;
+  color:var(--ink);background:#fff;border:1px solid var(--green-edge);border-radius:999px;
+}
+.swatch.on{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent);font-weight:700}
+.dot{width:16px;height:16px;border-radius:50%}
+
+/* กรอบจากสต็อก / กรอบลูกค้า */
+.frameSource{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:14px}
+
+.frameOption{
+  display:flex;align-items:center;gap:14px;padding:12px 16px;cursor:pointer;
+  border-radius:var(--radius-sm);background:#fff;border:1px solid var(--line);
+}
+.frameOption.on{background:var(--accent-soft);border-color:var(--accent)}
+.frameOption input{flex:none;width:20px;height:20px;accent-color:var(--accent);cursor:pointer}
+.frameOption b{display:block;font-size:14px;color:var(--ink)}
+.frameOption small{display:block;margin-top:2px;font-size:12.5px;color:var(--ink-soft)}
+
+.frameIcon{
+  flex:none;display:grid;place-items:center;width:40px;height:40px;border-radius:50%;
+  background:var(--field);color:var(--ink-faint);
+}
+.frameOption.on .frameIcon{background:#fff;color:var(--accent)}
+.frameIcon svg{width:20px;height:20px}
+
+.oldFrameNote{
+  display:flex;align-items:center;gap:10px;margin-top:12px;padding:10px 14px;
+  border-radius:var(--radius-sm);background:#EFF6FF;color:#1E4E8C;font-size:13px;
+}
+.oldFrameNote svg{flex:none;width:18px;height:18px;color:#2F80ED}
+
+/* ซ้ำชื่อคลาสเพื่อชนะ .sell-price ของ globals.css ไม่ว่าไฟล์ไหนโหลดก่อน */
+.framePrice.framePrice{
+  margin-top:12px;padding:12px 16px;background:#fff;border:1px solid var(--line);
+}
+.framePrice.framePrice label{font-size:14px;color:var(--ink)}
+.framePrice.framePrice input{
+  grid-column:2;grid-row:1 / span 2;width:220px;text-align:right;font-size:16px;
+  background:#fff;border:1px solid var(--line);
+}
+.framePrice.framePrice small{grid-column:1;font-size:12px}
+
+@media (max-width:640px){
+  .frameSource{grid-template-columns:1fr}
+  .framePrice.framePrice input{grid-column:1;grid-row:auto;width:100%}
+}

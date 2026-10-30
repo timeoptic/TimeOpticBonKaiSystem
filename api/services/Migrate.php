@@ -896,6 +896,10 @@ final class Migrate
                 'lens_l_rx_id'   => 'int(10) unsigned DEFAULT NULL',
                 'lens_l_rx_doc'  => 'varchar(100) DEFAULT NULL',
             ]),
+            /* คนเจียเลนส์ของงานนี้ — ไม่บังคับ งานที่ส่งมอบไปก่อนหน้านี้เป็น NULL */
+            self::addColumns('case_deliveries', [
+                'grinder_employee_id' => 'int(10) unsigned DEFAULT NULL',
+            ]),
             self::addColumns('frame_fittings', [
                 'frame_box_a' => 'decimal(6,2) DEFAULT NULL',
                 'frame_box_b' => 'decimal(6,2) DEFAULT NULL',

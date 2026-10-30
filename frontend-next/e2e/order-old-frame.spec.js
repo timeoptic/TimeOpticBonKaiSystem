@@ -1,5 +1,5 @@
 /**
- * ขั้นขาย — ติ๊ก "ใช้กรอบเก่าของลูกค้า"
+ * ขั้นขาย — เลือก "กรอบลูกค้า" (เดิมเป็นติ๊ก "ใช้กรอบเก่าของลูกค้า")
  *
  * ร้านเจอ 15 ก.ย. 2026 (เคส CASE-2026-00001): ออเดอร์ที่บันทึกเป็น oldframe ไปแล้ว
  * เปิดมาใหม่ ติ๊กเอาออกไม่ได้ · ต้นเหตุ: สถานะติ๊กอ่านจากออเดอร์เฉพาะตอนที่ `items`
@@ -66,21 +66,22 @@ const OLD_FRAME_ORDER = {
   frame_name: 'oldframe', frame_product_id: null, frame: null, frame_price: '0.00',
   lens_product_id: LENS.id, left_lens: LENS, right_lens_product_id: null, right_lens: null,
 };
-const oldFrameBox = (page) => page.getByRole('checkbox', { name: /ใช้กรอบเก่าของลูกค้า/ });
-const oldFrameNote = (page) => page.getByText('บันทึกในใบสั่งว่า');
+const oldFrameBox = (page) => page.getByRole('radio', { name: /กรอบลูกค้า/ });
+const stockFrameBox = (page) => page.getByRole('radio', { name: /กรอบจากสต็อก/ });
+const oldFrameNote = (page) => page.getByText('บันทึกเป็นชื่อว่า');
 
 test.describe('ขั้นขาย — ใช้กรอบเก่าของลูกค้า', () => {
   test('ออเดอร์ที่บันทึกเป็นกรอบเก่า เปิดมาติ๊กอยู่ และเอาติ๊กออกได้', async ({ page }) => {
     await openSales(page, OLD_FRAME_ORDER);
     await expect(oldFrameBox(page)).toBeChecked();
-    await oldFrameBox(page).click();
+    await stockFrameBox(page).click();
     await expect(oldFrameBox(page)).not.toBeChecked();
     await expect(oldFrameNote(page)).toHaveCount(0);
   });
 
   test('เอาติ๊กออกแล้ว ติ๊กกลับได้', async ({ page }) => {
     await openSales(page, OLD_FRAME_ORDER);
-    await oldFrameBox(page).click();
+    await stockFrameBox(page).click();
     await expect(oldFrameBox(page)).not.toBeChecked();
     await oldFrameBox(page).click();
     await expect(oldFrameBox(page)).toBeChecked();
@@ -102,7 +103,7 @@ test.describe('ขั้นขาย — ใช้กรอบเก่าขอ
     await expect(oldFrameBox(page)).not.toBeChecked();
     await oldFrameBox(page).click();
     await expect(oldFrameBox(page)).toBeChecked();
-    await oldFrameBox(page).click();
+    await stockFrameBox(page).click();
     await expect(oldFrameBox(page)).not.toBeChecked();
   });
 });

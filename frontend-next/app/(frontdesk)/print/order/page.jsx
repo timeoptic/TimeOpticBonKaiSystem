@@ -37,6 +37,7 @@ import { Card, Loading } from '../../../../components/ui.jsx';
 import { QueryParamPage } from '../../../../components/QueryParamPage.jsx';
 import { PaperView } from '../../../../components/PaperView.jsx';
 import { Icon } from '../../../../components/Icon.jsx';
+import { dyeColorOf } from '../../../../lib/lensTint.js';
 import { useAuth } from '../../../../contexts/AuthContext.jsx';
 import {
   addPower, custName, cylPower, dominantEyeLabel, fmtDate, glassesUseOf, money, rxNum, sphPower,
@@ -446,6 +447,8 @@ function OrderSheet() {
                 <F k="Frame" v={frameLabel(o)} wrap />
                 <F k="RightLen" v={withRx(o.lens_r_rx_id, o.lens_r_name)} wrap />
                 <F k="LeftLen" v={withRx(o.lens_l_rx_id, o.lens_l_name)} wrap />
+                {/* ช่างต้องเห็นว่าต้องย้อมสีไหน — ขึ้นเฉพาะงานย้อม ใบอื่นหน้าตาเหมือนเดิม */}
+                {dyeColorOf(o.lens_tint) ? <F k="Tint" v={o.lens_tint} wrap /> : null}
               </div>
               <div className="iv-col iv-money">
                 {moneyRows.map(([k, v]) => <F key={k} k={k} v={v} />)}

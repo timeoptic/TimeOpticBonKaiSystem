@@ -53,8 +53,8 @@ $saveDelivery = upsertFactory([
     'table'  => 'case_deliveries',
     'action' => 'delivered',
     'status' => 'pickup',
-    'cols'   => ['order_id', 'delivered_at', 'handed_over_by', 'received_by_customer_name', 'note'],
-    'intCols' => ['order_id', 'handed_over_by'],
+    'cols'   => ['order_id', 'delivered_at', 'handed_over_by', 'grinder_employee_id', 'received_by_customer_name', 'note'],
+    'intCols' => ['order_id', 'handed_over_by', 'grinder_employee_id'],
 ]);
 
 /**

@@ -39,6 +39,20 @@ import {
 } from '../../../lib/format.js';
 import { Icon } from '../../../components/Icon.jsx';
 import { pairDisplay, pairPrice, splitPairPrice } from '../../../lib/pricing.js';
+import { TINT_COLORS, dyeColorOf, lensTintForSave } from '../../../lib/lensTint.js';
+import s from './OrderFormView.module.css';
+
+/* สองรูปนี้ไม่อยู่ใน lib/icons.js — ไฟล์นั้นอยู่ใน chunk กลางที่แท็บเก่าโหลดค้างไว้ ไอคอนใหม่จะขึ้นเป็นชื่อแทนรูป */
+const PaletteGlyph = () => (
+  <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    <path fillRule="evenodd" d="M12 2.5a9.5 9.5 0 0 0 0 19h1.2a2.1 2.1 0 0 0 1.6-3.5 1.4 1.4 0 0 1 1-2.4h1.9a4.8 4.8 0 0 0 4.8-4.8C22.5 6 17.8 2.5 12 2.5zM7 13.2a1.7 1.7 0 1 1 0-3.4 1.7 1.7 0 0 1 0 3.4zm2.6-4.6a1.7 1.7 0 1 1 0-3.4 1.7 1.7 0 0 1 0 3.4zm4.8 0a1.7 1.7 0 1 1 0-3.4 1.7 1.7 0 0 1 0 3.4zm3.2 3.2a1.7 1.7 0 1 1 0-3.4 1.7 1.7 0 0 1 0 3.4z" />
+  </svg>
+);
+const InfoGlyph = () => (
+  <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    <path fillRule="evenodd" d="M12 2.5a9.5 9.5 0 1 0 0 19 9.5 9.5 0 0 0 0-19zM10.9 7h2.2v2.2h-2.2zm0 4h2.2v6h-2.2z" />
+  </svg>
+);
 
 const n = (v) => Number(v || 0);
 
@@ -91,7 +105,7 @@ function SellingPrice({ label, value, onChange, hint, variant }) {
  *
  * export ไว้ให้ทดสอบคอมโพเนนต์ตัวจริงได้โดยไม่ต้องล็อกอินเข้าหน้าออเดอร์
  */
-export function PairSellingPrice({ od, os, onSplit }) {
+export function PairSellingPrice({ od, os, onSplit, dyed = false }) {
   const pair = pairPrice(od, os);
   const uneven = n(od) !== n(os);
   /* null = ไม่ได้พิมพ์อยู่ แสดงผลบวกของสองข้าง · ข้อความ = กำลังพิมพ์ แสดงตามที่พิมพ์ */
@@ -101,7 +115,10 @@ export function PairSellingPrice({ od, os, onSplit }) {
       <div className="pair-bar-main">
         <div className="pair-bar-text">
           <label htmlFor="pair-price">ราคาขายเลนส์คู่ / Selling Price (Pair)</label>
-          <small>ราคาเลนส์ทั้งคู่ (R+L) — กรอกที่นี่ ระบบแบ่งลงสองข้างข้างละครึ่งให้เอง</small>
+          <small>
+            {dyed ? 'ราคาเลนส์ทั้งคู่ (R+L) รวมค่าย้อมสีแล้ว' : 'ราคาเลนส์ทั้งคู่ (R+L)'}
+            {' — กรอกที่นี่ ระบบแบ่งลงสองข้างข้างละครึ่งให้เอง'}
+          </small>
         </div>
         <input
           id="pair-price"
@@ -209,6 +226,9 @@ export function OrderFormView({
      (ดู usesOldFrame ใต้ตัวแปร o · ตั้งจากออเดอร์ตรงนี้ไม่ได้เพราะ o ยังไม่มีค่า)
      กดแล้วเป็น true/false ของคนกดตลอด ไม่ผูกกับ `items` */
   const [oldFrame, setOldFrame] = useState(undefined);
+  /* ย้อมสีเลนส์ — undefined = ยังไม่มีใครกด อ่านจากออเดอร์ที่บันทึกไว้แทน */
+  const [dyeOn, setDyeOn] = useState(undefined);
+  const [dyePick, setDyePick] = useState(undefined);
   /** ข้างที่กำลังเปิดใบสั่งตัดอยู่ ('r' | 'l') หรือ null เมื่อไม่ได้เปิด */
   const [rxFor, setRxFor] = useState(null);
   /** ใบสั่งตัดที่เพิ่งเปิดในหน้านี้ แยกตามข้าง — ไม่มีล็อตให้ผูก จึงเก็บเอง */
@@ -296,6 +316,9 @@ export function OrderFormView({
      (e2e/order-old-frame.spec.js) */
   const oldFrameFromOrder = Boolean(o.frame_name) && !o.frame_product_id && !o.frame;
   const usesOldFrame = oldFrame === undefined ? oldFrameFromOrder : oldFrame;
+  const savedDye = dyeColorOf(o.lens_tint);
+  const dyed = dyeOn === undefined ? Boolean(savedDye) : dyeOn;
+  const dyeColor = dyePick === undefined ? savedDye : dyePick;
   /* Picking a stock item is a statement of fact about the order: it fills in
      that item's own details and its price, instead of leaving staff to retype
      what the system already knows. The fields stay editable afterwards. */
@@ -379,6 +402,7 @@ export function OrderFormView({
 
   const save = async (body) => {
     if (!customerId) return err('กรุณาเลือกลูกค้าก่อน');
+    if (dyed && !dyeColor) return err(new Error('กรุณาเลือกสีที่จะย้อม'));
     body.customer_id = customerId;
     body.case_id = caseId;
     body.final_prescription_id = rxId;
@@ -456,6 +480,8 @@ export function OrderFormView({
       body.lens_tint = o.lens_tint || '';
       body.lens_addons = o.lens_addons || '';
     }
+
+    body.lens_tint = lensTintForSave(dyed ? dyeColor : '', body.lens_tint);
 
     try {
       const saved = editing
@@ -625,12 +651,42 @@ export function OrderFormView({
           </FormGrid>
         </Card>
 
-        <Card title="กรอบแว่น — Frame">
+        <Card title={<><Icon name="glasses" /> กรอบแว่น — Frame</>}>
           <p className="hint">เลือกกรอบจากสต็อก แล้วใส่ราคาขายของออเดอร์นี้</p>
-          {/* ประเภทกรอบ — อยู่บนสุดของการ์ด เหนือตัวติ๊กกรอบเก่า (เจ้าของร้านขอ 2026-09-10)
-              ถามทั้งกรอบจากสต็อกและกรอบเก่าของลูกค้า ช่างต้องรู้ว่าเจาะหรือเซาะร่อง
-              ไม่ว่ากรอบมาจากไหน · ต้องอยู่ในฟอร์มเสมอ เพราะ PUT เขียนทับทุกคอลัมน์
-              รายการมาจาก Lookups::FRAME_TYPES ตัวเดียวกับที่ API ใช้ตรวจ */}
+          {/* ลูกค้าเอากรอบเดิมมาเปลี่ยนเลนส์ — งานที่ร้านทำทุกวัน แต่ไม่มีของ
+              ออกจากคลังสักชิ้น · เลือกแล้วออเดอร์บันทึกว่าใช้กรอบเดิม ชื่อกรอบ
+              ไปโผล่ในใบสั่งและในประวัติพร้อมเลขออเดอร์เหมือนกรอบที่ขายจริง
+              ต่างกันตรงไม่มี frame_product_id จึงไม่มีอะไรถูกตัดจากสต็อก */}
+          <div className={s.frameSource}>
+            <label className={`${s.frameOption} ${usesOldFrame ? '' : s.on}`}>
+              <input
+                type="radio"
+                name="frame_source"
+                checked={!usesOldFrame}
+                onChange={() => setOldFrame(false)}
+              />
+              <span className={s.frameIcon}><Icon name="home" /></span>
+              <span><b>กรอบจากสต็อก</b><small>เลือกกรอบที่มีในร้าน</small></span>
+            </label>
+            <label className={`${s.frameOption} ${usesOldFrame ? s.on : ''}`}>
+              <input
+                type="radio"
+                name="frame_source"
+                checked={usesOldFrame}
+                onChange={() => {
+                  setOldFrame(true);
+                  setItems({ ...picked, frame: null });
+                  setP({ frame_price: 0 });
+                }}
+              />
+              <span className={s.frameIcon}><Icon name="user" /></span>
+              <span><b>กรอบลูกค้า</b><small>ใช้กรอบเดิม / ไม่ตัดสต็อก</small></span>
+            </label>
+          </div>
+
+          {/* ถามทั้งกรอบจากสต็อกและกรอบเก่าของลูกค้า (เจ้าของร้านขอ 2026-09-10)
+              ช่างต้องรู้ว่าเจาะหรือเซาะร่อง ไม่ว่ากรอบมาจากไหน · ต้องอยู่ในฟอร์มเสมอ
+              เพราะ PUT เขียนทับทุกคอลัมน์ รายการมาจาก Lookups::FRAME_TYPES ตัวเดียวกับที่ API ใช้ตรวจ */}
           <Field label="ประเภทกรอบ / Frame Type">
             <ListSelect
               name="frame_type"
@@ -640,34 +696,14 @@ export function OrderFormView({
             />
           </Field>
 
-          {/* ลูกค้าเอากรอบเดิมมาเปลี่ยนเลนส์ — งานที่ร้านทำทุกวัน แต่ไม่มีของ
-              ออกจากคลังสักชิ้น · ติ๊กแล้วออเดอร์บันทึกว่าใช้กรอบเดิม ชื่อกรอบ
-              ไปโผล่ในใบสั่งและในประวัติพร้อมเลขออเดอร์เหมือนกรอบที่ขายจริง
-              ต่างกันตรงไม่มี frame_product_id จึงไม่มีอะไรถูกตัดจากสต็อก */}
-          <label className={`toggle-card ${usesOldFrame ? 'on' : ''}`}>
-            <input
-              type="checkbox"
-              name="uses_old_frame"
-              checked={usesOldFrame}
-              onChange={(e) => {
-                setOldFrame(e.target.checked);
-                if (e.target.checked) {
-                  setItems({ ...picked, frame: null });
-                  setP({ frame_price: 0 });
-                }
-              }}
-            />
-            <span className="toggle-card__text">
-              <b>ใช้กรอบเก่าของลูกค้า</b>
-              <small>ลูกค้าเอากรอบเดิมมาเปลี่ยนเลนส์ — ไม่มีของออกจากคลัง</small>
-            </span>
-          </label>
-
           {usesOldFrame ? (
             /* ไม่มีช่องให้พิมพ์ชื่อ — กรอบของลูกค้าไม่ใช่สินค้าของร้าน ชื่อที่
                พิมพ์เองจะกลายเป็นสิบแบบในสิบใบ แล้วค้นหาทีหลังไม่เจอ · ใบสั่งและ
                ประวัติเขียนคำเดียวกันทุกใบว่า oldframe */
-            <p className="hint">บันทึกในใบสั่งว่า <b>oldframe</b> · ไม่ตัดของออกจากคลัง</p>
+            <div className={s.oldFrameNote}>
+              <InfoGlyph />
+              <span>บันทึกเป็นชื่อว่า <b>oldframe</b> · ไม่ตัดของออกจากคลัง</span>
+            </div>
           ) : (
             <StockPicker
               type="Frame"
@@ -678,6 +714,7 @@ export function OrderFormView({
             />
           )}
           <SellingPrice
+            variant={s.framePrice}
             label="ราคาขายกรอบ / Selling Price"
             value={p.frame_price}
             onChange={(e) => setP({ frame_price: e.target.value })}
@@ -698,12 +735,47 @@ export function OrderFormView({
           />
         </Card>
 
-        <Card title="เลนส์ — Lens">
+        <Card title={<><Icon name="glasses" /> เลนส์ — Lens</>}>
           <p className="hint">
             {LENS_SOURCE === 'catalog'
               ? 'เลือกเลนส์จากรายการเลนส์ทีละข้าง · ไม่ตัดสต็อก — บันทึกเป็น "ใช้เลนส์" (ประวัติเลนส์) เมื่อยืนยันขั้นขาย'
               : 'ถ้ายังต้องสั่งเลนส์จากซัพพลายเออร์ ให้ข้ามการเลือกสต็อกไปก่อน'}
           </p>
+          <div className={s.tintBar}>
+            <div className={s.tintHead}>
+              <PaletteGlyph />
+              <div>
+                <b>ย้อมสีเลนส์ / Lens Tint (Dye)</b>
+                <small>เลือกสีเลนส์เพิ่มเติม (ถ้ามี)</small>
+              </div>
+            </div>
+            <div className={s.tintOptions}>
+              <label className={`${s.tintOption} ${dyed ? '' : s.on}`}>
+                <input type="radio" name="lens_tint_mode" checked={!dyed} onChange={() => setDyeOn(false)} />
+                <span><b>ไม่ย้อมสี</b><small>เลนส์สีใสปกติ</small></span>
+              </label>
+              <label className={`${s.tintOption} ${dyed ? s.on : ''}`}>
+                <input type="radio" name="lens_tint_mode" checked={dyed} onChange={() => setDyeOn(true)} />
+                <span><b>ย้อมสี</b><small>เลือกสีจากตัวอย่างสี</small></span>
+              </label>
+            </div>
+            {dyed ? (
+              <div className={s.swatches} role="group" aria-label="ตัวอย่างสีย้อม">
+                {TINT_COLORS.map(([color, hex]) => (
+                  <button
+                    key={color}
+                    type="button"
+                    className={`${s.swatch} ${dyeColor === color ? s.on : ''}`}
+                    aria-pressed={dyeColor === color}
+                    onClick={() => setDyePick(color)}
+                  >
+                    <span className={s.dot} style={{ background: hex }} />
+                    {color}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
           {/* mirror: ขวา/ซ้ายต้องกว้างเท่ากัน — ค่าเริ่มต้นของ .split ให้ฝั่งขวากว้าง
               กว่า 15% ซึ่งทำให้เลนส์รุ่นเดียวกันสองข้างขึ้นกล่องสูงไม่เท่ากัน */}
           <Split className="mirror">
@@ -718,7 +790,7 @@ export function OrderFormView({
               const fromCatalog = slot === 'lensOd' ? o.lens_catalog_r : o.lens_catalog_l;
               const cleared = rxLens[side] === null || (!item && !!items && !!fromCatalog);
               return (
-                <Fieldset key={slot} legend={legend}>
+                <Fieldset key={slot} legend={<><Icon name="eye" /> {legend}</>}>
                   {/* สั่งตัดแล้วขึ้นการ์ดแบบเดียวกับเลนส์ที่เลือกจากสต็อก — ช่องค้นหากับ
                       ปุ่มสั่งตัดหายไปจนกว่าจะกดล้าง ข้างเดียวจะได้ไม่มีทั้งเลนส์สต็อก
                       และใบสั่งตัดพร้อมกัน */}
@@ -863,6 +935,7 @@ export function OrderFormView({
             od={p.lens_od_price}
             os={p.lens_os_price}
             onSplit={({ od, os }) => setP({ lens_od_price: od, lens_os_price: os })}
+            dyed={dyed}
           />
         </Card>
 
