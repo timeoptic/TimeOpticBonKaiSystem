@@ -26,6 +26,7 @@ import { EmployeeSelect } from '../../../../../components/Selects.jsx';
 import { PhotoUpload } from '../../../../../components/PhotoUpload.jsx';
 import { CENTERING_PHOTO_MAX } from '../../../../../lib/photos.js';
 import { Icon } from '../../../../../components/Icon.jsx';
+import { EditLockBar, LockFieldset, useEditLock } from '../../../../../components/EditLock.jsx';
 import { useProcessActions } from '../../../../../components/ProcessShell.jsx';
 import { dtLocal, nowLocal, toStamp, todayISO } from '../../../../../lib/format.js';
 import { DateTimeField } from '../../../../../components/DateTimeField.jsx';
@@ -85,6 +86,7 @@ export function CenteringPanel({ c, reload }) {
   const ce = useMemo(() => c.centering || {}, [c]);
   const ff = useMemo(() => c.frame_fitting || {}, [c]);
   const order = c.order || {};
+  const lock = useEditLock(!!ce.id);
 
   const [form, setForm] = useState({});
   const [fit, setFit] = useState({});
@@ -118,7 +120,7 @@ export function CenteringPanel({ c, reload }) {
       frame_box_a: ff.frame_box_a || '', frame_box_b: ff.frame_box_b || '',
       dbl: ff.dbl || '', ed: ff.ed || '',
     });
-  }, [ce, ff]);
+  }, [ce, ff, lock.formKey]);
 
   const set = (name) => (v) => setForm((f) => ({ ...f, [name]: v }));
   const setF = (name) => (v) => setFit((f) => ({ ...f, [name]: v }));
@@ -155,6 +157,7 @@ export function CenteringPanel({ c, reload }) {
     });
     if (!quiet) {
       ok('บันทึกค่า Center แล้ว');
+      lock.relock();
       reload();
     }
     return centering;
@@ -173,12 +176,14 @@ export function CenteringPanel({ c, reload }) {
   const register = actions?.register;
   useEffect(() => {
     if (!register) return undefined;
+    /* ล็อกอยู่ = ไม่มีปุ่มบันทึก Draft และ "บันทึกและไปต่อ" เขียนอะไรไม่ได้ · ยืนยันขั้นยังได้
+       ค่าที่ส่งคือค่าที่บันทึกไว้เดิม */
     register({
-      saveDraft: () => fns.current.saveDraft(),
+      ...(lock.locked ? {} : { saveDraft: () => fns.current.saveDraft() }),
       beforeComplete: () => fns.current.beforeComplete(),
     });
     return () => register({});
-  }, [register]);
+  }, [register, lock.locked]);
 
   const note = form.center_point_note || '';
   const photoCount = photos ? photos.length : 0;
@@ -200,8 +205,11 @@ export function CenteringPanel({ c, reload }) {
   };
 
   return (
+    <>
+    <EditLockBar lock={lock} what="ค่า Center" />
     <div className="split center-split">
       <Stack>
+        <LockFieldset locked={lock.locked}>
         <Card>
           <div className="ws-hero">
             <span className="ws-hero-icon"><Icon name="target" /></span>
@@ -235,6 +243,7 @@ export function CenteringPanel({ c, reload }) {
             <Measure label="Panto" unit="°" value={form.pantoscopic_tilt} onChange={set('pantoscopic_tilt')} placeholder="8.0" />
           </Group>
         </Card>
+        </LockFieldset>
 
         <Card title="รูปภาพการวัด" right={<span className="muted">{`ไม่เกิน ${CENTERING_PHOTO_MAX} รูป`}</span>}>
           <p className="hint">ถ่ายให้เห็นใบหน้าตรง ด้านข้าง และกรอบที่มาร์คจุดไว้ให้ชัด</p>
@@ -245,6 +254,7 @@ export function CenteringPanel({ c, reload }) {
             centeringId={ce.id}
             takenBy={form.performed_by || null}
             max={CENTERING_PHOTO_MAX}
+            locked={lock.locked}
             onPhotos={setPhotos}
             actions={(
               <button
@@ -266,6 +276,7 @@ export function CenteringPanel({ c, reload }) {
       </Stack>
 
       <Stack>
+        <LockFieldset locked={lock.locked}>
         <Card
           title="กรอบแว่นที่ใช้ในการวัด"
           badge={order.frame_name
@@ -331,6 +342,7 @@ export function CenteringPanel({ c, reload }) {
             onChange={(e) => set('center_point_note')(e.target.value)}
           />
         </Card>
+        </LockFieldset>
       </Stack>
 
       {sendOpen && photoCount > 0 ? (
@@ -346,5 +358,6 @@ export function CenteringPanel({ c, reload }) {
         />
       ) : null}
     </div>
+    </>
   );
 }

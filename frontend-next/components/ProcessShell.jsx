@@ -39,6 +39,8 @@ export function ProcessShell({ process, state = {}, caseId, reload, right = null
   const [statusOpen, setStatusOpen] = useState(false);
   const [pick, setPick] = useState(null);
   const [note, setNote] = useState('');
+  /* เพิ่งกดเปิดขั้นกลับ — แผงปลดล็อกให้เลย ไม่ต้องกดซ้ำอีกรอบ (components/EditLock.jsx) */
+  const [reopened, setReopened] = useState(false);
 
   /* stable so a panel's register effect runs once, not every render */
   const register = useCallback((a) => {
@@ -87,7 +89,7 @@ export function ProcessShell({ process, state = {}, caseId, reload, right = null
       try { proceed = await actions.beforeComplete() !== false; } catch (ex) { err(ex); } finally { setBusy(false); }
       if (!proceed) return;
     }
-    if (await post('complete')) { ok(`${process.completeLabel} แล้ว`); reload(); }
+    if (await post('complete')) { setReopened(false); ok(`${process.completeLabel} แล้ว`); reload(); }
   };
 
   /* Status by hand — for the things the data cannot know: waiting on a customer
@@ -105,11 +107,11 @@ export function ProcessShell({ process, state = {}, caseId, reload, right = null
 
   const reopen = async () => {
     if (!await confirm(
-      'เปิดขั้นตอนนี้เพื่อแก้ไข',
+      'เปิดการแก้ไข',
       `${process.label} ยืนยันไปแล้ว การแก้ไขข้อมูลอาจมีผลต่อขั้นตอนอื่น (รายการขาย, Center, สั่งเลนส์, ผลิต) ต้องการเปิดเพื่อแก้ไขหรือไม่?`,
-      { confirmText: 'เปิดเพื่อแก้ไข' },
+      { confirmText: 'เปิดการแก้ไข' },
     )) return;
-    if (await post('reopen')) { ok('เปิดให้แก้ไขแล้ว'); reload(); }
+    if (await post('reopen')) { setReopened(true); ok('เปิดให้แก้ไขแล้ว'); reload(); }
   };
 
   return (
@@ -130,7 +132,7 @@ export function ProcessShell({ process, state = {}, caseId, reload, right = null
       </div>
 
       <div className="card-body process-body">
-        <ProcessActions.Provider value={{ register, state, process }}>
+        <ProcessActions.Provider value={{ register, state, process, confirmed, reopened }}>
           {children}
         </ProcessActions.Provider>
       </div>
@@ -157,7 +159,7 @@ export function ProcessShell({ process, state = {}, caseId, reload, right = null
         <div className="process-foot-actions">
           {confirmed ? (
             <button type="button" className="btn btn-light" onClick={reopen} disabled={busy}>
-              <Icon name="pencil" /> แก้ไขข้อมูล
+              <Icon name="pencil" /> เปิดการแก้ไข
             </button>
           ) : (
             <>

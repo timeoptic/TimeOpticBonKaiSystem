@@ -9,6 +9,7 @@ import {
 import { PagedTable } from '../../../components/Pager.jsx';
 import { fmtDate, fmtDateTime } from '../../../lib/format.js';
 import { Icon } from '../../../components/Icon.jsx';
+import { EditLockBar, LockFieldset, useEditLock } from '../../../components/EditLock.jsx';
 import { AdminOnly } from '../../../components/AdminOnly.jsx';
 import { TimeField } from '../../../components/TimeField.jsx';
 import { RxAlertRules } from './RxAlertRules.jsx';
@@ -28,6 +29,8 @@ function SettingsPageInner() {
   const [destKey, setDestKey] = useState(null);
   const [edits, setEdits] = useState({});
   const [busy, setBusy] = useState(false);
+  const lock = useEditLock(true);
+  const digestLock = useEditLock(true);
 
   if (loading) return <Loading />;
   if (error) return <Card><p className="muted">{error.message}</p></Card>;
@@ -51,6 +54,7 @@ function SettingsPageInner() {
       await api.put('/api/settings', body);
       ok('บันทึกการตั้งค่าแล้ว');
       setEdits({});
+      lock.relock();
       reload();
     } catch (ex) { err(ex); }
   };
@@ -87,6 +91,7 @@ function SettingsPageInner() {
     try {
       await api.put('/api/settings', body);
       ok('บันทึกการตั้งค่าสรุปคิวส่งมอบแล้ว');
+      digestLock.relock();
       reload();
     } catch (ex) { err(ex); }
   };
@@ -120,7 +125,8 @@ function SettingsPageInner() {
           {enabled ? <Badge kind="blue">เปิดใช้งาน</Badge> : <Badge kind="gray">ปิดอยู่</Badge>}
         </div>
 
-        <form className="card-body" onSubmit={save}>
+        <form key={lock.formKey} className="card-body" onSubmit={save}>
+          <EditLockBar lock={lock} what="การตั้งค่า Telegram" onCancel={() => setEdits({})} />
           {/* ปลายทางไหน — วาดจาก Telegram::TARGETS ฝั่ง API ไม่ได้พิมพ์ชื่อไว้ที่นี่
               เพิ่มกลุ่มใหม่ที่ฝั่งนั้นแล้วแท็บขึ้นเองโดยไม่ต้องแก้หน้านี้ */}
           <Tabs
@@ -145,6 +151,7 @@ function SettingsPageInner() {
             </p>
           ) : null}
 
+          <LockFieldset locked={lock.locked}>
           <FormGrid>
             <Field label="เปิดใช้งาน" className="full">
               <label className="check">
@@ -202,9 +209,10 @@ function SettingsPageInner() {
               <TimeField name="shop_close_time" defaultValue={s.shop_close_time || '20:00'} />
             </Field>
           </FormGrid>
+          </LockFieldset>
 
           <FormActions>
-            <button className="btn btn-lg" type="submit"><Icon name="save" /> บันทึกการตั้งค่า</button>
+            {lock.locked ? null : <button className="btn btn-lg" type="submit"><Icon name="save" /> บันทึกการตั้งค่า</button>}
             <button type="button" className="btn btn-light" disabled={busy} onClick={test}>
               <Icon name="flask" /> ทดสอบส่งเข้า {dest.label}
             </button>
@@ -224,13 +232,15 @@ function SettingsPageInner() {
             : null}
         </div>
 
-        <form className="card-body" onSubmit={saveDigest}>
+        <form key={digestLock.formKey} className="card-body" onSubmit={saveDigest}>
+          <EditLockBar lock={digestLock} what="การตั้งค่าสรุปคิว" />
           <p className="muted" style={{ marginTop: 0 }}>
             ทุกวันตามเวลาที่ตั้งไว้ ระบบจะส่งสองข้อความเข้ากลุ่มเดียวกับแจ้งเตือนคิว —
             <b> คิวส่งมอบพรุ่งนี้</b> (เลขออเดอร์ · ชื่อลูกค้า · วันนัด) และ
             <b> รายการที่เลยกำหนดส่งมอบ</b> พร้อมเบอร์โทรไว้ตามลูกค้า
           </p>
 
+          <LockFieldset locked={digestLock.locked}>
           <FormGrid>
             <Field label="เปิดใช้งาน" className="full">
               <label className="check">
@@ -276,9 +286,10 @@ function SettingsPageInner() {
               />
             </Field>
           </FormGrid>
+          </LockFieldset>
 
           <FormActions>
-            <button className="btn btn-lg" type="submit"><Icon name="save" /> บันทึก</button>
+            {digestLock.locked ? null : <button className="btn btn-lg" type="submit"><Icon name="save" /> บันทึก</button>}
             <button type="button" className="btn btn-light" disabled={busy} onClick={runDigest}>
               <Icon name="bell" /> ส่งสรุปทดสอบเดี๋ยวนี้
             </button>

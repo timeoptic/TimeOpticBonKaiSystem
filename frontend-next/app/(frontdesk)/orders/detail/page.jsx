@@ -63,7 +63,7 @@ function OrderDetailInner() {
         subtitle={custName(o)}
         actions={(
           <>
-            {!closed && <Link className="btn btn-ghost" href={`/orders/edit?id=${o.id}`}><Icon name="pencil" /> แก้ไข</Link>}
+            {!closed && <Link className="btn btn-ghost" href={`/orders/edit?id=${o.id}`}><Icon name="pencil" /> เปิดการแก้ไข</Link>}
             {o.case_id && (
               <Link className="btn btn-ghost" href={'/cases/detail?id=' + o.case_id}><Icon name="board" /> {o.case_code || 'เคส'}</Link>
             )}

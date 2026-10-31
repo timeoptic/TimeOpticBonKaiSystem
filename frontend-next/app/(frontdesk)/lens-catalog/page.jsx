@@ -17,6 +17,7 @@ import { DataTable } from '../../../components/DataTable.jsx';
 import { Pager } from '../../../components/Pager.jsx';
 import { PAGE_SIZES } from '../../../lib/pager.js';
 import { Icon } from '../../../components/Icon.jsx';
+import { EditGate } from '../../../components/EditLock.jsx';
 import { AdminOnly } from '../../../components/AdminOnly.jsx';
 import { money } from '../../../lib/format.js';
 
@@ -173,11 +174,15 @@ function LensCatalogInner() {
               cls: 'nowrap',
               render: (r) => (
                 <>
-                  <button type="button" className="btn btn-sm btn-light" onClick={() => setEditing(r)}>แก้ไข</button>
+                  <button type="button" className="btn btn-sm btn-light" onClick={() => setEditing(r)}>เปิดการแก้ไข</button>
                   {' '}
-                  <button type="button" className="btn btn-sm btn-light" onClick={() => toggle(r)}>
-                    {r.active ? 'ปิดใช้งาน' : 'เปิดใช้งาน'}
-                  </button>
+                  <EditGate what="สถานะ">
+                    {(close) => (
+                      <button type="button" className="btn btn-sm btn-light" onClick={() => { close(); toggle(r); }}>
+                        {r.active ? 'ปิดใช้งาน' : 'เปิดใช้งาน'}
+                      </button>
+                    )}
+                  </EditGate>
                 </>
               ),
             },

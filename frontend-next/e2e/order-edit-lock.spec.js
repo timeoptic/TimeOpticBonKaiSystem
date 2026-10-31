@@ -44,7 +44,7 @@ test('ขั้นขาย: ล็อกก่อน แก้ไม่ได�
   const writes = [];
   await open(page, 'sales', writes);
   const notes = page.locator('textarea[name="notes"]');
-  const state = page.getByTestId('order-edit-state');
+  const state = page.getByTestId('edit-lock-state');
 
   await expect(state).toContainText('ล็อกอยู่');
   await expect(notes).toBeDisabled();
@@ -52,7 +52,7 @@ test('ขั้นขาย: ล็อกก่อน แก้ไม่ได�
   await expect(page.locator('form fieldset').first()).toHaveCSS('pointer-events', 'none');
   await expect(page.getByRole('button', { name: 'บันทึกการแก้ไข' })).toHaveCount(0);
 
-  await page.getByRole('button', { name: 'เปิดการแก้ไข' }).first().click();
+  await page.getByRole('button', { name: 'เปิดการแก้ไข', exact: true }).first().click();
   await expect(notes).toBeEnabled();
   await notes.fill('ค่าใหม่');
   await page.getByRole('button', { name: 'ยกเลิกการแก้ไข' }).click();
@@ -61,7 +61,7 @@ test('ขั้นขาย: ล็อกก่อน แก้ไม่ได�
   expect(writes).toEqual([]);
 
   /* ปุ่มล่างอยู่ในฟอร์ม — กดแล้วต้องแค่ปลดล็อก ไม่บันทึก */
-  await page.getByRole('button', { name: 'เปิดการแก้ไข' }).last().click();
+  await page.getByRole('button', { name: 'เปิดการแก้ไข', exact: true }).last().click();
   await expect(notes).toBeEnabled();
   expect(writes).toEqual([]);
   await notes.fill('ค่าใหม่');
@@ -81,7 +81,7 @@ test('วันนัดรับ: ล็อกก่อน ไม่มีป�
   await expect(page.locator('#pickup-date')).toBeDisabled();
   await expect(card.getByRole('button', { name: 'ล้าง' })).toHaveCount(0);
 
-  await card.getByRole('button', { name: 'เปิดการแก้ไข' }).click();
+  await card.getByRole('button', { name: 'เปิดการแก้ไข', exact: true }).click();
   await expect(page.locator('#pickup-date')).toBeEnabled();
   await expect(card.getByRole('button', { name: 'ล้าง' })).toBeVisible();
   await card.getByRole('button', { name: 'ยกเลิกการแก้ไข' }).click();

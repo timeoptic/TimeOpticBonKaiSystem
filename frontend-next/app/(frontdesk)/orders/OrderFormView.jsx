@@ -898,7 +898,7 @@ export function OrderFormView({
           <FormActions style={{ marginTop: 14 }}>
             {locked ? (
               /* key แยกกัน: ถ้า React ใช้ปุ่มตัวเดิม ปุ่มจะกลายเป็น submit ระหว่างคลิกแล้วบันทึกทันที */
-              <button key="unlock" className="btn btn-lg" type="button" onClick={onUnlock}>เปิดการแก้ไข</button>
+              onUnlock ? <button key="unlock" className="btn btn-lg" type="button" onClick={onUnlock}>เปิดการแก้ไข</button> : null
             ) : (
               <button key="submit" className="btn btn-lg" type="submit">
                 <Icon name="save" /> {editing ? 'บันทึกการแก้ไข' : 'เปิดออเดอร์'}

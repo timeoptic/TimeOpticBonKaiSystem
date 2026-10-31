@@ -11,6 +11,7 @@ import { useToast } from '../../../components/Toast.jsx';
 import { Card, Field } from '../../../components/ui.jsx';
 import { Icon } from '../../../components/Icon.jsx';
 import { fmtDateTime } from '../../../lib/format.js';
+import { EditLockBar, LockFieldset, useEditLock } from '../../../components/EditLock.jsx';
 
 const RULES = [
   { key: 'sph', label: 'SPH', unit: 'D', cols: [['warn', 'เตือน'], ['critical', 'ทบทวน']] },
@@ -54,6 +55,7 @@ export function RxAlertRules() {
   const [form, setForm] = useState(null);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
+  const lock = useEditLock(true);
 
   useEffect(() => {
     api.get('/api/settings/rx-alert-rules')
@@ -79,6 +81,7 @@ export function RxAlertRules() {
       setForm(toForm(d.rules));
       setNote('');
       ok(`บันทึกเกณฑ์แล้ว (เวอร์ชัน ${d.version})`);
+      lock.relock();
     } catch (e) { err(e); } finally { setBusy(false); }
   };
 
@@ -93,6 +96,8 @@ export function RxAlertRules() {
           เทียบค่าแว่นเดิมกับค่าที่จ่ายจริง (แยกตาขวา/ซ้าย) · ถึงเกณฑ์ &quot;เตือน&quot; = สีเหลือง ยืนยันต่อได้ ·
           ถึงเกณฑ์ &quot;ทบทวน&quot; = สีแดง ต้องใส่เหตุผลก่อนยืนยัน · บันทึกแล้วเป็นเวอร์ชันใหม่ ประวัติเดิมไม่เปลี่ยน
         </p>
+        <EditLockBar lock={lock} what="เกณฑ์แจ้งเตือน" onCancel={() => { setForm(toForm(data.rules)); setNote(''); }} />
+        <LockFieldset locked={lock.locked}>
         <div className="rxs-table-wrap">
           <table className="rxs-table rxs-rules">
             <thead>
@@ -152,11 +157,14 @@ export function RxAlertRules() {
         <Field label="หมายเหตุการแก้ไข" className="full">
           <input aria-label="หมายเหตุการแก้ไข" value={note} placeholder="เช่น ปรับตามที่นักทัศนมาตรตรวจทาน" onChange={(e) => setNote(e.target.value)} />
         </Field>
-        <div style={{ marginTop: 10 }}>
-          <button type="button" className="btn btn-lg" disabled={busy || problems.length > 0} onClick={save}>
-            <Icon name="save" /> บันทึกเกณฑ์
-          </button>
-        </div>
+        </LockFieldset>
+        {lock.locked ? null : (
+          <div style={{ marginTop: 10 }}>
+            <button type="button" className="btn btn-lg" disabled={busy || problems.length > 0} onClick={save}>
+              <Icon name="save" /> บันทึกเกณฑ์
+            </button>
+          </div>
+        )}
       </Card>
 
       <Card title="ประวัติการแก้เกณฑ์" tight>

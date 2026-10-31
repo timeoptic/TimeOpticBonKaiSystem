@@ -17,6 +17,7 @@ import { BookingStatusBadge } from '../../../../components/BookingStatusBadge.js
 import { BOOKING_STEPS, BOOKING_STEP_LABEL } from '../../../../lib/constants.js';
 import { bookingName, dateOnly, fmtDate, fmtDateTime, hhmm } from '../../../../lib/format.js';
 import { Icon } from '../../../../components/Icon.jsx';
+import { EditGate } from '../../../../components/EditLock.jsx';
 
 function BookingDetailInner() {
   const params = useSearchParams();
@@ -107,7 +108,7 @@ function BookingDetailInner() {
         actions={(
           <>
             {b.case_id && <Link className="btn btn-ghost" href={'/cases/detail?id=' + b.case_id}><Icon name="board" /> {b.case_code}</Link>}
-            <Link className="btn btn-ghost" href={`/bookings/edit?id=${b.id}`}><Icon name="pencil" /> แก้ไข</Link>
+            <Link className="btn btn-ghost" href={`/bookings/edit?id=${b.id}`}><Icon name="pencil" /> เปิดการแก้ไข</Link>
             <Link className="btn btn-ghost" href={`/bookings?date=${dateOnly(b.booking_date)}`}><Icon name="arrowLeft" /> ปฏิทิน</Link>
           </>
         )}
@@ -157,18 +158,24 @@ function BookingDetailInner() {
             </FormGrid>
 
             <Row style={{ marginTop: 12 }}>
-              {['booked', 'confirmed'].includes(b.status) && (
-                <button type="button" className="btn btn-sm btn-ok" onClick={() => setStatus('arrived')}>
-                  <Icon name="userCheck" /> ลูกค้ามาถึง
-                </button>
+              {b.status !== 'done' && (
+                <EditGate what="สถานะ">
+                  {(close) => (
+                    <>
+                      {['booked', 'confirmed'].includes(b.status) && (
+                        <button type="button" className="btn btn-sm btn-ok" onClick={() => { close(); setStatus('arrived'); }}>
+                          <Icon name="userCheck" /> ลูกค้ามาถึง
+                        </button>
+                      )}
+                      <button type="button" className="btn btn-sm btn-light" onClick={() => { close(); setStatus('done'); }}>
+                        <Icon name="checkCircle" /> เสร็จสิ้น
+                      </button>
+                    </>
+                  )}
+                </EditGate>
               )}
               {!b.case_id && ['arrived', 'confirmed', 'booked'].includes(b.status) && (
                 <button type="button" className="btn btn-sm" onClick={openCase}><Icon name="board" /> เปิดเคสให้ลูกค้า</button>
-              )}
-              {b.status !== 'done' && (
-                <button type="button" className="btn btn-sm btn-light" onClick={() => setStatus('done')}>
-                  <Icon name="checkCircle" /> เสร็จสิ้น
-                </button>
               )}
               {!['cancelled', 'no_show', 'done'].includes(b.status) && (
                 <button

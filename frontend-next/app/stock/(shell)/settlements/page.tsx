@@ -348,7 +348,7 @@ export default function SettlementsPage() {
                 actions={
                   maySettle ? (
                     <button type="button" className="btn btn--small" onClick={() => setEditing(r)}>
-                      แก้ไข / ยกเลิก
+                      เปิดการแก้ไข / ยกเลิก
                     </button>
                   ) : undefined
                 }
@@ -403,7 +403,7 @@ export default function SettlementsPage() {
                     {maySettle ? (
                       <td className="grid__act">
                         <button type="button" className="btn btn--small" onClick={() => setEditing(r)}>
-                          แก้ไข / ยกเลิก
+                          เปิดการแก้ไข / ยกเลิก
                         </button>
                       </td>
                     ) : null}

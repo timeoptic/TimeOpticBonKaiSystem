@@ -144,6 +144,8 @@ function ArrivedCheck({ row, onDone }: { row: Order; onDone: () => void }) {
   /* ค่าที่เพิ่งกด — ติ๊กขึ้นทันทีที่บันทึก ไม่ต้องรอรายการโหลดใหม่ (ช่องที่กดแล้วนิ่งอ่านว่า
      กดไม่ติด แล้วคนจะกดซ้ำ) · ล้างเมื่อแถวที่โหลดกลับมาตรงกันแล้ว หรือบันทึกไม่สำเร็จ */
   const [pending, setPending] = useState<boolean | null>(null);
+  /* มาถึงแล้วล็อกไว้ — ต้องกดเปิดการแก้ไขก่อนถึงเอาติ๊กออกได้ (กติกาเดียวทั้งระบบ) */
+  const [unticking, setUnticking] = useState(false);
   const shown = pending ?? arrived;
   const id = `rx-arrived-${row.id}`;
 
@@ -193,12 +195,13 @@ function ArrivedCheck({ row, onDone }: { row: Order; onDone: () => void }) {
           id={id}
           type="checkbox"
           checked={shown}
-          disabled={busy}
+          disabled={busy || (arrived && !unticking)}
           onChange={(e) => {
             if (e.target.checked) {
               setProblem(null);
               setAsking("");
             } else {
+              setUnticking(false);
               void send(false);
             }
           }}
@@ -206,6 +209,11 @@ function ArrivedCheck({ row, onDone }: { row: Order; onDone: () => void }) {
         />
         <span className={shown ? "grid__name" : "grid__muted"}>{shown ? "มาถึงแล้ว" : "รอเลนส์"}</span>
       </label>
+      {arrived && !unticking ? (
+        <button type="button" className="grid__link" onClick={() => setUnticking(true)}>
+          เปิดการแก้ไข
+        </button>
+      ) : null}
       {arrived ? (
         <span className="grid__sub">
           {dateTime(row.arrivedAt)}
@@ -923,7 +931,7 @@ function OrderCard({
 
             {mayCost && !costEditor ? (
               <button type="button" className="btn btn--small" onClick={c.startEditCost}>
-                แก้ต้นทุน
+                เปิดการแก้ไขต้นทุน
               </button>
             ) : null}
 
@@ -960,12 +968,12 @@ function OrderCard({
               </div>
             ) : (
               <button type="button" className="btn btn--small" onClick={c.startEditPrice}>
-                {row.salePrice === null ? "ตั้งราคาขาย" : "แก้ราคาขาย"}
+                {row.salePrice === null ? "ตั้งราคาขาย" : "เปิดการแก้ไขราคาขาย"}
               </button>
             )}
 
             <button type="button" className="btn btn--quiet btn--small" onClick={() => c.setEditing(true)}>
-              แก้ไขใบสั่ง
+              เปิดการแก้ไขใบสั่ง
             </button>
 
             {c.problem ? (
@@ -1224,7 +1232,7 @@ function OrderRow({
           onClick={() => setEditing(true)}
           aria-label={`แก้ไขใบสั่ง ${row.referenceDoc ?? row.sku}`}
         >
-          แก้ไข
+          เปิดการแก้ไข
         </button>
         {editing ? (
           <RxEditDialog row={row} onClose={() => setEditing(false)} onSaved={onDone} />

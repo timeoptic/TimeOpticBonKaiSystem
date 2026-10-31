@@ -16,6 +16,7 @@ import { ListSelect, NationalitySelect } from '../../../components/Selects.jsx';
 import { dateOnly } from '../../../lib/format.js';
 import { Icon } from '../../../components/Icon.jsx';
 import { BirthAgeFields } from '../../../components/BirthAgeFields.jsx';
+import { EditLockBar, LockFieldset, useEditLock } from '../../../components/EditLock.jsx';
 
 // editing must always be passed explicitly by the caller (true or false) — if a future
 // page forgets it, editing becomes undefined (falsy), silently serving a *create* form
@@ -24,6 +25,7 @@ export function CustomerFormView({ editing }) {
   const router = useRouter();
   const params = useSearchParams();
   const { ok, err } = useToast();
+  const lock = useEditLock(!!editing);
 
   const id = editing ? params.get('id') : null;
 
@@ -63,8 +65,10 @@ export function CustomerFormView({ editing }) {
         title={editing ? 'Edit Customer' : 'New Customer'}
         subtitle={editing ? 'แก้ไขข้อมูลลูกค้า' : 'ลูกค้าใหม่'}
       />
-      <form className="card" onSubmit={onSubmit(save)}>
+      <EditLockBar lock={lock} what="ข้อมูลลูกค้า" />
+      <form key={lock.formKey} className="card" onSubmit={onSubmit(save)}>
         <div className="card-body">
+          <LockFieldset locked={lock.locked}>
           <FormGrid>
             <Field label="ชื่อ / First name">
               <input name="first_name" defaultValue={c.first_name || ''} required />
@@ -99,11 +103,14 @@ export function CustomerFormView({ editing }) {
               <textarea name="notes" defaultValue={c.notes || ''} />
             </Field>
           </FormGrid>
+          </LockFieldset>
 
           <FormActions>
-            <button className="btn btn-lg" type="submit">
-              <Icon name="save" /> {editing ? 'บันทึกการแก้ไข' : 'บันทึกลูกค้าใหม่'}
-            </button>
+            {lock.locked ? null : (
+              <button className="btn btn-lg" type="submit">
+                <Icon name="save" /> {editing ? 'บันทึกการแก้ไข' : 'บันทึกลูกค้าใหม่'}
+              </button>
+            )}
             <Link className="btn btn-light" href={editing ? '/customers/detail?id=' + id : '/customers'}>ยกเลิก</Link>
           </FormActions>
         </div>

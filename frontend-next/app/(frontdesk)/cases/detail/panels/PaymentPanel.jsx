@@ -20,6 +20,7 @@ import { useConfirm } from '../../../../../components/Confirm.jsx';
 import { Badge, Card, Field, FormGrid, Row, Split } from '../../../../../components/ui.jsx';
 import { EmployeeSelect } from '../../../../../components/Selects.jsx';
 import { Icon } from '../../../../../components/Icon.jsx';
+import { EditGate } from '../../../../../components/EditLock.jsx';
 import { useMeta } from '../../../../../contexts/MetaContext.jsx';
 import { useAuth } from '../../../../../contexts/AuthContext.jsx';
 import { inSystemZone } from '../../../../../lib/roles.js';
@@ -917,13 +918,17 @@ export function PaymentPanel({ c, reload }) {
                     ) : null}
                     {mayEdit && !p.cancelled_at && !isUnpaidRow(p) ? (
                       <button type="button" className="btn btn-sm btn-light" onClick={() => setEditing(p)}>
-                        <Icon name="pencil" /> แก้ไข
+                        <Icon name="pencil" /> เปิดการแก้ไข
                       </button>
                     ) : null}
                     {isUnpaidRow(p) ? null : (
-                      <button type="button" className="btn btn-sm btn-light" onClick={() => attachToRow(p)}>
-                        <Icon name="camera" /> แนบสลิป
-                      </button>
+                      <EditGate what="สลิป">
+                        {(close) => (
+                          <button type="button" className="btn btn-sm btn-light" onClick={() => { close(); attachToRow(p); }}>
+                            <Icon name="camera" /> แนบสลิป
+                          </button>
+                        )}
+                      </EditGate>
                     )}
                     <button type="button" className="btn btn-sm btn-light" onClick={() => remove(p)}>
                       <Icon name="trash" />

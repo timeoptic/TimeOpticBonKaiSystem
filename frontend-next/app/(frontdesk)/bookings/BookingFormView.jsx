@@ -27,6 +27,7 @@ import { custName, dateOnly, hhmm, todayISO } from '../../../lib/format.js';
 import { Icon } from '../../../components/Icon.jsx';
 import { DateField } from '../../../components/DateField.jsx';
 import { TimeField } from '../../../components/TimeField.jsx';
+import { EditLockBar, LockFieldset, useEditLock } from '../../../components/EditLock.jsx';
 
 export function BookingFormView({ editing }) {
   // `editing` must always be passed explicitly (true or false) by the caller —
@@ -36,6 +37,7 @@ export function BookingFormView({ editing }) {
   const params = useSearchParams();
   const { ok, err } = useToast();
   const { serviceTypes, channels } = useBookingLabels();
+  const lock = useEditLock(!!editing);
 
   const id = editing ? params.get('id') : null;
   const queryCustomer = params.get('customer');
@@ -104,7 +106,9 @@ export function BookingFormView({ editing }) {
         subtitle={editing ? 'แก้ไขการจองคิว' : 'จองคิวลูกค้า'}
       />
 
-      <Split>
+      <EditLockBar lock={lock} what="การจองนี้" onCancel={() => setOverride(undefined)} />
+      <LockFieldset locked={lock.locked}>
+      <Split key={lock.formKey}>
         <Card title="ลูกค้าเดิม (ถ้ามี)">
           <Picker
             placeholder="ค้นหาลูกค้าเดิม (ชื่อ / เบอร์โทร / รหัส)"
@@ -138,8 +142,10 @@ export function BookingFormView({ editing }) {
           </div>
         </Card>
       </Split>
+      </LockFieldset>
 
-      <form id="booking-form" onSubmit={save}>
+      <form key={lock.formKey} id="booking-form" onSubmit={save}>
+        <LockFieldset locked={lock.locked}>
         <Card title="รายละเอียดการจอง">
           <FormGrid>
             <Field label="วันที่จอง *">
@@ -167,11 +173,14 @@ export function BookingFormView({ editing }) {
             <textarea name="notes" defaultValue={b.notes || ''} />
           </Field>
         </Card>
+        </LockFieldset>
 
         <FormActions>
-          <button className="btn btn-lg" type="submit">
-            <Icon name="save" /> {editing ? 'บันทึกการแก้ไข' : 'บันทึกการจอง'}
-          </button>
+          {lock.locked ? null : (
+            <button className="btn btn-lg" type="submit">
+              <Icon name="save" /> {editing ? 'บันทึกการแก้ไข' : 'บันทึกการจอง'}
+            </button>
+          )}
           <Link className="btn btn-light" href={editing ? '/bookings/detail?id=' + b.id : '/bookings'}>ยกเลิก</Link>
         </FormActions>
       </form>

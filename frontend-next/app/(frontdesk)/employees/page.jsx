@@ -12,6 +12,7 @@ import { PAGE_SIZES } from '../../../lib/pager.js';
 import { ListSelect } from '../../../components/Selects.jsx';
 import { fmtDate } from '../../../lib/format.js';
 import { Icon } from '../../../components/Icon.jsx';
+import { EditGate } from '../../../components/EditLock.jsx';
 import { AdminOnly } from '../../../components/AdminOnly.jsx';
 import { DateField } from '../../../components/DateField.jsx';
 
@@ -176,9 +177,13 @@ function EmployeeListInner() {
               mobile: 'extra',
               cls: 'nowrap',
               render: (r) => (
-                <button type="button" className="btn btn-sm btn-light" onClick={() => toggle(r)}>
-                  {Number(r.active) ? 'ปิดใช้งาน' : 'เปิดใช้งาน'}
-                </button>
+                <EditGate>
+                  {(close) => (
+                    <button type="button" className="btn btn-sm btn-light" onClick={() => { close(); toggle(r); }}>
+                      {Number(r.active) ? 'ปิดใช้งาน' : 'เปิดใช้งาน'}
+                    </button>
+                  )}
+                </EditGate>
               ),
             },
           ]}

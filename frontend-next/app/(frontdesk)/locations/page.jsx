@@ -226,7 +226,7 @@ export default function LocationsPage() {
                       </>
                     ) : (
                       <>
-                        <button type="button" className="btn btn-sm btn-light" onClick={() => startEdit(r)} title="แก้ไข">
+                        <button type="button" className="btn btn-sm btn-light" onClick={() => startEdit(r)} title="เปิดการแก้ไข" aria-label="เปิดการแก้ไข">
                           <Icon name="pencil" />
                         </button>{' '}
                         <button type="button" className="btn btn-sm btn-light" onClick={() => remove(r)} title="ลบ">
