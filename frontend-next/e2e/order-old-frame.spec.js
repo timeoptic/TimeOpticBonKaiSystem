@@ -59,6 +59,7 @@ async function openSales(page, orderPatch) {
   });
   await page.goto(`/cases/detail/?id=${BASE_CASE.id}&step=sales`);
   await expect(page.getByText('กรอบแว่น — Frame')).toBeVisible({ timeout: 20_000 });
+  await page.getByRole('button', { name: 'เปิดการแก้ไข' }).first().click();
 }
 
 const OLD_FRAME_ORDER = {

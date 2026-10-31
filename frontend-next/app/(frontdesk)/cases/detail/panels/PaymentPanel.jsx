@@ -73,6 +73,9 @@ function PickupDateCard({ c, reload }) {
   const saved = dateOnly(c.order?.appointment_date);
   const [date, setDate] = useState(saved);
   const [saving, setSaving] = useState(false);
+  /* มีวันนัดแล้วล็อกไว้ ต้องกด "เปิดการแก้ไข" ถึงเปลี่ยนหรือล้างได้ · บันทึกแล้วล็อกกลับ */
+  const [unlocked, setUnlocked] = useState(false);
+  const locked = !!saved && !unlocked;
 
   /* ค่าอาจเปลี่ยนมาจากที่อื่น (หน้าออเดอร์ หรืออีกแท็บ) — reload แล้วช่องต้องตาม */
   useEffect(() => { setDate(saved); }, [saved]);
@@ -94,6 +97,7 @@ function PickupDateCard({ c, reload }) {
         appointment_date: value || null,
       });
       ok(value ? `นัดรับ ${fmtDate(value)}` : 'ล้างวันนัดรับแล้ว');
+      setUnlocked(false);
       reload();
     } catch (ex) { err(ex); } finally { setSaving(false); }
   };
@@ -111,37 +115,57 @@ function PickupDateCard({ c, reload }) {
           id="pickup-date"
           className="pickup-input"
           value={date}
-          disabled={saving}
+          disabled={saving || locked}
           onChange={setDate}
         />
-        <button type="button" className="btn" disabled={!dirty || saving} onClick={() => save(date)}>
-          <Icon name="check" /> บันทึก
-        </button>
-        {saved ? (
-          <button type="button" className="btn btn-light" disabled={saving} onClick={() => save('')}>
-            <Icon name="x" /> ล้าง
+        {locked ? (
+          <button type="button" className="btn btn-light" onClick={() => setUnlocked(true)}>
+            เปิดการแก้ไข
           </button>
-        ) : null}
+        ) : (
+          <>
+            <button type="button" className="btn" disabled={!dirty || saving} onClick={() => save(date)}>
+              <Icon name="check" /> บันทึก
+            </button>
+            {saved ? (
+              <>
+                <button type="button" className="btn btn-light" disabled={saving} onClick={() => save('')}>
+                  <Icon name="x" /> ล้าง
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-light"
+                  disabled={saving}
+                  onClick={() => { setDate(saved); setUnlocked(false); }}
+                >
+                  ยกเลิกการแก้ไข
+                </button>
+              </>
+            ) : null}
+          </>
+        )}
       </div>
 
-      <Row style={{ gap: 6, marginTop: 10 }}>
-        {QUICK_DAYS.map(([label, days]) => (
-          <button
-            type="button"
-            key={label}
-            className={`chip-btn ${date && date === todayISO(days) ? 'active' : ''}`}
-            onClick={() => setDate(todayISO(days))}
-          >
-            {label}
-          </button>
-        ))}
-      </Row>
+      {locked ? null : (
+        <Row style={{ gap: 6, marginTop: 10 }}>
+          {QUICK_DAYS.map(([label, days]) => (
+            <button
+              type="button"
+              key={label}
+              className={`chip-btn ${date && date === todayISO(days) ? 'active' : ''}`}
+              onClick={() => setDate(todayISO(days))}
+            >
+              {label}
+            </button>
+          ))}
+        </Row>
+      )}
 
       <p className={`pickup-now ${dirty ? 'dirty' : ''}`}>
         {dirty
           ? <>ยังไม่ได้บันทึก — กด “บันทึก” เพื่อเก็บ {date ? <b>{fmtDate(date)}</b> : 'การล้างวันนัด'}</>
           : saved
-            ? <>บันทึกไว้แล้ว <b>{fmtDate(saved)}</b> · แก้ไขภายหลังได้</>
+            ? <>บันทึกไว้แล้ว <b>{fmtDate(saved)}</b>{locked ? ' · กด “เปิดการแก้ไข” เพื่อเปลี่ยน' : ''}</>
             : <>ยังไม่ได้กำหนด <b>—</b> · ต้องกรอกก่อนจึงจะยืนยันขั้นชำระเงินได้</>}
       </p>
     </Card>

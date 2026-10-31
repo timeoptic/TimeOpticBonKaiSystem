@@ -358,12 +358,21 @@ POST('/api/orders', function (array $req) {
 
 PUT('/api/orders/:id', function (array $req) {
     $id = int_or($req['params']['id']);
-    if (!Db::get('SELECT id FROM custom_orders WHERE id = ?', $id)) {
+    $cur = Db::get('SELECT id, appointment_date, appointment_time FROM custom_orders WHERE id = ?', $id);
+    if (!$cur) {
         missing();
     }
+    /* วันนัดรับกรอกที่ขั้นชำระเงิน ฟอร์มขายไม่มีช่องนี้ — ไม่ได้ส่งมา = คงค่าเดิม ไม่ใช่ล้างทิ้ง
+       (กดบันทึกแก้ไขแล้ววันนัดหาย ร้านเจอ 31 ต.ค. 2026) · ล้างวันนัดจริงเดินทาง PUT .../appointment */
+    $body = $req['body'];
+    foreach (['appointment_date', 'appointment_time'] as $c) {
+        if (!array_key_exists($c, $body)) {
+            $body[$c] = $cur[$c];
+        }
+    }
     $set = implode(',', array_map(fn($c) => "$c=?", ORDER_COLS));
-    Db::run("UPDATE custom_orders SET $set WHERE id=?", ...[...orderVals($req['body']), $id]);
-    syncSoldStock($id, int_or($req['body']['employee_id'] ?? null));
+    Db::run("UPDATE custom_orders SET $set WHERE id=?", ...[...orderVals($body), $id]);
+    syncSoldStock($id, int_or($body['employee_id'] ?? null));
     return orderDetail($id);
 });
 
