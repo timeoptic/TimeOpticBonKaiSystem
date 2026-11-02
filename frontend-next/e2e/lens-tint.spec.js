@@ -47,7 +47,7 @@ test('เลือกย้อมสีแล้วต้องเลือก�
   let body = null;
   await open(page, 'sales', {}, (p, b) => { if (p.includes('/api/orders')) body = b; });
 
-  await page.getByRole('button', { name: 'เปิดการแก้ไข' }).first().click();
+  await page.locator('form').getByRole('button', { name: 'เปิดการแก้ไข' }).first().click();
   const bar = page.locator('form .card', { hasText: 'ย้อมสีเลนส์' });
   await expect(bar).toContainText('ย้อมสีเลนส์ / Lens Tint (Dye)');
   await expect(bar.getByRole('radio', { name: /ไม่ย้อมสี/ })).toBeChecked();
@@ -68,7 +68,7 @@ test('ออเดอร์ที่ย้อมไว้แล้ว เปิ�
   let body = null;
   await open(page, 'sales', { lens_tint: 'ย้อมสี เทา ระดับ 2' }, (p, b) => { if (p.includes('/api/orders')) body = b; });
 
-  await page.getByRole('button', { name: 'เปิดการแก้ไข' }).first().click();
+  await page.locator('form').getByRole('button', { name: 'เปิดการแก้ไข' }).first().click();
   const bar = page.locator('form .card', { hasText: 'ย้อมสีเลนส์' });
   await expect(bar.getByRole('button', { name: 'เทา ระดับ 2', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await bar.getByRole('radio', { name: /ไม่ย้อมสี/ }).check();
@@ -80,7 +80,7 @@ test('ออเดอร์เก่าสีที่เลิกใช้ ไ�
   let body = null;
   await open(page, 'sales', { lens_tint: 'ย้อมสี ม่วง' }, (p, b) => { if (p.includes('/api/orders')) body = b; });
 
-  await page.getByRole('button', { name: 'เปิดการแก้ไข' }).first().click();
+  await page.locator('form').getByRole('button', { name: 'เปิดการแก้ไข' }).first().click();
   await expect(page.getByText('ยังไม่มีระดับความเข้ม')).toBeVisible();
   await page.locator('form button[type=submit]').click();
   await expect.poll(() => body?.lens_tint).toBe('ย้อมสี ม่วง');
