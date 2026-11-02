@@ -22,14 +22,41 @@
 .tintOption b{display:block;font-size:13.5px;color:var(--ink)}
 .tintOption small{display:block;font-size:12px;color:var(--ink-soft)}
 
-.swatches{display:flex;flex-wrap:wrap;gap:8px;flex:1 1 100%}
+.swatches{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:8px;flex:1 1 100%;
+}
 
 .swatch{
-  display:inline-flex;align-items:center;gap:7px;padding:6px 12px;cursor:pointer;font:inherit;font-size:13px;
-  color:var(--ink);background:#fff;border:1px solid var(--green-edge);border-radius:999px;
+  overflow:hidden;background:#fff;border:1px solid var(--green-edge);border-radius:var(--radius-sm);
 }
-.swatch.on{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent);font-weight:700}
-.dot{width:16px;height:16px;border-radius:50%}
+.swatch.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+
+.swatchHead{padding:7px 4px;text-align:center;line-height:1.25}
+.swatchHead b{display:block;font-size:13.5px;color:var(--ink)}
+.swatchHead small{display:block;font-size:12px;color:var(--ink-soft)}
+
+.levels{display:grid;grid-template-columns:repeat(4,1fr);gap:2px;padding:8px 5px}
+
+.level{
+  display:flex;flex-direction:column;align-items:center;gap:6px;min-width:0;padding:2px 0;
+  cursor:pointer;font:inherit;background:none;border:0;
+}
+.level:focus-visible{outline:2px solid var(--accent);outline-offset:1px;border-radius:6px}
+.level:disabled{cursor:default}
+
+/* ไฮไลต์ซ้อนบนสีเพื่อให้ดูเป็นเลนส์ — สีจริงมาจาก inline style */
+.shade{
+  width:100%;max-width:30px;aspect-ratio:1;border-radius:50%;border:1px solid rgba(0,0,0,.14);
+  background-image:radial-gradient(circle at 35% 28%,rgba(255,255,255,.65),rgba(255,255,255,0) 55%);
+}
+
+.levelNo{
+  display:grid;place-items:center;width:22px;height:22px;border-radius:50%;
+  font-size:12px;font-weight:600;color:var(--ink);background:#fff;border:1px solid var(--line);
+}
+.level.on .levelNo{color:#fff;background:var(--accent);border-color:var(--accent)}
+
+.legacyDye{grid-column:1 / -1;margin:0;font-size:12.5px;color:var(--ink-soft)}
 
 /* กรอบจากสต็อก / กรอบลูกค้า */
 .frameSource{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:14px}

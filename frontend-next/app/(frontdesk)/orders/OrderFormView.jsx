@@ -39,7 +39,7 @@ import {
 } from '../../../lib/format.js';
 import { Icon } from '../../../components/Icon.jsx';
 import { pairDisplay, pairPrice, splitPairPrice } from '../../../lib/pricing.js';
-import { TINT_COLORS, dyeColorOf, lensTintForSave } from '../../../lib/lensTint.js';
+import { TINT_COLORS, TINT_LEVELS, dyeColorOf, dyeLevelOf, lensTintForSave } from '../../../lib/lensTint.js';
 import s from './OrderFormView.module.css';
 
 /* สองรูปนี้ไม่อยู่ใน lib/icons.js — ไฟล์นั้นอยู่ใน chunk กลางที่แท็บเก่าโหลดค้างไว้ ไอคอนใหม่จะขึ้นเป็นชื่อแทนรูป */
@@ -318,7 +318,8 @@ export function OrderFormView({
   const usesOldFrame = oldFrame === undefined ? oldFrameFromOrder : oldFrame;
   const savedDye = dyeColorOf(o.lens_tint);
   const dyed = dyeOn === undefined ? Boolean(savedDye) : dyeOn;
-  const dyeColor = dyePick === undefined ? savedDye : dyePick;
+  const dyeColor = dyePick ? dyePick.color : savedDye;
+  const dyeLevel = dyePick ? dyePick.level : dyeLevelOf(o.lens_tint);
   /* Picking a stock item is a statement of fact about the order: it fills in
      that item's own details and its price, instead of leaving staff to retype
      what the system already knows. The fields stay editable afterwards. */
@@ -402,7 +403,7 @@ export function OrderFormView({
 
   const save = async (body) => {
     if (!customerId) return err('กรุณาเลือกลูกค้าก่อน');
-    if (dyed && !dyeColor) return err(new Error('กรุณาเลือกสีที่จะย้อม'));
+    if (dyed && !dyeColor) return err(new Error('กรุณาเลือกสีและระดับความเข้มที่จะย้อม'));
     body.customer_id = customerId;
     body.case_id = caseId;
     body.final_prescription_id = rxId;
@@ -481,7 +482,7 @@ export function OrderFormView({
       body.lens_addons = o.lens_addons || '';
     }
 
-    body.lens_tint = lensTintForSave(dyed ? dyeColor : '', body.lens_tint);
+    body.lens_tint = lensTintForSave(dyed ? dyeColor : '', dyeLevel, body.lens_tint);
 
     try {
       const saved = editing
@@ -746,7 +747,7 @@ export function OrderFormView({
               <PaletteGlyph />
               <div>
                 <b>ย้อมสีเลนส์ / Lens Tint (Dye)</b>
-                <small>เลือกสีเลนส์เพิ่มเติม (ถ้ามี)</small>
+                <small>เลือกสีและระดับความเข้ม (1 = อ่อนที่สุด | 4 = เข้มที่สุด)</small>
               </div>
             </div>
             <div className={s.tintOptions}>
@@ -756,23 +757,42 @@ export function OrderFormView({
               </label>
               <label className={`${s.tintOption} ${dyed ? s.on : ''}`}>
                 <input type="radio" name="lens_tint_mode" checked={dyed} onChange={() => setDyeOn(true)} />
-                <span><b>ย้อมสี</b><small>เลือกสีจากตัวอย่างสี</small></span>
+                <span><b>ย้อมสี</b><small>เลือกสีและระดับความเข้ม</small></span>
               </label>
             </div>
             {dyed ? (
               <div className={s.swatches} role="group" aria-label="ตัวอย่างสีย้อม">
-                {TINT_COLORS.map(([color, hex]) => (
-                  <button
-                    key={color}
-                    type="button"
-                    className={`${s.swatch} ${dyeColor === color ? s.on : ''}`}
-                    aria-pressed={dyeColor === color}
-                    onClick={() => setDyePick(color)}
-                  >
-                    <span className={s.dot} style={{ background: hex }} />
-                    {color}
-                  </button>
+                {TINT_COLORS.map(({ en, th, head, shades }) => (
+                  <div key={en} className={`${s.swatch} ${dyeColor === th ? s.on : ''}`}>
+                    <div className={s.swatchHead} style={{ background: head }}>
+                      <b>{en}</b>
+                      <small>{th}</small>
+                    </div>
+                    <div className={s.levels}>
+                      {TINT_LEVELS.map((level, i) => {
+                        const on = dyeColor === th && dyeLevel === level;
+                        return (
+                          <button
+                            key={level}
+                            type="button"
+                            className={`${s.level} ${on ? s.on : ''}`}
+                            aria-label={`${th} ระดับ ${level}`}
+                            aria-pressed={on}
+                            onClick={() => setDyePick({ color: th, level })}
+                          >
+                            <span className={s.shade} style={{ backgroundColor: shades[i] }} />
+                            <span className={s.levelNo}>{level}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                 ))}
+                {dyeColor && !dyeLevel ? (
+                  <p className={s.legacyDye}>
+                    ออเดอร์นี้บันทึกไว้ว่า “ย้อมสี {dyeColor}” แบบยังไม่มีระดับความเข้ม — เลือกใหม่ด้านบนได้ ถ้าไม่เลือกจะคงค่าเดิม
+                  </p>
+                ) : null}
               </div>
             ) : null}
           </div>
@@ -881,7 +901,7 @@ export function OrderFormView({
                       ป้ายสั้นลงเหลือแค่ข้าง เพราะคำว่า "ราคาขาย" เต็ม ๆ เป็นของแถบคู่ */}
                   <SellingPrice
                     variant="sell-price-side"
-                    label={`ราคาเฉพาะข้างนี้ (${side.toUpperCase()})`}
+                    label={`${dyed ? 'ราคาผลิตและย้อมสี' : 'ราคาเฉพาะข้างนี้'} (${side.toUpperCase()})`}
                     value={p[priceKey]}
                     onChange={(e) => setP({ [priceKey]: e.target.value })}
                     hint=""
