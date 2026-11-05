@@ -219,6 +219,15 @@ function payType(o, methodLabel) {
   return m ? (methodLabel[m] || m) : '';
 }
 
+/** ช่อง WhatsApp — ลูกค้าเก็บไว้ในช่องเดียวกับ LINE ID (customers.line_id)
+ *  พิมพ์เฉพาะค่าที่เป็นเบอร์โทร (ตัวเลข + เว้นวรรค/ขีด/วงเล็บ ขึ้นต้น + ได้ อย่างน้อย 8 หลัก)
+ *  ถ้าเป็น LINE ID หรือว่าง เว้นกรอบไว้ให้เขียนมือเหมือนเดิม */
+function whatsappOf(lineId) {
+  const v = String(lineId || '').trim();
+  if (!/^\+?[\d\s\-().]+$/.test(v)) return '';
+  return v.replace(/\D/g, '').length >= 8 ? v : '';
+}
+
 /** ป้ายกำกับ + ค่า หนึ่งบรรทัด ค่าว่างพิมพ์เส้นประไว้ให้เขียนมือ */
 function F({ k, v, fill = false }) {
   return (
@@ -407,7 +416,7 @@ function OrderSheet() {
             <div className="iv-who">
               <F k="Customer" v={name} />
               <F k="Phone no." v={o.phone} />
-              <F k="WhatsApp" fill />
+              <F k="WhatsApp" v={whatsappOf(c?.line_id ?? o.line_id)} fill />
             </div>
 
             {/* ค่าสายตา — สองข้างวางคู่กัน ช่างอ่านทีเดียวเห็นทั้งคู่ ไม่ต้องไล่แถว */}
