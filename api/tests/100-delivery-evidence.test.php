@@ -59,10 +59,13 @@ test('Progressive: ขาดค่าหน้า PD — บอกช่อง�
     });
 });
 
-test('ยกเว้น: เคส OLD- และงานซ่อม/ปรับแว่น', function () use ($evGaps) {
+test('ยกเว้น: เคส OLD- งานซ่อม/ปรับแว่น และเคสที่เปิดก่อน 10 พ.ย. 2026', function () use ($evGaps) {
     rollback(function (Tx $q) use ($evGaps) {
         eq($evGaps(evFixtures($q, ['code' => 'OLD-T'])['case']), [], 'OLD');
         eq($evGaps(evFixtures($q, ['type' => 'ซ่อม/ปรับแว่น'])['case']), [], 'ซ่อม');
+        $old = evFixtures($q)['case'];
+        $q->run("UPDATE cases SET created_at = '2026-11-09 23:59:59' WHERE id = ?", $old);
+        eq($evGaps($old), [], 'เปิดก่อน 10 พ.ย.');
     });
 });
 

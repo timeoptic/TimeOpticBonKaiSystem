@@ -190,13 +190,17 @@ function processBlocking(array $c): array
  *   - ใบสายตาที่ยืนยันแล้วเป็น Progressive / Bi-focal / Degressive (Test For)
  *     ต้องกรอกหน้า PD ครบทุกช่อง: FH R/L, Cor., A, B, DBL, ED, CVD, Panto
  *
- * ยกเว้น: เคสเก่าจาก Access (OLD-) · งานซ่อม/ปรับแว่น · เคสที่ปิดแล้ว (is_terminal)
+ * ยกเว้น: เคสที่เปิดก่อน 10 พ.ย. 2026 · เคสเก่าจาก Access (OLD-) · งานซ่อม/ปรับแว่น · เคสที่ปิดแล้ว (is_terminal)
  * (บันทึกซ้ำหรือแก้วันส่งมอบต้องไม่ติดกฎใหม่ย้อนหลัง) · ไม่ยกเว้นด้วย delivered_at เพราะหน้าเว็บ
  * บันทึกการส่งมอบก่อนกดยืนยันขั้น — ยกเว้นตรงนั้นจะทำให้ด่านที่ /complete ไม่ทำงาน
  */
+/** ใช้กับเคสที่เปิดตั้งแต่วันนี้ — เคสที่ค้างอยู่ก่อนกฎนี้ (128 เคส ณ 10 พ.ย.) ส่งมอบได้ตามเดิม */
+const DELIVERY_EVIDENCE_FROM = '2026-11-10 00:00:00';
+
 function deliveryEvidenceMissing(array $c): array
 {
-    if (str_starts_with((string) ($c['case_code'] ?? ''), 'OLD-')
+    if ((string) ($c['created_at'] ?? '') < DELIVERY_EVIDENCE_FROM
+        || str_starts_with((string) ($c['case_code'] ?? ''), 'OLD-')
         || trim((string) ($c['case_type'] ?? '')) === 'ซ่อม/ปรับแว่น'
         || (int) ($c['is_terminal'] ?? 0) === 1) {
         return [];
