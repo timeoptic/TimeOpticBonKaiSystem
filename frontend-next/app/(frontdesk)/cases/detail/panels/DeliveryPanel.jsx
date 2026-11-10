@@ -363,6 +363,10 @@ export function DeliveryPanel({ c, reload }) {
       err(new Error('กรุณาเลือกผู้ส่งมอบ'));
       return false;
     }
+    if (!grinderId) {
+      err(new Error('กรุณาเลือกคนเจีย'));
+      return false;
+    }
     return new Promise((resolve) => { decide.current = resolve; setAsk(true); });
   };
 
@@ -728,8 +732,8 @@ export function DeliveryPanel({ c, reload }) {
             <Field
               label={(
                 <>
-                  คนเจีย / ผู้ดำเนินการเจีย{' '}
-                  <span title="พนักงานที่เจียเลนส์ของงานนี้ — ไม่บังคับกรอก">
+                  คนเจีย / ผู้ดำเนินการเจีย *{' '}
+                  <span title="พนักงานที่เจียเลนส์ของงานนี้ — ต้องเลือกก่อนกดส่งมอบ">
                     <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true" style={{ verticalAlign: '-2px' }}><path fillRule="evenodd" d="M12 2.5a9.5 9.5 0 1 0 0 19 9.5 9.5 0 0 0 0-19zM10.9 7h2.2v2.2h-2.2zm0 4h2.2v6h-2.2z" /></svg>
                   </span>
                 </>
@@ -739,6 +743,7 @@ export function DeliveryPanel({ c, reload }) {
                 name="grinder_employee_id"
                 value={grinderId}
                 onChange={(e) => setGrinderId(e.target.value)}
+                required
               />
             </Field>
           </FormGrid>

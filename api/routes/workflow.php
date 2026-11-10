@@ -65,6 +65,11 @@ $saveDelivery = upsertFactory([
 POST('/api/case-deliveries', function (array $req) use ($saveDelivery) {
     $caseId = int_or($req['body']['case_id'] ?? null);
     $ex = $caseId ? Db::get('SELECT delivered_at FROM case_deliveries WHERE case_id = ?', $caseId) : null;
+    /* คนเจียบังคับตั้งแต่ 10 พ.ย. 2026 (ร้านขอ) — เฉพาะการส่งมอบครั้งแรก
+       เคสที่ส่งมอบไปก่อนหน้านี้ยังเป็น NULL ได้ บันทึกซ้ำไม่โดนบล็อก */
+    if (empty($ex['delivered_at']) && !int_or($req['body']['grinder_employee_id'] ?? null)) {
+        bad('กรุณาเลือกคนเจีย');
+    }
     $actor = StockModule::actor();
     if (!empty($ex['delivered_at'])) {
         $req['body']['delivered_at'] = $ex['delivered_at'];

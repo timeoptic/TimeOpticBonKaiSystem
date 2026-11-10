@@ -83,7 +83,7 @@ function ddPost(array $actor, array $f, string $at): array
 {
     return ddCall($actor, 'POST', '/api/case-deliveries', [
         'case_id' => $f['case'], 'order_id' => $f['order'], 'delivered_at' => $at,
-        'handed_over_by' => $f['emp'], 'employee_id' => $f['emp'],
+        'handed_over_by' => $f['emp'], 'employee_id' => $f['emp'], 'grinder_employee_id' => $f['emp'],
     ]);
 }
 
@@ -95,7 +95,7 @@ test('พนักงานขายส่งวันย้อนหลัง�
     });
 });
 
-test('บันทึกคนเจียได้ และไม่กรอกก็ได้', function () {
+test('บันทึกคนเจียได้ และส่งมอบครั้งแรกต้องเลือกคนเจีย', function () {
     rollback(function (Tx $q) {
         $f = ddFixtures($q);
         $row = ddCall(ddOwner(), 'POST', '/api/case-deliveries', [
@@ -106,8 +106,10 @@ test('บันทึกคนเจียได้ และไม่กรอ�
     });
     rollback(function (Tx $q) {
         $f = ddFixtures($q);
-        $row = ddPost(ddOwner(), $f, '2026-10-01T14:30');
-        eq($row['grinder_employee_id'], null, 'ไม่กรอก = NULL');
+        eq(ddError(ddOwner(), 'POST', '/api/case-deliveries', [
+            'case_id' => $f['case'], 'order_id' => $f['order'], 'delivered_at' => '2026-10-01T14:30',
+            'handed_over_by' => $f['emp'], 'employee_id' => $f['emp'],
+        ]), 400, 'ไม่เลือกคนเจีย = 400');
     });
 });
 
