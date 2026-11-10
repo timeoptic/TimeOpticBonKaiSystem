@@ -104,7 +104,7 @@ export default function StockDrawer({
                 className="btn btn--quiet btn--small"
                 onClick={() => setEditing(true)}
               >
-                แก้ไข
+                เปิดการแก้ไข
               </button>
             ) : null}
             <button
@@ -232,7 +232,7 @@ export default function StockDrawer({
               ) : (
                 <div className="chips">
                   <button type="button" className="btn btn--small" onClick={() => setQuick(true)}>
-                    {detail.isCustomMade ? "แก้ราคาขาย" : "แก้ราคา / ขั้นต่ำ"}
+                    {detail.isCustomMade ? "เปิดการแก้ไขราคาขาย" : "เปิดการแก้ไขราคา / ขั้นต่ำ"}
                   </button>
                 </div>
               )

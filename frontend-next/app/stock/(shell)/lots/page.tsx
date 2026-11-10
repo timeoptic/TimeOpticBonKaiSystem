@@ -283,7 +283,7 @@ export default function LotsPage() {
               ]}
               actions={
                 <button type="button" className="btn btn--small" onClick={() => setEditing(r)}>
-                  {r.costPerUnit === null && money$ ? "ลงต้นทุน" : "แก้ไขล็อต"}
+                  {r.costPerUnit === null && money$ ? "ลงต้นทุน" : "เปิดการแก้ไขล็อต"}
                 </button>
               }
             />
@@ -368,7 +368,7 @@ export default function LotsPage() {
                       className="btn btn--quiet btn--small"
                       onClick={() => setEditing(r)}
                     >
-                      {r.costPerUnit === null && money$ ? "ลงต้นทุน" : "แก้ไข"}
+                      {r.costPerUnit === null && money$ ? "ลงต้นทุน" : "เปิดการแก้ไข"}
                     </button>
                   </td>
                 </tr>

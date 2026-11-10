@@ -169,6 +169,7 @@ function ItemDetails({ picked, rows, children }) {
 // (e.g. SalesPanel) uses it to reload() its own data instead of navigating away.
 export function OrderFormView({
   editing, caseId: caseIdProp, customerId: customerIdProp, orderId, embedded = false, onSaved,
+  locked = false, onUnlock,
 }) {
   const router = useRouter();
   const params = useSearchParams();
@@ -584,6 +585,14 @@ export function OrderFormView({
       </Split>
 
       <form onSubmit={onSubmit(save)}>
+        {/* ล็อก = ปิดทุกช่องในครั้งเดียว · display:contents ไม่ให้กล่องนี้เปลี่ยนเลย์เอาต์
+            pointerEvents กันแถวในรายการที่กดได้แต่ไม่ใช่ปุ่ม ซึ่ง disabled ไปไม่ถึง */}
+        {locked ? <style>{'.order-form-locked .card{opacity:.65}'}</style> : null}
+        <fieldset
+          disabled={locked}
+          className={locked ? 'order-form-locked' : undefined}
+          style={{ display: 'contents', pointerEvents: locked ? 'none' : undefined }}
+        >
         <Card title="รายละเอียดออเดอร์">
           {/* ไม่ถาม "ช่องทางที่รู้จัก" ที่นี่แล้ว — ถามไปแล้วตอนเปิดเคส ถามซ้ำตอนขายได้
               คำตอบที่ขัดกันเอง คอลัมน์ custom_orders.marketing ยังอยู่และของเก่ายังอ่านได้
@@ -877,16 +886,24 @@ export function OrderFormView({
           </div>
         </Card>
 
+        </fieldset>
+
         <Card title="หมายเหตุ">
           <textarea
             name="notes"
+            disabled={locked}
             defaultValue={o.notes || ''}
             placeholder="รายละเอียดเพิ่มเติม เช่น สีเลนส์ ทรงกรอบ การปรับขาแว่น"
           />
           <FormActions style={{ marginTop: 14 }}>
-            <button className="btn btn-lg" type="submit">
-              <Icon name="save" /> {editing ? 'บันทึกการแก้ไข' : 'เปิดออเดอร์'}
-            </button>
+            {locked ? (
+              /* key แยกกัน: ถ้า React ใช้ปุ่มตัวเดิม ปุ่มจะกลายเป็น submit ระหว่างคลิกแล้วบันทึกทันที */
+              onUnlock ? <button key="unlock" className="btn btn-lg" type="button" onClick={onUnlock}>เปิดการแก้ไข</button> : null
+            ) : (
+              <button key="submit" className="btn btn-lg" type="submit">
+                <Icon name="save" /> {editing ? 'บันทึกการแก้ไข' : 'เปิดออเดอร์'}
+              </button>
+            )}
             {!embedded && <Link className="btn btn-light" href={cancelHref}>ยกเลิก</Link>}
           </FormActions>
         </Card>

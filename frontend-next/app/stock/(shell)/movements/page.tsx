@@ -345,7 +345,7 @@ function FixAction({ row: r, onEdit }: { row: MovementRow; onEdit: (r: MovementR
   if (r.actionType === "IN") {
     return (
       <button type="button" className="btn btn--small" onClick={() => onEdit(r)}>
-        แก้ไขการรับเข้า
+        เปิดการแก้ไขการรับเข้า
       </button>
     );
   }
@@ -375,7 +375,7 @@ function FixAction({ row: r, onEdit }: { row: MovementRow; onEdit: (r: MovementR
   if (r.returned) return <span className="grid__muted">คืนแล้ว</span>;
   return (
     <button type="button" className="btn btn--small" onClick={() => onEdit(r)}>
-      แก้ไข / ยกเลิก
+      เปิดการแก้ไข / ยกเลิก
     </button>
   );
 }

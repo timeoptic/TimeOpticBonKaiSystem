@@ -261,6 +261,8 @@ function ReceiptSheet() {
      ทุกตัวอยู่ตรงนี้ไม่ใช่ใน <Copy> เพราะแผ่นหนึ่งมีสองใบที่ต้องเหมือนกันเป๊ะ */
   const [lang, setLang] = useState('th');
   const [editing, setEditing] = useState(false);
+  /* เขียน bill_* เฉพาะตอนกดเปิดการแก้ไขแล้ว หรือใบที่ยังไม่เคยบันทึกชื่อ — พิมพ์ซ้ำเฉย ๆ ไม่ทับของเดิม */
+  const billOpened = useRef(false);
   const [cust, setCust] = useState(EMPTY_CUST);
   /* นามในรายชื่อที่ค่าสี่ช่องนี้มาจาก — null คือพิมพ์เองสด ๆ ยังไม่เคยจำไว้
      ใช้สองที่: ผูกกับใบตอนกดพิมพ์ และไฮไลต์บรรทัดที่เลือกอยู่ในกล่องค้น */
@@ -428,13 +430,17 @@ function ReceiptSheet() {
    */
   const printSheet = () => {
     if (!issued) return;
-    api.put(`/api/receipts/${receipt.id}/bill`, {
-      bill_name: cust.name,
-      bill_tax_id: cust.taxId,
-      bill_address: cust.address,
-      bill_phone: cust.phone,
-      bill_party_id: partyId,
-    }).catch(() => {});
+    if (billOpened.current || !receipt.bill_name) {
+      api.put(`/api/receipts/${receipt.id}/bill`, {
+        bill_name: cust.name,
+        bill_tax_id: cust.taxId,
+        bill_address: cust.address,
+        bill_phone: cust.phone,
+        bill_party_id: partyId,
+      }).catch(() => {});
+      billOpened.current = false;
+      setEditing(false);
+    }
     /* ทุกการกดพิมพ์ = หนึ่งแถวในประวัติ (REQUESTED) · ไม่ได้ออกเลขใหม่ ไม่แตะยอด/วันที่ */
     const req = api.post(`/api/receipts/${receipt.id}/prints`, { client_key: newKey() })
       .then((log) => {
@@ -632,9 +638,9 @@ function ReceiptSheet() {
           type="button"
           className="btn btn-light"
           aria-expanded={editing}
-          onClick={() => setEditing((v) => !v)}
+          onClick={() => { billOpened.current = true; setEditing((v) => !v); }}
         >
-          <Icon name="pencil" /> กรอกข้อมูลลูกค้า
+          <Icon name="pencil" /> เปิดการแก้ไข
         </button>
 
         {/* ออกใบเสร็จมักเป็นขั้นท้าย ๆ ของเคส — พากลับไปเคสได้ตรง ไม่ต้องผ่านหน้าออเดอร์

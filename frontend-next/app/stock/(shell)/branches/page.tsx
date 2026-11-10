@@ -233,7 +233,7 @@ function BranchCard({
         actions={
           mayEdit ? (
             <button type="button" className="btn btn--small" onClick={() => setEditing(true)}>
-              แก้ไขสาขา
+              เปิดการแก้ไขสาขา
             </button>
           ) : undefined
         }

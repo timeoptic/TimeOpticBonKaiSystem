@@ -83,10 +83,11 @@ async function openSales(page) {
   });
   await page.goto(`/cases/detail/?id=${BASE_CASE.id}&step=sales`);
   await expect(page.getByText('เลนส์ — Lens')).toBeVisible({ timeout: 30_000 });
+  await page.getByRole('button', { name: 'เปิดการแก้ไข', exact: true }).first().click();
   return calls;
 }
 
-const side = (page, legend) => page.locator('fieldset').filter({ has: page.getByText(legend, { exact: true }) });
+const side = (page, legend) => page.locator('fieldset fieldset').filter({ has: page.getByText(legend, { exact: true }) });
 const rowsOf = (box) => box.getByRole('radio');
 
 async function chooseCoating(page, box, value) {

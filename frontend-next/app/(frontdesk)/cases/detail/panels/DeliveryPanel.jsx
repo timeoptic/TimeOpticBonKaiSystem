@@ -441,7 +441,7 @@ export function DeliveryPanel({ c, reload }) {
                 <Row style={{ gap: 8 }}>
                   <span>{fmtDateTime(d.delivered_at)}</span>
                   <button type="button" className="btn btn-sm btn-light" onClick={() => setEditingDate(true)}>
-                    <Icon name="pencil" /> แก้ไข
+                    <Icon name="pencil" /> เปิดการแก้ไข
                   </button>
                 </Row>
               ) : fmtDateTime(d.delivered_at)],

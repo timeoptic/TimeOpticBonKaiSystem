@@ -75,6 +75,7 @@ async function openPayment(page, actor) {
   });
   await page.goto(`/cases/detail/?id=${CASE.id}&step=payment`);
   await expect(page.getByRole('heading', { name: 'ประวัติการรับเงิน' })).toBeVisible({ timeout: 20_000 });
+  await page.getByRole('button', { name: 'ไว้ทีหลัง' }).click({ timeout: 4000 }).catch(() => {});
   return { puts };
 }
 
@@ -85,18 +86,18 @@ test.describe('ประวัติการรับเงิน — แก้
   test('พนักงานขายไม่เห็นปุ่มแก้ไข', async ({ page }) => {
     await openPayment(page, SALES);
     await expect(feed(page).locator('.pay-ev')).toHaveCount(2);
-    await expect(feed(page).getByRole('button', { name: 'แก้ไข' })).toHaveCount(0);
+    await expect(feed(page).getByRole('button', { name: 'เปิดการแก้ไข', exact: true })).toHaveCount(0);
   });
 
   test('แอดมินเห็นปุ่มแก้ไข เฉพาะรายการที่ยังไม่ยกเลิก', async ({ page }) => {
     await openPayment(page, ADMIN);
-    await expect(feed(page).getByRole('button', { name: 'แก้ไข' })).toHaveCount(1);
-    await expect(feed(page).locator('.pay-ev.cancelled').getByRole('button', { name: 'แก้ไข' })).toHaveCount(0);
+    await expect(feed(page).getByRole('button', { name: 'เปิดการแก้ไข', exact: true })).toHaveCount(1);
+    await expect(feed(page).locator('.pay-ev.cancelled').getByRole('button', { name: 'เปิดการแก้ไข', exact: true })).toHaveCount(0);
   });
 
   test('แอดมินแก้จำนวนและวิธีชำระ — ต้องใส่เหตุผล ยืนยันสรุปก่อน แล้วส่งค่าที่แก้', async ({ page }) => {
     const { puts } = await openPayment(page, ADMIN);
-    await feed(page).getByRole('button', { name: 'แก้ไข' }).click();
+    await feed(page).getByRole('button', { name: 'เปิดการแก้ไข', exact: true }).click();
 
     const dlg = editDialog(page);
     await expect(dlg).toBeVisible();
@@ -129,7 +130,7 @@ test.describe('ประวัติการรับเงิน — แก้
 
   test('แก้จนเกินยอดคงเหลือ ปุ่มบันทึกปิด', async ({ page }) => {
     const { puts } = await openPayment(page, ADMIN);
-    await feed(page).getByRole('button', { name: 'แก้ไข' }).click();
+    await feed(page).getByRole('button', { name: 'เปิดการแก้ไข', exact: true }).click();
     const dlg = editDialog(page);
     await dlg.locator('#pe-reason').fill('ทดสอบ');
     /* ออเดอร์ 950 และไม่มีรายการอื่นที่ยังไม่ยกเลิก — แก้ได้ไม่เกิน 950 */

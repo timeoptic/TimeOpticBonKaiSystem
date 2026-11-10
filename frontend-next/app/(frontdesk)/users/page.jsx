@@ -142,7 +142,7 @@ function UsersInner() {
                 render: (u) => (
                   <Row>
                     <button type="button" className="btn btn-sm btn-light" onClick={() => setEditing(u)}>
-                      <Icon name="pencil" /> แก้ไข
+                      <Icon name="pencil" /> เปิดการแก้ไข
                     </button>
                     {/* รีเซ็ตอยู่นอกกล่องแก้ไข เพราะมันเป็นงานที่มาเป็นเรื่องของ
                         ตัวเอง — "โทรมาบอกว่าลืมรหัส" ไม่ได้มาพร้อมการแก้อย่างอื่น */}

@@ -25,6 +25,7 @@ import { custName, fmtDate } from '../../../../../lib/format.js';
 import { birthOrAge } from '../../../../../lib/customerAge.js';
 import { emptyFields, missingText } from '../../../../../lib/customerFill.js';
 import { Icon } from '../../../../../components/Icon.jsx';
+import { EditLockBar, LockFieldset, useEditLock } from '../../../../../components/EditLock.jsx';
 import { CustomerFillDialog } from './CustomerFillDialog.jsx';
 
 export function ReceptionPanel({ c, reload }) {
@@ -34,19 +35,23 @@ export function ReceptionPanel({ c, reload }) {
   const [filling, setFilling] = useState(false);
   const missing = missingText(c);
   const canFill = emptyFields(c).length > 0;
+  const lock = useEditLock(true);
 
   const save = async (e) => {
     e.preventDefault();
     try {
       await api.put('/api/cases/' + c.id, { ...c, ...readForm(e.currentTarget) });
       ok('บันทึกข้อมูลการรับเคสแล้ว');
+      lock.relock();
       reload();
     } catch (ex) { err(ex); }
   };
 
   return (
     <div className="stack">
-      <form onSubmit={save}>
+      <EditLockBar lock={lock} what="ข้อมูลการรับเคส" />
+      <form key={lock.formKey} onSubmit={save}>
+        <LockFieldset locked={lock.locked}>
         <FormGrid>
           <Field label="พนักงานผู้รับเรื่อง">
             <EmployeeSelect name="received_by" defaultValue={c.received_by || ''} />
@@ -85,9 +90,12 @@ export function ReceptionPanel({ c, reload }) {
         <Field label="บันทึกการรับเรื่อง" className="full">
           <textarea name="reception_note" defaultValue={c.reception_note || ''} />
         </Field>
-        <FormActions>
-          <button className="btn btn-light" type="submit"><Icon name="save" /> บันทึกข้อมูลการรับเคส</button>
-        </FormActions>
+        </LockFieldset>
+        {lock.locked ? null : (
+          <FormActions>
+            <button className="btn btn-light" type="submit"><Icon name="save" /> บันทึกข้อมูลการรับเคส</button>
+          </FormActions>
+        )}
       </form>
 
       <Kv

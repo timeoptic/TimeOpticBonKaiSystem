@@ -10,6 +10,7 @@ import { DataTable } from '../../../components/DataTable.jsx';
 import { Pager } from '../../../components/Pager.jsx';
 import { PAGE_SIZES } from '../../../lib/pager.js';
 import { Icon } from '../../../components/Icon.jsx';
+import { EditGate } from '../../../components/EditLock.jsx';
 import { AdminOnly } from '../../../components/AdminOnly.jsx';
 
 /* เจ้าที่เลิกสั่งแล้วถูกปิดใช้งาน ไม่ได้ลบทิ้ง ของเก่าจะได้ยังอ้างชื่อได้ รายชื่อ
@@ -163,9 +164,13 @@ function SupplierListInner() {
               mobile: 'extra',
               cls: 'nowrap',
               render: (r) => (
-                <button type="button" className="btn btn-sm btn-light" onClick={() => toggle(r)}>
-                  {Number(r.active) ? 'ปิดใช้งาน' : 'เปิดใช้งาน'}
-                </button>
+                <EditGate>
+                  {(close) => (
+                    <button type="button" className="btn btn-sm btn-light" onClick={() => { close(); toggle(r); }}>
+                      {Number(r.active) ? 'ปิดใช้งาน' : 'เปิดใช้งาน'}
+                    </button>
+                  )}
+                </EditGate>
               ),
             },
           ]}

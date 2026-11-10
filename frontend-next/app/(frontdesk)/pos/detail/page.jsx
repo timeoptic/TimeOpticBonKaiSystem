@@ -12,6 +12,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Icon } from '../../../../components/Icon.jsx';
+import { EditGate } from '../../../../components/EditLock.jsx';
 
 import { useAsync, useNowLocal } from '../../../../lib/hooks.js';
 import { fmtDateTime, money, toStamp } from '../../../../lib/format.js';
@@ -212,7 +213,7 @@ function PosDetail() {
       mobile: 'meta',
       render: (r) => (r.cancelled_at ? null : (
         <button type="button" className="btn btn-sm btn-light" onClick={() => setEditing(r)}>
-          <Icon name="pencil" /> แก้ไข
+          <Icon name="pencil" /> เปิดการแก้ไข
         </button>
       )),
     }]
@@ -361,11 +362,15 @@ function PosDetail() {
       {sale.status !== 'void' && (
         <Card title="การจัดการ">
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            <button type="button" className="pos-btn primary" style={{ width: 'auto', margin: 0, padding: '12px 20px', fontSize: 15 }} disabled={busy} onClick={toggleDeliver}>
-              {sale.fulfillment_status === 'delivered'
-                ? 'ยกเลิกการส่งมอบ'
-                : 'ทำเครื่องหมายว่าลูกค้ารับสินค้าแล้ว'}
-            </button>
+            <EditGate small={false} what="การรับสินค้า">
+              {(close) => (
+                <button type="button" className="pos-btn primary" style={{ width: 'auto', margin: 0, padding: '12px 20px', fontSize: 15 }} disabled={busy} onClick={() => { close(); toggleDeliver(); }}>
+                  {sale.fulfillment_status === 'delivered'
+                    ? 'ยกเลิกการส่งมอบ'
+                    : 'ทำเครื่องหมายว่าลูกค้ารับสินค้าแล้ว'}
+                </button>
+              )}
+            </EditGate>
             {/* ยกเลิกใบขายคือการลบเงินออกจากยอดของวัน — แอดมินขึ้นไปเท่านั้น
                 และ API ตรวจซ้ำอีกชั้น การซ่อนปุ่มเป็นแค่มารยาท */}
             {inSystemZone(actor) && (

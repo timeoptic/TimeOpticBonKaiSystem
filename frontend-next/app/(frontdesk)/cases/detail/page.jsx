@@ -206,12 +206,14 @@ function SalesUnconfirmedNotice({ c, goSales, reload }) {
 function RushToggle({ c, reload }) {
   const { ok, err } = useToast();
   const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState(false);
   const rush = !!Number(c.is_rush);
 
   const toggle = async () => {
     setBusy(true);
     try {
       await api.put('/api/cases/' + c.id, { ...c, is_rush: rush ? 0 : 1 });
+      setOpen(false);
       ok(rush ? 'เอาออกจากงานด่วนแล้ว' : 'ตั้งเป็นงานด่วนแล้ว');
       reload();
     } catch (e) {
@@ -220,6 +222,17 @@ function RushToggle({ c, reload }) {
       setBusy(false);
     }
   };
+
+  if (!open) {
+    return (
+      <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+        {rush ? <span className="rush-toggle on"><Icon name="flame" /> งานด่วน</span> : null}
+        <button type="button" className="btn btn-sm btn-light" onClick={() => setOpen(true)}>
+          <Icon name="lock" /> เปิดการแก้ไขงานด่วน
+        </button>
+      </span>
+    );
+  }
 
   return (
     <button

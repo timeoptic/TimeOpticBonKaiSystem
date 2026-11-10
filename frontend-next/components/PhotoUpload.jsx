@@ -16,7 +16,7 @@ import { Lightbox } from './Lightbox.jsx';
    sentIds = id รูปที่ส่งออกไปแล้ว ขึ้น ✓ เขียวที่มุมรูปย่อ (เฉพาะขั้นวัด Center) */
 export function PhotoUpload({
   caseId, kind = 'other', centeringId = null, paymentId = null, takenBy = null, max = null,
-  actions = null, actionsHint = null, onPhotos = null, sentIds = null,
+  actions = null, actionsHint = null, onPhotos = null, sentIds = null, locked = false,
 }) {
   const { ok, err } = useToast();
   const confirm = useConfirm();
@@ -90,7 +90,7 @@ export function PhotoUpload({
   };
 
   const addButton = (
-    <button type="button" className="btn btn-sm btn-light" onClick={pick} disabled={full}>
+    <button type="button" className="btn btn-sm btn-light" onClick={pick} disabled={full || locked}>
       <Icon name="camera" /> เพิ่มรูป
     </button>
   );
@@ -153,7 +153,7 @@ export function PhotoUpload({
                   <Icon name="check" />
                 </span>
               ) : null}
-              <button type="button" className="photo-thumb-del" onClick={() => remove(p)}><Icon name="x" /></button>
+              {locked ? null : <button type="button" className="photo-thumb-del" onClick={() => remove(p)}><Icon name="x" /></button>}
             </div>
           ))}
         </div>

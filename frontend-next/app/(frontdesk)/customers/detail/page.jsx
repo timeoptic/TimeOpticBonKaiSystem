@@ -59,7 +59,7 @@ function CustomerDetailInner() {
                 ไม่ใช่ใบลอย ๆ ที่ไม่ผูกกับงานไหน */}
             <Link className="btn btn-ghost" href={`/cases/new?customer=${c.id}`}><Icon name="board" /> เปิดเคส</Link>
             <Link className="btn btn-ghost" href={`/orders/new?customer=${c.id}`}><Icon name="glasses" /> เปิดออเดอร์</Link>
-            <Link className="btn btn-ghost" href={`/customers/edit?id=${c.id}`}><Icon name="pencil" /> แก้ไข</Link>
+            <Link className="btn btn-ghost" href={`/customers/edit?id=${c.id}`}><Icon name="pencil" /> เปิดการแก้ไข</Link>
           </>
         )}
       />

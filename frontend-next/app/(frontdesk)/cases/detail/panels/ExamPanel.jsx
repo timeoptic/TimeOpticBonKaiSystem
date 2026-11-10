@@ -44,6 +44,7 @@ import { RxSafetyDialog } from '../../../../../components/RxSafetyDialog.jsx';
 import { evaluate as evaluateRx } from '../../../../../lib/rxSafety.js';
 import { useRxSafety } from '../../../../../lib/useRxSafety.js';
 import { PhotoUpload } from '../../../../../components/PhotoUpload.jsx';
+import { EditLockBar, useEditLock } from '../../../../../components/EditLock.jsx';
 
 const HEALTH = [
   ['health_diabetes', 'เบาหวาน'], ['health_bp', 'ความดัน'], ['health_heart', 'โรคหัวใจ'],
@@ -369,6 +370,8 @@ export function ExamPanel({ c, reload }) {
   const [adjustReason, setAdjustReason] = useState(() => readFinalDraft(c.id, finalRow)?.adjustReason ?? (finalRow?.adjust_reason || ''));
   const [pickHistory, setPickHistory] = useState(false);
   const started = useRef(false);
+  /* ยังไม่เคยบันทึกร่าง = กรอกได้เลย · ขั้นที่ยืนยันแล้วรวมอยู่ใน lock.locked */
+  const lock = useEditLock(!!(draftRow || oldRow || finalRow));
 
   /* นาฬิกาของช่อง "วันที่วัด" — เดินเฉพาะตอนที่ยังไม่มีแถวบันทึกไว้ พอบันทึกแล้ว
      ค่าที่แสดงมาจากฐาน ไม่ใช่จากนาฬิกา */
@@ -390,7 +393,7 @@ export function ExamPanel({ c, reload }) {
       setFinalSource(finalSourceOf(finalRow));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draftRow, oldRow, finalRow]);
+  }, [draftRow, oldRow, finalRow, lock.formKey]);
 
   /* the customer's earlier rounds — where "ดึงจากประวัติ" copies from */
   const { data: sessions } = useAsync(
@@ -634,6 +637,7 @@ export function ExamPanel({ c, reload }) {
       await api.post(`/api/cases/${c.id}/processes/exam/start`, {});
     }
     ok('บันทึกข้อมูลวัดสายตาแล้ว');
+    lock.relock();
     reload();
     return { measured, old };
   };
@@ -714,11 +718,11 @@ export function ExamPanel({ c, reload }) {
   useEffect(() => {
     if (!register) return undefined;
     register({
-      saveDraft: () => fns.current.saveDraft(),
+      ...(lock.locked ? {} : { saveDraft: () => fns.current.saveDraft() }),
       beforeComplete: () => fns.current.beforeComplete(),
     });
     return () => register({});
-  }, [register]);
+  }, [register, lock.locked]);
 
   /* คอลัมน์ = ค่าสายตาแต่ละช่อง, แถว = ที่มาของค่า อ่านเทียบ เก่า -> วัดได้ -> ที่ใช้จริง ได้ทีละบรรทัด
      เรียงตาม "ค่า" ก่อน แล้วค่อยแยกตา (SPH ทั้งคู่ แล้วค่อย CYL ทั้งคู่) ให้ลำดับตรงกับ
@@ -737,7 +741,8 @@ export function ExamPanel({ c, reload }) {
 
   return (
     <div className="exam-ws-wrap">
-      <fieldset className="exam-ws" disabled={confirmed}>
+      <EditLockBar lock={lock} what="ผลวัดสายตา" />
+      <fieldset className="exam-ws" disabled={lock.locked}>
         <Section n="1" title="ค่าสายตาเปล่า / Visual Acuity" hint="ค่าการมองเห็นก่อนใส่แว่น และระยะที่ลูกค้าใช้สายตาเป็นประจำ">
           {/* ตาเปล่าแยกซ้ายขวาเพราะสองตาเห็นไม่เท่ากัน ส่วนระยะที่ใช้สายตาเป็นระยะจาก
               หน้าไปหนังสือหรือจอ — ตัวเดียวต่อคน ไม่ใช่ต่อตา จึงไม่แยก R / L */}
@@ -1050,10 +1055,10 @@ export function ExamPanel({ c, reload }) {
           แนบเพิ่มหลังยืนยันได้ เพราะรูปไม่ได้เปลี่ยนค่าสายตาที่ยืนยันไว้
           kind='exam' แยกจากรูปวัด Center และสลิป — กล่องดึงด้วย case_id + kind */}
       <Section n="6" title="รูปภาพ / Photos" hint="ใบพิมพ์จากเครื่องวัด รูปแว่นเดิม หรือเอกสารที่ลูกค้านำมา — อัปโหลดทันที ไม่ต้องกดบันทึก Draft">
-        <PhotoUpload caseId={c.id} kind="exam" takenBy={form.performed_by || null} />
+        <PhotoUpload caseId={c.id} kind="exam" takenBy={form.performed_by || null} locked={lock.locked} />
       </Section>
 
-      <fieldset className="exam-ws" disabled={confirmed}>
+      <fieldset className="exam-ws" disabled={lock.locked}>
         {/* ช่องเดียว — "บันทึกการตรวจ" กับ "หมายเหตุอื่น ๆ" เป็นคำถามเดียวกันถามสองครั้ง
             คนกรอกต้องเดาทุกครั้งว่าอันไหนควรลงช่องไหน คอลัมน์ notes ยังอยู่และของเก่า
             ยังอ่านออกที่ประวัติการตรวจ แค่ไม่มีที่พิมพ์ใหม่แล้ว */}
