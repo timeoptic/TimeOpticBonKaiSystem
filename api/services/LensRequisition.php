@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/TimeOpticRequests.php';
+
 /**
  * กติกาใบเบิกเลนส์ของ Bewell — แยกจาก route เพื่อเทสต์ได้โดยไม่ต้องผ่าน HTTP
  *
@@ -271,7 +273,8 @@ final class LensRequisition
     {
         $col  = $by === 'order' ? 'order_id' : 'case_id';
         $rows = $q->all(
-            "SELECT id, req_no, case_id, status FROM lens_requisitions
+            "SELECT id, req_no, case_id, status, timeoptic_req_id, timeoptic_req_code, timeoptic_status
+               FROM lens_requisitions
               WHERE `$col` = ? AND status <> 'cancelled' FOR UPDATE",
             $id
         );
@@ -297,12 +300,17 @@ final class LensRequisition
                 mb_substr($reason, 0, 255),
                 (int) $r['id']
             );
+            /* ใบที่ส่งเข้าคลัง TimeOptic แล้ว — ยกเลิกคำขอฝั่งนั้นตามไปด้วย (ไม่สำเร็จก็ไม่ขวาง) */
+            $tNote = '';
+            if ($r['timeoptic_req_id'] && $r['timeoptic_status'] !== 'cancelled' && class_exists('TimeOpticRequests')) {
+                $tNote = TimeOpticRequests::cancelLinked($q, (int) $r['id'], (int) $r['timeoptic_req_id'], (string) $r['timeoptic_req_code']);
+            }
             logEvent($q, (int) $r['case_id'], [
                 'action'      => 'lens_requisition_status',
                 'entity'      => 'lens_requisition',
                 'entity_id'   => (int) $r['id'],
                 'employee_id' => $employee,
-                'note'        => $r['req_no'] . ': ' . self::LABEL[$r['status']] . ' → ยกเลิก · ' . $reason,
+                'note'        => mb_substr($r['req_no'] . ': ' . self::LABEL[$r['status']] . ' → ยกเลิก · ' . $reason . $tNote, 0, 250),
                 'payload'     => ['from' => $r['status'], 'to' => 'cancelled', 'source' => $source],
             ]);
             $done++;

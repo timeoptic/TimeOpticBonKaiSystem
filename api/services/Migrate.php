@@ -1000,6 +1000,13 @@ final class Migrate
                 'cancel_source' => "varchar(30) DEFAULT NULL COMMENT 'manual | order_deleted | case_cancelled'",
                 /* เลขออเดอร์ ณ วันที่ออกใบ — ลบออเดอร์ทิ้งแล้ว order_id เป็น NULL แต่ยังย้อนดูได้ว่าใบไหน */
                 'order_ref'     => 'varchar(30) DEFAULT NULL',
+                /* คำขอที่ส่งเข้า "คำขอจากสาขา" ของคลัง TimeOptic (services/TimeOpticRequests.php) —
+                   NULL = ยังไม่ได้ส่ง · สถานะ/หมายเหตุเป็นสำเนาล่าสุดที่ดึงมา ไม่ใช่ของจริง */
+                'timeoptic_req_id'    => 'int(10) unsigned DEFAULT NULL',
+                'timeoptic_req_code'  => 'varchar(20) DEFAULT NULL',
+                'timeoptic_status'    => "varchar(20) DEFAULT NULL COMMENT 'pending | approved | rejected | cancelled'",
+                'timeoptic_note'      => 'varchar(400) DEFAULT NULL',
+                'timeoptic_synced_at' => 'datetime DEFAULT NULL',
             ])
         );
         $added = array_merge($added, self::addColumns('lens_catalog', [

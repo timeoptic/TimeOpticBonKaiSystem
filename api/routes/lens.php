@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../services/LensRequisition.php';
+require_once __DIR__ . '/../services/TimeOpticRequests.php';
 
 /**
  * ใบเบิกเลนส์ของ Bewell
@@ -39,10 +40,29 @@ function lensReqLoad(int $id): array
     $r['rx_snapshot']  = $r['rx_snapshot'] ? json_decode($r['rx_snapshot'], true) : null;
     $r['status_label'] = LensRequisition::LABEL[$r['status']] ?? $r['status'];
     $r['cancel_source_label'] = LensRequisition::CANCEL_SOURCE[$r['cancel_source'] ?? ''] ?? null;
+    $r['timeoptic_enabled']      = TimeOpticRequests::enabled();
+    $r['timeoptic_status_label'] = TimeOpticRequests::LABEL[$r['timeoptic_status'] ?? ''] ?? null;
     $r['items']        = Db::all(
         "SELECT * FROM lens_requisition_items WHERE requisition_id = ? ORDER BY FIELD(eye, 'R', 'L', 'pair'), id",
         $id
     );
+    return $r;
+}
+
+/** แบบเดียวกับ lensReqLoad แต่อ่านในทรานแซกชันที่ล็อกแถวไว้ — ใช้ตอนส่งเข้าคลัง TimeOptic */
+function lensReqLoadTx(Tx $q, int $id): array
+{
+    $r = $q->get(
+        "SELECT lr.*, c.case_code, CONCAT_WS(' ', cu.first_name, cu.last_name) AS customer_name,
+                COALESCE(o.invoice_code, lr.order_ref) AS invoice_code
+           FROM lens_requisitions lr
+           JOIN cases c      ON c.id = lr.case_id
+           JOIN customers cu ON cu.id = lr.customer_id
+           LEFT JOIN custom_orders o ON o.id = lr.order_id
+          WHERE lr.id = ?",
+        $id
+    );
+    $r['items'] = $q->all('SELECT * FROM lens_requisition_items WHERE requisition_id = ? ORDER BY id', $id);
     return $r;
 }
 
@@ -61,6 +81,7 @@ GET('/api/lens-requisitions', function (array $req) {
     }
     $rows = Db::all(
         "SELECT lr.id, lr.req_no, lr.case_id, lr.status, lr.total, lr.created_at, lr.used_at,
+                lr.timeoptic_req_code, lr.timeoptic_status, lr.timeoptic_note,
                 lr.rx_snapshot IS NOT NULL AS has_rx, c.case_code,
                 CONCAT_WS(' ', cu.first_name, cu.last_name) AS customer_name,
                 (SELECT GROUP_CONCAT(CONCAT(i.eye, ': ', CONCAT_WS(' ', i.brand, i.design, i.lens_index, i.coating))
@@ -76,9 +97,36 @@ GET('/api/lens-requisitions', function (array $req) {
     foreach ($rows as &$r) {
         $r['has_rx']       = (bool) $r['has_rx'];
         $r['status_label'] = LensRequisition::LABEL[$r['status']] ?? $r['status'];
+        $r['timeoptic_status_label'] = TimeOpticRequests::LABEL[$r['timeoptic_status'] ?? ''] ?? null;
     }
     unset($r);
     return $rows;
+});
+
+/**
+ * ดึงสถานะล่าสุดของคำขอที่ส่งเข้าคลัง TimeOptic มาเก็บ — หน้ารายการใบเบิกเรียกตอนเปิด
+ * คลังส่งมา 50 คำขอล่าสุดของบัญชีเชื่อม ใบที่เก่ากว่านั้นคงสถานะที่ดึงไว้ครั้งสุดท้าย
+ */
+POST('/api/lens-requisitions/timeoptic-refresh', function () {
+    if (!TimeOpticRequests::enabled()) {
+        return ['enabled' => false, 'updated' => 0];
+    }
+    $mine = TimeOpticRequests::mine();
+    $n    = 0;
+    foreach (Db::all('SELECT id, timeoptic_req_id, timeoptic_status, timeoptic_note FROM lens_requisitions WHERE timeoptic_req_id IS NOT NULL') as $r) {
+        $t = $mine[(int) $r['timeoptic_req_id']] ?? null;
+        if (!$t || ($t['status'] === $r['timeoptic_status'] && $t['note'] === $r['timeoptic_note'])) {
+            continue;
+        }
+        Db::run(
+            'UPDATE lens_requisitions SET timeoptic_status = ?, timeoptic_note = ?, timeoptic_synced_at = NOW() WHERE id = ?',
+            $t['status'],
+            $t['note'],
+            (int) $r['id']
+        );
+        $n++;
+    }
+    return ['enabled' => true, 'updated' => $n];
 });
 
 GET('/api/lens-requisitions/:id', fn(array $req) => lensReqLoad((int) $req['params']['id']));
@@ -251,6 +299,28 @@ POST('/api/lens-requisitions/:id/status', function (array $req) {
         if ($to === 'cancelled' && $reason === '') {
             bad('ต้องระบุเหตุผลที่ยกเลิกใบเบิก');
         }
+        /* คลัง TimeOptic — ออกจาก "รอเบิก" ครั้งแรก = ส่งคำขอเข้า "คำขอจากสาขา" ของคลัง
+           ส่งไม่ผ่าน = สถานะไม่ขยับ (โยนต่อ ทรานแซกชันถอย) ใบจึงไม่ค้าง "ส่งแล้ว" ทั้งที่ไม่ได้ส่ง
+           แถวถูกล็อก FOR UPDATE อยู่ กดซ้ำพร้อมกันสองเครื่องจึงส่งได้ครั้งเดียว */
+        $sent = null;
+        if (TimeOpticRequests::enabled() && $r['status'] === 'pending' && $to !== 'cancelled' && !$r['timeoptic_req_id']) {
+            $full = lensReqLoadTx($q, $id);
+            $sent = TimeOpticRequests::create(TimeOpticRequests::basket($full['items']), TimeOpticRequests::note($full));
+            $q->run(
+                'UPDATE lens_requisitions SET timeoptic_req_id = ?, timeoptic_req_code = ?, timeoptic_status = ?,
+                        timeoptic_note = NULL, timeoptic_synced_at = NOW() WHERE id = ?',
+                $sent['id'],
+                $sent['code'],
+                $sent['status'],
+                $id
+            );
+        }
+        /* ยกเลิกใบที่ส่งเข้าคลังแล้ว — คำขอยังรอตรวจก็ยกเลิกตามไปด้วย · คลังตัดไปแล้วยกเลิกฝั่งนี้ได้
+           แต่ของออกจากคลังไปแล้ว ไทม์ไลน์บอกให้คุยกับ TimeOptic เรื่องคืนของ */
+        $tNote = '';
+        if ($to === 'cancelled' && $r['timeoptic_req_id'] && $r['timeoptic_status'] !== 'cancelled') {
+            $tNote = TimeOpticRequests::cancelLinked($q, $id, (int) $r['timeoptic_req_id'], (string) $r['timeoptic_req_code']);
+        }
         $col = LensRequisition::STAMP[$to];
         $q->run(
             "UPDATE lens_requisitions SET status = ?, `$col` = NOW(), cancel_reason = ?,
@@ -266,9 +336,15 @@ POST('/api/lens-requisitions/:id/status', function (array $req) {
             'entity'      => 'lens_requisition',
             'entity_id'   => $id,
             'employee_id' => $employee,
-            'note'        => $r['req_no'] . ': ' . LensRequisition::LABEL[$r['status']] . ' → ' . LensRequisition::LABEL[$to]
-                . ($reason !== '' ? ' · ' . $reason : ''),
-            'payload'     => ['from' => $r['status'], 'to' => $to],
+            'note'        => mb_substr(
+                $r['req_no'] . ': ' . LensRequisition::LABEL[$r['status']] . ' → ' . LensRequisition::LABEL[$to]
+                . ($reason !== '' ? ' · ' . $reason : '')
+                . ($sent ? ' · ส่งคำขอเข้าคลัง TimeOptic ' . $sent['code'] : '')
+                . $tNote,
+                0,
+                250
+            ),
+            'payload'     => ['from' => $r['status'], 'to' => $to, 'timeoptic' => $sent['code'] ?? null],
         ]);
     });
     return lensReqLoad($id);

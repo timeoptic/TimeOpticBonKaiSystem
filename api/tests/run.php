@@ -72,6 +72,10 @@ require __DIR__ . '/harness.php';
 
 Db::configure($config['db']);
 
+/* เทสต์ห้ามยิงคลัง TimeOptic จริง แม้ .env ของเครื่องนี้ตั้งการเชื่อมไว้ — ปิดไว้ก่อน
+   ไฟล์ที่ทดสอบการเชื่อม (98-lens-timeoptic) ชี้ไปคลังปลอมของตัวเอง */
+putenv('TIMEOPTIC_STOCK_API=');
+
 $filter = $argv[1] ?? null;
 
 $files = glob(__DIR__ . '/*.test.php') ?: [];

@@ -46,3 +46,11 @@ export function nextActions(status, hasRx) {
 export const lensSpecText = (it) => [
   it.brand, it.lens_type, it.design, it.lens_index, it.coating, it.option_name, it.photochromic, it.color,
 ].filter(Boolean).join(' · ');
+
+/** สถานะคำขอฝั่งคลัง TimeOptic ("คำขอจากสาขา") → สีของ Badge · ตรงกับ TimeOpticRequests::LABEL */
+export const TIMEOPTIC_TONE = {
+  pending: 'warn',
+  approved: 'ok',
+  rejected: 'danger',
+  cancelled: 'gray',
+};

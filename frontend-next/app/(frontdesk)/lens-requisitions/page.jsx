@@ -4,7 +4,7 @@
  * แท็บสถานะอยู่ใน URL (?status=) ลิงก์ที่ส่งต่อกันจึงเปิดมาเจอกลุ่มเดียวกัน
  * กดแถวไปแท็บ "ใบเบิกเลนส์" ของเคสนั้น ซึ่งเป็นที่กดเปลี่ยนสถานะ
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api } from '../../../lib/apiClient.js';
@@ -12,7 +12,7 @@ import { useAsync, useDebounced } from '../../../lib/hooks.js';
 import { Badge, Card, Field, LinkTabs, Loading, PageHead, Toolbar } from '../../../components/ui.jsx';
 import { QueryParamPage } from '../../../components/QueryParamPage.jsx';
 import { fmtDateTime, money } from '../../../lib/format.js';
-import { STATUS_LABEL, STATUS_TONE } from '../../../lib/lens/requisition.js';
+import { STATUS_LABEL, STATUS_TONE, TIMEOPTIC_TONE } from '../../../lib/lens/requisition.js';
 
 const TABS = [
   ['/lens-requisitions?status=all', 'ทั้งหมด'],
@@ -26,10 +26,17 @@ function LensRequisitionListInner() {
   const [term, setTerm] = useState('');
   const q = useDebounced(term);
 
-  const { data: rows, loading, error } = useAsync(
+  const { data: rows, loading, error, reload } = useAsync(
     () => api.get('/api/lens-requisitions', { status: status === 'all' ? '' : status, q: q.trim() }),
     [status, q]
   );
+
+  /* ดึงสถานะคำขอจากคลัง TimeOptic มาเก็บตอนเปิดหน้า — พลาดก็ไม่เป็นไร ตารางแสดงค่าที่ดึงไว้ล่าสุด */
+  useEffect(() => {
+    api.post('/api/lens-requisitions/timeoptic-refresh', {})
+      .then((res) => { if (res?.updated) reload(); })
+      .catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <>
@@ -60,6 +67,7 @@ function LensRequisitionListInner() {
                   <th>เลนส์</th>
                   <th className="num">ยอด</th>
                   <th>สถานะ</th>
+                  <th>คลัง TimeOptic</th>
                   <th>ออกใบ</th>
                 </tr>
               </thead>
@@ -83,6 +91,15 @@ function LensRequisitionListInner() {
                     </td>
                     <td className="num">{money(r.total)}</td>
                     <td><Badge kind={STATUS_TONE[r.status]}>{r.status_label}</Badge></td>
+                    <td>
+                      {r.timeoptic_req_code ? (
+                        <>
+                          {r.timeoptic_req_code}{' '}
+                          <Badge kind={TIMEOPTIC_TONE[r.timeoptic_status] || 'gray'}>{r.timeoptic_status_label}</Badge>
+                          {r.timeoptic_note ? <div className="muted">{r.timeoptic_note}</div> : null}
+                        </>
+                      ) : '—'}
+                    </td>
                     <td>{fmtDateTime(r.created_at)}</td>
                   </tr>
                 ))}

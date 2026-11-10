@@ -12,7 +12,7 @@ import { Badge, Card } from './ui.jsx';
 import { Icon } from './Icon.jsx';
 import { useToast } from './Toast.jsx';
 import { addPower, cylPower, fmtDateTime, money, rxNum, sphPower } from '../lib/format.js';
-import { EYE_LABEL, STATUS_TONE, lensSpecText, nextActions } from '../lib/lens/requisition.js';
+import { EYE_LABEL, STATUS_TONE, TIMEOPTIC_TONE, lensSpecText, nextActions } from '../lib/lens/requisition.js';
 
 const RX_COLS = [
   ['SPH', (rx, k) => sphPower(rx?.[`${k}_sphere`])],
@@ -99,7 +99,7 @@ export function LensRequisitionCard({ r, onChanged }) {
     setBusy(to);
     try {
       const next = await api.post(`/api/lens-requisitions/${r.id}/status`, { status: to, reason });
-      ok(`${r.req_no}: ${next.status_label}`);
+      ok(`${r.req_no}: ${next.status_label}${next.timeoptic_req_code && !r.timeoptic_req_code ? ` · ส่งคำขอ ${next.timeoptic_req_code} เข้าคลัง TimeOptic แล้ว` : ''}`);
       onChanged?.();
     } catch (ex) {
       err(ex);
@@ -138,6 +138,18 @@ export function LensRequisitionCard({ r, onChanged }) {
             {r.cancelled_by_name ? ` · โดย ${r.cancelled_by_name}` : ''}
             {r.cancel_source_label ? ` · ${r.cancel_source_label}` : ''}
             {r.cancel_reason ? ` · ${r.cancel_reason}` : ''}
+          </p>
+        ) : null}
+        {/* คำขอใน "คำขอจากสาขา" ของคลัง TimeOptic — ส่งเองตอนกดออกจาก "รอเบิก" ครั้งแรก */}
+        {r.timeoptic_req_code ? (
+          <p style={{ margin: 0 }}>
+            คลัง TimeOptic: <b>{r.timeoptic_req_code}</b>{' '}
+            <Badge kind={TIMEOPTIC_TONE[r.timeoptic_status] || 'gray'}>{r.timeoptic_status_label || r.timeoptic_status}</Badge>
+            {r.timeoptic_note ? <span className="muted"> · {r.timeoptic_note}</span> : null}
+          </p>
+        ) : r.timeoptic_enabled && r.status === 'pending' ? (
+          <p className="muted" style={{ margin: 0 }}>
+            กดเลื่อนสถานะจาก "รอเบิก" แล้ว ระบบจะส่งคำขอเบิกเลนส์เข้าคลัง TimeOptic ให้เอง
           </p>
         ) : null}
         <RxSnapshotTable rx={r.rx_snapshot} />
