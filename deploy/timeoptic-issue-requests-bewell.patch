@@ -1,0 +1,92 @@
+# แก้ที่รีโป TimeOpticDigitalSystem (ขึ้นเว็บจริงแล้ว 2026-11-10 04:43 UTC ทับรุ่น eeb6eb8 requests-table)
+# รีโปในเครื่องนี้ยังไม่มี eeb6eb8 (git fetch ค้าง) จึงยัง commit ฝั่งนั้นไม่ได้ — apply ไฟล์นี้หลังดึง eeb6eb8 มาแล้ว
+# ผล: บัญชีที่ admins.branch_id = 5335 (bewell-system) ส่งคำขอให้สาขา Bewell ได้ · คนตรวจเลือก/ยืนยันสาขา Bewell ได้
+--- a/stock/api/src/Service/IssueRequests.php
++++ b/stock/api/src/Service/IssueRequests.php
+@@ -33,7 +33,9 @@
+     private const BASKET_MAX = 20;
+ 
+     /**
+-     * สาขาที่ไม่ใช้ทางนี้ — Bewell (5335) มีระบบของตัวเองแยกต่างหาก (ร้านเลือก 27 ต.ค. 2026)
++     * สาขาที่ไม่อยู่ในฟอร์มของบัญชีสาขาทั่วไป — Bewell (5335) มีระบบของตัวเองแยกต่างหาก
++     * (ร้านเลือก 27 ต.ค. 2026) · ตั้งแต่ 10 พ.ย. 2026 ระบบ Bewell ส่งคำขอเข้ามาเองผ่านบัญชีที่
++     * `admins.branch_id` = 5335 (ดู `ownsExcluded`) และคนตรวจเลือก/ยืนยันสาขานี้ได้
+      */
+     private const NO_REQUESTS = [5335];
+ 
+@@ -52,7 +54,7 @@
+     public static function create(array $req, array $actor): array
+     {
+         Roles::require(Roles::requestIssue($actor['roles']), 'ส่งคำขอตัดเลนส์');
+-        $branch = self::branch($req['branch_id'] ?? null);
++        $branch = self::branch($req['branch_id'] ?? null, self::ownsExcluded($actor));
+ 
+         $kind = self::kind($req['kind'] ?? null);
+         $body = self::clean($kind, $req['body'] ?? null);
+@@ -81,7 +83,7 @@
+         [$find, $args] = self::search($q);
+ 
+         return [
+-            'branches'        => self::branches(),
++            'branches'        => self::branches(self::ownsExcluded($actor)),
+             'defaultBranchId' => $default === null ? null : (int) $default,
+             'requests'        => self::rows('r.requested_by = ?' . $find, [$id, ...$args], $q === null ? 50 : 200),
+         ];
+@@ -136,7 +138,7 @@
+                 'all'     => self::rows("1 = 1{$find}", $args, 200),
+                 default   => self::rows("r.status <> 'pending'{$find}", $args, 100),
+             },
+-            'branches' => self::branches(),
++            'branches' => self::branches(true),
+         ];
+     }
+ 
+@@ -186,7 +188,7 @@
+             $row = self::lockPending($pdo, $id);
+             $kind = (string) $row['kind'];
+             if (array_key_exists('branch_id', $req)) {
+-                $row['branch_id'] = self::branch($req['branch_id']);
++                $row['branch_id'] = self::branch($req['branch_id'], true);
+             }
+             $body = array_key_exists('body', $req)
+                 ? self::clean($kind, $req['body'])
+@@ -264,24 +266,35 @@
+      *
+      * @return list<array{id:int,name:string}>
+      */
+-    private static function branches(): array
++    private static function branches(bool $withExcluded = false): array
+     {
+         $out = [];
+         foreach (Db::all('SELECT id, name FROM branches WHERE is_active = 1 ORDER BY name') as $b) {
+-            if (!in_array((int) $b['id'], self::NO_REQUESTS, true)) {
++            if ($withExcluded || !in_array((int) $b['id'], self::NO_REQUESTS, true)) {
+                 $out[] = ['id' => (int) $b['id'], 'name' => (string) $b['name']];
+             }
+         }
+         return $out;
+     }
+ 
+-    private static function branch(mixed $raw): int
++    /**
++     * บัญชีนี้เป็นบัญชีของสาขาที่ปกติไม่อยู่ในฟอร์ม (บัญชีระบบ Bewell) — ส่งคำขอให้สาขาตัวเองได้
++     *
++     * @param array<string,mixed> $actor
++     */
++    private static function ownsExcluded(array $actor): bool
++    {
++        $own = Db::value('SELECT branch_id FROM admins WHERE id = ?', [(int) $actor['id']]);
++        return $own !== null && in_array((int) $own, self::NO_REQUESTS, true);
++    }
++
++    private static function branch(mixed $raw, bool $withExcluded = false): int
+     {
+         if ($raw === null || $raw === '') {
+             throw ApiError::badRequest('เลือกก่อนว่าเบิกให้สาขาไหน', 'missing_branch');
+         }
+         $id = self::id($raw, 'branch_id');
+-        if (!in_array($id, array_column(self::branches(), 'id'), true)) {
++        if (!in_array($id, array_column(self::branches($withExcluded), 'id'), true)) {
+             throw ApiError::badRequest('สาขานี้ส่งคำขอไม่ได้ (ปิดใช้งาน หรือมีระบบของตัวเอง)', 'branch_excluded');
+         }
+         return $id;
