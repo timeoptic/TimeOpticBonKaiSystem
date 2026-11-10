@@ -684,6 +684,7 @@ POST('/api/cases/:id/status', function (array $req) {
                 'ยกเลิกเคส' . (nul($body['note'] ?? null) !== null ? ' · ' . str_or($body['note']) : ''),
                 LensRequisition::actorEmployee() ?? int_or($body['employee_id'] ?? null)
             );
+            TimeOpticRx::cancelFor($q, 'case', $id, 'ยกเลิกเคส', LensRequisition::actorEmployee() ?? int_or($body['employee_id'] ?? null));
         }
         $target = $q->get('SELECT is_terminal FROM case_statuses WHERE code = ?', $to);
         if ($target && (int) $target['is_terminal'] === 1 && $before && $before['status'] !== $to) {

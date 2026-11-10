@@ -85,11 +85,26 @@ final class TimeOpticRequests
      */
     public static function create(array $basket, string $note): array
     {
+        return self::submit('issue', ['items' => $basket, 'note' => $note]);
+    }
+
+    /**
+     * ใบสั่งตัด RX หนึ่งใบ → คำขอ kind = rx (คนตรวจของ TimeOptic ยืนยันแล้วฝั่งนั้นเปิดใบสั่งตัดให้สาขา Bewell)
+     *
+     * @param array<string,mixed> $body {brand, lens_model, eye_side, sph, cyl, axis, add, sale_price, note}
+     */
+    public static function createRx(array $body): array
+    {
+        return self::submit('rx', $body);
+    }
+
+    private static function submit(string $kind, array $body): array
+    {
         $c   = self::need();
         $res = self::session(fn(callable $call) => $call('POST', '/issue-requests', [
-            'kind'      => 'issue',
+            'kind'      => $kind,
             'branch_id' => $c['branch'],
-            'body'      => ['items' => $basket, 'note' => $note],
+            'body'      => $body,
         ]));
         $req = $res['request'] ?? null;
         if (!is_array($req) || !isset($req['id'])) {

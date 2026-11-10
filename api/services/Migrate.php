@@ -435,6 +435,27 @@ final class Migrate
                ไม่ใช่คลัง: ไม่มีจำนวนคงเหลือ ไม่มีล็อต · sph / cyl / add_power เป็นแค่ป้ายของรุ่นนั้น
                (รายชื่อจำลองจากเว็บหลักแยกรุ่นตามค่าสายตา) ใช้กรองในหน้าขาย ว่าง = ใช้ได้ทุกค่า
                ไม่มีการลบ — ปิดใช้งานแทน ใบเก่าคัดลอกค่าไว้เองอยู่แล้ว (lens_requisition_items) */
+            /* ใบสั่งตัด RX ของออเดอร์ที่ส่งเข้า "คำขอจากสาขา" ของคลัง TimeOptic (kind = rx) — ดู TimeOpticRx
+               แถวละคำขอ · active = 1 คือคำขอปัจจุบันของข้างนั้น ถอน/เปลี่ยนใบสั่งแล้วเป็น 0 เก็บไว้ตรวจย้อนหลัง */
+            'timeoptic_rx_requests' => "CREATE TABLE IF NOT EXISTS timeoptic_rx_requests (
+                id         int(10) unsigned NOT NULL AUTO_INCREMENT,
+                case_id    int(10) unsigned DEFAULT NULL,
+                order_id   int(10) unsigned DEFAULT NULL,
+                side       enum('r','l') NOT NULL,
+                rx_log_id  int(10) unsigned NOT NULL COMMENT 'inventory_logs.id ของใบสั่งตัดใน Bewell',
+                rx_doc     varchar(100) DEFAULT NULL,
+                req_id     int(10) unsigned NOT NULL,
+                req_code   varchar(20) NOT NULL,
+                status     varchar(20) NOT NULL DEFAULT 'pending' COMMENT 'pending | approved | rejected | cancelled',
+                note       varchar(400) DEFAULT NULL,
+                active     tinyint(1) NOT NULL DEFAULT 1,
+                synced_at  datetime DEFAULT NULL,
+                created_at datetime NOT NULL DEFAULT current_timestamp(),
+                PRIMARY KEY (id),
+                KEY idx_trx_order (order_id, side, active),
+                KEY idx_trx_case (case_id)
+              ) $c",
+
             'lens_catalog' => "CREATE TABLE IF NOT EXISTS lens_catalog (
                 id            int(10) unsigned NOT NULL AUTO_INCREMENT,
                 code          varchar(40)  NOT NULL,

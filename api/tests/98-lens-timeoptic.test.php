@@ -278,6 +278,100 @@ test('เปลี่ยนเลนส์หลังขาย: ถอนคำ
     });
 });
 
+/** ใบสั่งตัด RX ในคลังของ Bewell ผูกกับออเดอร์ข้าง $side → inventory_logs.id */
+function tosRx(Tx $q, int $order, string $side = 'r', string $sph = '-2.25'): int
+{
+    $cat = (int) $q->get('SELECT id FROM categories ORDER BY id LIMIT 1')['id'];
+    $pid = (int) $q->run(
+        "INSERT INTO products (sku, category_id, product_type, name, brand, is_custom_made) VALUES (?, ?, 'lens', ?, 'HOYA', 1)",
+        'RXT-' . strtoupper(bin2hex(random_bytes(3))),
+        $cat,
+        'HOYA Nulux 1.60 RX test'
+    )['insertId'];
+    $log = (int) $q->run(
+        "INSERT INTO inventory_logs (product_id, action_type, quantity, sale_price, reference_doc, created_at)
+         VALUES (?, 'RX_ORDER', -1, 2500, ?, NOW())",
+        $pid,
+        'RX-T' . random_int(1000, 9999)
+    )['insertId'];
+    $q->run(
+        'INSERT INTO rx_orders (log_id, eye_side, sph, cyl, axis, add_power, sale_price) VALUES (?, ?, ?, -0.50, 180, NULL, 2500)',
+        $log,
+        $side === 'r' ? 'right' : 'left',
+        $sph
+    );
+    $q->run("UPDATE custom_orders SET lens_{$side}_rx_id = ? WHERE id = ?", $log, $order);
+    return $log;
+}
+
+test('ยืนยันขาย: ใบสั่งตัด RX ส่งเป็นคำขอ kind = rx พร้อมค่าสายตา · กดซ้ำไม่ส่งซ้ำ', function () {
+    $seen = tosReset();
+    rollback(function (Tx $q) use ($seen) {
+        $f = lrFixture($q);
+        tosRx($q, $f['order'], 'r');
+        eq(TimeOpticRx::sendForCase($q, $f['case'], null), [], 'ส่งผ่าน');
+        TimeOpticRx::sendForCase($q, $f['case'], null);
+        $posts = array_values(array_filter($seen(), fn($c) => $c['path'] === '/stock-api/issue-requests'));
+        eq(count($posts), 1, 'ส่งครั้งเดียว');
+        $b = $posts[0]['body'];
+        eq([$b['kind'], $b['branch_id']], ['rx', 5335], 'ชนิด + สาขา');
+        eq([$b['body']['brand'], $b['body']['eye_side'], $b['body']['sph'], $b['body']['axis']], ['HOYA', 'right', '-2.25', '180'], 'รายละเอียด');
+        ok(str_contains($b['body']['lens_model'], 'Nulux'), 'รุ่นเลนส์');
+        ok(str_contains($b['body']['note'], 'TEST-LR-'), 'หมายเหตุมีเลขเคส');
+        $row = $q->get('SELECT req_code, status, active FROM timeoptic_rx_requests WHERE order_id = ?', $f['order']);
+        eq([$row['req_code'], $row['status'], (int) $row['active']], ['REQ-00077', 'pending', 1], 'แถวคำขอ');
+    });
+});
+
+test('RX: คลังล่มตอนยืนยันขาย — ไม่ขวาง ลงไทม์ไลน์ ไม่มีแถวคำขอ', function () {
+    tosReset('down');
+    rollback(function (Tx $q) {
+        $f = lrFixture($q);
+        tosRx($q, $f['order'], 'l');
+        eq(count(TimeOpticRx::sendForCase($q, $f['case'], null)), 1, 'หนึ่งข้างส่งไม่ผ่าน');
+        eq($q->get('SELECT COUNT(*) AS n FROM timeoptic_rx_requests WHERE order_id = ?', $f['order'])['n'], 0, 'ไม่มีแถว');
+        $ev = $q->get("SELECT action FROM case_events WHERE case_id = ? ORDER BY id DESC LIMIT 1", $f['case']);
+        eq($ev['action'], 'rx_timeoptic_send_failed', 'ไทม์ไลน์');
+    });
+});
+
+test('RX: ยกเลิก/เปลี่ยนใบสั่งหลังขาย = ถอนคำขอเดิม ส่งใบใหม่ · เปิดขั้นขาย = ถอน · ลบออเดอร์ = ถอน', function () {
+    $seen = tosReset();
+    rollback(function (Tx $q) use ($seen) {
+        $f = lrFixture($q);
+        $q->run("INSERT INTO case_processes (case_id, process, status, completed_at) VALUES (?, 'sales', 'completed', NOW())
+                 ON DUPLICATE KEY UPDATE status = 'completed', completed_at = NOW()", $f['case']);
+        $old = tosRx($q, $f['order'], 'r');
+        TimeOpticRx::sendForCase($q, $f['case'], null);
+        $q->run('UPDATE rx_orders SET cancelled_at = NOW() WHERE log_id = ?', $old);
+        tosRx($q, $f['order'], 'r', '-3.00');
+        TimeOpticRx::syncOrderTx($q, $f['order'], null);
+        $cancels = fn() => count(array_filter($seen(), fn($c) => str_ends_with($c['path'], '/cancel')));
+        $posts   = fn() => count(array_filter($seen(), fn($c) => $c['path'] === '/stock-api/issue-requests'));
+        eq([$cancels(), $posts()], [1, 2], 'ถอนเดิม 1 ส่งใหม่ 1');
+        eq($q->get('SELECT COUNT(*) AS n FROM timeoptic_rx_requests WHERE order_id = ? AND active = 1', $f['order'])['n'], 1, 'คำขอปัจจุบันใบเดียว');
+
+        TimeOpticRx::withdrawForCase($q, $f['case'], null);
+        eq($q->get('SELECT COUNT(*) AS n FROM timeoptic_rx_requests WHERE order_id = ? AND active = 1', $f['order'])['n'], 0, 'เปิดขั้นขาย = ถอน');
+        TimeOpticRx::sendForCase($q, $f['case'], null);
+        eq($posts(), 3, 'ยืนยันใหม่ส่งใบใหม่');
+
+        TimeOpticRx::cancelFor($q, 'order', $f['order'], 'ลบออเดอร์', null);
+        eq($q->get('SELECT COUNT(*) AS n FROM timeoptic_rx_requests WHERE order_id = ? AND active = 1', $f['order'])['n'], 0, 'ลบออเดอร์ = ถอน');
+        eq($cancels(), 3, 'ยกเลิกในคลังครบ');
+    });
+});
+
+test('RX: บันทึกออเดอร์ของเคสที่ยังไม่ขาย ไม่ส่ง', function () {
+    $seen = tosReset();
+    rollback(function (Tx $q) use ($seen) {
+        $f = lrFixture($q);
+        tosRx($q, $f['order'], 'r');
+        TimeOpticRx::syncOrderTx($q, $f['order'], null);
+        eq($seen(), [], 'ไม่มีคำขอออกไป');
+    });
+});
+
 test('ไม่ได้ตั้งค่าการเชื่อม = ใบเบิกทำงานแบบเดิม ไม่ยิงอะไรออกไป', function () {
     $seen = tosReset();
     tosOff();

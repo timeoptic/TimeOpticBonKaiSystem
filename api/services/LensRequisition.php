@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/TimeOpticRequests.php';
+require_once __DIR__ . '/TimeOpticRx.php';
 
 /**
  * กติกาใบเบิกเลนส์ของ Bewell — แยกจาก route เพื่อเทสต์ได้โดยไม่ต้องผ่าน HTTP

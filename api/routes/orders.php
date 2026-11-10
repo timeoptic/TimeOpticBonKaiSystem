@@ -352,6 +352,8 @@ POST('/api/orders', function (array $req) {
         }
         return $oid;
     });
+    /* Bewell: ใบสั่งตัด RX ของออเดอร์ → คำขอในคลัง TimeOptic (ส่งเฉพาะเคสที่ยืนยันขายแล้ว) */
+    TimeOpticRx::afterOrderSave($id, LensRequisition::actorEmployee());
 
     return orderDetail($id);
 });
@@ -373,6 +375,8 @@ PUT('/api/orders/:id', function (array $req) {
     $set = implode(',', array_map(fn($c) => "$c=?", ORDER_COLS));
     Db::run("UPDATE custom_orders SET $set WHERE id=?", ...[...orderVals($body), $id]);
     syncSoldStock($id, int_or($body['employee_id'] ?? null));
+    /* Bewell: ใบสั่งตัด RX ถูกยกเลิก/เปลี่ยน = ถอนคำขอเดิม · ขายแล้ว = ส่งใบสั่งใหม่ */
+    TimeOpticRx::afterOrderSave($id, LensRequisition::actorEmployee());
     return orderDetail($id);
 });
 
@@ -666,6 +670,7 @@ DELETE('/api/orders/:id', function (array $req) {
             'ลบออเดอร์ ' . ($o['invoice_code'] ?? ('#' . $id)),
             LensRequisition::actorEmployee()
         );
+        TimeOpticRx::cancelFor($q, 'order', $id, 'ลบออเดอร์ ' . ($o['invoice_code'] ?? ('#' . $id)), LensRequisition::actorEmployee());
         /* เลขใบเสร็จของออเดอร์นี้ไม่ลบตาม — ตีตรายกเลิกแล้วเก็บไว้ในชุดเลข
            ไม่งั้นทะเบียนใบเสร็จของบัญชีมีเลขหลุดโดยไม่มีใครอธิบายได้ */
         $case = $o['case_id'] ? $q->get('SELECT case_code FROM cases WHERE id = ?', (int) $o['case_id']) : null;

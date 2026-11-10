@@ -432,6 +432,7 @@ POST('/api/cases/:id/processes/:process/complete', function (array $req) {
         Db::tx(fn(Tx $q) => LensRequisition::markUsed($q, $id, LensRequisition::actorEmployee()));
         /* Bewell: ขายแล้วส่งใบเบิกเข้า "คำขอจากสาขา" ของคลัง TimeOptic ทันที — ส่งไม่ผ่านไม่ขวางการขาย */
         Db::tx(fn(Tx $q) => TimeOpticRequests::sendForCase($q, $id, LensRequisition::actorEmployee()));
+        Db::tx(fn(Tx $q) => TimeOpticRx::sendForCase($q, $id, LensRequisition::actorEmployee()));
     }
 
     return caseDetail($id)['processes'];
@@ -452,6 +453,7 @@ POST('/api/cases/:id/processes/:process/reopen', function (array $req) {
         /* Bewell: ใบเบิกที่ยังรอเบิกกลับไปเป็นร่าง — ดู LensRequisition::unmarkUsed() */
         Db::tx(function (Tx $q) use ($id) {
             TimeOpticRequests::withdrawForCase($q, $id, LensRequisition::actorEmployee());
+            TimeOpticRx::withdrawForCase($q, $id, LensRequisition::actorEmployee());
             LensRequisition::unmarkUsed($q, $id, LensRequisition::actorEmployee());
         });
     }
