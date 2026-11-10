@@ -178,8 +178,73 @@ function processBlocking(array $c): array
         'sales'     => [],
         'payment'   => [],
         'centering' => [],
-        'delivery'  => $order ? [] : ['ยังไม่มีออเดอร์'],
+        'delivery'  => $order ? deliveryEvidenceMissing($c) : ['ยังไม่มีออเดอร์'],
     ];
+}
+
+/**
+ * หลักฐานที่ต้องมีก่อนส่งมอบ (ร้านขอ 10 พ.ย. 2026)
+ *
+ *   - รูปในหัวข้อ "6. รูปภาพ / Photos" ของหน้าวัดสายตา (case_photos.kind = 'exam')
+ *   - รูปในกล่อง "รูปภาพการวัด" ของหน้า PD (kind = 'centering') และ PD ขวา + ซ้าย
+ *   - ใบสายตาที่ยืนยันแล้วเป็น Progressive / Bi-focal / Degressive (Test For)
+ *     ต้องกรอกหน้า PD ครบทุกช่อง: FH R/L, Cor., A, B, DBL, ED, CVD, Panto
+ *
+ * ยกเว้น: เคสเก่าจาก Access (OLD-) · งานซ่อม/ปรับแว่น · เคสที่ปิดแล้ว (is_terminal)
+ * (บันทึกซ้ำหรือแก้วันส่งมอบต้องไม่ติดกฎใหม่ย้อนหลัง) · ไม่ยกเว้นด้วย delivered_at เพราะหน้าเว็บ
+ * บันทึกการส่งมอบก่อนกดยืนยันขั้น — ยกเว้นตรงนั้นจะทำให้ด่านที่ /complete ไม่ทำงาน
+ */
+function deliveryEvidenceMissing(array $c): array
+{
+    if (str_starts_with((string) ($c['case_code'] ?? ''), 'OLD-')
+        || trim((string) ($c['case_type'] ?? '')) === 'ซ่อม/ปรับแว่น'
+        || (int) ($c['is_terminal'] ?? 0) === 1) {
+        return [];
+    }
+    $steps = caseProcessList($c);
+    $photos = [];
+    foreach (Db::all("SELECT kind, COUNT(*) n FROM case_photos WHERE case_id = ? AND kind IN ('exam','centering') GROUP BY kind", (int) $c['id']) as $r) {
+        $photos[$r['kind']] = (int) $r['n'];
+    }
+    $blank = static fn($v) => trim((string) ($v ?? '')) === '';
+    $out = [];
+
+    if (in_array('exam', $steps, true) && empty($photos['exam'])) {
+        $out[] = 'รูปภาพหน้าวัดสายตา (หัวข้อ 6)';
+    }
+    if (!in_array('centering', $steps, true)) {
+        return $out;
+    }
+    $ce = $c['centering'] ?? [];
+    $ff = $c['frame_fitting'] ?? [];
+    if (empty($photos['centering'])) {
+        $out[] = 'รูปภาพการวัด (หน้า PD)';
+    }
+    if ($blank($ce['r_pd'] ?? null) || $blank($ce['l_pd'] ?? null)) {
+        $out[] = 'PD ขวา/ซ้าย';
+    }
+
+    $testFor = '';
+    foreach ($c['prescriptions'] ?? [] as $r) {
+        if (($r['kind'] ?? '') === 'final' || !empty($r['confirmed_at'])) {
+            $testFor = trim((string) ($r['test_for'] ?? '')) ?: $testFor;
+        }
+    }
+    /* ชุดเดียวกับ RxSafety::MULTIFOCAL — เขียนตรงนี้เพราะไฟล์นั้นโหลดเฉพาะทาง index.php */
+    if (in_array($testFor, ['Progressive', 'Bi-focal', 'Degressive'], true)) {
+        $need = [
+            'FH ขวา' => $ce['r_height'] ?? null, 'FH ซ้าย' => $ce['l_height'] ?? null,
+            'Cor.' => $ce['corridor'] ?? null,
+            'A' => $ff['frame_box_a'] ?? null, 'B' => $ff['frame_box_b'] ?? null,
+            'DBL' => $ff['dbl'] ?? null, 'ED' => $ff['ed'] ?? null,
+            'CVD' => $ce['vertex_distance'] ?? null, 'Panto' => $ce['pantoscopic_tilt'] ?? null,
+        ];
+        $gaps = array_keys(array_filter($need, $blank));
+        if ($gaps) {
+            $out[] = "ค่าหน้า PD ของเลนส์ $testFor: " . implode(' ', $gaps);
+        }
+    }
+    return $out;
 }
 
 /**
@@ -362,6 +427,9 @@ POST('/api/cases/:id/processes/:process/complete', function (array $req) {
     $missing = processMissing($c)[$process];
     if ($missing) {
         bad('ยังยืนยันขั้นตอนนี้ไม่ได้ — ขาด: ' . implode(', ', $missing));
+    }
+    if ($process === 'delivery' && ($gaps = processBlocking($c)['delivery'])) {
+        bad('ยังส่งมอบไม่ได้ — ขาด: ' . implode(', ', $gaps));
     }
     $note = nul($req['body']['note'] ?? null);
 
