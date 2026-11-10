@@ -23,6 +23,13 @@ export const TINT_COLORS = [
   { en: 'Pink', th: 'ชมพู', head: '#FBD9E7', shades: ['#FBDCE8', '#F5A9C8', '#E571A3', '#BE4A85'] },
 ];
 
+/**
+ * สีตามตัวอย่าง — ลูกค้าเอาตัวอย่างสีมาให้ย้อมตาม ไม่มีระดับความเข้ม 1–4
+ * เก็บเป็น "ย้อมสี ตามตัวอย่าง (Color Match)" ใบสั่งงานกับใบเสร็จพิมพ์คำนี้ตรง ๆ ·
+ * ประเภทในโค้ดคือ COLOR_MATCH (ดู dyeTypeOf)
+ */
+export const COLOR_MATCH = { type: 'COLOR_MATCH', en: 'Color Match', th: 'ตามตัวอย่าง (Color Match)' };
+
 const parseDye = (tint) => {
   const text = String(tint ?? '');
   if (!text.startsWith(DYE_PREFIX)) return { color: '', level: 0 };
@@ -35,6 +42,13 @@ export const dyeColorOf = (tint) => parseDye(tint).color;
 
 /** ระดับความเข้ม 1-4 — ออเดอร์เก่าที่ยังไม่มีระดับคืน 0 */
 export const dyeLevelOf = (tint) => parseDye(tint).level;
+
+/** ประเภทงานย้อม: 'COLOR_MATCH' · 'PRESET' (สีจากชุด 8 สีหรือสีเก่า) · '' ไม่ได้ย้อม */
+export const dyeTypeOf = (tint) => {
+  const color = dyeColorOf(tint);
+  if (!color) return '';
+  return color === COLOR_MATCH.th ? COLOR_MATCH.type : 'PRESET';
+};
 
 export const dyeValue = (color, level) => DYE_PREFIX + color + (level ? ` ระดับ ${level}` : '');
 

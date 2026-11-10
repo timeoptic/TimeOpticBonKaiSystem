@@ -39,13 +39,21 @@ import {
 } from '../../../lib/format.js';
 import { Icon } from '../../../components/Icon.jsx';
 import { pairDisplay, pairPrice, splitPairPrice } from '../../../lib/pricing.js';
-import { TINT_COLORS, TINT_LEVELS, dyeColorOf, dyeLevelOf, lensTintForSave } from '../../../lib/lensTint.js';
+import { COLOR_MATCH, TINT_COLORS, TINT_LEVELS, dyeColorOf, dyeLevelOf, lensTintForSave } from '../../../lib/lensTint.js';
 import s from './OrderFormView.module.css';
 
-/* สองรูปนี้ไม่อยู่ใน lib/icons.js — ไฟล์นั้นอยู่ใน chunk กลางที่แท็บเก่าโหลดค้างไว้ ไอคอนใหม่จะขึ้นเป็นชื่อแทนรูป */
+/* รูปเหล่านี้ไม่อยู่ใน lib/icons.js — ไฟล์นั้นอยู่ใน chunk กลางที่แท็บเก่าโหลดค้างไว้ ไอคอนใหม่จะขึ้นเป็นชื่อแทนรูป */
 const PaletteGlyph = () => (
   <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
     <path fillRule="evenodd" d="M12 2.5a9.5 9.5 0 0 0 0 19h1.2a2.1 2.1 0 0 0 1.6-3.5 1.4 1.4 0 0 1 1-2.4h1.9a4.8 4.8 0 0 0 4.8-4.8C22.5 6 17.8 2.5 12 2.5zM7 13.2a1.7 1.7 0 1 1 0-3.4 1.7 1.7 0 0 1 0 3.4zm2.6-4.6a1.7 1.7 0 1 1 0-3.4 1.7 1.7 0 0 1 0 3.4zm4.8 0a1.7 1.7 0 1 1 0-3.4 1.7 1.7 0 0 1 0 3.4zm3.2 3.2a1.7 1.7 0 1 1 0-3.4 1.7 1.7 0 0 1 0 3.4z" />
+  </svg>
+);
+/* ไอคอนรูปภาพบนการ์ดสีตามตัวอย่าง */
+const ImageGlyph = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <rect x="3" y="4" width="18" height="16" rx="2" />
+    <circle cx="9" cy="10" r="1.8" />
+    <path d="M21 16l-5-5-9 9" />
   </svg>
 );
 const InfoGlyph = () => (
@@ -788,7 +796,18 @@ export function OrderFormView({
                     </div>
                   </div>
                 ))}
-                {dyeColor && !dyeLevel ? (
+                {/* สีตามตัวอย่าง — การ์ดท้ายแถว ไม่มีระดับ 1–4 กดทั้งการ์ดเพื่อเลือก */}
+                <button
+                  type="button"
+                  className={`${s.swatch} ${s.matchCard} ${dyeColor === COLOR_MATCH.th ? s.on : ''}`}
+                  aria-pressed={dyeColor === COLOR_MATCH.th}
+                  onClick={() => setDyePick({ color: COLOR_MATCH.th, level: 0 })}
+                >
+                  <b>สีตามตัวอย่าง</b>
+                  <b>(Color Match)</b>
+                  <ImageGlyph />
+                </button>
+                {dyeColor && !dyeLevel && dyeColor !== COLOR_MATCH.th ? (
                   <p className={s.legacyDye}>
                     ออเดอร์นี้บันทึกไว้ว่า “ย้อมสี {dyeColor}” แบบยังไม่มีระดับความเข้ม — เลือกใหม่ด้านบนได้ ถ้าไม่เลือกจะคงค่าเดิม
                   </p>

@@ -35,3 +35,14 @@ test('มี 8 สี สีละ 4 ระดับ', () => {
   assert.equal(TINT_COLORS.length, 8);
   for (const c of TINT_COLORS) assert.equal(c.shades.length, 4);
 });
+
+test('สีตามตัวอย่าง บันทึกได้โดยไม่มีระดับ และเป็นประเภท COLOR_MATCH', async () => {
+  const { COLOR_MATCH, dyeTypeOf } = await import('../lensTint.js');
+  const saved = lensTintForSave(COLOR_MATCH.th, 0, '');
+  assert.equal(saved, 'ย้อมสี ตามตัวอย่าง (Color Match)');
+  assert.equal(dyeColorOf(saved), COLOR_MATCH.th);
+  assert.equal(dyeLevelOf(saved), 0);
+  assert.equal(dyeTypeOf(saved), 'COLOR_MATCH');
+  assert.equal(dyeTypeOf('ย้อมสี เทา ระดับ 2'), 'PRESET');
+  assert.equal(dyeTypeOf('Photochromic'), '');
+});

@@ -54,7 +54,7 @@ test('เลือกย้อมสีแล้วต้องเลือก�
   await expect(bar.getByRole('group', { name: 'ตัวอย่างสีย้อม' })).toHaveCount(0);
 
   await bar.getByRole('radio', { name: /^ย้อมสี/ }).check();
-  await expect(bar.getByRole('group', { name: 'ตัวอย่างสีย้อม' }).getByRole('button')).toHaveCount(32);
+  await expect(bar.getByRole('group', { name: 'ตัวอย่างสีย้อม' }).getByRole('button')).toHaveCount(33);
   await page.locator('form button[type=submit]').click();
   await expect(page.getByText('กรุณาเลือกสีและระดับความเข้มที่จะย้อม').first()).toBeVisible();
   expect(body).toBeNull();
@@ -84,6 +84,30 @@ test('ออเดอร์เก่าสีที่เลิกใช้ ไ�
   await expect(page.getByText('ยังไม่มีระดับความเข้ม')).toBeVisible();
   await page.locator('form button[type=submit]').click();
   await expect.poll(() => body?.lens_tint).toBe('ย้อมสี ม่วง');
+});
+
+test('สีตามตัวอย่าง (Color Match) — การ์ดท้ายแถว ไม่ต้องเลือกระดับ', async ({ page }) => {
+  let body = null;
+  await open(page, 'sales', {}, (p, b) => { if (p.includes('/api/orders')) body = b; });
+
+  await page.locator('form').getByRole('button', { name: 'เปิดการแก้ไข' }).first().click();
+  const bar = page.locator('form .card', { hasText: 'ย้อมสีเลนส์' });
+  await bar.getByRole('radio', { name: /^ย้อมสี/ }).check();
+  const card = bar.getByRole('button', { name: /สีตามตัวอย่าง/ });
+  await card.click();
+  await expect(card).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByText('ยังไม่มีระดับความเข้ม')).toHaveCount(0);
+  if (process.env.TINT_SHOT) await bar.screenshot({ path: process.env.TINT_SHOT });
+  await page.locator('form button[type=submit]').click();
+  await expect.poll(() => body?.lens_tint).toBe('ย้อมสี ตามตัวอย่าง (Color Match)');
+});
+
+test('ออเดอร์สีตามตัวอย่าง เปิดกลับมาการ์ดยังถูกเลือก', async ({ page }) => {
+  await open(page, 'sales', { lens_tint: 'ย้อมสี ตามตัวอย่าง (Color Match)' });
+  await page.locator('form').getByRole('button', { name: 'เปิดการแก้ไข' }).first().click();
+  const bar = page.locator('form .card', { hasText: 'ย้อมสีเลนส์' });
+  await expect(bar.getByRole('button', { name: /สีตามตัวอย่าง/ })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByText('ยังไม่มีระดับความเข้ม')).toHaveCount(0);
 });
 
 test('การ์ดบันทึกการส่งมอบมีช่องคนเจีย', async ({ page }) => {
