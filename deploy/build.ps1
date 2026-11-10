@@ -11,6 +11,8 @@
         │   ├── public_html\             <- ทั้งก้อนนี้ไปเป็น public_html บนโฮสต์
         │   ├── db\schema.sql            <- 58 ตาราง + 7 view โครงเปล่า ไม่มีข้อมูล
         │   ├── db\reference-data.sql    <- แถวของตารางอ้างอิง 10 ตัว
+        │   ├── db\bewell-lens-usage.sql         <- ตาราง lens_catalog + คอลัมน์ใบเบิกเลนส์
+        │   ├── db\bewell-lens-catalog-mock.sql  <- เลนส์จำลอง 1,582 รายการให้หน้าขายเลือก
         │   ├── .env.example             <- ไป rename เป็น .env *เหนือ* public_html
         │   └── build-info.txt
         └── bewell-YYYYMMDD-HHmm.zip     <- อัปไฟล์นี้ไฟล์เดียว
@@ -245,6 +247,22 @@ if ($SkipDump) {
     if ($tables -lt 58) { Die "schema.sql มี $tables ตาราง คาดว่าอย่างน้อย 58 — ดัมป์ไม่ครบ" }
     if ($views  -lt 7)  { Die "schema.sql มี $views view คาดว่าอย่างน้อย 7 — ดัมป์ไม่ครบ" }
 }
+
+<#  รายการเลนส์ที่หน้าขายให้เลือก (lens_catalog) — เลนส์จำลอง ไม่ใช่สต็อก ไม่มีจำนวนคงเหลือ
+    เครื่องในร้านได้แถวพวกนี้จาก Migrate::seedLensCatalog() ตอนเปิด API แต่บน Hostinger
+    ไม่มีอะไรเรียก Migrate และ schema.sql ดัมป์มาแค่โครงเปล่า ตารางจึงว่าง หน้าขาย
+    เลยไม่มีเลนส์ให้เลือกสักตัว · คัดลอกไฟล์ไปเสมอ แม้ -SkipDump เพราะไม่ได้มาจากการดัมป์
+    ทั้งคู่รันซ้ำได้ (CREATE ... IF NOT EXISTS / INSERT IGNORE) ลำดับ import ดู README #>
+foreach ($f in @('bewell-lens-usage.sql', 'bewell-lens-catalog-mock.sql')) {
+    $src = Join-Path $PSScriptRoot $f
+    if (-not (Test-Path $src)) { Die "ไม่พบ deploy\$f" }
+    if (-not (Test-Path $dbd)) { New-Item -ItemType Directory -Path $dbd -Force | Out-Null }
+    Copy-Item -LiteralPath $src -Destination (Join-Path $dbd $f) -Force
+}
+$lensRows = (Select-String -LiteralPath (Join-Path $dbd 'bewell-lens-catalog-mock.sql') `
+             -Pattern "^\s*\('LNS-").Count
+if ($lensRows -lt 1582) { Die "bewell-lens-catalog-mock.sql มีเลนส์ $lensRows รายการ คาดว่า 1582" }
+Ok "รายการเลนส์  $lensRows รายการ (db\bewell-lens-usage.sql + db\bewell-lens-catalog-mock.sql)"
 
 # ---------------------------------------------------------------- 4. ตรวจ
 Step '4/6  ตรวจก้อนก่อนซิป'

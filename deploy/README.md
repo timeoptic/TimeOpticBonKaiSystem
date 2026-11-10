@@ -125,6 +125,11 @@ hPanel → Databases → phpMyAdmin → เลือกฐานที่สร�
 
 1. `db/schema.sql` — 53 ตาราง 6 view ยังไม่มีข้อมูลสักแถว
 2. `db/reference-data.sql` — สถานะเคส หมวดสินค้า สาขา รายการ dropdown
+3. `db/bewell-lens-usage.sql` — ตาราง `lens_catalog` + คอลัมน์ใบเบิกเลนส์ (มีแล้วข้าม)
+4. `db/bewell-lens-catalog-mock.sql` — เลนส์จำลอง 1,582 รายการที่หน้าขายให้เลือก
+   **ไม่ใช่สต็อก** ไม่มีจำนวนคงเหลือ ราคาเป็น 0 ทุกตัว ตั้งราคาที่หน้า "รายการเลนส์"
+   · ข้ามข้อนี้ = หน้าขายไม่มีเลนส์ให้เลือกสักตัว (บนเครื่องจริงไม่มี Migrate มาใส่ให้)
+   · รันซ้ำได้ รหัสที่มีแล้วข้าม — เซิร์ฟเวอร์ที่ขึ้นไปแล้วแต่ยังไม่มีเลนส์ import ข้อ 3–4 ได้เลย
 
 ถ้าไฟล์ใหญ่เกินที่ phpMyAdmin รับ ใช้ SSH แทน:
 
@@ -132,6 +137,8 @@ hPanel → Databases → phpMyAdmin → เลือกฐานที่สร�
 cd ~/domains/controlsystem-timeoptic.com
 mysql -u u721081539_timeoptic -p --default-character-set=utf8mb4 u721081539_timeoptic < db/schema.sql
 mysql -u u721081539_timeoptic -p --default-character-set=utf8mb4 u721081539_timeoptic < db/reference-data.sql
+mysql -u u721081539_timeoptic -p --default-character-set=utf8mb4 u721081539_timeoptic < db/bewell-lens-usage.sql
+mysql -u u721081539_timeoptic -p --default-character-set=utf8mb4 u721081539_timeoptic < db/bewell-lens-catalog-mock.sql
 ```
 
 > `reference-data.sql` มีตาราง `schema_migrations` ติดมาด้วยโดยตั้งใจ
