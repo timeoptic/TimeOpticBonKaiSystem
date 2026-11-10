@@ -48,7 +48,7 @@ function ddFixtures(Tx $q, ?string $deliveredAt = null): array
     $tag  = bin2hex(random_bytes(3));
     $cust = (int) $q->run('INSERT INTO customers (first_name, last_name) VALUES (?, ?)', 'ทดสอบ', "วันส่ง-$tag")['insertId'];
     $emp  = (int) $q->run('INSERT INTO employees (employee_name, active) VALUES (?, 1)', "ส่ง-$tag")['insertId'];
-    $case = (int) $q->run('INSERT INTO cases (case_code, customer_id) VALUES (?, ?)', "TEST-DD-$tag", $cust)['insertId'];
+    $case = (int) $q->run('INSERT INTO cases (case_code, customer_id) VALUES (?, ?)', "OLD-DD-$tag", $cust)['insertId'];
     $order = (int) $q->run(
         'INSERT INTO custom_orders (customer_id, case_id, employee_id, order_date, total_price, discount, deposit)
          VALUES (?, ?, ?, NOW(), 1000, 0, 0)',

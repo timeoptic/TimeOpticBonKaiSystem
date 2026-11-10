@@ -70,6 +70,11 @@ POST('/api/case-deliveries', function (array $req) use ($saveDelivery) {
     if (empty($ex['delivered_at']) && !int_or($req['body']['grinder_employee_id'] ?? null)) {
         bad('กรุณาเลือกคนเจีย');
     }
+    /* หลักฐานก่อนส่งมอบ (processes.php) — ตรวจตั้งแต่บันทึกฟอร์ม ไม่ใช่แค่ตอนยืนยันขั้น
+       แท็บที่เปิดค้างไว้จะได้ไม่บันทึกวันส่งมอบทิ้งไว้ทั้งที่ยืนยันขั้นไม่ได้ */
+    if (empty($ex['delivered_at']) && $caseId && ($gaps = processBlocking(caseDetail($caseId))['delivery'])) {
+        bad('ยังส่งมอบไม่ได้ — ขาด: ' . implode(', ', $gaps));
+    }
     $actor = StockModule::actor();
     if (!empty($ex['delivered_at'])) {
         $req['body']['delivered_at'] = $ex['delivered_at'];

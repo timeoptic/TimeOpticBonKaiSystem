@@ -88,3 +88,50 @@ test('API: ยืนยันขั้นส่งมอบโดยหลัก
         eq($status, 400, 'status');
     });
 });
+
+/** เดินทางเดียวกับพนักงาน: ขาดหลักฐาน → ติด · ไม่เลือกคนเจีย → ติด · ครบ → ส่งมอบได้ เคสปิด บิลปิด */
+test('ทางเดินจริง: Progressive เคสเก่า — ขาดอะไรติดตรงนั้น ครบแล้วส่งมอบได้', function () {
+    rollback(function (Tx $q) {
+        StockModule::boot();
+        $r = Db::get("SELECT a.id, a.username, a.display_name FROM admins a
+            JOIN admin_roles r ON r.admin_id = a.id WHERE r.role = 'owner' AND a.is_active = 1 LIMIT 1");
+        $roles = \Optic\Auth::rolesOf((int) $r['id']);
+        $owner = ['id' => (int) $r['id'], 'username' => $r['username'], 'displayName' => $r['display_name'],
+            'roles' => $roles, 'perms' => \Optic\Roles::permsOf($roles), 'employeeId' => null];
+        $call = fn(string $m, string $p, array $b = []) => \Optic\Auth::as($owner, fn() => Router::dispatch($m, $p, [], $b));
+        $err = function (string $m, string $p, array $b = []) use ($call) {
+            try { $call($m, $p, $b); } catch (HttpError $e) { return $e->getMessage(); }
+            return null;
+        };
+        $f = evFixtures($q, ['test_for' => 'Progressive']);
+        $case = $f['case'];
+        $q->run("UPDATE cases SET created_at = '2026-10-01 10:00:00' WHERE id = ?", $case);
+        $emp = (int) $q->run('INSERT INTO employees (employee_name, active) VALUES (?, 1)', 'ช่างเจีย-' . $case)['insertId'];
+        $order = (int) Db::get('SELECT id FROM custom_orders WHERE case_id = ?', $case)['id'];
+        $dlv = ['case_id' => $case, 'order_id' => $order, 'handed_over_by' => $emp, 'employee_id' => $emp, 'delivered_at' => date('Y-m-d H:i')];
+        $complete = "/api/cases/$case/processes/delivery/complete";
+
+        $withGrinder = $dlv + ['grinder_employee_id' => $emp];
+        $m = (string) $err('POST', '/api/case-deliveries', $withGrinder);
+        ok(str_contains($m, 'รูปภาพหน้าวัดสายตา') && str_contains($m, 'PD ขวา/ซ้าย'), 'ยังไม่มีอะไรเลย: ' . $m);
+        ok(!Db::get('SELECT 1 FROM case_deliveries WHERE case_id = ?', $case), 'ไม่มีแถวส่งมอบค้าง');
+
+        foreach (['exam', 'centering'] as $k) {
+            $q->run("INSERT INTO case_photos (case_id, kind, file_name) VALUES (?, ?, 'x.jpg')", $case, $k);
+        }
+        $q->run('INSERT INTO centerings (case_id, r_pd, l_pd, pd_total) VALUES (?, 31, 31, 62)', $case);
+        $m = (string) $err('POST', '/api/case-deliveries', $withGrinder);
+        ok(str_contains($m, 'ค่าหน้า PD ของเลนส์ Progressive') && !str_contains($m, 'รูปภาพ'), 'รูป+PD แล้ว เหลือค่าหน้า PD: ' . $m);
+
+        $q->run("UPDATE centerings SET r_height = 18, l_height = 18, corridor = '14', vertex_distance = 12, pantoscopic_tilt = 8 WHERE case_id = ?", $case);
+        $q->run('INSERT INTO frame_fittings (case_id, frame_box_a, frame_box_b, dbl, ed) VALUES (?, 52, 30, 18, 58)', $case);
+        eq($err('POST', '/api/case-deliveries', $dlv), 'กรุณาเลือกคนเจีย', 'ไม่เลือกคนเจีย');
+
+        $call('POST', '/api/case-deliveries', $dlv + ['grinder_employee_id' => $emp]);
+        $call('POST', $complete);
+        $c = Db::get('SELECT c.status, s.is_terminal FROM cases c JOIN case_statuses s ON s.code = c.status WHERE c.id = ?', $case);
+        eq((int) $c['is_terminal'], 1, 'เคสปิดแล้ว (' . $c['status'] . ')');
+        eq((int) Db::get('SELECT order_closed FROM custom_orders WHERE id = ?', $order)['order_closed'], 1, 'บิลปิดแล้ว');
+        eq((int) Db::get('SELECT grinder_employee_id FROM case_deliveries WHERE case_id = ?', $case)['grinder_employee_id'], $emp, 'บันทึกคนเจีย');
+    });
+});
