@@ -50,6 +50,16 @@ function lensReqLoad(int $id): array
 }
 
 /** แบบเดียวกับ lensReqLoad แต่อ่านในทรานแซกชันที่ล็อกแถวไว้ — ใช้ตอนส่งเข้าคลัง TimeOptic */
+/** ตะกร้าที่จะส่งเข้าคลัง ไว้เทียบว่าเลนส์เปลี่ยนจริงไหม · เลนส์ไม่มีรหัสนับเป็นตะกร้าที่ส่งไม่ได้ */
+function lensReqBasket(array $items): ?array
+{
+    try {
+        return TimeOpticRequests::basket($items);
+    } catch (HttpError) {
+        return null;
+    }
+}
+
 function lensReqLoadTx(Tx $q, int $id): array
 {
     $r = $q->get(
@@ -167,7 +177,7 @@ POST('/api/lens-requisitions/sync', function (array $req) {
 
         /* ใบที่ยังใช้งานของออเดอร์นี้มีได้ใบเดียว — ยกเลิกแล้วค่อยออกใบใหม่ */
         $open = $q->get(
-            "SELECT id, status, used_at FROM lens_requisitions
+            "SELECT id, status, used_at, timeoptic_req_id FROM lens_requisitions
               WHERE order_id = ? AND status <> 'cancelled' ORDER BY id DESC LIMIT 1 FOR UPDATE",
             $orderId
         );
@@ -193,6 +203,11 @@ POST('/api/lens-requisitions/sync', function (array $req) {
                 $q->all('SELECT COALESCE(lens_name, design) AS n FROM lens_requisition_items WHERE requisition_id = ? ORDER BY id', (int) $open['id']),
                 'n'
             ));
+        }
+        /* ใบที่ส่งคำขอเข้าคลัง TimeOptic แล้ว (ยืนยันขาย) — จำตะกร้าเดิมไว้เทียบ เปลี่ยนเลนส์จริงค่อยส่งใหม่ */
+        $sentBasket = null;
+        if ($open && $open['timeoptic_req_id']) {
+            $sentBasket = lensReqBasket($q->all('SELECT lens_code, quantity FROM lens_requisition_items WHERE requisition_id = ?', (int) $open['id']));
         }
         if ($open) {
             $id = (int) $open['id'];
@@ -246,7 +261,12 @@ POST('/api/lens-requisitions/sync', function (array $req) {
             );
             if ($sales && $sales['status'] === 'completed' && $sales['completed_at']) {
                 LensRequisition::markUsed($q, (int) $order['case_id'], $employee);
+                TimeOpticRequests::sendForCase($q, (int) $order['case_id'], $employee);
             }
+        }
+        if ($sentBasket !== null
+            && $sentBasket !== lensReqBasket($q->all('SELECT lens_code, quantity FROM lens_requisition_items WHERE requisition_id = ?', $id))) {
+            TimeOpticRequests::resend($q, $id, (int) $order['case_id'], $employee);
         }
         $after = implode(' + ', array_map(static fn($it) => (string) ($it['lens_name'] ?? $it['design'] ?? ''), $items));
         if ($before !== null && $before !== $after) {

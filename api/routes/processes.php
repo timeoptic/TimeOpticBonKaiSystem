@@ -430,6 +430,8 @@ POST('/api/cases/:id/processes/:process/complete', function (array $req) {
         /* Bewell: เลนส์ไม่มีสต็อก — ขายแล้วบันทึกเป็น "ใช้เลนส์" แทนการตัดของ (ใบเบิกเลนส์ของเคส)
            หลังตัดกรอบสำเร็จเท่านั้น ตัดไม่ผ่านขั้นขายถูกเปิดกลับ เลนส์ก็ต้องยังไม่นับว่าใช้ */
         Db::tx(fn(Tx $q) => LensRequisition::markUsed($q, $id, LensRequisition::actorEmployee()));
+        /* Bewell: ขายแล้วส่งใบเบิกเข้า "คำขอจากสาขา" ของคลัง TimeOptic ทันที — ส่งไม่ผ่านไม่ขวางการขาย */
+        Db::tx(fn(Tx $q) => TimeOpticRequests::sendForCase($q, $id, LensRequisition::actorEmployee()));
     }
 
     return caseDetail($id)['processes'];
@@ -448,7 +450,10 @@ POST('/api/cases/:id/processes/:process/reopen', function (array $req) {
     if ($process === 'sales') {
         CaseStock::returnForCase(caseDetail($id), 'เปิดขั้นการขายกลับมาแก้');
         /* Bewell: ใบเบิกที่ยังรอเบิกกลับไปเป็นร่าง — ดู LensRequisition::unmarkUsed() */
-        Db::tx(fn(Tx $q) => LensRequisition::unmarkUsed($q, $id, LensRequisition::actorEmployee()));
+        Db::tx(function (Tx $q) use ($id) {
+            TimeOpticRequests::withdrawForCase($q, $id, LensRequisition::actorEmployee());
+            LensRequisition::unmarkUsed($q, $id, LensRequisition::actorEmployee());
+        });
     }
 
     Db::tx(function (Tx $q) use ($id, $process, $note) {

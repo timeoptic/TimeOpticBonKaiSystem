@@ -194,6 +194,90 @@ test('ดึงสถานะล่าสุด: ตัดแล้วได้
     });
 });
 
+test('ยืนยันขั้นขาย = ส่งคำขอเข้าคลังทันที ใบยังรอเบิก · กดซ้ำไม่ส่งซ้ำ · เลื่อนสถานะต่อก็ไม่ส่งซ้ำ', function () {
+    $seen = tosReset();
+    rollback(function (Tx $q) use ($seen) {
+        $f = lrFixture($q);
+        $r = tosReq($q, $f);
+        LensRequisition::markUsed($q, $f['case'], null);
+        eq(TimeOpticRequests::sendForCase($q, $f['case'], null), [], 'ไม่มีใบที่ส่งไม่ผ่าน');
+        $row = $q->get('SELECT status, timeoptic_req_code, timeoptic_status FROM lens_requisitions WHERE id = ?', (int) $r['id']);
+        eq([$row['status'], $row['timeoptic_req_code'], $row['timeoptic_status']], ['pending', 'REQ-00077', 'pending'], 'ใบหลังขาย');
+
+        TimeOpticRequests::sendForCase($q, $f['case'], null);
+        lrStatus((int) $r['id'], 'issued');
+        eq(count(array_filter($seen(), fn($c) => $c['path'] === '/stock-api/issue-requests')), 1, 'ส่งครั้งเดียว');
+    });
+});
+
+test('ยืนยันขั้นขายแต่คลังล่ม — ขายผ่าน ใบยังไม่มีเลขคำขอ ไทม์ไลน์บอกเหตุ', function () {
+    tosReset('down');
+    rollback(function (Tx $q) {
+        $f = lrFixture($q);
+        $r = tosReq($q, $f);
+        LensRequisition::markUsed($q, $f['case'], null);
+        $failed = TimeOpticRequests::sendForCase($q, $f['case'], null);
+        eq(count($failed), 1, 'หนึ่งใบส่งไม่ผ่าน');
+        $row = $q->get('SELECT status, timeoptic_req_id FROM lens_requisitions WHERE id = ?', (int) $r['id']);
+        eq([$row['status'], $row['timeoptic_req_id']], ['pending', null], 'ใบยังรอเบิก ไม่มีเลข');
+        $ev = $q->get("SELECT action FROM case_events WHERE entity = 'lens_requisition' AND entity_id = ? ORDER BY id DESC LIMIT 1", (int) $r['id']);
+        eq($ev['action'], 'lens_timeoptic_send_failed', 'ไทม์ไลน์');
+
+        tosReset();
+        eq(lrStatus((int) $r['id'], 'issued')['timeoptic_req_code'], 'REQ-00077', 'ส่งใหม่ทางเดิมได้');
+    });
+});
+
+test('เปิดขั้นขายกลับมาแก้ = ถอนคำขอที่ยังรอตรวจ · ยืนยันใหม่ส่งใบใหม่', function () {
+    $seen = tosReset();
+    rollback(function (Tx $q) use ($seen) {
+        $f = lrFixture($q);
+        $r = tosReq($q, $f);
+        LensRequisition::markUsed($q, $f['case'], null);
+        TimeOpticRequests::sendForCase($q, $f['case'], null);
+        TimeOpticRequests::withdrawForCase($q, $f['case'], null);
+        LensRequisition::unmarkUsed($q, $f['case'], null);
+        $row = $q->get('SELECT timeoptic_req_id FROM lens_requisitions WHERE id = ?', (int) $r['id']);
+        eq($row['timeoptic_req_id'], null, 'ล้างเลขคำขอ');
+        ok(in_array('/stock-api/issue-requests/77/cancel', array_column($seen(), 'path'), true), 'ยกเลิกคำขอ 77 ในคลัง');
+
+        LensRequisition::markUsed($q, $f['case'], null);
+        TimeOpticRequests::sendForCase($q, $f['case'], null);
+        eq(count(array_filter($seen(), fn($c) => $c['path'] === '/stock-api/issue-requests')), 2, 'ส่งใบใหม่');
+    });
+});
+
+test('เปลี่ยนเลนส์หลังขาย: ถอนคำขอเดิม ส่งใบใหม่ · บันทึกซ้ำเลนส์เดิมไม่ส่ง · คลังตัดแล้วเปลี่ยนไม่ได้', function () {
+    $seen = tosReset();
+    rollback(function (Tx $q) use ($seen) {
+        $f = lrFixture($q);
+        $r = tosReq($q, $f);
+        LensRequisition::markUsed($q, $f['case'], null);
+        TimeOpticRequests::sendForCase($q, $f['case'], null);
+        $items = $q->all('SELECT lens_catalog_id FROM lens_requisition_items WHERE requisition_id = ?', (int) $r['id']);
+        $cat   = (int) $items[0]['lens_catalog_id'];
+        $posts = fn() => count(array_filter($seen(), fn($c) => $c['path'] === '/stock-api/issue-requests'));
+
+        lrSync($f['order'], [
+            ['eye' => 'R', 'lens_catalog_id' => $cat, 'unit_price' => 750],
+            ['eye' => 'L', 'lens_catalog_id' => $cat, 'unit_price' => 750],
+        ]);
+        eq($posts(), 1, 'เลนส์เดิม ไม่ส่งซ้ำ');
+
+        lrSync($f['order'], [['eye' => 'R', 'lens_catalog_id' => $cat, 'unit_price' => 750]]);
+        eq($posts(), 2, 'เลนส์เปลี่ยน ส่งใบใหม่');
+        ok(in_array('/stock-api/issue-requests/77/cancel', array_column($seen(), 'path'), true), 'ถอนคำขอเดิม');
+        $sent = array_values(array_filter($seen(), fn($c) => $c['path'] === '/stock-api/issue-requests'))[1]['body'];
+        eq($sent['body']['items'][0]['quantity'], 1, 'รายการใหม่ข้างเดียว');
+
+        file_put_contents(tosServer()[1], 'approved');
+        eq(lrStatusCode(fn() => lrSync($f['order'], [
+            ['eye' => 'R', 'lens_catalog_id' => $cat, 'unit_price' => 750],
+            ['eye' => 'L', 'lens_catalog_id' => $cat, 'unit_price' => 750],
+        ])), 409, 'คลังตัดแล้ว เปลี่ยนไม่ได้');
+    });
+});
+
 test('ไม่ได้ตั้งค่าการเชื่อม = ใบเบิกทำงานแบบเดิม ไม่ยิงอะไรออกไป', function () {
     $seen = tosReset();
     tosOff();

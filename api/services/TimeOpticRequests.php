@@ -146,6 +146,165 @@ final class TimeOpticRequests
     }
 
     /**
+     * ยืนยันขั้นขาย → ส่งใบเบิกของเคสที่ยังรอเบิกและยังไม่เคยส่ง เข้าคลังทันที (ร้านขอ 10 พ.ย. 2026)
+     *
+     * ส่งไม่ผ่านไม่ขวางการขาย — ถึงตรงนี้กรอบถูกตัดออกจากคลังไปแล้ว ขายจริงแล้ว · ลงไทม์ไลน์ว่า
+     * ส่งไม่ผ่านเพราะอะไร ใบยังรอเบิก พนักงานส่งซ้ำได้ด้วยการเลื่อนใบออกจาก "รอเบิก" ตามทางเดิม
+     * แถวถูกล็อก FOR UPDATE กดยืนยันซ้ำพร้อมกันจึงส่งได้ครั้งเดียว
+     *
+     * @return list<string> ใบที่ส่งไม่ผ่าน "LR-xxx: เหตุผล"
+     */
+    public static function sendForCase(Tx $q, int $caseId, ?int $employee): array
+    {
+        if (!self::enabled()) {
+            return [];
+        }
+        $rows = $q->all(
+            "SELECT id FROM lens_requisitions
+              WHERE case_id = ? AND status = 'pending' AND timeoptic_req_id IS NULL AND used_at IS NOT NULL
+              ORDER BY id FOR UPDATE",
+            $caseId
+        );
+        $failed = [];
+        foreach ($rows as $row) {
+            $why = self::sendOne($q, (int) $row['id'], $caseId, $employee);
+            if ($why !== null) {
+                $failed[] = $why;
+            }
+        }
+        return $failed;
+    }
+
+    /**
+     * เปลี่ยนเลนส์หลังขาย ในใบที่ส่งคำขอไปแล้ว — ถอนคำขอเดิม แล้วส่งรายการใหม่เป็นคำขอใบใหม่
+     * TimeOptic ตัดสต็อกไปแล้ว = เปลี่ยนไม่ได้ (409 ทั้งการบันทึกถอย) ต้องยกเลิกใบเบิกเดิมก่อน
+     * ติดต่อคลังไม่ได้ตอนถอน = บันทึกไม่ผ่าน (502) ไม่ปล่อยให้คลังถือรายการเก่าไว้เงียบ ๆ
+     */
+    public static function resend(Tx $q, int $id, int $caseId, ?int $employee): void
+    {
+        if (!self::enabled()) {
+            return;
+        }
+        $r    = $q->get('SELECT req_no, timeoptic_req_id, timeoptic_req_code, timeoptic_status FROM lens_requisitions WHERE id = ?', $id);
+        $code = (string) $r['timeoptic_req_code'];
+        $st   = (string) ($r['timeoptic_status'] ?? 'pending');
+        if ($st === 'pending') {
+            $st = self::cancel((int) $r['timeoptic_req_id'])['status'];
+        }
+        if ($st === 'approved') {
+            throw new HttpError(
+                409,
+                "คำขอ $code TimeOptic ตัดสต็อกไปแล้ว เปลี่ยนเลนส์ไม่ได้ — ยกเลิกใบเบิกเดิมก่อนถ้าต้องการเปลี่ยนเลนส์",
+                ['reason' => 'lens_req_locked']
+            );
+        }
+        $q->run(
+            'UPDATE lens_requisitions SET timeoptic_req_id = NULL, timeoptic_req_code = NULL, timeoptic_status = NULL,
+                    timeoptic_note = NULL, timeoptic_synced_at = NULL WHERE id = ?',
+            $id
+        );
+        logEvent($q, $caseId, [
+            'action'      => 'lens_timeoptic_withdrawn',
+            'entity'      => 'lens_requisition',
+            'entity_id'   => $id,
+            'employee_id' => $employee,
+            'note'        => $r['req_no'] . ": ถอนคำขอ $code ในคลัง TimeOptic (เปลี่ยนเลนส์หลังขาย)",
+        ]);
+        self::sendOne($q, $id, $caseId, $employee);
+    }
+
+    /** ส่งใบเดียว → null = ส่งแล้ว · ข้อความ = ส่งไม่ผ่าน (ลงไทม์ไลน์แล้ว ไม่โยน) */
+    private static function sendOne(Tx $q, int $id, int $caseId, ?int $employee): ?string
+    {
+        $full = lensReqLoadTx($q, $id);
+        try {
+            $sent = self::create(self::basket($full['items']), self::note($full));
+        } catch (Throwable $e) {
+            $why = $full['req_no'] . ': ' . $e->getMessage();
+            logEvent($q, $caseId, [
+                'action'      => 'lens_timeoptic_send_failed',
+                'entity'      => 'lens_requisition',
+                'entity_id'   => $id,
+                'employee_id' => $employee,
+                'note'        => mb_substr(
+                    $full['req_no'] . ': ส่งคำขอเข้าคลัง TimeOptic ไม่ผ่าน — ' . $e->getMessage()
+                    . ' · ส่งใหม่ได้ที่หน้าใบเบิกเลนส์',
+                    0,
+                    250
+                ),
+            ]);
+            return $why;
+        }
+        $q->run(
+            'UPDATE lens_requisitions SET timeoptic_req_id = ?, timeoptic_req_code = ?, timeoptic_status = ?,
+                    timeoptic_note = NULL, timeoptic_synced_at = NOW() WHERE id = ?',
+            $sent['id'],
+            $sent['code'],
+            $sent['status'],
+            $id
+        );
+        logEvent($q, $caseId, [
+            'action'      => 'lens_timeoptic_sent',
+            'entity'      => 'lens_requisition',
+            'entity_id'   => $id,
+            'employee_id' => $employee,
+            'note'        => $full['req_no'] . ': ส่งคำขอเข้าคลัง TimeOptic ' . $sent['code'] . ' (หลังยืนยันขาย)',
+        ]);
+        return null;
+    }
+
+    /**
+     * เปิดขั้นขายกลับมาแก้ → ถอนคำขอของใบที่ยังรอเบิก ซึ่ง TimeOptic ยังไม่ได้ตรวจ แล้วล้างเลขคำขอ
+     * ยืนยันขายรอบใหม่จะส่งรายการเลนส์ที่แก้แล้วเป็นคำขอใบใหม่ · คลังตรวจไปแล้ว (ตัด/ตีกลับ)
+     * ไม่ล้าง เก็บสถานะที่ได้มา · ติดต่อคลังไม่ได้ไม่ขวางการเปิดขั้นขาย แค่ลงไทม์ไลน์ไว้
+     */
+    public static function withdrawForCase(Tx $q, int $caseId, ?int $employee): void
+    {
+        if (!self::enabled()) {
+            return;
+        }
+        $rows = $q->all(
+            "SELECT id, req_no, timeoptic_req_id, timeoptic_req_code FROM lens_requisitions
+              WHERE case_id = ? AND status = 'pending' AND timeoptic_req_id IS NOT NULL
+                AND COALESCE(timeoptic_status, 'pending') = 'pending'
+              ORDER BY id FOR UPDATE",
+            $caseId
+        );
+        foreach ($rows as $r) {
+            $code = (string) $r['timeoptic_req_code'];
+            try {
+                $t = self::cancel((int) $r['timeoptic_req_id']);
+            } catch (Throwable $e) {
+                $t    = null;
+                $note = "ถอนคำขอ $code ในคลัง TimeOptic ไม่สำเร็จ: " . $e->getMessage();
+            }
+            if ($t !== null && $t['status'] === 'cancelled') {
+                $q->run(
+                    'UPDATE lens_requisitions SET timeoptic_req_id = NULL, timeoptic_req_code = NULL, timeoptic_status = NULL,
+                            timeoptic_note = NULL, timeoptic_synced_at = NULL WHERE id = ?',
+                    (int) $r['id']
+                );
+                $note = "ถอนคำขอ $code ในคลัง TimeOptic แล้ว — ยืนยันขายใหม่จะส่งคำขอใบใหม่";
+            } elseif ($t !== null) {
+                $q->run(
+                    'UPDATE lens_requisitions SET timeoptic_status = ?, timeoptic_note = ?, timeoptic_synced_at = NOW() WHERE id = ?',
+                    $t['status'],
+                    $t['note'],
+                    (int) $r['id']
+                );
+                $note = "คำขอ $code ถอนไม่ได้ — " . (self::LABEL[$t['status']] ?? $t['status']);
+            }
+            logEvent($q, $caseId, [
+                'action'      => 'lens_timeoptic_withdrawn',
+                'entity'      => 'lens_requisition',
+                'entity_id'   => (int) $r['id'],
+                'employee_id' => $employee,
+                'note'        => mb_substr($r['req_no'] . ': ' . $note . ' (เปิดขั้นขายกลับมาแก้)', 0, 250),
+            ]);
+        }
+    }
+
+    /**
      * สถานะล่าสุดของคำขอที่บัญชีนี้ส่ง — [id => shape] · 50 ใบล่าสุดตามที่คลังส่งมา
      *
      * @return array<int,array<string,mixed>>
