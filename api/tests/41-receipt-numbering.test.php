@@ -30,6 +30,7 @@ function rcptOrder(int $cid, string $price, array $extra = []): array
         'customer_id' => $cid,
         'frame_name'  => 'กรอบทดสอบ',
         'frame_price' => $price,
+        'frame_type'  => 'กรอบเต็มโลหะ',
     ] + $extra);
 }
 

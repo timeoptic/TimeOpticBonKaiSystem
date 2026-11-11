@@ -39,7 +39,7 @@ test('ฟอร์มไม่ส่งวันนัดมา — วันน
     rollback(function (Tx $q) {
         $f = oeaFixtures($q);
         Router::dispatch('PUT', "/api/orders/{$f['order']}", [], [
-            'customer_id' => $f['cust'], 'case_id' => $f['case'], 'notes' => 'แก้หมายเหตุ',
+            'customer_id' => $f['cust'], 'case_id' => $f['case'], 'frame_type' => 'กรอบเต็มโลหะ', 'notes' => 'แก้หมายเหตุ',
         ]);
         eq(oeaAppt($q, $f['order']), ['2026-11-02', '14:00'], 'วันนัดรับ');
         eq($q->get('SELECT notes FROM custom_orders WHERE id = ?', $f['order'])['notes'], 'แก้หมายเหตุ', 'ช่องอื่นยังแก้ได้');
@@ -50,7 +50,7 @@ test('ส่งวันนัดมาตรง ๆ ยังเขียนท
     rollback(function (Tx $q) {
         $f = oeaFixtures($q);
         Router::dispatch('PUT', "/api/orders/{$f['order']}", [], [
-            'customer_id' => $f['cust'], 'case_id' => $f['case'], 'appointment_date' => '2026-11-09',
+            'customer_id' => $f['cust'], 'case_id' => $f['case'], 'frame_type' => 'กรอบเต็มโลหะ', 'appointment_date' => '2026-11-09',
         ]);
         eq(oeaAppt($q, $f['order'])[0], '2026-11-09', 'วันนัดรับ');
     });

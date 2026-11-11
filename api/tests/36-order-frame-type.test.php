@@ -62,12 +62,31 @@ test('ทุกประเภทในรายการบันทึกไ�
     });
 });
 
-/* ช่องไม่บังคับ — ออเดอร์ที่ยังไม่รู้ประเภทกรอบต้องเป็น NULL ไม่ใช่ข้อความว่าง */
-test('ไม่เลือกประเภทกรอบ เก็บเป็น NULL', function () {
+/* บังคับเลือกตั้งแต่ 11 พ.ย. 2026 (ร้านขอ) — ค่าคอมงานเจียใน HRMS คิดจากประเภทกรอบ */
+test('ไม่เลือกประเภทกรอบ ถูกปฏิเสธด้วย 400 ทั้งเปิดและแก้ออเดอร์', function () {
     rollback(function (Tx $q) {
-        $row = orderWithFrameType($q, '');
-        ok(array_key_exists('frame_type', $row), 'custom_orders ต้องมีคอลัมน์ frame_type');
-        eq($row['frame_type'], null, 'ประเภทกรอบตอนไม่เลือก');
+        foreach (['', '   ', null] as $blank) {
+            try {
+                orderWithFrameType($q, $blank);
+                ok(false, 'เปิดออเดอร์ไม่มีประเภทกรอบต้องไม่ผ่าน (' . var_export($blank, true) . ')');
+            } catch (HttpError $e) {
+                eq($e->status, 400, 'สถานะ');
+                ok(str_contains($e->getMessage(), 'กรุณาเลือกประเภทกรอบ'), 'ข้อความบอกว่าต้องเลือก');
+            }
+        }
+        $row = orderWithFrameType($q, 'กรอบเจาะ');
+        try {
+            Router::dispatch('PUT', '/api/orders/' . $row['id'], [], [
+                'customer_id' => $row['customer_id'],
+                'frame_name'  => 'กรอบทดสอบ',
+                'frame_price' => '1500',
+                'frame_type'  => '',
+            ]);
+            ok(false, 'แก้ออเดอร์ให้ประเภทกรอบว่างต้องไม่ผ่าน');
+        } catch (HttpError $e) {
+            eq($e->status, 400, 'สถานะตอนแก้');
+        }
+        eq($q->get('SELECT frame_type FROM custom_orders WHERE id = ?', $row['id'])['frame_type'], 'กรอบเจาะ', 'ค่าเดิมยังอยู่');
     });
 });
 

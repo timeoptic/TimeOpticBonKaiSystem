@@ -412,6 +412,8 @@ export function OrderFormView({
   const save = async (body) => {
     if (!customerId) return err('กรุณาเลือกลูกค้าก่อน');
     if (dyed && !dyeColor) return err(new Error('กรุณาเลือกสีและระดับความเข้มที่จะย้อม'));
+    /* บังคับตั้งแต่ 11 พ.ย. 2026 (ร้านขอ) — ค่าคอมงานเจียใน HRMS คิดจากประเภทกรอบ */
+    if (!String(body.frame_type ?? '').trim()) return err(new Error('กรุณาเลือกประเภทกรอบ'));
     body.customer_id = customerId;
     body.case_id = caseId;
     body.final_prescription_id = rxId;
@@ -696,7 +698,7 @@ export function OrderFormView({
           {/* ถามทั้งกรอบจากสต็อกและกรอบเก่าของลูกค้า (เจ้าของร้านขอ 2026-09-10)
               ช่างต้องรู้ว่าเจาะหรือเซาะร่อง ไม่ว่ากรอบมาจากไหน · ต้องอยู่ในฟอร์มเสมอ
               เพราะ PUT เขียนทับทุกคอลัมน์ รายการมาจาก Lookups::FRAME_TYPES ตัวเดียวกับที่ API ใช้ตรวจ */}
-          <Field label="ประเภทกรอบ / Frame Type">
+          <Field label={<>ประเภทกรอบ / Frame Type <span style={{ color: 'var(--danger, #d33)' }}>*</span></>}>
             <ListSelect
               name="frame_type"
               kind="frame_type"

@@ -109,7 +109,7 @@ test('ไม่มีเหตุผล / วันผิดรูป / วั�
 test('บันทึกแก้ไขออเดอร์ (PUT /api/orders/:id) ไม่เปลี่ยนวันเปิดบิล แม้ส่ง order_date มาหรือไม่ส่ง', function () {
     rollback(function (Tx $q) {
         $f = odFixtures($q);
-        $body = ['customer_id' => $f['cust'], 'case_id' => $f['case'], 'frame_name' => 'กรอบทดสอบ', 'total_price' => 1500, 'discount' => 0, 'deposit' => 0];
+        $body = ['customer_id' => $f['cust'], 'case_id' => $f['case'], 'frame_name' => 'กรอบทดสอบ', 'frame_type' => 'กรอบเต็มโลหะ', 'total_price' => 1500, 'discount' => 0, 'deposit' => 0];
         Router::dispatch('PUT', "/api/orders/{$f['order']}", [], $body);
         eq(odDate($q, $f['order']), '2026-09-20 14:35:10', 'ไม่ส่ง order_date');
         Router::dispatch('PUT', "/api/orders/{$f['order']}", [], $body + ['order_date' => '2026-01-01']);
