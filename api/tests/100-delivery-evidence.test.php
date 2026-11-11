@@ -126,6 +126,12 @@ test('ทางเดินจริง: Progressive เคสเก่า — �
         $q->run("UPDATE centerings SET r_height = 18, l_height = 18, corridor = '14', vertex_distance = 12, pantoscopic_tilt = 8 WHERE case_id = ?", $case);
         $q->run('INSERT INTO frame_fittings (case_id, frame_box_a, frame_box_b, dbl, ed) VALUES (?, 52, 30, 18, 58)', $case);
         eq($err('POST', '/api/case-deliveries', $dlv), 'กรุณาเลือกคนเจีย', 'ไม่เลือกคนเจีย');
+        eq($err('POST', '/api/case-deliveries', $dlv + ['grinder_employee_id' => '']), 'กรุณาเลือกคนเจีย', 'คนเจียว่าง');
+
+        /* "ไม่มีคนเจีย" = 0 นับเป็นการเลือก (11 พ.ย. 2026) */
+        $call('POST', '/api/case-deliveries', $dlv + ['grinder_employee_id' => '0']);
+        $g = Db::get('SELECT grinder_employee_id FROM case_deliveries WHERE case_id = ?', $case)['grinder_employee_id'];
+        ok($g !== null && (int) $g === 0, 'ไม่มีคนเจีย บันทึกเป็น 0');
 
         $call('POST', '/api/case-deliveries', $dlv + ['grinder_employee_id' => $emp]);
         $call('POST', $complete);

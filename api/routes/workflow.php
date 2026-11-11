@@ -66,8 +66,11 @@ POST('/api/case-deliveries', function (array $req) use ($saveDelivery) {
     $caseId = int_or($req['body']['case_id'] ?? null);
     $ex = $caseId ? Db::get('SELECT delivered_at FROM case_deliveries WHERE case_id = ?', $caseId) : null;
     /* คนเจียบังคับตั้งแต่ 10 พ.ย. 2026 (ร้านขอ) — เฉพาะการส่งมอบครั้งแรก
-       เคสที่ส่งมอบไปก่อนหน้านี้ยังเป็น NULL ได้ บันทึกซ้ำไม่โดนบล็อก */
-    if (empty($ex['delivered_at']) && !int_or($req['body']['grinder_employee_id'] ?? null)) {
+       เคสที่ส่งมอบไปก่อนหน้านี้ยังเป็น NULL ได้ บันทึกซ้ำไม่โดนบล็อก
+       0 = "ไม่มีคนเจีย" (11 พ.ย. 2026) — งานที่ไม่ได้เจีย เลือกได้แทนการเลือกบัญชีผู้ดูแลระบบ
+       ค่าคอมงานเจียใน HRMS ไม่จ่ายงานที่เป็น 0 */
+    $grinder = int_or($req['body']['grinder_employee_id'] ?? null);
+    if (empty($ex['delivered_at']) && ($grinder === null || $grinder < 0)) {
         bad('กรุณาเลือกคนเจีย');
     }
     /* หลักฐานก่อนส่งมอบ (processes.php) — ตรวจตั้งแต่บันทึกฟอร์ม ไม่ใช่แค่ตอนยืนยันขั้น

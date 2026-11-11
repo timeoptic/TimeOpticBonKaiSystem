@@ -28,7 +28,7 @@ import { useAsync, useObjectUrls } from '../../../../../lib/hooks.js';
 import { useToast } from '../../../../../components/Toast.jsx';
 import { useConfirm } from '../../../../../components/Confirm.jsx';
 import { Badge, Card, CardFold, Field, FormGrid, Kv, Row, Split, Stack } from '../../../../../components/ui.jsx';
-import { EmployeeSelect } from '../../../../../components/Selects.jsx';
+import { EmployeeSelect, Select } from '../../../../../components/Selects.jsx';
 import { useProcessActions } from '../../../../../components/ProcessShell.jsx';
 import { useMeta } from '../../../../../contexts/MetaContext.jsx';
 import { custName, fmtDate, fmtDateTime, money, nowLocal, toStamp } from '../../../../../lib/format.js';
@@ -39,6 +39,11 @@ import { isPreviewable } from '../../../../../lib/lightbox.js';
 import { isUnpaidRow } from '../../../../../lib/paymentUnpaid.js';
 import { useAuth } from '../../../../../contexts/AuthContext.jsx';
 import { inSystemZone } from '../../../../../lib/roles.js';
+
+/** grinder_employee_id = 0 — งานนี้ไม่มีคนเจีย (ค่าคอมงานเจียใน HRMS ไม่จ่าย) */
+const NO_GRINDER_LABEL = 'ไม่มีคนเจีย';
+/** บัญชีที่ไม่ใช่ช่าง ไม่ให้เลือกเป็นคนเจีย */
+const NOT_GRINDERS = new Set(['ผู้ดูแลระบบ']);
 
 /* ไอคอนต่อวิธีจ่าย — ชุดเดียวกับขั้น "ชำระเงิน" ตัวเลือกจริงมาจาก meta.lists.pay_type
    ไม่ได้พิมพ์รายการไว้เอง ร้านเพิ่มช่องทางใหม่แล้วที่นี่ขึ้นตาม */
@@ -301,6 +306,14 @@ export function DeliveryPanel({ c, reload }) {
   /* ---- ส่งมอบ ---------------------------------------------------------- */
   const [handedBy, setHandedBy] = useState('');
   const [grinderId, setGrinderId] = useState('');
+  /* "ไม่มีคนเจีย" แทนการเลือกบัญชีผู้ดูแลระบบ (ร้านเคยเลือกบัญชีนี้เมื่องานไม่ได้เจีย) */
+  const grinderOptions = [
+    ['', '— เลือกคนเจีย —'],
+    ['0', NO_GRINDER_LABEL],
+    ...meta.employees
+      .filter((e) => !NOT_GRINDERS.has(String(e.employee_name || '').trim()))
+      .map((e) => [e.id, e.employee_name]),
+  ];
   const [dNote, setDNote] = useState('');
   /* เวลาส่งมอบคือ "ตอนนี้" เสมอ — จอโชว์เฉย ๆ แก้ไม่ได้ ของจริงจะถูกประทับตอน
      กดยืนยัน เดินตามนาฬิกาไปเรื่อย ๆ จะได้ไม่โชว์เวลาหนึ่งแต่บันทึกอีกเวลาหนึ่ง
@@ -324,7 +337,8 @@ export function DeliveryPanel({ c, reload }) {
         delivered_at: toStamp(pickedAt && mayEditDate ? pickedAt : nowLocal()),
         handed_over_by: handedBy,
         employee_id: handedBy,
-        grinder_employee_id: grinderId || null,
+        /* '0' = ไม่มีคนเจีย — ส่งเป็นเลข 0 ไม่ใช่ว่าง */
+        grinder_employee_id: grinderId === '' ? null : grinderId,
         received_by_customer_name: name,
         note: dNote.trim() || null,
       });
@@ -453,8 +467,10 @@ export function DeliveryPanel({ c, reload }) {
               ) : fmtDateTime(d.delivered_at)],
               ['ผู้รับสินค้า', d.received_by_customer_name || '—'],
               ['ผู้ส่งมอบ', d.handed_over_by_name || empName(d.handed_over_by)],
-              ...(d.grinder_employee_id
-                ? [['คนเจีย', d.grinder_name || empName(d.grinder_employee_id)]]
+              ...(d.grinder_employee_id != null
+                ? [['คนเจีย', Number(d.grinder_employee_id) === 0
+                  ? NO_GRINDER_LABEL
+                  : d.grinder_name || empName(d.grinder_employee_id)]]
                 : []),
               ...(d.note ? [['หมายเหตุ', d.note]] : []),
               /* ส่งมอบแล้วแต่ยังค้างเงินได้ — สองสถานะนี้แยกกัน ไม่ได้ปิดตามกัน */
@@ -739,8 +755,9 @@ export function DeliveryPanel({ c, reload }) {
                 </>
               )}
             >
-              <EmployeeSelect
+              <Select
                 name="grinder_employee_id"
+                options={grinderOptions}
                 value={grinderId}
                 onChange={(e) => setGrinderId(e.target.value)}
                 required
