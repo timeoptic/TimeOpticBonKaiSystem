@@ -50,6 +50,7 @@ import { NotifyPanel } from './panels/NotifyPanel.jsx';
 import { TimelinePanel } from './panels/TimelinePanel.jsx';
 import { LensRequisitionPanel } from './panels/LensRequisitionPanel.jsx';
 import { ChangeCustomerDialog } from './panels/ChangeCustomerDialog.jsx';
+import { EditCaseOpenedDateDialog } from './panels/EditCaseOpenedDateDialog.jsx';
 import { ReceiptPanel } from '../../../../components/ReceiptPanel.jsx';
 import ns from './SalesUnconfirmed.module.css';
 
@@ -427,6 +428,8 @@ function CaseDetailInner() {
   /* ปุ่ม "เปลี่ยนลูกค้า" — แอดมิน/เจ้าของร้านเท่านั้น (API ตรวจซ้ำเอง) */
   const { actor } = useAuth();
   const [changingCustomer, setChangingCustomer] = useState(false);
+  /* ปุ่ม "แก้วันเปิดเคส" — สิทธิ์เดียวกัน · วันเปิดบิลขยับตาม */
+  const [editingOpened, setEditingOpened] = useState(false);
 
   useEffect(() => { dirty.current = false; dirtyForm.current = null; }, [c]);
 
@@ -508,6 +511,11 @@ function CaseDetailInner() {
                 <Icon name="users" /> เปลี่ยนลูกค้า
               </button>
             )}
+            {inSystemZone(actor) && (
+              <button type="button" className="btn btn-ghost" onClick={() => setEditingOpened(true)}>
+                <Icon name="calendar" /> แก้วันเปิดเคส
+              </button>
+            )}
             {c.order && <Link className="btn btn-ghost" href={'/orders/detail?id=' + c.order.id}><Icon name="glasses" /> ออเดอร์</Link>}
             {c.order && <Link className="btn btn-ghost" href={'/print/order?id=' + c.order.id}><Icon name="printer" /> ใบสั่ง</Link>}
             {c.order && <Link className="btn btn-ghost" href={'/print/receipt?order=' + c.order.id}><Icon name="receipt" /> ใบเสร็จ</Link>}
@@ -520,6 +528,14 @@ function CaseDetailInner() {
           c={c}
           onClose={() => setChangingCustomer(false)}
           onSaved={() => { setChangingCustomer(false); reload(); }}
+        />
+      )}
+
+      {editingOpened && (
+        <EditCaseOpenedDateDialog
+          c={c}
+          onClose={() => setEditingOpened(false)}
+          onSaved={() => { setEditingOpened(false); reload(); }}
         />
       )}
 

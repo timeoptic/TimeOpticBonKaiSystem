@@ -661,6 +661,101 @@ POST('/api/cases/:id/customer', function (array $req) {
     return ['case_id' => $id, 'moved' => $moved];
 });
 
+/**
+ * แก้วันเปิดเคส — แอดมิน/เจ้าของร้านเท่านั้น (ร้านขอ 13 พ.ย. 2026)
+ *
+ * ที่มา: CASE-2026-00467 แก้ cases.opened_at ในฐานด้วยมือ แล้วยอดขายไม่ย้ายตาม เพราะรายงาน
+ * ยอดขายนับบิลด้วยวันเปิดบิล/วันปิดบิล (services/SalesReport.php) ไม่ใช่วันเปิดเคส
+ *
+ * บิลทุกใบในเคสขยับตามจำนวนวันเท่ากับที่วันเปิดเคสขยับ เวลาเดิมคงไว้ · บิลที่เปิดทีหลัง
+ * วันเปิดเคส (เช่นแว่นคู่ที่สอง) จึงยังห่างจากวันเปิดเคสเท่าเดิม · วันปิดบิล วันปิดเคส
+ * เงินที่รับ และเลขใบเสร็จที่ออกแล้วไม่แตะ
+ *
+ * ไม่รับถ้าบิลใบไหนจะเลยวันนี้ หรือเลยวันปิดบิลของใบนั้น · ลงไทม์ไลน์เคสทั้งวันเปิดเคส
+ * และบิลแต่ละใบ (order_date_changed เดียวกับปุ่มแก้วันเปิดบิล)
+ * เทสต์: api/tests/101-case-opened-date-edit.test.php
+ */
+PUT('/api/cases/:id/opened-date', function (array $req) {
+    $actor = StockModule::actor();
+    if (!$actor || !\Optic\Roles::systemZone($actor['roles'] ?? [])) {
+        throw new HttpError(403, 'แก้วันเปิดเคสได้เฉพาะแอดมินหรือเจ้าของร้าน', ['reason' => 'forbidden']);
+    }
+    $id   = int_or($req['params']['id']);
+    $date = substr(trim((string) ($req['body']['opened_date'] ?? '')), 0, 10);
+    [$y, $m, $d] = array_pad(explode('-', $date), 3, '');
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) || !checkdate((int) $m, (int) $d, (int) $y)) {
+        bad('วันเปิดเคสไม่ถูกต้อง');
+    }
+    $today = date('Y-m-d');
+    if ($date > $today) {
+        bad('วันเปิดเคสต้องไม่เกินวันนี้');
+    }
+    $reason = trim((string) ($req['body']['reason'] ?? ''));
+    if ($reason === '') {
+        bad('กรุณาใส่เหตุผลที่แก้วันเปิดเคส');
+    }
+
+    return Db::tx(function (Tx $q) use ($id, $date, $today, $reason, $actor) {
+        $c = $q->get('SELECT id, opened_at FROM cases WHERE id = ? FOR UPDATE', $id);
+        if (!$c) {
+            missing();
+        }
+        $old = (string) $c['opened_at'];
+        if (substr($old, 0, 10) === $date) {
+            throw new HttpError(400, 'วันเปิดเคสเป็นวันนี้อยู่แล้ว', ['reason' => 'same_date']);
+        }
+        $days  = (int) (new DateTimeImmutable(substr($old, 0, 10)))->diff(new DateTimeImmutable($date))->format('%r%a');
+        $shift = fn(string $stamp) => (new DateTimeImmutable($stamp))->modify("$days day")->format('Y-m-d H:i:s');
+
+        $orders = $q->all(
+            'SELECT id, invoice_code, order_date, order_closed, order_close_date
+               FROM custom_orders WHERE case_id = ? ORDER BY id FOR UPDATE',
+            $id
+        );
+        $moves = [];
+        foreach ($orders as $o) {
+            if (!$o['order_date']) {
+                continue;
+            }
+            $to   = $shift((string) $o['order_date']);
+            $code = $o['invoice_code'] ?: ('#' . $o['id']);
+            if (substr($to, 0, 10) > $today) {
+                bad("บิล $code จะเลื่อนไปเป็นวันที่ " . substr($to, 0, 10) . ' ซึ่งเลยวันนี้');
+            }
+            if ($o['order_close_date'] && substr($to, 0, 10) > substr((string) $o['order_close_date'], 0, 10)) {
+                bad("บิล $code จะเลื่อนไปเปิดหลังวันปิดบิล (" . substr((string) $o['order_close_date'], 0, 10) . ')');
+            }
+            $moves[] = ['id' => (int) $o['id'], 'code' => $code, 'from' => (string) $o['order_date'], 'to' => $to];
+        }
+
+        $new = $date . ' ' . (strlen($old) >= 19 ? substr($old, 11, 8) : '00:00:00');
+        $q->run('UPDATE cases SET opened_at = ? WHERE id = ?', $new, $id);
+        $by     = (string) ($actor['displayName'] ?? $actor['username'] ?? '');
+        $bySfx  = $by !== '' ? " · โดย $by" : '';
+        foreach ($moves as $mv) {
+            $q->run('UPDATE custom_orders SET order_date = ? WHERE id = ?', $mv['to'], $mv['id']);
+            logEvent($q, $id, [
+                'action'      => 'order_date_changed',
+                'entity'      => 'custom_order',
+                'entity_id'   => $mv['id'],
+                'employee_id' => $actor['employeeId'] ?? null,
+                'note'        => sprintf('%s → %s · ตามวันเปิดเคส · %s', substr($mv['from'], 0, 10), substr($mv['to'], 0, 10), $reason) . $bySfx,
+                'payload'     => ['from' => $mv['from'], 'to' => $mv['to'], 'via' => 'case_opened_date'],
+            ]);
+        }
+        logEvent($q, $id, [
+            'action'      => 'case_opened_date_changed',
+            'entity'      => 'case',
+            'entity_id'   => $id,
+            'employee_id' => $actor['employeeId'] ?? null,
+            'note'        => sprintf('%s → %s · %s', substr($old, 0, 10), $date, $reason)
+                . ($moves ? ' · บิลขยับตาม ' . count($moves) . ' ใบ' : '') . $bySfx,
+            'payload'     => ['from' => $old, 'to' => $new, 'days' => $days, 'orders' => $moves],
+        ]);
+        return ['case_id' => $id, 'opened_at' => $new, 'days' => $days, 'orders' => $moves];
+    });
+});
+
 POST('/api/cases/:id/status', function (array $req) {
     $id   = int_or($req['params']['id']);
     $body = $req['body'];
