@@ -384,7 +384,10 @@ export function OrderFormView({
     body.final_prescription_id = rxId;
     /* กรอบเดิมของลูกค้า = ไม่มีของออกจากคลัง ชื่อกรอบยังถูกบันทึกตามที่พิมพ์
        และเดินไปกับใบสั่งเหมือนกรอบที่ขายจริง */
-    body.frame_product_id = usesOldFrame ? null : (picked.frame?.id ?? null);
+    /* กรอบจากคลังของอีกสาขา (แพไม้ ← บ่อนไก่) — id เป็นล็อตของระบบนั้น ไม่เก็บ ตัดด้วย SKU */
+    const remoteFrame = !usesOldFrame && Boolean(picked.frame?.remote);
+    body.frame_remote = remoteFrame ? 1 : null;
+    body.frame_product_id = usesOldFrame || remoteFrame ? null : (picked.frame?.id ?? null);
     body.lens_product_id = picked.lensOd?.id ?? null;
     body.right_lens_product_id = picked.lensOs?.id ?? null;
 

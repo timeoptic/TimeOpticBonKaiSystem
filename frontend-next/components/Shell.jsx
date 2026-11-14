@@ -9,6 +9,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { crumbFor } from '../lib/crumb.js';
 import { Icon } from './Icon.jsx';
+import { FrameRemoteBanner } from './FrameRemoteBanner.jsx';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import { inMoneyZone, inSystemZone, isAdminPath, isAdminUp, worksBothSides } from '../lib/roles.js';
 
@@ -266,7 +267,7 @@ export function Shell({ children }) {
           <div className="spacer" />
           <WhoAmI />
         </header>
-        <div className="content" id="view">{children}</div>
+        <div className="content" id="view"><FrameRemoteBanner />{children}</div>
       </main>
     </div>
   );

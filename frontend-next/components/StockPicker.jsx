@@ -32,8 +32,11 @@ export const stockLabel = (r) => {
  * เอาตัวเลขราคาออกจากบรรทัดนี้ยังทำให้ชื่อสินค้ากับ SKU ไม่โดนตัดทิ้งบนจอแคบด้วย
  */
 const stockSub = (r) => [
-  /* id เป็น null = ยังไม่เคยรับของเข้าสักล็อต (มีแต่ชื่อในแคตตาล็อก) เลือกได้ ขายแล้วยอดติดลบ */
-  r.id == null
+  /* กรอบจากคลังอีกสาขาที่ไม่รู้ยอด (ติดต่อไม่ได้ / ออเดอร์เดิม) — ไม่ใช่ "หมดสต็อก" */
+  r.remote && r.remaining_qty == null
+    ? 'คงเหลือ: ดูที่คลังต้นทาง'
+    /* id เป็น null = ยังไม่เคยรับของเข้าสักล็อต (มีแต่ชื่อในแคตตาล็อก) เลือกได้ ขายแล้วยอดติดลบ */
+    : r.id == null
     ? 'ยังไม่เคยรับของเข้า'
     : (Number(r.remaining_qty) ? `เหลือ ${r.remaining_qty} ชิ้น` : 'หมดสต็อก'),
   Number(r.lot_count) > 1 ? `${r.lot_count} ล็อต` : null,
@@ -61,7 +64,8 @@ export function StockPicker({ type, onPick, selectedId = null, picked = null, on
   /* ออเดอร์เก็บ id ของล็อต สินค้าที่ยังไม่เคยรับของเข้าจึงต้องให้ฝั่งคลังเปิดล็อตค้างส่ง
      (ยอดศูนย์) ก่อน — ใบเดียวกับที่ยอดติดลบจะไปลงตอนยืนยันการขาย */
   const choose = async (r) => {
-    if (r.id != null) {
+    /* กรอบจากคลังอีกสาขาตัดด้วย SKU — ไม่ต้องเปิดล็อตค้างส่งที่นี่ */
+    if (r.id != null || r.remote) {
       setOpen(false);
       onPick(r);
       return;
@@ -86,7 +90,7 @@ export function StockPicker({ type, onPick, selectedId = null, picked = null, on
         <b>{stockLabel(picked)}</b>
         {/* title ไว้กู้ข้อความที่ถูก … ตัดไปตอนแถวแคบ (ดู .picked-item .muted) */}
         <span className="muted" title={stockSub(picked)}>{stockSub(picked)}</span>
-        <span className="p-id">#{picked.id}</span>
+        {picked.id != null && !picked.remote && <span className="p-id">#{picked.id}</span>}
         <button type="button" className="btn btn-sm btn-light" onClick={() => setOpen(true)}>เปลี่ยน</button>
         {onClear && (
           <button type="button" className="btn btn-sm btn-light" onClick={onClear}>ล้าง</button>

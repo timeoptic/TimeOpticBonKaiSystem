@@ -224,6 +224,11 @@ GET('/api/stock', function (array $req) {
     $term = str_or($q['q'] ?? null);
     $type = str_or($q['type'] ?? null);
 
+    /* สาขาที่ไม่ได้ถือสต็อกกรอบ (FRAME_STOCK_* ใน .env) — ค้นกรอบจากคลังของอีกสาขา */
+    if ($type === 'Frame' && FrameRemote::enabled()) {
+        return FrameRemote::search($q);
+    }
+
     /* ตัวกรองเลนส์ Coating/SPH/CYL — ตรงทุกค่าที่กรอก AND กับคำค้น · กติกาอยู่ที่ stockLensFilter() */
     $lens = stockLensFilter($q);
     $lots = stockLotRows($term, $type, false, $lens);

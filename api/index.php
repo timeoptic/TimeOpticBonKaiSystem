@@ -29,6 +29,7 @@ require __DIR__ . '/services/Booking.php';
 require __DIR__ . '/services/Telegram.php';
 require __DIR__ . '/services/StockClient.php';
 require __DIR__ . '/services/CaseStock.php';
+require __DIR__ . '/services/FrameRemote.php';
 require __DIR__ . '/services/Migrate.php';
 require __DIR__ . '/services/Scheduler.php';
 require __DIR__ . '/services/DeliveryDigest.php';
@@ -57,6 +58,8 @@ foreach ([
     'bookings', 'settings', 'logs',
     /* ใบเบิกเลนส์ รายการเลนส์ และการใช้เลนส์ของ Bewell */
     'lens', 'lens-catalog',
+    /* กรอบจากคลังของอีกสาขา (แพไม้ ← บ่อนไก่) */
+    'frame-remote',
 ] as $group) {
     require __DIR__ . "/routes/$group.php";
 }

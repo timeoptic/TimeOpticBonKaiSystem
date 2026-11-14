@@ -19,9 +19,9 @@ const ORDER_COLS = ['case_id', 'customer_id', 'employee_id', 'recorded_by',
     'lens_r_rx_id', 'lens_r_rx_doc', 'lens_l_rx_id', 'lens_l_rx_doc',
     'frame_price', 'lens_od_price', 'lens_os_price', 'options_price',
     'total_price', 'discount', 'deposit', 'deposit_pay_type',
-    'marketing', 'notes'];
+    'marketing', 'notes', 'frame_remote'];
 
-const INT_ORDER_COLS = ['case_id', 'customer_id', 'employee_id', 'recorded_by',
+const INT_ORDER_COLS = ['frame_remote', 'case_id', 'customer_id', 'employee_id', 'recorded_by',
     'final_prescription_id', 'frame_product_id', 'lens_product_id', 'right_lens_product_id',
     'lens_r_rx_id', 'lens_l_rx_id'];
 
@@ -179,6 +179,15 @@ function orderVals(array $b): array
         bad('ประเภทกรอบไม่อยู่ในรายการ');
     }
 
+    /* กรอบจากคลังอีกสาขา (FrameRemote) — id ที่หน้าเว็บส่งมาเป็นล็อตของ *อีกระบบ*
+       เก็บลง frame_product_id ไม่ได้ (ชี้ไปล็อตอื่นของที่นี่) · จำแค่ SKU แล้วตัดด้วย SKU */
+    if ((int) ($b['frame_remote'] ?? 0) === 1 && trim((string) ($b['frame_sku'] ?? '')) !== '') {
+        $b['frame_remote']     = 1;
+        $b['frame_product_id'] = null;
+    } else {
+        $b['frame_remote'] = null;
+    }
+
     $out = [];
     foreach (ORDER_COLS as $c) {
         if (in_array($c, INT_ORDER_COLS, true)) {
@@ -259,6 +268,15 @@ function orderDetail(?int $id): array
     $o['left_lens']  = $item($o['lens_product_id']);
     $o['right_lens'] = $item($o['right_lens_product_id']);
     $o['frame']      = $item($o['frame_product_id']);
+    if (!$o['frame'] && (int) ($o['frame_remote'] ?? 0) === 1) {
+        /* กรอบจากคลังอีกสาขา — ไม่มีล็อตที่นี่ ประกอบจาก snapshot ในออเดอร์ให้หน้าแก้ออเดอร์เห็นชิ้นเดิม */
+        $o['frame'] = [
+            'id' => null, 'remote' => 1, 'sku' => $o['frame_sku'], 'product_name' => $o['frame_name'],
+            'brand' => $o['frame_brand'], 'model' => $o['frame_model'], 'color' => $o['frame_color'],
+            'size' => $o['frame_size'], 'remaining_qty' => null,
+            'location' => class_exists('FrameRemote') ? 'คลัง' . FrameRemote::label() : null,
+        ];
+    }
     /* Bewell: เลนส์ที่เลือกจากรายการเลนส์ไม่ผูกล็อต left_lens/right_lens จึงว่างเสมอ —
        หาเลนส์ในรายการจาก SKU ของแต่ละข้าง หน้าแก้ออเดอร์จะได้ขึ้นเลนส์ที่เลือกไว้แทนช่องว่าง
        ไม่กรอง active: เลนส์ที่ปิดไปแล้วยังต้องเห็นในออเดอร์ที่ขายไปแล้ว */

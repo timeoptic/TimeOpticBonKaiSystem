@@ -54,6 +54,18 @@ final class CaseStock
         $lines = [];
 
         foreach (self::SLOTS as $slot => [$label, $eye, $priceCol, $nameCol]) {
+            /* กรอบจากคลังของอีกสาขา (FrameRemote) — ออเดอร์ไม่มีล็อตของที่นี่ ตัดด้วย SKU ที่บ่อนไก่ */
+            if ($slot === 'frame' && (int) ($order['frame_remote'] ?? 0) === 1) {
+                $sku = trim((string) ($order['frame_sku'] ?? ''));
+                $lines[] = [
+                    'slot' => $slot, 'label' => $label, 'eye' => null, 'lot_id' => null, 'sku' => $sku,
+                    'name' => (string) ($order[$nameCol] ?? ''), 'price' => round((float) ($order[$priceCol] ?? 0), 2),
+                    'rx' => null, 'remote' => true,
+                    'missing' => $sku === '' ? 'ไม่พบ SKU ของกรอบจากคลัง' . FrameRemote::label()
+                        : (FrameRemote::enabled() ? null : 'กรอบนี้มาจากคลัง' . FrameRemote::label() . ' แต่ยังไม่ได้ตั้งค่าการเชื่อม (FRAME_STOCK_* ใน .env)'),
+                ];
+                continue;
+            }
             $lotId = (int) ($order[self::SLOT_COLUMN[$slot]] ?? 0);
             if (!$lotId) {
                 continue;
@@ -149,6 +161,11 @@ final class CaseStock
             ];
         }
 
+        /* รายการกรอบที่ค้างส่งไปคลังอีกสาขา ส่งก่อน — ลำดับการตัด/คืนจะได้ไม่สลับกัน */
+        if (FrameRemote::enabled()) {
+            FrameRemote::flush();
+        }
+
         foreach ($undo as $prev) {
             self::reverse($prev, 'เปลี่ยนสินค้าในออเดอร์ ' . $caseCode);
         }
@@ -182,11 +199,14 @@ final class CaseStock
     public static function returnForCase(array $case, string $why): array
     {
         $order = $case['order'] ?? null;
-        if (!$order || !($order['id'] ?? null) || !StockClient::live()) {
+        if (!$order || !($order['id'] ?? null)) {
             return [];
         }
         $out = [];
         foreach (self::heldBySlot((int) $order['id']) as $prev) {
+            if ((int) ($prev['remote'] ?? 0) !== 1 && !StockClient::live()) {
+                continue;
+            }
             $out[] = self::reverse($prev, $why);
         }
         return $out;
@@ -197,7 +217,8 @@ final class CaseStock
     {
         return Db::all(
             'SELECT slot, kind, sku, product_name, quantity, idem_key, reference_doc,
-                    unit_cost, total_cost, issued_at, reversed_at
+                    unit_cost, total_cost, issued_at, reversed_at,
+                    remote, remote_state, reverse_state, remote_error
                FROM case_stock_issues WHERE case_id = ? ORDER BY id',
             $caseId
         );
@@ -227,6 +248,9 @@ final class CaseStock
         array $l,
         ?int $employeeId
     ): array {
+        if (!empty($l['remote'])) {
+            return self::issueRemoteLine($caseId, $orderId, $caseCode, $l, $employeeId);
+        }
         $attempt = (int) (Db::get(
             'SELECT COUNT(*) n FROM case_stock_issues WHERE order_id = ? AND slot = ?',
             $orderId,
@@ -299,9 +323,38 @@ final class CaseStock
         return $row + ['label' => $l['label']];
     }
 
+    /**
+     * กรอบจากคลังอีกสาขา — คีย์นำหน้าด้วยรหัสสาขา เพราะเลขเคส/เลขออเดอร์ของสองสาขาซ้ำกันได้
+     * (CASE-2026-00001 มีทั้งสองที่) ไม่ใส่จะไปได้คำตอบของเคสบ่อนไก่กลับมาแทนการตัดจริง
+     */
+    private static function issueRemoteLine(int $caseId, int $orderId, string $caseCode, array $l, ?int $employeeId): array
+    {
+        $attempt = (int) (Db::get(
+            'SELECT COUNT(*) n FROM case_stock_issues WHERE order_id = ? AND slot = ?',
+            $orderId,
+            $l['slot']
+        )['n'] ?? 0) + 1;
+        $from = FrameRemote::from();
+        $row  = FrameRemote::issue([
+            'case_id'       => $caseId,
+            'order_id'      => $orderId,
+            'slot'          => $l['slot'],
+            'sku'           => $l['sku'],
+            'product_name'  => $l['name'],
+            'idem_key'      => self::key(FrameRemote::tag() . "-case-$caseCode-o$orderId-{$l['slot']}-{$l['sku']}-$attempt"),
+            'reference_doc' => mb_substr("$from $caseCode", 0, 100),
+            'note'          => "ขายที่สาขา$from {$l['label']} — เคส $caseCode",
+            'employee_id'   => $employeeId,
+        ]);
+        return $row + ['label' => $l['label'], 'kind' => 'issue', 'remote' => 1];
+    }
+
     /** คืนหนึ่งรายการกลับเข้าคลัง โดยอ้าง idem_key เดิม */
     private static function reverse(array $prev, string $why): array
     {
+        if ((int) ($prev['remote'] ?? 0) === 1) {
+            return FrameRemote::reverse($prev, $why);
+        }
         if ((string) $prev['kind'] === 'rx') {
             /* ฝั่งคลังไม่มีเส้นยกเลิกใบสั่งตัด และ RX ไม่ได้แตะยอดสต็อกอยู่แล้ว
                จึงแค่ปิดแถวฝั่งเราแล้วบอกให้คนไปจัดการใบสั่งเอง */

@@ -176,6 +176,15 @@ final class Migrate
                ห้ามมี foreign key ไป stock_lots — สมุดสต็อกเป็นบันทึกประวัติ ไม่ใช่
                ตัวชี้ที่ยังมีชีวิต ผูกเป็น FK แล้วจะได้ผลแย่สองทาง: ลบล็อตไม่ได้เพราะ
                ฝั่งเราค้ำอยู่ หรือประวัติถูก cascade ลบตามไป · lot_id จึงเป็น int เปล่า ๆ */
+            /* กรอบจากคลังอีกสาขา (FrameRemote) — รายการกรอบล่าสุดที่เคยค้นเจอ
+               ใช้ตอนติดต่อคลังนั้นไม่ได้ ให้ยังเลือกกรอบขายได้ (ยอดคงเหลือไม่ทราบ) */
+            'frame_remote_cache' => "CREATE TABLE IF NOT EXISTS frame_remote_cache (
+                sku         varchar(100) NOT NULL,
+                search_text varchar(1000) NOT NULL DEFAULT '',
+                row_json    longtext NOT NULL,
+                seen_at     datetime NOT NULL,
+                PRIMARY KEY (sku)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
             'case_stock_issues' => "CREATE TABLE IF NOT EXISTS case_stock_issues (
                 id               int(10) unsigned NOT NULL AUTO_INCREMENT,
                 case_id          int(10) unsigned NOT NULL,
@@ -1084,6 +1093,19 @@ final class Migrate
             );
         }
 
+        /* กรอบจากคลังอีกสาขา — ดู services/FrameRemote.php
+           remote_state: pending (รอส่ง) · done · failed (คลังนั้นปฏิเสธ ต้องมีคนดู) · cancelled · resolved
+           reverse_state: แบบเดียวกันสำหรับการคืน · ออเดอร์จำว่ากรอบมาจากคลังอีกสาขาด้วย frame_remote */
+        $added = array_merge($added, self::addColumns('case_stock_issues', [
+            'remote'        => 'tinyint(1) NOT NULL DEFAULT 0',
+            'remote_state'  => 'varchar(12) DEFAULT NULL',
+            'reverse_state' => 'varchar(12) DEFAULT NULL',
+            'remote_error'  => 'varchar(255) DEFAULT NULL',
+            'remote_tries'  => 'int(11) NOT NULL DEFAULT 0',
+            'remote_at'     => 'datetime DEFAULT NULL',
+        ]), self::addColumns('custom_orders', [
+            'frame_remote'  => "tinyint(1) DEFAULT NULL COMMENT '1 = กรอบจากคลังอีกสาขา (ไม่มีล็อตที่นี่)'",
+        ]));
         $created = array_merge($created, $added);
         foreach (self::DEFAULT_SETTINGS as $key => $value) {
             Db::run('INSERT IGNORE INTO app_settings (`key`, `value`) VALUES (?, ?)', $key, $value);
