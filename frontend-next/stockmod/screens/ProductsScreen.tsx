@@ -2,8 +2,7 @@
 
 import { useState } from "react";
 import { can, useActor, WorkHead } from "@/stockmod/components/AppShell";
-import { useToast } from "@/stockmod/components/Toaster";
-import Paginator from "@/stockmod/components/Paginator";
+import Paginator, { usePerPage } from "@/stockmod/components/Paginator";
 import SortHead, { MATCH_SORT, SortBar, useSort } from "@/stockmod/components/SortHead";
 import LensFilters, { NO_LENS, lensParams, type LensPick } from "@/stockmod/components/LensFilters";
 import { Filter, FilterBar, withCount } from "@/stockmod/components/FilterBar";
@@ -11,10 +10,9 @@ import RecordCard, { CardList } from "@/stockmod/components/RecordCard";
 import TaskDialog from "@/stockmod/components/TaskDialog";
 import DateRangeField from "@/stockmod/components/DateRangeField";
 import { BillButton, ReceiveBill, useReceiveBill } from "@/stockmod/components/ReceiveBill";
-import ExportDialog, { branchOf, fetchAll, fetchLines, inSheet, orderOf, outSheet } from "@/stockmod/components/ExportDialog";
+import ExportDialog, { branchOf, fetchAll, fetchReport, inSheet, orderOf, outSheet, rxArrivedSheet } from "@/stockmod/components/ExportDialog";
 import LensCells from "@/stockmod/components/LensCells";
 import ProductCell from "@/stockmod/components/ProductCell";
-import NewProductDialog from "@/stockmod/components/NewProductDialog";
 import StockDrawer from "@/stockmod/components/StockDrawer";
 import StockLines from "@/stockmod/components/StockLines";
 import { qs, useApi } from "@/stockmod/lib/useApi";
@@ -130,7 +128,6 @@ export default function ProductsScreen({
   title = "สินค้าและสต็อก",
   lede = "กดที่แถวสินค้าเพื่อดูล็อตและรับของเข้า — แก้คงเหลือ ต้นทุน ราคาขาย และขั้นต่ำ ได้ที่ \"รายละเอียดสินค้า · ประวัติ\"",
   empty,
-  canAdd = true,
   views,
   bill = false,
 }: {
@@ -150,14 +147,6 @@ export default function ProductsScreen({
   lede?: string;
   empty?: string;
   /**
-   * ปุ่ม "เพิ่มสินค้า" บนหัวหน้า
-   *
-   * หน้าที่มองผ่านตัวกรองเดียวไม่ควรมี — สินค้าที่เพิ่งสร้างใหม่ไม่มีทางเข้า
-   * เงื่อนไขของหน้านั้นอยู่แล้ว กดแล้วบันทึกเสร็จก็ไม่โผล่ในรายการที่กำลังมองอยู่
-   * ซึ่งอ่านเหมือนบันทึกไม่สำเร็จ · หน้าสินค้าและสต็อกเต็มยังมีปุ่มนี้เหมือนเดิม
-   */
-  canAdd?: boolean;
-  /**
    * มุมมองที่สลับได้บนหน้าที่ล็อกสถานะไว้ — หน้า "สินค้ารอสั่ง" มีสองมุม (ร้านขอไว้ 14 ก.ย. 2026)
    *
    * ตัวแรกคือมุมที่เปิดมาเจอ และต้องตรงกับ `lockState` · `sort` คือการเรียงที่มุมนั้นเปิดมา
@@ -172,34 +161,24 @@ export default function ProductsScreen({
   /** ช่วงวันรับเข้า — ว่างทั้งคู่ = ทุกวัน */
   const [range, setRange] = useState({ from: "", to: "" });
   const [page, setPage] = useState(1);
+  const [per, setPer] = usePerPage("products");
   const { sort, dir, sortBy, sortTo } = useSort<SortKey>(views?.[0]?.sort ?? "added", NATURAL_ASC);
   const [openId, setOpenId] = useState<number | null>(null);
 
   /** Which product's lots are unfolded. One at a time — this is a table. */
   const [openRow, setOpenRow] = useState<number | null>(null);
-  /**
-   * A product to unfold with its receiving form already open.
-   *
-   * Set when the add-product dialog says "what you want is a lot under the one
-   * that already exists" and that offer is taken. Cleared as soon as the fold
-   * is toggled by hand, so reopening the row later gives the row, not the form
-   * again.
-   */
-  const [receiveInto, setReceiveInto] = useState<number | null>(null);
   const [state, setState] = useState<string>(lockState);
-  const [creating, setCreating] = useState(false);
   const [exporting, setExporting] = useState(false);
 
   const actor = useActor();
   const rb = useReceiveBill(can.enterCost(actor), () => reload());
   const onBill = bill ? (p: ProductRow) => void rb.add(p) : undefined;
-  const toast = useToast();
   // Whole columns and tiles go away rather than being drawn empty: a dash where
   // a number belongs reads as missing data, not as "not yours to see".
   const money$ = can.seeCost(actor);
   const summary = useApi<Summary>("/summary");
   const list = useApi<Page<ProductRow> & { stateCounts?: StateCounts }>(
-    `/products${qs({ q: applied, make: ONLY_STOCK, type: ptype, ...lensParams(lens), from: range.from, to: range.to, state, sort, dir, page, counts: "1" })}`,
+    `/products${qs({ q: applied, make: ONLY_STOCK, type: ptype, ...lensParams(lens), from: range.from, to: range.to, state, sort, dir, page, per, counts: "1" })}`,
   );
 
   const counts = list.status === "ready" ? list.data.stateCounts : undefined;
@@ -436,12 +415,8 @@ function ProductRowCard({
             ค้นหา
           </button>
         </form>
-        {/* เพิ่มได้ทุกบทบาท — แก้กับลบยังเป็นของแอดมินขึ้นไป (ดู can.addProduct) */}
-        {canAdd && can.addProduct(actor) ? (
-          <button type="button" className="btn" onClick={() => setCreating(true)}>
-            เพิ่มสินค้า
-          </button>
-        ) : null}
+        {/* ไม่มีปุ่ม "เพิ่มสินค้า" ที่นี่ — ร้านขอ 23 ก.ย. 2026 ให้เพิ่มในบิลรับเข้าที่เดียว
+            ของใหม่มากับบิลเสมอ และเพิ่มจากในบิลได้ทั้งสินค้าและล็อตในครั้งเดียว */}
         {bill ? <BillButton b={rb} /> : null}
         {/* Export สินค้า คงเหลือ รับเข้า และจ่ายออก ตามช่วงวัน (ร้านขอ 18 ก.ย. 2026) */}
         <button type="button" className="btn" onClick={() => setExporting(true)}>
@@ -673,11 +648,7 @@ function ProductRowCard({
                     open={openRow === r.id}
                     columns={3 + (lensCols ? 2 : 0) + (alertedCol ? 1 : 0) + (money$ ? 1 : 0) + 2 + (bill ? 1 : 0)}
                     onBill={onBill}
-                    startReceiving={receiveInto === r.id}
-                    onToggle={() => {
-                      setReceiveInto(null);
-                      setOpenRow(openRow === r.id ? null : r.id);
-                    }}
+                    onToggle={() => setOpenRow(openRow === r.id ? null : r.id)}
                     onOpen={() => setOpenId(r.id)}
                     onChanged={reload}
                   />
@@ -691,6 +662,10 @@ function ProductRowCard({
             perPage={list.data.perPage}
             total={list.data.total}
             onPage={setPage}
+            onPerPage={(n) => {
+              setPer(n);
+              setPage(1);
+            }}
             label="รายการ"
           />
         </>
@@ -700,41 +675,6 @@ function ProductRowCard({
         <StockDrawer productId={openId} onClose={() => setOpenId(null)} onChanged={reload} />
       ) : null}
 
-      {creating ? (
-        <NewProductDialog
-          title="เพิ่มสินค้าใหม่แล้วรับเข้าเลย"
-          // The first lot goes in with the same save. A new product is nearly
-          // always discovered while unpacking a delivery, and the old receiving
-          // screen took it in here rather than making someone come back for it.
-          receive
-          // Copying a product and keeping its name means the thing wanted was
-          // another lot of the original, not a second product with the same
-          // name. The dialog says so; this is what makes the sentence a door.
-          onUseExisting={(id) => {
-            setCreating(false);
-            setOpenRow(id);
-            setReceiveInto(id);
-          }}
-          onClose={() => setCreating(false)}
-          onSaved={(id, lot) => {
-            // Closed, said, and the new product unfolded — no green panel to
-            // read and then dismiss before getting on with it.
-            setCreating(false);
-            reload();
-            setOpenRow(id);
-            const said = {
-              text: lot ? "เพิ่มสินค้าและรับเข้าคลังแล้ว" : "เพิ่มสินค้าใหม่แล้ว",
-              detail: lot
-                ? `${count(lot.quantity)} ชิ้น` +
-                  (lot.awaitingCost ? " · ยังไม่มีต้นทุน รอใบกำกับ" : "")
-                : undefined,
-            };
-            /* ล็อตที่ยังไม่มีต้นทุนคือใบกำกับที่ต้องตามเก็บ — งานยังไม่จบ */
-            if (lot?.awaitingCost) toast.warning(said);
-            else toast.success(said);
-          }}
-        />
-      ) : null}
       {bill ? <ReceiveBill b={rb} /> : null}
       {exporting ? (
         <ExportDialog
@@ -743,6 +683,7 @@ function ProductRowCard({
           sheets={[
             { name: "สินค้าและคงเหลือ", hint: "สินค้าตามตัวกรองที่เปิดอยู่ ยอดคงเหลือ ณ ตอนนี้ (ช่วงวัน = รับเข้าในช่วงนั้น)" },
             { name: "รับเข้ารายวัน", hint: "ทุกล็อตที่รับเข้าในช่วงวัน มียอดรวมย่อยรายวัน" },
+            { name: "เลนส์ RX มาถึง", hint: "ใบสั่งตัด RX ที่ติ๊กเลนส์มาถึงในช่วงวัน นับตามวันที่ติ๊ก" },
             { name: "จ่ายออกแยกตามออเดอร์", hint: "เบิก/ขาย/ตัดเสีย จัดกลุ่มตามเลขออเดอร์" },
             { name: "จ่ายออกแยกตามสาขา", hint: "เบิก/ขาย/ตัดเสีย จัดกลุ่มตามสาขา" },
           ]}
@@ -794,8 +735,9 @@ function ProductRowCard({
             }
             if (chosen.some((c) => c !== "สินค้าและคงเหลือ")) {
               say("กำลังดึงรายการรับเข้า/จ่ายออก…");
-              const lines = await fetchLines(range);
+              const { rows: lines, rxArrived } = await fetchReport(range);
               out.push(inSheet(lines, m));
+              out.push(rxArrivedSheet(rxArrived, m));
               out.push(outSheet("จ่ายออกแยกตามออเดอร์", "จ่ายออกและตัดเสีย จัดกลุ่มตามเลขออเดอร์/เอกสาร", lines, orderOf, m));
               out.push(outSheet("จ่ายออกแยกตามสาขา", "จ่ายออกและตัดเสีย จัดกลุ่มตามสาขา", lines, (l) => branchOf(l.branch), m));
             }
@@ -816,7 +758,6 @@ function Row({
   alerted,
   open,
   columns,
-  startReceiving,
   onToggle,
   onOpen,
   onChanged,
@@ -834,8 +775,6 @@ function Row({
   open: boolean;
   /** How wide the fold has to be to sit under the whole row. */
   columns: number;
-  /** Unfold straight onto the receiving form rather than onto the lot list. */
-  startReceiving: boolean;
   onToggle: () => void;
   onOpen: () => void;
   onChanged: () => void;
@@ -936,12 +875,7 @@ function Row({
     {open ? (
       <tr className="grid__row grid__row--fold">
         <td colSpan={columns} onClick={(e) => e.stopPropagation()}>
-          <StockLines
-            product={row}
-            onChanged={onChanged}
-            onDetails={onOpen}
-            startReceiving={startReceiving}
-          />
+          <StockLines product={row} onChanged={onChanged} onDetails={onOpen} />
         </td>
       </tr>
     ) : null}

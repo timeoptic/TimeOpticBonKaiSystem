@@ -186,7 +186,7 @@ test('ตัวกรอง: ชนิด ชื่อ Index Coating สถา�
     });
 });
 
-test('Export: ไฟล์ xlsx ชีต "Lens Usage - Be Well" มีแถวตามตัวกรอง', function () {
+test('Export: ไฟล์ xlsx ชีต "Lens Usage - BonKai" มีแถวตามตัวกรอง', function () {
     rollback(function (Tx $q) {
         $f   = lrFixture($q);
         $cat = luCatalog($q);
@@ -198,7 +198,7 @@ test('Export: ไฟล์ xlsx ชีต "Lens Usage - Be Well" มีแถว
         file_put_contents($tmp, $bytes);
         $zip = new ZipArchive();
         ok($zip->open($tmp) === true, 'เปิดได้');
-        ok(str_contains((string) $zip->getFromName('xl/workbook.xml'), 'Lens Usage - Be Well'), 'ชื่อชีต');
+        ok(str_contains((string) $zip->getFromName('xl/workbook.xml'), 'Lens Usage - BonKai'), 'ชื่อชีต');
         $all = '';
         for ($i = 0; $i < $zip->numFiles; $i++) {
             $all .= (string) $zip->getFromIndex($i);

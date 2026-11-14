@@ -7,7 +7,7 @@
  */
 import { Card, Kpis } from '../../../components/ui.jsx';
 import { ExportButtons, ReportFilter, useReport } from '../../../components/ReportFilter.jsx';
-import { DrillKpi, NoData, ReportState, bucketNote, toSeries } from '../../../components/reports/bits.jsx';
+import { DrillKpi, NoData, PendingNote, ReportState, bucketNote, toSeries } from '../../../components/reports/bits.jsx';
 import { Bars, Donut, seriesColor } from '../../../components/charts.jsx';
 import { useToast } from '../../../components/Toast.jsx';
 import { count, money, moneyShort } from '../../../lib/format.js';
@@ -44,6 +44,7 @@ export default function OverviewPage() {
       <ReportFilter actions={<ExportButtons onExcel={excel} disabled={!data} />} />
 
       <ReportState loading={loading} error={error} data={data}>
+        <PendingNote pending={data?.pending} />
         {data && !data.kpi.bills
           ? <NoData bounds={data.bounds} channel={filter.channel} />
           : null}

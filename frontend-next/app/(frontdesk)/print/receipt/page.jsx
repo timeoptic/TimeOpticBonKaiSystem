@@ -138,7 +138,7 @@ const money2 = (v) =>
 function BrandMark() {
   const [bad, setBad] = useState(false);
   if (bad) return <span className="rc-mark"><Icon name="glasses" /><b>TIME OPTIC</b></span>;
-  return <img className="rc-logo" src="/logo-bewell.png" alt="TIME OPTIC at Be Well" onError={() => setBad(true)} />;
+  return <img className="rc-logo" src="/logo-bewell.png" alt="TIME OPTIC สาขาบ่อนไก่" onError={() => setBad(true)} />;
 }
 
 /** แถว "ป้าย : ค่า" ของบล็อกหัวใบและบล็อกลูกค้า — ค่าว่างพิมพ์ขีดให้เขียนมือ */
@@ -300,14 +300,14 @@ function ReceiptSheet() {
         api.get(`/api/orders/${orderId}`),
         api.post('/api/receipts', { order_id: Number(orderId) }),
       ]);
-      return { sheet: withIssueDate(orderReceipt(o, rc.receipt_no), rc), receipt: rc, caseId: o.case_id || null, label: o.invoice_code };
+      return { sheet: withIssueDate(orderReceipt(o, rc.receipt_no), rc), receipt: rc, caseId: o.case_id || null, label: o.invoice_code, billDate: o.order_date };
     }
     if (saleId) {
       const [s, rc] = await Promise.all([
         api.get(`/api/pos/sales/${saleId}`),
         api.post('/api/receipts', { sale_id: Number(saleId) }),
       ]);
-      return { sheet: withIssueDate(saleReceipt(s, rc.receipt_no), rc), receipt: rc, label: s.pos_no };
+      return { sheet: withIssueDate(saleReceipt(s, rc.receipt_no), rc), receipt: rc, label: s.pos_no, billDate: s.sale_date };
     }
     throw new Error('ไม่ได้ระบุว่าจะออกใบเสร็จของออเดอร์หรือใบขาย POS');
   }, [orderId, saleId, tick]);
@@ -486,7 +486,7 @@ function ReceiptSheet() {
   };
 
   const onIssue = async () => {
-    const rc = await issue(orderId ? 'CASE' : 'POS', Number(orderId || saleId), data.label);
+    const rc = await issue(orderId ? 'CASE' : 'POS', Number(orderId || saleId), data.label, data.billDate);
     if (rc) setTick((t) => t + 1);
   };
   /* ล้างทั้งสี่ช่อง — ใบจะพิมพ์ออกมาเป็นเส้นประเปล่าให้เขียนมือ ซึ่งเป็นวิธีที่

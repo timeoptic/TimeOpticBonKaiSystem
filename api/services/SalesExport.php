@@ -2,16 +2,18 @@
 /**
  * ไฟล์ Excel ของรายงานยอดขาย — ชีทสรุปหนึ่งใบ แล้วแยกชีทรายเดือน
  *
- * **แบ่งเดือนด้วยวันเปิดบิล ฐานเดียวกับหน้ารายงานบนเว็บเป๊ะ ๆ** — ยอดรวมในไฟล์
+ * **แบ่งเดือนด้วยวันเดียวกับที่หน้ารายงานบนเว็บนับอยู่** (วันปิดบิลหรือวันเปิดบิล
+ * ตามตัวเลือก "นับตาม" — ดู SalesReport::BYS) — ยอดรวมในไฟล์
  * ต้องเท่ากับตัวเลขบนหน้าจอทุกบาทเมื่อใช้ตัวกรองชุดเดียวกัน · `api/cli/check-report-export.php`
  * ตรวจข้อนี้ให้ทั้งตาราง (ช่วง × ช่องทาง × สถานะ) รันได้ทุกเมื่อ
  *
- * เคยลองแบ่งด้วยวันปิดงานมาก่อน เพราะคำถามที่เจ้าของร้านถามคือ "เดือนนั้นปิดงาน
+ * บทเรียนที่ยังใช้อยู่: ไฟล์กับหน้าจอต้องนับด้วยวันเดียวกันเสมอ ·
+ * เคยลองแบ่งไฟล์ด้วยวันปิดงานขณะที่หน้าจอยังนับวันเปิดบิล เพราะคำถามที่เจ้าของร้านถามคือ "เดือนนั้นปิดงาน
  * ไปเท่าไหร่" ซึ่งวันปิดตอบตรงกว่า · แต่ผลคือไฟล์กับหน้าจอไม่ตรงกันสักครั้งเดียว
  * (ปี 2026 ต่างกัน 58 ใบ ฿354,508 จากบิลที่เปิดปี 2025 แล้วมาปิดปี 2026) แล้วทุก
  * ครั้งที่ไม่ตรง คนอ่านต้องหยุดมาสืบว่าฝั่งไหนพัง ซึ่งแพงกว่าประโยชน์ที่ได้ ·
- * วันปิดงานยังอยู่ครบในคอลัมน์ของตัวเอง อยากดูแบบ "ปิดเดือนไหน" ก็เรียงหรือ
- * กรองคอลัมน์นั้นใน Excel ได้เอง
+ * ตั้งแต่ 30 ก.ย. 2026 หน้าจอเลือกวันที่นับได้ แล้วไฟล์ตามหน้าจอ ทั้งสองคอลัมน์วันที่
+ * ยังอยู่ครบในไฟล์เสมอ
  *
  * ตัวกรองมาจากหน้ารายงานทั้งชุด (ช่วงวันที่ + ช่องทาง + สถานะงาน) — ไม่มีโหมด
  * พิเศษของ "ทั้งปี" ช่วงคร่อมกี่เดือนก็ได้ชีทเท่านั้นเดือน กดปุ่ม "ปีนี้" จึงได้
@@ -39,12 +41,18 @@ final class SalesExport
      * บนหน้าจอไม่ได้ใช้ — แต่ตัวเลขเงินทุกตัวมาจากสูตรเดียวกัน และ
      * `api/cli/check-report-export.php` คอยเทียบให้ว่ายังตรงกันอยู่
      */
-    public static function mainRows(string $from, string $to, string $status = 'all', string $group = 'all'): array
-    {
-        $onlyStatus = SalesReport::statusSql($status, 'o.order_closed = 1', 'o.order_closed = 0')
-            . SalesReport::groupSql($group, 'cs.customer_category');
-        $rows       = Db::all(
-            "SELECT DATE(o.order_date)                                    AS opened_on,
+    public static function mainRows(
+        string $from,
+        string $to,
+        string $status = 'all',
+        string $group = 'all',
+        string $by = 'open'
+    ): array {
+        $where = SalesReport::mainWhereSql($status, $by) . SalesReport::groupSql($group, 'cs.customer_category');
+        $date  = SalesReport::mainDateSql($status, $by);
+        $rows  = Db::all(
+            "SELECT DATE($date)                                           AS counted_on,
+                    DATE(o.order_date)                                    AS opened_on,
                     DATE(o.order_close_date)                              AS closed_on,
                     o.order_closed,
                     COALESCE(NULLIF(cs.case_code, ''), o.invoice_code)    AS code,
@@ -59,14 +67,15 @@ final class SalesExport
                LEFT JOIN (SELECT order_id, SUM(amount) paid FROM payments
                            WHERE order_id IS NOT NULL AND cancelled_at IS NULL
                            GROUP BY order_id) pay ON pay.order_id = o.id
-              WHERE DATE(o.order_date) BETWEEN ? AND ? $onlyStatus
-              ORDER BY opened_on, o.id",
+              WHERE $where
+              ORDER BY counted_on, o.id",
             $from,
             $to
         );
 
         return array_map(fn(array $r) => [
-            'date'        => (string) $r['opened_on'],
+            /* วันที่ที่ใบนี้ถูกนับ — ตัวแบ่งเดือนของไฟล์ */
+            'date'        => (string) $r['counted_on'],
             'opened'      => (string) $r['opened_on'],
             'closed'      => (string) ($r['closed_on'] ?? ''),
             'code'        => (string) $r['code'],
@@ -179,11 +188,17 @@ final class SalesExport
         ];
     }
 
-    /** แถวทั้งหมดตามตัวกรอง เรียงตามวันเปิดบิล แล้วตามเลขเคส */
-    public static function rows(string $from, string $to, string $channel, string $status = 'all', string $group = 'all'): array
-    {
+    /** แถวทั้งหมดตามตัวกรอง เรียงตามวันที่ที่ถูกนับ แล้วตามเลขเคส */
+    public static function rows(
+        string $from,
+        string $to,
+        string $channel,
+        string $status = 'all',
+        string $group = 'all',
+        string $by = 'open'
+    ): array {
         $rows = array_merge(
-            SalesReport::wantsMain($channel) ? self::mainRows($from, $to, $status, $group) : [],
+            SalesReport::wantsMain($channel) ? self::mainRows($from, $to, $status, $group, $by) : [],
             SalesReport::wantsPos($channel)  ? self::posRows($from, $to, $status, $group)  : []
         );
         usort($rows, fn(array $a, array $b) => [$a['date'], $a['code']] <=> [$b['date'], $b['code']]);
@@ -274,9 +289,10 @@ final class SalesExport
         string $to,
         string $channel,
         string $status = 'all',
-        string $group = 'all'
+        string $group = 'all',
+        string $by = 'open'
     ): Xlsx {
-        $rows = self::rows($from, $to, $channel, $status, $group);
+        $rows = self::rows($from, $to, $channel, $status, $group, $by);
 
         /* จัดกลุ่มตามเดือนก่อน แล้วค่อยวาด — เดือนที่ไม่มีเคสจะไม่มีชีท แต่ยังมี
            บรรทัดของตัวเองในตารางสรุปพร้อมเลขศูนย์ ให้เห็นว่าเดือนนั้นเงียบจริง
@@ -288,7 +304,7 @@ final class SalesExport
 
         $withYear = self::spansYears($from, $to);
         $book     = new Xlsx();
-        self::dashboard($book, $from, $to, $channel, $status, $rows, $byMonth, $withYear);
+        self::dashboard($book, $from, $to, $channel, $status, $rows, $byMonth, $withYear, $by);
         foreach (self::months($from, $to) as $ym) {
             if (!empty($byMonth[$ym])) {
                 self::monthSheet($book, $ym, $byMonth[$ym], $channel, $status, $withYear);
@@ -306,7 +322,8 @@ final class SalesExport
         string $status,
         array $rows,
         array $byMonth,
-        bool $withYear
+        bool $withYear,
+        string $by = 'open'
     ): void {
         $sh = $book->sheet('Dashboard');
         /* คอลัมน์ G เว้นไว้เป็นช่องไฟก่อนถึงกราฟที่ลอยอยู่ตั้งแต่ H ไปทางขวา */
@@ -329,9 +346,9 @@ final class SalesExport
             Xlsx::MUTED
         )]);
         /* บอกให้ชัดว่าไฟล์นี้แบ่งเดือนด้วยวันอะไร — คนที่เอาไปเทียบกับหน้ารายงาน
-           บนเว็บ (ซึ่งนับตามวันเปิดบิลเสมอ) จะได้รู้ก่อนว่าทำไมตัวเลขไม่เท่ากัน
+           บนเว็บ (ซึ่งสลับวันที่นับได้) จะได้รู้ก่อนว่าทำไมตัวเลขไม่เท่ากัน
            แทนที่จะไปสรุปว่าอันใดอันหนึ่งพัง */
-        $sh->row([Xlsx::t(self::basisNote($status), Xlsx::MUTED)]);
+        $sh->row([Xlsx::t(self::basisNote($status, $by), Xlsx::MUTED)]);
         $sh->gap();
 
         $sh->row([Xlsx::t('สรุปรวมทั้งช่วง', Xlsx::BOLD)]);
@@ -528,6 +545,11 @@ final class SalesExport
         $withStatus  = $status === 'all';
         $sh          = $book->sheet(self::monthLabel($ym, $withYear));
 
+        /* ร้านอ่านชีทเรียงตามวันปิดงาน (ส่งมอบ) เก่าไปใหม่ · ใบที่ยังไม่ปิดไม่มีวันปิด
+           ไปต่อท้าย · วันเท่ากันเรียงตามวันเปิดบิลแล้วเลขเคส */
+        usort($rows, fn(array $a, array $b) => [$a['closed'] === '', $a['closed'], $a['opened'], $a['code']]
+            <=> [$b['closed'] === '', $b['closed'], $b['opened'], $b['code']]);
+
         $widths = [13, 13, 16, 18, 18, 14, 14, 14];
         if ($withStatus) {
             $widths[] = 12;
@@ -597,9 +619,18 @@ final class SalesExport
     }
 
     /** บรรทัดกำกับว่าไฟล์นี้นับอะไร ด้วยวันไหน และเทียบกับหน้าเว็บได้แค่ไหน */
-    private static function basisNote(string $status): string
+    private static function basisNote(string $status, string $by = 'open'): string
     {
+        /* โหมดวันปิดบิลนับเฉพาะงานตัดแว่นที่ปิดแล้ว (ขายหน้าร้านยังนับตามวันขาย) ·
+           ถามหา "ยังไม่จบ" ในโหมดนั้นไม่มีวันปิดให้นับ จึงตกมาใช้วันเปิดบิล */
+        if ($by === 'close' && $status !== 'open') {
+            return 'งานตัดแว่นนับเฉพาะใบที่ปิดบิลแล้ว แบ่งเดือนตามวันปิดบิล (วันส่งมอบ)'
+                . ' · ขายหน้าร้านนับตามวันขาย'
+                . ' — ฐานเดียวกับหน้ารายงานบนเว็บเมื่อเลือก "นับตาม: วันปิดบิล"'
+                . ' · งานที่ยังไม่ส่งมอบไม่อยู่ในไฟล์นี้';
+        }
         $tail = ' แบ่งเดือนตามวันเปิดบิล ฐานเดียวกับหน้ารายงานบนเว็บ'
+            . ($by === 'close' ? '' : ' เมื่อเลือก "นับตาม: วันเปิดบิล"')
             . ' — ใช้ตัวกรองชุดเดียวกันแล้วยอดรวมต้องตรงกันทุกบาท'
             . ' · วันปิดงานอยู่ในคอลัมน์ของตัวเอง เรียงหรือกรองต่อได้';
         return match ($status) {

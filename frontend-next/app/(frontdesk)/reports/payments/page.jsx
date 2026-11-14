@@ -190,6 +190,7 @@ export default function PaymentsReport() {
         actions={<ExportButtons onExcel={excel} disabled={!data?.count} />}
         channels={SOURCES}
         channelLabel="แหล่งที่มา"
+        hideBy
       />
 
       <ReportState loading={loading} error={error} data={data}>

@@ -1,12 +1,15 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState } from "react";
+import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { api, ApiError, type Actor } from "@/stockmod/lib/api";
 import { can as allowed, homeFor, mayUseStock, mustChangePassword } from "@/lib/roles.js";
 import CommandPalette from "./CommandPalette";
 import { ToastProvider } from "./Toaster";
 import SideRail, { sectionFor } from "./SideRail";
+import TaskDialog from "./TaskDialog";
+import { stockHref, trimSlash } from "@/stockmod/lib/paths";
 
 const ActorContext = createContext<Actor | null>(null);
 
@@ -83,6 +86,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [actor, setActor] = useState<Actor | null>(null);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   const [error, setError] = useState<string>("");
+  /** คำขอจากสาขาที่รอตรวจ — ป้ายตัวเลขบนเมนู (เฉพาะคนที่ถือ `issue.approve`) */
+  const [pending, setPending] = useState(0);
 
   useEffect(() => {
     let alive = true;
@@ -103,8 +108,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           location.assign("/change-password/");
           return;
         }
-        /* พนักงานขายเดินมาฝั่งคลังก็ไม่มีอะไรให้ทำ ส่งกลับไปที่ทำงานของเขา */
-        if (!mayUseStock(actor)) {
+        /* บัญชีสาขามีหน้าเดียวในฝั่งนี้ คือหน้าขอตัดเลนส์ — หน้าอื่นส่งกลับไปที่นั่น */
+        if (!mayUseStock(actor) && allowed(actor, "issue.request")) {
+          if (!trimSlash(location.pathname).startsWith(trimSlash(stockHref("/requests")))) {
+            location.assign(stockHref("/requests/"));
+            return;
+          }
+        } else if (!mayUseStock(actor)) {
+          /* พนักงานขายเดินมาฝั่งคลังก็ไม่มีอะไรให้ทำ ส่งกลับไปที่ทำงานของเขา */
           location.assign(homeFor(actor));
           return;
         }
@@ -162,15 +173,89 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     <ActorContext.Provider value={actor}>
       <ToastProvider>
         <div className="app">
-          <SideRail actor={actor} />
+          <SideRail actor={actor} pending={pending} />
           <div className="work-area">
             <WorkBar actor={actor} onSignOut={signOut} />
             {children}
           </div>
         </div>
-        <CommandPalette />
+        {mayUseStock(actor) ? <CommandPalette /> : null}
+        {allowed(actor, "issue.approve") ? <RequestAlert onCount={setPending} /> : null}
       </ToastProvider>
     </ActorContext.Provider>
+  );
+}
+
+/**
+ * ป๊อปอัพเตือนคำขอตัดเลนส์ใหม่จากสาขา — ร้านขอไว้ 27 ต.ค. 2026
+ *
+ * ถามทุก 30 วินาที และทุกครั้งที่กลับมาที่แท็บ · เด้งเมื่อมีคำขอที่ใหม่กว่าใบล่าสุดที่เคยเด้ง
+ * (จำไว้ใน sessionStorage) และไม่เด้งบนหน้าคำขอเอง เพราะกำลังดูรายการอยู่แล้ว
+ */
+const SEEN_KEY = "issue-requests-seen";
+
+function RequestAlert({ onCount }: { onCount: (n: number) => void }) {
+  const pathname = usePathname();
+  const [show, setShow] = useState<{ pending: number; latestId: number } | null>(null);
+  const onRequests = trimSlash(pathname).startsWith(trimSlash(stockHref("/requests")));
+
+  useEffect(() => {
+    let alive = true;
+    const seen = () => {
+      try {
+        return Number(sessionStorage.getItem(SEEN_KEY) ?? 0);
+      } catch {
+        return 0;
+      }
+    };
+    const check = () => {
+      api
+        .get<{ pending: number; latestId: number }>("/issue-requests/pending-count")
+        .then((r) => {
+          if (!alive) return;
+          onCount(r.pending);
+          if (r.pending > 0 && r.latestId > seen()) setShow(r);
+        })
+        .catch(() => undefined);
+    };
+    check();
+    const t = setInterval(check, 30000);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") check();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      alive = false;
+      clearInterval(t);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [onCount]);
+
+  function dismiss() {
+    if (show) {
+      try {
+        sessionStorage.setItem(SEEN_KEY, String(show.latestId));
+      } catch {
+        /* เก็บไม่ได้ก็แค่เด้งซ้ำรอบหน้า */
+      }
+    }
+    setShow(null);
+  }
+
+  if (show === null || onRequests) return null;
+
+  return (
+    <TaskDialog eyebrow="คำขอจากสาขา" title={`มีคำขอรอตรวจ ${show.pending} รายการ`} onClose={dismiss}>
+      <p className="field__help">สาขาส่งคำขอเบิกเลนส์ / สั่งตัด RX เข้ามา — ตรวจ แก้ แล้วกดยืนยันได้ที่หน้าคำขอ</p>
+      <div className="wizard__nav">
+        <button type="button" className="btn btn--quiet" onClick={dismiss}>
+          ไว้ทีหลัง
+        </button>
+        <Link href={stockHref("/requests")} className="btn btn--primary" onClick={dismiss}>
+          ไปตรวจ
+        </Link>
+      </div>
+    </TaskDialog>
   );
 }
 

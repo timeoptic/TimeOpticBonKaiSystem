@@ -1,4 +1,4 @@
-﻿/**
+/**
  * path -> breadcrumb table + lookup, matched longest-first. Detail/edit pages
  * under a domain (e.g. /customers/detail?id=5) still match their domain's
  * '/customers' entry, since the id lives in the query string, not the path.
@@ -70,5 +70,5 @@ export function crumbFor(pathname) {
   const hit = TITLES
     .filter(([p]) => p !== '/' && (pathname === p || pathname.startsWith(p + '/')))
     .sort((a, b) => b[0].length - a[0].length)[0];
-  return hit ? hit[1] : 'TIMEOPTIC @ Be Well MEDICAL CENTER';
+  return hit ? hit[1] : 'TIMEOPTIC @ สาขาบ่อนไก่';
 }

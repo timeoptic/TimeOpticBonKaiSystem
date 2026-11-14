@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import Paginator from "./Paginator";
+import Paginator, { usePerPage } from "./Paginator";
 import SortHead, { MATCH_SORT, SortBar, useSort } from "./SortHead";
 import LensFilters, { NO_LENS, lensParams, type LensPick } from "./LensFilters";
 import { Filter, FilterBar } from "./FilterBar";
@@ -199,6 +199,8 @@ export default function ProductPicker({
   const [ptype, setPtype] = useState("");
   const [lens, setLens] = useState<LensPick>(NO_LENS);
   const [page, setPage] = useState(1);
+  /* ขนาดหน้าที่ผู้ใช้เลือกเองชนะค่าที่หน้าเรียกส่งมา (`perPage`) */
+  const [per, setPer] = usePerPage("picker");
   const { sort, dir, sortBy, sortTo } = useSort<SortKey>(defaultSort, NATURAL_ASC);
 
   /**
@@ -246,7 +248,7 @@ export default function ProductPicker({
           ...lensParams(lens),
           sort,
           dir,
-          per: perPage,
+          per: per ?? perPage,
           page,
         })}`
       : null,
@@ -631,6 +633,10 @@ export default function ProductPicker({
             perPage={list.data.perPage}
             total={list.data.total}
             onPage={setPage}
+            onPerPage={(n) => {
+              setPer(n);
+              setPage(1);
+            }}
             label="รายการ"
           />
         </>

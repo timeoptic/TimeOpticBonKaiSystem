@@ -16,10 +16,11 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { api } from '../lib/apiClient.js';
 import { useAsync } from '../lib/hooks.js';
-import { fmtDateTime, money } from '../lib/format.js';
+import { fmtDate, fmtDateTime, money, todayISO } from '../lib/format.js';
 import { Badge, Card, Loading } from './ui.jsx';
 import { Icon } from './Icon.jsx';
 import { useConfirm } from './Confirm.jsx';
+import { DateField } from './DateField.jsx';
 import { useToast } from './Toast.jsx';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import { can } from '../lib/roles.js';
@@ -36,7 +37,7 @@ export const PRINT_STATUS = {
    คนอื่นไม่เห็นปุ่ม เห็นข้อความนี้แทน จะได้รู้ว่าต้องเรียกใคร · อยู่ที่นี่ ไม่ใช่ lib/roles.js
    เพราะไฟล์นั้นอยู่ใน chunk ที่แทบทุกหน้าโหลด */
 export const mayIssueReceipt = (actor) => can(actor, 'receipt.issue');
-export const RECEIPT_ISSUER_TEXT = 'ออกใบเสร็จได้เฉพาะ Pom, Tik';
+export const RECEIPT_ISSUER_TEXT = 'ออกใบเสร็จได้เฉพาะเจ้าของร้าน';
 
 export function PrintStatusBadge({ status }) {
   const [kind, label] = PRINT_STATUS[status] || PRINT_STATUS.NOT_REQUESTED;
@@ -54,24 +55,72 @@ export function newKey() {
   return (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`).slice(0, 64);
 }
 
-/** กด "ออกใบเสร็จ" — ถามก่อน เพราะเลขที่ออกแล้วเรียกคืนไม่ได้ */
+/** วันแรกที่ออกเลข Bill ได้ — ตรงกับ RECEIPT_START ฝั่ง PHP (ซึ่งตรวจซ้ำอีกชั้น) */
+const RECEIPT_START = '2026-09-01';
+
+/* ช่อง + ปุ่มปฏิทินอยู่แถวบน ปฏิทินกางเป็นแถวล่าง — ปุ่มปฏิทินปกติสูงเท่ากล่องห่อ (height:100%)
+   ถ้าปฏิทินอยู่ในกล่องห่อ ปุ่มจะยืดลงไปข้างปฏิทินด้วย จึงจัดเป็น grid สองแถวแทน */
+const RCP_DATE_CSS = `
+.rcp-date .datef{display:grid;grid-template-columns:1fr 36px}
+.rcp-date .datef .datef-input{grid-column:1/3;grid-row:1}
+.rcp-date .datef-open{position:static;grid-column:2;grid-row:1;height:auto}
+.rcp-date .datef-pop{position:static;grid-column:1/3;grid-row:2;margin-top:8px;box-shadow:none}
+`;
+
+/** ช่องเลือกวันที่บนใบในกล่องยืนยัน — เดือนของวันนี้คือเดือนของเลขใบเสร็จ */
+function IssueDateField({ min, max, valueRef }) {
+  const [v, setV] = useState(valueRef.current);
+  const set = (x) => { valueRef.current = x; setV(x); };
+  const ym = /^(\d{4})-(\d{2})/.exec(v || '');
+  return (
+    <div className="rcp-date">
+      {/* ปฏิทินในกล่องยืนยันกางในเนื้อกล่อง ไม่ลอย — กล่องตัดส่วนที่ล้นทิ้ง (overflow hidden)
+          ปฏิทินแบบลอยจึงโดนบังครึ่งล่าง ต้องเลื่อนในช่องเล็ก ๆ */}
+      <style>{RCP_DATE_CSS}</style>
+      <p style={{ margin: '0 0 10px' }}>
+        เลขที่ออกแล้วจะผูกกับบิลนี้ถาวร เรียกคืนหรือนำกลับมาใช้ไม่ได้
+      </p>
+      <label style={{ display: 'block', fontWeight: 600, marginBottom: 4 }} htmlFor="rcp-doc-date">วันที่บนใบเสร็จ</label>
+      <DateField id="rcp-doc-date" value={v} min={min} max={max} onChange={set} required />
+      <p className="muted" style={{ margin: '6px 0 0', fontSize: 13 }}>
+        {ym ? `เลขใบเสร็จจะเป็นชุดของเดือนนี้: Bill-${ym[1]}-${ym[2]}-xxxxx` : 'เลือกวันที่'}
+        {' · '}ย้อนหลังได้ ไม่ล่วงหน้า ไม่ก่อนวันที่บนบิล
+      </p>
+    </div>
+  );
+}
+
+/**
+ * กด "ออกใบเสร็จ" — ถามก่อน เพราะเลขที่ออกแล้วเรียกคืนไม่ได้ และให้เลือกวันที่บนใบ
+ * `billDate` = วันที่บนบิล ใช้เป็นวันแรกที่เลือกได้ (ฝั่ง PHP ตรวจซ้ำ)
+ */
 export function useIssueReceipt() {
   const confirm = useConfirm();
   const { err } = useToast();
   const [busy, setBusy] = useState(false);
-  const issue = async (sourceType, sourceId, label) => {
+  const issue = async (sourceType, sourceId, label, billDate) => {
     if (busy) return null;
+    const today = todayISO();
+    const bill = String(billDate || '').slice(0, 10);
+    const min = bill > RECEIPT_START ? bill : RECEIPT_START;
+    const dateRef = { current: today };
     const yes = await confirm(
-      'ออกใบเสร็จ',
-      `ออกเลขใบเสร็จให้ ${label || 'บิลนี้'}? เลขที่ออกแล้วจะผูกกับบิลนี้ถาวร เรียกคืนหรือนำกลับมาใช้ไม่ได้`,
+      `ออกใบเสร็จให้ ${label || 'บิลนี้'}`,
+      <IssueDateField min={min} max={today} valueRef={dateRef} />,
       { confirmText: 'ออกใบเสร็จ' }
     );
     if (!yes) return null;
+    const docDate = dateRef.current;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(docDate || '')) {
+      err(new Error('กรุณาเลือกวันที่บนใบเสร็จ'));
+      return null;
+    }
     setBusy(true);
     try {
       return await api.post('/api/receipts/issue', {
         [sourceType === 'POS' ? 'sale_id' : 'order_id']: sourceId,
         idem_key: newKey(),
+        doc_date: docDate,
       });
     } catch (e) {
       err(e);
@@ -148,7 +197,7 @@ export function ReceiptPanel({ query, title = 'ใบเสร็จรับเ
   const { data, loading, error } = useAsync(() => api.get('/api/receipts/for', query), [key, tick]);
 
   const onIssue = async (row) => {
-    const rc = await issue(row.source_type, row.source_id, row.source_no);
+    const rc = await issue(row.source_type, row.source_id, row.source_no, row.bill_date);
     if (rc) router.push(receiptHref(row.source_type, row.source_id));
     else setTick((t) => t + 1);
   };
@@ -176,7 +225,8 @@ export function ReceiptPanel({ query, title = 'ใบเสร็จรับเ
                 <div className="rcp-meta muted">
                   {row.source_type === 'POS' ? 'ใบขาย' : 'บิล'} {row.source_no || `#${row.source_id}`}
                   {' · '}{money(rc ? rc.total_amount : row.bill_total)}
-                  {rc ? ` · ออก ${fmtDateTime(rc.issued_at)}` : ''}
+                  {rc?.doc_date ? ` · ลงวันที่ ${fmtDate(rc.doc_date)}` : ''}
+                  {rc ? ` · กดออก ${fmtDateTime(rc.issued_at)}` : ''}
                   {rc?.issued_by_name ? ` โดย ${rc.issued_by_name}` : ''}
                   {rc && rc.payments?.length > 1 ? ` · รับเงิน ${rc.payments.length} ครั้ง` : ''}
                   {rc?.print_count

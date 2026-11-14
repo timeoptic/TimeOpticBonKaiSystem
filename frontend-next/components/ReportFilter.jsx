@@ -18,7 +18,7 @@ import { Icon } from './Icon.jsx';
 import { api } from '../lib/apiClient.js';
 import { useAsync } from '../lib/hooks.js';
 import {
-  CHANNELS, GROUPS, PERIODS, STATUSES, filterQuery, periodOf, rangeFor, rangeLabel, readFilter,
+  BYS, CHANNELS, GROUPS, PERIODS, STATUSES, filterQuery, periodOf, rangeFor, rangeLabel, readFilter,
 } from '../lib/reportRange.js';
 import { DateField } from './DateField.jsx';
 import { FilterBar } from './FilterBar.jsx';
@@ -40,7 +40,7 @@ export function useReport(name) {
   const f = useReportFilter();
   const state = useAsync(
     () => api.get(`/api/reports/${name}`, f),
-    [name, f.from, f.to, f.channel, f.status, f.group],
+    [name, f.from, f.to, f.channel, f.status, f.group, f.by],
   );
   return { filter: f, ...state };
 }
@@ -56,9 +56,14 @@ export function useReport(name) {
  * `channels` + `channelLabel` = ป้ายของช่องช่องทางสำหรับหน้าที่เรียกมันด้วยชื่ออื่น —
  * หน้าการรับเงินเรียก "แหล่งที่มา" · คีย์ยังเป็นชุดเดียวกับ CHANNELS เสมอ อีกหกหน้า
  * ไม่ส่งมาก็ได้ป้ายเดิม
+ *
+ * `hideBy` = หน้านี้ไม่ได้นับด้วยวันเปิด/ปิดบิล (การรับเงินนับวันรับเงิน · ขายหน้าร้าน
+ * นับวันขาย · ช่องทางลูกค้านับวันเปิดเคส) — ซ่อนกล่อง "นับตาม" ทั้งกล่อง ไม่ใช่แค่ปิด:
+ * กล่องที่ปิดไว้แต่ยังเขียนว่า "วันปิดบิล" อ่านว่าหน้านั้นนับด้วยวันปิดบิล ซึ่งไม่จริง
+ * · ค่าที่เลือกไว้ยังอยู่ใน URL และตามไปแท็บอื่นเหมือนเดิม
  */
 export function ReportFilter({
-  actions = null, statusNote = '', channels = CHANNELS, channelLabel = 'ช่องทาง',
+  actions = null, statusNote = '', hideBy = false, channels = CHANNELS, channelLabel = 'ช่องทาง',
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -75,7 +80,8 @@ export function ReportFilter({
   const activeFilters = (active === 'custom' ? 1 : 0)
     + (f.channel && f.channel !== 'all' ? 1 : 0)
     + (f.status && f.status !== 'all' ? 1 : 0)
-    + (f.group && f.group !== 'all' ? 1 : 0);
+    + (f.group && f.group !== 'all' ? 1 : 0)
+    + (f.by && f.by !== 'close' ? 1 : 0);
 
   return (
     <FilterBar
@@ -127,6 +133,18 @@ export function ReportFilter({
           onChange={(v) => go({ to: v || f.to })}
         />
       </div>
+
+      {/* งานตัดแว่นนับเข้าช่วงด้วยวันไหน — ร้านนับยอดของเดือนจากงานที่ส่งมอบ
+          (ปิดบิล) ในเดือนนั้น จึงตั้งต้นที่วันปิดบิล */}
+      {hideBy ? null : (
+        <label
+          className="rf-date"
+          title="วันปิดบิล = วันส่งมอบ นับเฉพาะงานตัดแว่นที่ปิดบิลแล้ว · ขายหน้าร้านนับตามวันขายเสมอ"
+        >
+          <span>นับตาม</span>
+          <Select value={f.by} onChange={(e) => go({ by: e.target.value })} options={BYS} />
+        </label>
+      )}
 
       <label className="rf-date">
         <span>{channelLabel}</span>

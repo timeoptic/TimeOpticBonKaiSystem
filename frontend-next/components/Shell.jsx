@@ -168,7 +168,7 @@ export function Shell({ children }) {
   }, []);
 
   useEffect(() => {
-    document.title = `${crumb} — TIMEOPTIC @ Be Well MEDICAL CENTER`;
+    document.title = `${crumb} — TIMEOPTIC @ สาขาบ่อนไก่`;
     window.scrollTo(0, 0);
   }, [crumb, pathname]);
 
@@ -204,7 +204,7 @@ export function Shell({ children }) {
               สาขา / คำอธิบาย ให้ไล่ขนาดลงทีละชั้น แทนที่จะปล่อยให้ตัดบรรทัดเอง */}
           <span className="brand-text">
             <b>TIME OPTIC</b>
-            <span className="brand-at">@ Be Well Medical Center</span>
+            <span className="brand-at">@ สาขาบ่อนไก่</span>
             <small>ระบบจัดการร้านแว่นตา</small>
           </span>
         </div>

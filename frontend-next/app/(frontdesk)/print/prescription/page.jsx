@@ -126,6 +126,10 @@ function SlipInner() {
           <Link className="btn btn-light" href={`/cases/detail?id=${c.id}&step=exam`}>
             <Icon name="eye" /> กลับไปที่เคส
           </Link>
+        ) : rx?.customer_id ? (
+          <Link className="btn btn-light" href={`/customers/detail?id=${rx.customer_id}`}>
+            <Icon name="user" /> กลับไปที่ลูกค้า
+          </Link>
         ) : null}
       </div>
 
@@ -158,10 +162,11 @@ function SlipInner() {
           <div className="slip-head">
             <div className="slip-name">
               <span className="k">NAME:</span>
-              <span className="v">{c ? custName(c) : DASH}</span>
+              {/* ใบที่ไม่ผูกเคส (ประวัติจากระบบเดิม, ตรวจที่ POS) ไม่มีเคสให้อ่านชื่อ — ใบสายตาเองมีชื่อลูกค้ามาด้วย */}
+              <span className="v">{c || rx?.first_name || rx?.last_name ? custName(c || rx) : DASH}</span>
             </div>
             <div className="slip-logo">
-              <img src="/logo-bewell.png" alt="TIME OPTIC at Be Well" />
+              <img src="/logo-bewell.png" alt="TIME OPTIC สาขาบ่อนไก่" />
             </div>
           </div>
 

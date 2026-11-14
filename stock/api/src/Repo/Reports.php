@@ -360,7 +360,7 @@ final class Reports
             if (!isset($out[$id])) {
                 $out[$id] = [
                     'branchId' => $id === 0 ? null : $id,
-                    'branch'   => $r['branch_name'] ?? 'TIMEOPTIC @ Be Well MEDICAL CENTER',
+                    'branch'   => $r['branch_name'] ?? 'TIMEOPTIC @ สาขาบ่อนไก่',
                     'draws'    => 0,
                     'qty'      => 0,
                     'cost'     => 0.0,
@@ -475,7 +475,7 @@ final class Reports
             if (!isset($out[$id])) {
                 $out[$id] = [
                     'branchId'     => $id === 0 ? null : $id,
-                    'branch'       => $r['branch_name'] ?? 'TIMEOPTIC @ Be Well MEDICAL CENTER',
+                    'branch'       => $r['branch_name'] ?? 'TIMEOPTIC @ สาขาบ่อนไก่',
                     'orders'       => 0,
                     'qty'          => 0,
                     'awaitingCost' => 0,
@@ -695,8 +695,11 @@ final class Reports
              LEFT JOIN suppliers s  ON s.id = l.supplier_id
              LEFT JOIN admins a     ON a.id = g.created_by
              LEFT JOIN admins who   ON who.id = g.issued_to_admin_id
-             LEFT JOIN branches br  ON br.id = bi.branch_id
-             WHERE g.action_type IN ('IN', 'OUT', 'SCRAP')
+             LEFT JOIN branches br  ON br.id = COALESCE(bi.branch_id, rxo.branch_id)
+             /* ใบสั่งตัด RX ลงชีตตัดออกด้วย (ร้านขอ 17 ต.ค. 2026) — ใบที่ยกเลิกแล้วไม่นับ
+                เหมือนชีตใครสั่งตัด RX */
+             WHERE (g.action_type IN ('IN', 'OUT', 'SCRAP')
+                    OR (g.action_type = 'RX_ORDER' AND rxo.cancelled_at IS NULL))
                AND g.created_at >= ? AND g.created_at < DATE_ADD(?, INTERVAL 1 DAY){$lens}
              ORDER BY g.created_at ASC, g.id ASC
              LIMIT " . ($cap + 1),
@@ -706,8 +709,50 @@ final class Reports
         $truncated = count($rows) > $cap;
         $rows = array_slice($rows, 0, $cap);
 
+        /* เลนส์ RX ที่ติ๊กมาถึงร้านในช่วงนี้ (ร้านขอ 22 ต.ค. 2026) — การติ๊กไม่ลงแถวในสมุด
+           จึงนับตามวันที่ติ๊ก (`arrived_at`) ไม่ใช่วันที่เปิดใบสั่ง · แยกเป็นชุดของตัวเอง ไม่ปนกับ
+           รับเข้า เพราะเลนส์สั่งตัดไม่เข้าคลัง ต้นทุนอยู่ที่ใบสั่งแล้ว นับเป็นรับเข้าอีกคือนับซ้ำ */
+        $arrived = Db::all(
+            "SELECT g.id, g.created_at, g.reference_doc, g.unit_cost, g.notes,
+                    p.sku, p.name AS product_name,
+                    rxo.eye_side, rxo.sph, rxo.cyl, rxo.axis, rxo.add_power, rxo.sale_price,
+                    rxo.arrived_at, rxo.arrived_ref, rxo.scrapped_at,
+                    arr.display_name AS arrived_by_name, br.name AS branch_name,
+                    (SELECT GROUP_CONCAT(DISTINCT c.case_code ORDER BY c.id DESC SEPARATOR ', ')
+                       FROM custom_orders co JOIN cases c ON c.id = co.case_id
+                      WHERE co.lens_r_rx_id = g.id OR co.lens_l_rx_id = g.id) AS case_codes
+             FROM inventory_logs g" . self::LENS_JOINS . "
+             LEFT JOIN admins arr  ON arr.id = rxo.arrived_by
+             LEFT JOIN branches br ON br.id = rxo.branch_id
+             WHERE g.action_type = 'RX_ORDER' AND rxo.cancelled_at IS NULL
+               AND rxo.arrived_at >= ? AND rxo.arrived_at < DATE_ADD(?, INTERVAL 1 DAY){$lens}
+             ORDER BY rxo.arrived_at ASC, g.id ASC
+             LIMIT " . $cap,
+            [$from, $to, ...$lensArgs],
+        );
+
         return [
             'truncated' => $truncated,
+            'rxArrived' => array_map(static fn(array $r): array => [
+                'arrivedAt' => $r['arrived_at'],
+                'arrivedRef' => $r['arrived_ref'],
+                'arrivedBy' => $r['arrived_by_name'],
+                'orderedAt' => $r['created_at'],
+                'doc'       => $r['reference_doc'],
+                'caseCode'  => $r['case_codes'],
+                'branch'    => $r['branch_name'],
+                'sku'       => $r['sku'],
+                'name'      => $r['product_name'],
+                'eyeSide'   => $r['eye_side'],
+                'sph'       => $r['sph'] === null ? null : (float) $r['sph'],
+                'cyl'       => $r['cyl'] === null ? null : (float) $r['cyl'],
+                'axis'      => $r['axis'] === null ? null : (int) $r['axis'],
+                'add'       => $r['add_power'] === null ? null : (float) $r['add_power'],
+                'unitCost'  => $money && $r['unit_cost'] !== null ? (float) $r['unit_cost'] : null,
+                'salePrice' => $r['sale_price'] === null ? null : (float) $r['sale_price'],
+                'scrapped'  => $r['scrapped_at'] !== null,
+                'note'      => $r['notes'],
+            ], $arrived),
             'rows' => array_map(static function (array $r) use ($money): array {
                 $qty = abs((int) $r['quantity']);
                 $cost = $money && $r['unit_cost'] !== null ? (float) $r['unit_cost'] : null;

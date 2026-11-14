@@ -7,12 +7,13 @@ import { useToast } from "./Toaster";
 import { download, type Sheet } from "@/stockmod/lib/workbook";
 import { api } from "@/stockmod/lib/api";
 import { count } from "@/stockmod/lib/format";
+import { byFirstDate } from "@/stockmod/lib/byFirstDate";
 
 export type Range = { from: string; to: string };
 
 /** หนึ่งบรรทัดของ /report/lines */
 export type Line = {
-  kind: "IN" | "OUT" | "SCRAP";
+  kind: "IN" | "OUT" | "SCRAP" | "RX_ORDER";
   at: string;
   doc: string | null;
   branch: string | null;
@@ -26,6 +27,28 @@ export type Line = {
   total: number | null;
   who: string | null;
   keyedBy: string | null;
+  note: string | null;
+};
+
+/** ใบสั่งตัด RX ที่ติ๊กเลนส์มาถึงในช่วงวัน — `rxArrived` ของ /report/lines */
+export type RxArrived = {
+  arrivedAt: string;
+  arrivedRef: string | null;
+  arrivedBy: string | null;
+  orderedAt: string;
+  doc: string | null;
+  caseCode: string | null;
+  branch: string | null;
+  sku: string | null;
+  name: string | null;
+  eyeSide: "right" | "left" | null;
+  sph: number | null;
+  cyl: number | null;
+  axis: number | null;
+  add: number | null;
+  unitCost: number | null;
+  salePrice: number | null;
+  scrapped: boolean;
   note: string | null;
 };
 
@@ -144,8 +167,14 @@ export default function ExportDialog({
 
 /** รายการรับเข้า / จ่ายออก / ของเสีย ทีละบรรทัดในช่วงวัน */
 export async function fetchLines(range: Range): Promise<Line[]> {
+  return (await fetchReport(range)).rows;
+}
+
+/** ทั้งคำตอบของ /report/lines — บรรทัดในสมุด และเลนส์ RX ที่ติ๊กมาถึงในช่วงวัน */
+export async function fetchReport(range: Range): Promise<{ rows: Line[]; rxArrived: RxArrived[] }> {
   const q = new URLSearchParams({ from: range.from, to: range.to });
-  return (await api.get<{ rows: Line[] }>(`/report/lines?${q}`)).rows;
+  const res = await api.get<{ rows: Line[]; rxArrived?: RxArrived[] }>(`/report/lines?${q}`);
+  return { rows: res.rows, rxArrived: res.rxArrived ?? [] };
 }
 
 /** ดึงทุกหน้าของรายการที่แบ่งหน้า (ครั้งละ 100) — `path` รับเลขหน้า */
@@ -173,14 +202,15 @@ export const branchOf = (b: string | null) => b ?? "TimeOptic (ร้าน)";
  */
 export const when = (s: string) =>
   new Date(/[ T]\d{2}:\d{2}/.test(s) ? s.replace(" ", "T").replace(/Z?$/, "Z") : `${s.slice(0, 10)}T00:00:00Z`);
-const th = (a: string, b: string) => a.localeCompare(b, "th");
 
 /** จ่ายออก / ตัดเสีย ทีละบรรทัด จัดกลุ่มตาม key (ออเดอร์ หรือ สาขา) มียอดรวมย่อยทุกกลุ่ม */
 export function outSheet(name: string, note: string, lines: Line[], key: (l: Line) => string, money: boolean): Sheet {
   const cost = (v: number | null) => (money ? v : null);
-  const rows = lines
-    .filter((l) => l.kind !== "IN")
-    .sort((a, b) => th(key(a), key(b)) || a.at.localeCompare(b.at));
+  const rows = byFirstDate(
+    lines.filter((l) => l.kind !== "IN"),
+    key,
+    (l) => l.at,
+  );
   return {
     name,
     note,
@@ -203,7 +233,7 @@ export function outSheet(name: string, note: string, lines: Line[], key: (l: Lin
       key(l),
       name.includes("สาขา") ? orderOf(l) : branchOf(l.branch),
       when(l.at),
-      l.kind === "SCRAP" ? "ตัดเสีย" : "จ่ายออก",
+      l.kind === "SCRAP" ? "ตัดเสีย" : l.kind === "RX_ORDER" ? "สั่งตัด RX" : "จ่ายออก",
       l.sku,
       l.name,
       l.lot,
@@ -212,6 +242,64 @@ export function outSheet(name: string, note: string, lines: Line[], key: (l: Lin
       cost(l.total),
       l.who,
       l.note,
+    ]),
+  };
+}
+
+/**
+ * เลนส์ RX ที่มาถึงร้าน ทีละใบ จัดกลุ่มตามวันที่ติ๊ก (ร้านขอ 22 ต.ค. 2026)
+ *
+ * แยกจากชีตรับเข้า เพราะเลนส์สั่งตัดไม่เข้าคลัง และต้นทุนของมันลงที่ใบสั่งไปแล้ว
+ * — ปนกันเมื่อไรยอดรวมทุนของชีตรับเข้าจะนับซ้ำ
+ */
+export function rxArrivedSheet(rows: RxArrived[], money: boolean): Sheet {
+  const cost = (v: number | null) => (money ? v : null);
+  return {
+    name: "เลนส์ RX มาถึง",
+    note: "ใบสั่งตัด RX ที่ติ๊กเลนส์มาถึงในช่วงนี้ นับตามวันที่ติ๊ก ไม่ใช่วันที่สั่ง · ยกเว้นใบที่ยกเลิก",
+    groupBy: 0,
+    columns: [
+      { header: "วันที่มาถึง", width: 12 },
+      { header: "เวลา", width: 8 },
+      { header: "เลขรับ", width: 14 },
+      { header: "เลขใบสั่ง", width: 16 },
+      { header: "เคส", width: 16 },
+      { header: "สาขา", width: 18 },
+      { header: "วันที่สั่ง", width: 18, format: "dd/mm/yyyy hh:mm" },
+      { header: "SKU", width: 12 },
+      { header: "เลนส์", width: 40 },
+      { header: "ข้าง", width: 6 },
+      { header: "SPH", width: 8 },
+      { header: "CYL", width: 8 },
+      { header: "AXIS", width: 6 },
+      { header: "ADD", width: 8 },
+      { header: "จำนวน", total: true },
+      { header: "ต้นทุน", money: true, total: true },
+      { header: "ราคาขาย", money: true, total: true },
+      { header: "ผู้ติ๊ก", width: 14 },
+      { header: "หมายเหตุ", width: 30 },
+    ],
+    rows: rows.map((r) => [
+      r.arrivedAt.slice(0, 10),
+      r.arrivedAt.slice(11, 16),
+      r.arrivedRef,
+      r.doc,
+      r.caseCode,
+      branchOf(r.branch),
+      when(r.orderedAt),
+      r.sku,
+      r.name,
+      r.eyeSide === "right" ? "R" : r.eyeSide === "left" ? "L" : null,
+      r.sph,
+      r.cyl,
+      r.axis,
+      r.add,
+      1,
+      cost(r.unitCost),
+      // ใบที่เจียร์เสียไม่มีราคาขาย — ราคาอยู่ที่ใบที่สั่งแทน (เหมือนชีตของหน้าใบสั่งตัด RX)
+      r.scrapped ? null : r.salePrice,
+      r.arrivedBy,
+      r.scrapped ? ["เจียร์เสีย", r.note].filter(Boolean).join(" — ") : r.note,
     ]),
   };
 }

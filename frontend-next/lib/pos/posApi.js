@@ -39,6 +39,8 @@ export const posApi = {
   addPayment: (id, body) => api.post(`/api/pos/sales/${id}/payments`, body),
   /** แก้งวดที่บันทึกผิด (วันเวลา / ยอด / ช่องทาง) — แอดมินขึ้นไป ต้องมีเหตุผล */
   editPayment: (id, pid, body) => api.put(`/api/pos/sales/${id}/payments/${pid}`, body),
+  /** แก้รายการ / ลูกค้า / หมายเหตุของใบที่บันทึกแล้ว — ผู้ดูแลระบบเท่านั้น ต้องมีเหตุผล */
+  editItems: (id, body) => api.put(`/api/pos/sales/${id}/items`, body),
   deliver: (id, delivered) => api.post(`/api/pos/sales/${id}/deliver`, { delivered }),
   void: (id, reason) => api.post(`/api/pos/sales/${id}/void`, { reason }),
 };

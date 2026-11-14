@@ -644,6 +644,25 @@ export default function ProductForm({
     }
   }, [type, namedByModel, hasModel, autoName, composed.status, composed.data]);
 
+  /* ------------------------------------------------------- duplicate name */
+
+  /**
+   * ชื่อซ้ำกับสินค้าที่มีอยู่แล้ว — ร้านขอ 21 ก.ย. 2026
+   *
+   * เตือนเฉย ๆ ไม่บล็อก รหัสต่างกันก็บันทึกได้ · ถามหลังหยุดพิมพ์ครู่หนึ่ง ไม่ยิงทุกตัวอักษร
+   */
+  const norm = (x: string) => x.trim().replace(/\s+/g, " ").toLowerCase();
+  const [askedName, setAskedName] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setAskedName(norm(name)), 400);
+    return () => clearTimeout(t);
+  }, [name]);
+  const sameNamed = useApi<Page<ProductRow>>(askedName ? `/products${qs({ q: askedName, per: 20 })}` : null);
+  const twin =
+    askedName !== "" && askedName === norm(name) && sameNamed.status === "ready"
+      ? (sameNamed.data.rows.find((r) => norm(r.name) === askedName && r.id !== product?.id) ?? null)
+      : null;
+
   /* ------------------------------------------------------------ first lot */
 
   const suppliers = useApi<{ suppliers: Supplier[] }>(receive ? "/suppliers" : null);
@@ -657,6 +676,13 @@ export default function ProductForm({
 
   // Made-to-order products hold no stock, so there is no lot to receive.
   const wantLot = receive && product === undefined && !custom;
+  /**
+   * เพิ่มแค่สินค้า ไม่เปิดล็อต — ร้านขอ 21 ก.ย. 2026
+   *
+   * ของบางตัวเพิ่มไว้ก่อนแล้วค่อยรับเข้าผ่านบิลรับเข้าทีหลัง ให้ทั้งบิลอยู่ในเอกสาร
+   * เดียว การบังคับล็อตตรงนี้ทำให้ล็อตแรกหลุดออกไปเป็นเอกสารแยกจากบิล
+   */
+  const [skipLot, setSkipLot] = useState(false);
 
   /**
    * Set once the product exists.
@@ -888,7 +914,7 @@ export default function ProductForm({
       return;
     }
 
-    if (!wantLot) {
+    if (!wantLot || skipLot) {
       setBusy(false);
       onSaved(id);
       return;
@@ -1292,6 +1318,16 @@ export default function ProductForm({
               ? "ของที่ถืออยู่ตรงหน้าเข้าคลังพร้อมกับสินค้าใหม่นี้เลย — ไม่ต้องบันทึกแล้วไปหาฟอร์มรับของอีกรอบ"
               : "หน้าร้านไม่ต้องกรอกจำนวน — ของยังไม่มาถึง ล็อตนี้เปิดไว้ที่ศูนย์ ตัดขายแล้วยอดจะติดลบไปขึ้นหน้า “สินค้ารอสั่ง” แล้วหักกลบเองเมื่อของเข้า"}
           </p>
+          {askQty ? (
+            <label className="sheetpick__row">
+              <input type="checkbox" checked={skipLot} onChange={(e) => setSkipLot(e.target.checked)} disabled={busy} />
+              <span>
+                <span className="sheetpick__name">เพิ่มแค่สินค้า ยังไม่รับของ</span>
+                <span className="sheetpick__hint">ไม่เปิดล็อต — รับเข้าทีหลังผ่านบิลรับเข้า</span>
+              </span>
+            </label>
+          ) : null}
+          {skipLot ? null : (
           <div className="pform__grid">
             {/* หน้าร้านไม่มีช่องจำนวน — คนเปิดออเดอร์ไม่ได้ถือของอยู่ ตัวเลขที่
                 กรอกตรงนี้จะเป็นของบนชั้นที่ไม่มีอยู่จริง แล้วไปกลบยอดค้างที่หน้า
@@ -1344,7 +1380,24 @@ export default function ProductForm({
               <input id="pf-note" className="input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="เช่น เลขที่ใบส่งของ" disabled={busy} autoComplete="off" />
             </div>
           </div>
+          )}
         </fieldset>
+      ) : null}
+
+      {twin !== null && copiedFrom?.id !== twin.id ? (
+        <div className="notice" role="status">
+          <p>
+            ชื่อนี้ซ้ำกับสินค้าที่มีอยู่แล้ว <strong>{twin.sku}</strong> · {twin.name}
+          </p>
+          <div className="chips">
+            {onUseExisting && product === undefined && savedId === null ? (
+              <button type="button" className="btn btn--primary btn--small" onClick={() => onUseExisting(twin.id)} disabled={busy}>
+                ใช้ {twin.sku} ตัวเดิม
+              </button>
+            ) : null}
+            <span className="chips__note">ถ้าเป็นคนละตัวจริง แก้ชื่อให้ต่างกัน หรือบันทึกต่อได้เลย</span>
+          </div>
+        </div>
       ) : null}
 
       {problem ? <div className="notice notice--error" role="alert">{problem}</div> : null}
@@ -1405,7 +1458,7 @@ export default function ProductForm({
                 ? "รับล็อตเข้าอีกครั้ง"
                 : product
                   ? "บันทึกการแก้ไข"
-                  : wantLot
+                  : wantLot && !skipLot
                     ? (askQty ? "เพิ่มสินค้าและรับเข้าคลัง" : "เพิ่มสินค้าและเปิดล็อตรอของ")
                     : "เพิ่มสินค้า"}
           </button>

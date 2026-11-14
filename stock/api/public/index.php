@@ -20,6 +20,7 @@ use Optic\Repo\Reports;
 use Optic\Roles;
 use Optic\Service\Branches;
 use Optic\Service\Catalog;
+use Optic\Service\IssueRequests;
 use Optic\Service\Receiving;
 use Optic\Service\Rx;
 use Optic\Service\Settlement;
@@ -188,6 +189,7 @@ Http::get('/api/lots', static function () use ($maySeeCost): array {
         'sort'  => Http::query('sort'),
         'dir'   => Http::query('dir'),
         'page'  => Http::query('page'),
+        'per'   => Http::query('per'),
     ], $maySeeCost($actor)) + ['counts' => Inventory::lotCounts()];
 });
 
@@ -202,6 +204,7 @@ Http::get('/api/movements', static function () use ($maySeeCost): array {
         'sort' => Http::query('sort'),
         'dir'  => Http::query('dir'),
         'page' => Http::query('page'),
+        'per'  => Http::query('per'),
     ], $maySeeCost($actor)) + ['counts' => Inventory::movementCounts()];
 });
 
@@ -510,6 +513,38 @@ Http::post('/api/rx/{id}/delete', static function (array $p): array {
     return Rx::remove((int) $p['id'], Http::body(), $actor['roles'], (int) $actor['id']);
 });
 
+/**
+ * เลนส์สั่งตัดเจียร์เสีย และการเปิดใบใหม่แทน — ร้านขอไว้ 30 ก.ย. 2026
+ *
+ * `/scrap` ปิดใบเดิมเป็นของเสีย และเปิดใบใหม่แทนในครั้งเดียวกันถ้าส่ง `reorder` มา ·
+ * `/reorder` คือปุ่มเดียวกันที่กดทีหลัง บนใบที่เสียไปแล้วและยังไม่มีใบแทน
+ *
+ * ใบที่ผูกกับเคสส่งข้อความเข้า Telegram ให้หน้าร้านรู้ · ส่งไม่ออกไม่ทำให้การบันทึกพัง
+ * เหตุผลเดียวกับ `/arrived`
+ */
+$rxScrap = static function (string $what): \Closure {
+    return static function (array $p) use ($what): array {
+        $actor = Auth::require();
+        if (!ctype_digit($p['id'])) {
+            throw ApiError::badRequest('id ต้องเป็นตัวเลข');
+        }
+        $out = $what === 'scrap'
+            ? Rx::scrap((int) $p['id'], Http::body(), $actor['roles'], (int) $actor['id'])
+            : Rx::reorder((int) $p['id'], Http::body(), $actor['roles'], (int) $actor['id']);
+        if ($out['notice'] !== null) {
+            try {
+                Telegram::send($out['notice']);
+            } catch (\Throwable $e) {
+                error_log('แจ้งเลนส์เจียร์เสียไม่สำเร็จ: ' . $e->getMessage());
+            }
+        }
+        unset($out['notice']);
+        return $out;
+    };
+};
+Http::post('/api/rx/{id}/scrap', $rxScrap('scrap'));
+Http::post('/api/rx/{id}/reorder', $rxScrap('reorder'));
+
 /* -------------------------------------------------------------- receiving */
 
 /** รับเข้าทั้งบิล — หัวบิลเดียว หลายสินค้า ทรานแซกชันเดียว (ดู Receiving::receiveMany) */
@@ -776,6 +811,40 @@ Http::post('/api/users/{id}/reset-password', static function (array $p) use ($nu
 Http::post('/api/users/{id}/revoke', static function (array $p) use ($numericId): array {
     $actor = Auth::require();
     return Users::revokeAccount($numericId($p), $actor['roles'], $actor['id']);
+});
+
+/* ------------------------------------------------- branch issue requests */
+
+/**
+ * คำขอตัดเลนส์จากบัญชีสาขา — สาขากรอก แอดมินตรวจ แก้ แล้วยืนยัน (`IssueRequests`)
+ *
+ * คำขอเปล่า ๆ ไม่ขยับสต็อก · ยืนยันแล้วตัดผ่าน `StockGate::issueMany` / `Rx::order` ทางเดิม
+ */
+Http::post('/api/issue-requests', static function (): array {
+    return ['request' => IssueRequests::create(Http::body(), Auth::require())];
+});
+
+Http::get('/api/issue-requests/mine', static fn(): array => IssueRequests::mine(Auth::require(), Http::query('q')));
+
+Http::get('/api/issue-requests/pending-count', static function (): array {
+    return IssueRequests::pendingCount(Auth::require()['roles']);
+});
+
+Http::get('/api/issue-requests', static function (): array {
+    $status = in_array(Http::query('status'), ['done', 'all'], true) ? Http::query('status') : 'pending';
+    return IssueRequests::list($status, Auth::require()['roles'], Http::query('q'));
+});
+
+Http::post('/api/issue-requests/{id}/approve', static function (array $p) use ($numericId): array {
+    return ['request' => IssueRequests::approve($numericId($p), Http::body(), Auth::require())];
+});
+
+Http::post('/api/issue-requests/{id}/reject', static function (array $p) use ($numericId): array {
+    return ['request' => IssueRequests::reject($numericId($p), Http::body(), Auth::require())];
+});
+
+Http::post('/api/issue-requests/{id}/cancel', static function (array $p) use ($numericId): array {
+    return ['request' => IssueRequests::cancel($numericId($p), Auth::require())];
 });
 
 /* ----------------------------------------------------------------- health */

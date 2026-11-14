@@ -9,4 +9,6 @@ export const CUSTOMER_EVENT_LABEL = {
   customer_changed: 'เปลี่ยนลูกค้า',
   /* ปุ่ม "เติมข้อมูลลูกค้า" ในขั้นรับลูกค้า (POST /api/customers/:id/fill) */
   customer_filled: 'เติมข้อมูลลูกค้า',
+  /* ปุ่มดินสอข้างวันเปิดบิล ในรายงานงานตัดแว่น (PUT /api/orders/:id/order-date) */
+  order_date_changed: 'แก้วันเปิดบิล',
 };

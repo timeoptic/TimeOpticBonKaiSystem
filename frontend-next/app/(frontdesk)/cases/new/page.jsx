@@ -36,8 +36,19 @@ import { custName, fmtDate } from '../../../../lib/format.js';
 import { Icon } from '../../../../components/Icon.jsx';
 import { BirthAgeFields } from '../../../../components/BirthAgeFields.jsx';
 
-/** ลูกค้าที่ระบบสงสัยว่าเป็นคนเดียวกัน — เลือกใช้ใบเดิม หรือยืนยันว่าคนละคน */
+/**
+ * ลูกค้าที่ระบบสงสัยว่าเป็นคนเดียวกัน — เลือกใช้ใบเดิม หรือยืนยันว่าคนละคน
+ *
+ * เจอรายเดียว ปุ่ม "คนละคน" วางคู่กับ "ใช้ลูกค้ารายนี้" ในแถว ให้สองทางเลือกอยู่ที่เดียวกัน
+ * เจอหลายราย "คนละคน" แปลว่าไม่ใช่ใครเลยสักคน จึงอยู่ใต้รายการ ไม่ซ้ำทุกแถว
+ */
 function DuplicateWarning({ matches, onUse, onForce, onEdit, busy }) {
+  const forceBtn = (
+    <button type="button" className="btn btn-sm dup-force" disabled={busy} onClick={onForce}>
+      <Icon name="plus" className="dup-force-ico" /> ยืนยันว่าเป็นคนละคน — สร้างใบใหม่
+    </button>
+  );
+  const single = matches.length === 1;
   return (
     <Card>
       <div className="dup-warn">
@@ -57,9 +68,12 @@ function DuplicateWarning({ matches, onUse, onForce, onEdit, busy }) {
                   ))}
                 </span>
               </div>
-              <button type="button" className="btn btn-sm" disabled={busy} onClick={() => onUse(m)}>
-                <Icon name="check" /> ใช้ลูกค้ารายนี้
-              </button>
+              <div className="dup-actions">
+                {single && forceBtn}
+                <button type="button" className="btn btn-sm" disabled={busy} onClick={() => onUse(m)}>
+                  <Icon name="check" /> ใช้ลูกค้ารายนี้
+                </button>
+              </div>
             </li>
           ))}
         </ul>
@@ -67,9 +81,7 @@ function DuplicateWarning({ matches, onUse, onForce, onEdit, busy }) {
           <button type="button" className="btn btn-light" disabled={busy} onClick={onEdit}>
             <Icon name="pencil" /> กลับไปแก้ข้อมูล
           </button>
-          <button type="button" className="btn btn-light" disabled={busy} onClick={onForce}>
-            ยืนยันว่าเป็นคนละคน — สร้างใบใหม่
-          </button>
+          {!single && forceBtn}
         </Row>
       </div>
     </Card>

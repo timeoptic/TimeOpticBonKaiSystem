@@ -130,3 +130,57 @@ test('ออเดอร์บอกเวลาที่เลนส์แต�
         eq(array_key_exists('lens_l_rx_arrived_at', $o) ? $o['lens_l_rx_arrived_at'] : 'missing', null, 'ข้างซ้ายยังไม่มา');
     });
 });
+
+test('ออเดอร์บอกว่าเลนส์เจียร์เสีย และใบที่สั่งแทนบอกว่าแทนใบไหน · ฟอร์มที่ถือเลขใบเดิมถูกพาไปใบใหม่', function (): void {
+    rollback(function (Tx $q): void {
+        $f = rxLensFixture($q, ['r' => '2026-09-14 15:20:00', 'l' => null]);
+        $old = $q->get('SELECT lens_r_rx_id, lens_r_rx_doc FROM custom_orders WHERE id = ?', $f['order']);
+        $oldId = (int) $old['lens_r_rx_id'];
+
+        // คลังกดเจียร์เสีย ยังไม่สั่งใหม่ — ช่องของออเดอร์ยังชี้ใบที่เสีย
+        $q->run(
+            'UPDATE rx_orders SET cancelled_at = ?, cancelled_note = ?, scrapped_at = ?, scrap_by = ? WHERE log_id = ?',
+            '2026-09-30 10:00:00',
+            'เจียร์เกินขนาด',
+            '2026-09-30 10:00:00',
+            'ช่างทดสอบ',
+            $oldId
+        );
+        $o = orderDetail($f['order']);
+        eq($o['lens_r_rx_scrapped_at'] ?? 'missing', '2026-09-30 10:00:00', 'ใบที่ผูกอยู่เสีย');
+        eq(
+            $o['lens_r_rx_scraps'] ?? 'missing',
+            [['doc' => $old['lens_r_rx_doc'], 'scrapped_at' => '2026-09-30 10:00:00', 'note' => 'เจียร์เกินขนาด']],
+            'รายการใบที่เสีย ไม่มีชื่อคนทำ'
+        );
+        /* array_key_exists ไม่ใช่ ?? — ค่าที่ถูกคือ null และ ?? จะตีมันเป็น 'missing' */
+        eq([
+            array_key_exists('lens_l_rx_scrapped_at', $o) ? $o['lens_l_rx_scrapped_at'] : 'missing',
+            $o['lens_l_rx_scraps'] ?? 'missing',
+        ], [null, []], 'ข้างซ้ายปกติ');
+
+        // คลังเปิดใบใหม่แทน — ช่องย้ายไปใบใหม่
+        $new = $q->run(
+            "INSERT INTO inventory_logs (product_id, action_type, quantity, reference_doc, created_by, created_by_kind, created_at)
+             SELECT product_id, 'RX_ORDER', -1, ?, created_by, 'user', NOW() FROM inventory_logs WHERE id = ?",
+            'RX-TEST-new-' . $oldId,
+            $oldId
+        )['insertId'];
+        $q->run('INSERT INTO rx_orders (log_id, replaces_log_id) VALUES (?,?)', $new, $oldId);
+        $q->run(
+            'UPDATE custom_orders SET lens_r_rx_id = ?, lens_r_rx_doc = ? WHERE id = ?',
+            $new,
+            'RX-TEST-new-' . $oldId,
+            $f['order']
+        );
+        $o = orderDetail($f['order']);
+        eq([$o['lens_r_rx_scrapped_at'], $o['lens_r_rx_arrived_at']], [null, null], 'ใบใหม่ยังไม่เสีย ยังไม่มา');
+        eq(count($o['lens_r_rx_scraps']), 1, 'ยังบอกว่าข้างนี้เคยเสียหนึ่งใบ');
+        eq($o['lens_r_rx_scraps'][0]['doc'], $old['lens_r_rx_doc'], 'ใบที่เสียคือใบเดิม');
+
+        // ฟอร์มที่เปิดค้างไว้ก่อนคลังสั่งใหม่ ยังส่งเลขใบเดิมมา
+        $b = rxFollow(['lens_r_rx_id' => $oldId, 'lens_r_rx_doc' => $old['lens_r_rx_doc'], 'lens_l_rx_id' => null]);
+        eq([(int) $b['lens_r_rx_id'], $b['lens_r_rx_doc']], [(int) $new, 'RX-TEST-new-' . $oldId], 'ตามไปใบใหม่');
+        eq($b['lens_l_rx_id'], null, 'ข้างที่ไม่มีใบไม่ถูกแตะ');
+    });
+});

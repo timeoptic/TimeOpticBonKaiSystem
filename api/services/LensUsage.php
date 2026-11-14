@@ -235,14 +235,14 @@ final class LensUsage
         $from = (string) ($f['from'] ?? '');
         $to   = (string) ($f['to'] ?? '');
         $span = $from !== '' || $to !== '' ? ' ' . ($from ?: 'เริ่มต้น') . ' ถึง ' . ($to ?: 'ล่าสุด') : '';
-        return "Lens Usage - Be Well$span.xlsx";
+        return "Lens Usage - BonKai$span.xlsx";
     }
 
     public static function workbook(array $f, bool $seeCost): Xlsx
     {
         $rows = self::all($f, $seeCost);
         $book = new Xlsx();
-        $sh   = $book->sheet('Lens Usage - Be Well');
+        $sh   = $book->sheet('Lens Usage - BonKai');
         $sh->widths([6, 11, 16, 16, 24, 18, 30, 14, 12, 7, 12, 8, 8, 8, 8, 8, 8, 8, 8, 7, 7, 11, 11, 20, 18, 44]);
         $sh->row(array_map(static fn(string $h) => Xlsx::t($h, Xlsx::HEAD), self::HEAD));
         $first = $sh->nextRow();

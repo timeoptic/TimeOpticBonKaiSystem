@@ -130,7 +130,7 @@ test('เส้น /api/reports/main-process ส่ง group ต่อถึง�
     rollback(function (Tx $q) {
         reportGroupFixtures($q);
 
-        $res = Router::dispatch('GET', '/api/reports/main-process', ['from' => RG_DAY, 'to' => RG_DAY, 'group' => 'sightfirst'], []);
+        $res = Router::dispatch('GET', '/api/reports/main-process', ['from' => RG_DAY, 'to' => RG_DAY, 'group' => 'sightfirst', 'by' => 'open'], []);
         eq($res['group'], 'sightfirst', 'meta.group');
         eq($res['kpi']['bills'], 1, 'จำนวนเคส');
         eq($res['kpi']['revenue'], 1000.0, 'ยอดขาย');
@@ -141,7 +141,7 @@ test('เส้น /api/reports/overview: เลือก SightFirst แล้�
     rollback(function (Tx $q) {
         reportGroupFixtures($q);
 
-        $res = Router::dispatch('GET', '/api/reports/overview', ['from' => RG_DAY, 'to' => RG_DAY, 'group' => 'sightfirst'], []);
+        $res = Router::dispatch('GET', '/api/reports/overview', ['from' => RG_DAY, 'to' => RG_DAY, 'group' => 'sightfirst', 'by' => 'open'], []);
         $pos = array_values(array_filter($res['channels'], static fn($c) => $c['key'] === 'pos'))[0];
         eq($pos['bills'], 0, 'บิล POS');
         eq($res['kpi']['revenue'], 1000.0, 'ยอดขายรวม');

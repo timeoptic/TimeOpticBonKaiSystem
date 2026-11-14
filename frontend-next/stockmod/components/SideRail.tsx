@@ -5,7 +5,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { Actor } from "@/stockmod/lib/api";
 import { stockHref, trimSlash } from "@/stockmod/lib/paths";
-import { worksBothSides } from "@/lib/roles.js";
+import { can as allowed, mayUseStock, worksBothSides } from "@/lib/roles.js";
+import { can } from "./AppShell";
 import useScrollLock from "@/stockmod/lib/scrollLock";
 import { LENS_SOURCE } from "@/lib/lens/lensSource";
 
@@ -17,7 +18,7 @@ import { LENS_SOURCE } from "@/lib/lens/lensSource";
  * hiding the nav costs a tap on every switch.
  */
 
-type Item = { href: string; label: string; hint: string; icon: React.ReactNode };
+type Item = { href: string; label: string; hint: string; icon: React.ReactNode; badge?: number };
 
 const LENS_USAGE_ON = LENS_SOURCE === "catalog";
 
@@ -186,6 +187,16 @@ const isCurrent = (pathname: string, href: string) => {
  * ไม่ได้อยู่ในเมนูเพราะเดินเข้ามาจากหน้าอื่นเสมอ (กดจากสินค้า กดจากล็อต) —
  * เมนูที่ยาวขึ้นสองรายการเพื่อทางเข้าที่ไม่มีใครใช้คือเมนูที่หาอะไรเจอยากขึ้น
  */
+/**
+ * คำขอตัดเลนส์จากสาขา — คนตรวจเห็นในเมนูพร้อมตัวเลขที่รอ · บัญชีสาขาเห็นเมนูนี้อันเดียว
+ */
+const REQUESTS: Item = {
+  href: "/requests",
+  label: "คำขอจากสาขา",
+  hint: "สาขาขอเบิกเลนส์ / สั่งตัด RX รอยืนยัน",
+  icon: ICON.in,
+};
+
 const UNLISTED: Item[] = [
   { href: "/receive", label: "รับของเข้า", hint: "", icon: ICON.in },
   { href: "/lots", label: "ล็อตและต้นทุน", hint: "", icon: ICON.layers },
@@ -201,7 +212,7 @@ const UNLISTED: Item[] = [
 export function sectionFor(pathname: string): Item | null {
   let best: Item | null = null;
   let bestLen = -1;
-  for (const item of [...DAILY, ...STOCK, ...MONEY, ...UNLISTED]) {
+  for (const item of [...DAILY, ...STOCK, ...MONEY, REQUESTS, ...UNLISTED]) {
     if (!isCurrent(pathname, item.href)) continue;
     const len = trimSlash(stockHref(item.href)).length;
     if (len > bestLen) {
@@ -227,6 +238,7 @@ function Group({ title, items, pathname }: { title: string; items: Item[]; pathn
             >
               {item.icon}
               <span>{item.label}</span>
+              {item.badge ? <span className="chip__count">{item.badge}</span> : null}
             </Link>
           </li>
         ))}
@@ -278,7 +290,15 @@ const TABS: { item: Item; short: string }[] = [
  * ต้องการอยู่นอกจอเสมอ และไม่มีอะไรบอกว่ามันอยู่ทางไหน · แถบล่างจอตายตัวสี่ปุ่ม
  * อยู่ที่เดิมทุกครั้ง อยู่ในระยะนิ้วโป้ง และบอกได้ด้วยว่าตอนนี้ยืนอยู่หน้าไหน
  */
-function PhoneTabs({ actor, pathname }: { actor: Actor; pathname: string }) {
+function PhoneTabs({
+  actor,
+  pathname,
+  requests,
+}: {
+  actor: Actor;
+  pathname: string;
+  requests: Item | null;
+}) {
   const [open, setOpen] = useState(false);
 
   /**
@@ -341,7 +361,7 @@ function PhoneTabs({ actor, pathname }: { actor: Actor; pathname: string }) {
             onClick={() => setOpen(false)}
           />
           <div className="railsheet__panel" onClick={() => setOpen(false)}>
-            <Group title="งานประจำวัน" items={DAILY} pathname={pathname} />
+            <Group title="งานประจำวัน" items={requests ? [...DAILY, requests] : DAILY} pathname={pathname} />
             <Group title="คลัง" items={STOCK} pathname={pathname} />
             {worksBothSides(actor) ? (
               <div className="rail-group">
@@ -369,12 +389,28 @@ function PhoneTabs({ actor, pathname }: { actor: Actor; pathname: string }) {
   );
 }
 
-export default function SideRail({ actor }: { actor: Actor }) {
+export default function SideRail({ actor, pending = 0 }: { actor: Actor; pending?: number }) {
   const pathname = usePathname();
+  const approver = allowed(actor, "issue.approve");
+  const requests = { ...REQUESTS, badge: approver ? pending : 0 };
+
+  /* บัญชีสาขาเข้าฝั่งนี้ได้หน้าเดียว — เมนูจึงมีปุ่มเดียว ไม่มีแถบล่างของมือถือ */
+  if (!mayUseStock(actor)) {
+    return (
+      <nav className="rail-nav wide-only" aria-label="ส่วนหลักของระบบ">
+        <div className="rail-scroll">
+          <Group title="สาขา" items={[{ ...REQUESTS, label: "ขอตัดเลนส์" }]} pathname={pathname} />
+        </div>
+        <div className="rail-foot">
+          <Clock />
+        </div>
+      </nav>
+    );
+  }
 
   return (
     <>
-    <PhoneTabs actor={actor} pathname={pathname} />
+    <PhoneTabs actor={actor} pathname={pathname} requests={approver ? requests : null} />
     <nav className="rail-nav wide-only" aria-label="ส่วนหลักของระบบ">
       <Link href="/stock" className="rail-brand">
         <span className="rail-brand__mark" aria-hidden="true">◎◎</span>
@@ -383,13 +419,13 @@ export default function SideRail({ actor }: { actor: Actor }) {
             ส่วนบรรทัดล่างคือสิ่งที่บอกว่ากำลังยืนอยู่ฝั่งไหนของระบบเดียวกัน */}
         <span className="rail-brand__text">
           <span className="rail-brand__name">TIME OPTIC</span>
-          <span className="rail-brand__at">@ Be Well Medical Center</span>
+          <span className="rail-brand__at">@ สาขาบ่อนไก่</span>
           <span className="rail-brand__sub">คลังและต้นทุน</span>
         </span>
       </Link>
 
       <div className="rail-scroll">
-        <Group title="งานประจำวัน" items={DAILY} pathname={pathname} />
+        <Group title="งานประจำวัน" items={approver ? [...DAILY, requests] : DAILY} pathname={pathname} />
         <Group title="คลัง" items={STOCK} pathname={pathname} />
         {/* Bewell ไม่มีสาขามาเบิกของ — กลุ่ม "เงินและสาขา" (การเบิกจากสาขา · จัดการสาขา)
             จึงไม่ขึ้นในเมนู · MONEY ยังอยู่เพื่อให้หัวเพจรู้ชื่อหน้าเมื่อเข้าจากลิงก์ */}

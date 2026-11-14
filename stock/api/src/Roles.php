@@ -52,10 +52,17 @@ final class Roles
      * ที่ทำให้ตัวเลขเกิดไม่ควรเป็นคนเดียวกัน — ต้องการทั้งสองอย่างก็ให้สองบทบาท
      */
     public const ACCOUNTING = 'accounting';
+    /**
+     * บัญชีของสาขา — กรอกคำขอตัดเลนส์ (เบิกจากสต็อก / ใบสั่งตัด RX) ให้สาขาที่เลือกในฟอร์ม
+     *
+     * ตัดเองไม่ได้ (ไม่มี `stock.move`) คำขอรอแอดมินหรือเจ้าของร้านยืนยัน · บัญชีไม่ผูกสาขา
+     * เลือกต่อคำขอ ยกเว้น Bewell (ร้านขอไว้ 27 ต.ค. 2026)
+     */
+    public const BRANCH = 'branch';
 
     public const ALL = [
         self::SUPERUSER, self::OWNER, self::ADMIN,
-        self::SALES, self::TRAINEE, self::STOCK, self::ACCOUNTING,
+        self::SALES, self::TRAINEE, self::STOCK, self::ACCOUNTING, self::BRANCH,
     ];
 
     /** ชื่อที่ใช้เป็นแท็กในตารางผู้ใช้ — สั้น ไม่ตัดบรรทัดเวลามีหลายอัน */
@@ -67,6 +74,7 @@ final class Roles
         self::TRAINEE   => 'Trainee Staff',
         self::STOCK     => 'Stock',
         self::ACCOUNTING => 'Accounting',
+        self::BRANCH    => 'Branch',
     ];
 
     public const LABEL = [
@@ -77,6 +85,7 @@ final class Roles
         self::TRAINEE   => 'พนักงานฝึกหัด',
         self::STOCK     => 'พนักงานคลัง',
         self::ACCOUNTING => 'บัญชี',
+        self::BRANCH    => 'ผู้ใช้สาขา',
     ];
 
     /** คำอธิบายหนึ่งบรรทัดข้างเช็กบ็อกซ์ตอนกำหนดสิทธิ์ */
@@ -88,6 +97,7 @@ final class Roles
         self::TRAINEE   => 'เหมือนพนักงานขายทุกอย่าง — ป้ายไว้ให้รายงานอ่านออก',
         self::STOCK     => 'เฉพาะระบบคลัง ไม่เห็นเคสลูกค้าและไม่เห็นต้นทุน',
         self::ACCOUNTING => 'การเงินและรายงาน เห็นต้นทุน — ไม่แตะผู้ใช้ ตั้งค่า และการบันทึกสต็อก',
+        self::BRANCH    => 'ส่งคำขอเบิกเลนส์ / สั่งตัด RX ให้สาขา — แอดมินยืนยันก่อนตัด',
     ];
 
     /**
@@ -109,6 +119,7 @@ final class Roles
         self::TRAINEE    => 1,
         self::STOCK      => 1,
         self::ACCOUNTING => 1,
+        self::BRANCH     => 1,
     ];
 
     /* ─────────────────────────────────────────────────────────── สิทธิ์ */
@@ -143,6 +154,9 @@ final class Roles
         'stock.move'    => ['การบันทึกสต็อก', 'เบิก · ตัดของเสีย · คืนของ · รับของเข้า', null],
         'scrap.blame'   => ['การบันทึกสต็อก', 'ระบุว่าคนอื่นเป็นคนทำของเสีย',
             'ตัดของเสียที่ตัวเองทำ ทำได้ทุกบทบาท — ที่กันไว้คือการลงชื่อคนอื่น'],
+        'issue.request' => ['การบันทึกสต็อก', 'ส่งคำขอตัดเลนส์ให้สาขา (เบิกจากสต็อก · สั่งตัด RX)',
+            'คำขอยังไม่ตัดอะไร — ของขยับเมื่อคนที่ถือ issue.approve กดยืนยัน'],
+        'issue.approve' => ['การบันทึกสต็อก', 'ตรวจ แก้ และยืนยันคำขอตัดเลนส์จากสาขา', null],
         'cost.edit'     => ['การบันทึกสต็อก', 'กรอก/แก้ต้นทุน (ตอนรับของ · ล็อต · RX)',
             'ตัวเลขที่กำไรทั้งร้านคำนวณจากมัน จึงเป็นของเจ้าของร้านกับฝ่ายบัญชี ไม่ใช่ของคนที่บังเอิญคีย์'],
 
@@ -182,18 +196,19 @@ final class Roles
         /* `stock.use` ตัวเดียว ไม่ใช่ `WAREHOUSE` ทั้งชุด — เข้าไปอ่านมูลค่าคลัง
            และยอดสาขาได้ แต่ไม่มี `stock.move` และ `product.add` */
         self::ACCOUNTING => [...self::MONEY, 'stock.use', 'cost.edit'],
+        self::BRANCH  => ['issue.request'],
         self::ADMIN   => [
             ...self::FLOOR, ...self::WAREHOUSE, ...self::MONEY,
-            'system.zone', 'users.manage', 'catalog.edit',
+            'system.zone', 'users.manage', 'catalog.edit', 'issue.approve',
         ],
         self::OWNER => [
             ...self::FLOOR, ...self::WAREHOUSE, ...self::MONEY,
-            'system.zone', 'users.manage', 'catalog.edit',
+            'system.zone', 'users.manage', 'catalog.edit', 'issue.approve',
             'cost.edit', 'scrap.blame', 'branch.manage',
         ],
         self::SUPERUSER => [
             ...self::FLOOR, ...self::WAREHOUSE, ...self::MONEY,
-            'system.zone', 'users.manage', 'catalog.edit',
+            'system.zone', 'users.manage', 'catalog.edit', 'issue.approve',
             'cost.edit', 'scrap.blame', 'branch.manage',
             'system.manage',
         ],
@@ -320,6 +335,9 @@ final class Roles
      * คนที่กด "ออกใบเสร็จ" ได้ — ร้านกำหนดเป็นรายคน ไม่ใช่ตามบทบาท (28 ต.ค. 2026: Pom Tik Bow
      * + Japiica) เพราะ Bow เป็น sales แต่ sales คนอื่นห้ามออก · superuser ได้เสมอไว้แก้ปัญหา
      * ไม่ได้อยู่ใน PERMS เพราะตารางนั้นผูกกับบทบาท · Auth::shape เติม 'receipt.issue' ให้ actor
+     *
+     * สาขา (Bewell · บ่อนไก่ · แพไม้): เจ้าของร้าน (owner) ออกได้ทุกสาขา — ร้านสั่ง 14 พ.ย. 2026
+     * สาขาไม่มีบัญชีตามรายชื่อข้างล่าง ถ้าไม่เปิดให้ owner จะไม่มีใครออกใบเสร็จได้เลย
      */
     public const RECEIPT_ISSUERS = ['pom', 'tik', 'bow', 'japiica'];
 
@@ -327,6 +345,7 @@ final class Roles
     public static function issueReceipt(array $roles, ?string $username): bool
     {
         return self::manageSystem($roles)
+            || in_array(self::OWNER, $roles, true)
             || in_array(mb_strtolower(trim((string) $username)), self::RECEIPT_ISSUERS, true);
     }
 
@@ -409,6 +428,12 @@ final class Roles
      */
     public static function settleBranch(array $roles): bool { return self::has($roles, 'branch.settle'); }
 
+    /** ส่งคำขอตัดเลนส์ของสาขาตัวเอง @param list<string> $roles */
+    public static function requestIssue(array $roles): bool { return self::has($roles, 'issue.request'); }
+
+    /** ตรวจและยืนยันคำขอตัดเลนส์จากสาขา @param list<string> $roles */
+    public static function approveIssue(array $roles): bool { return self::has($roles, 'issue.approve'); }
+
     /**
      * หน้าแรกหลังล็อกอิน
      *
@@ -432,6 +457,8 @@ final class Roles
         /* บัญชีมี `stock.use` ติดมาด้วย แต่งานแรกของวันคือเงิน ไม่ใช่คลัง — และ
            หน้าร้านที่ `/` เป็นหน้าที่เขาเปิดไม่ได้อยู่แล้ว */
         if (!self::useFrontdesk($roles) && self::moneyZone($roles)) return '/income/';
+        /* บัญชีสาขามีงานเดียวคือส่งคำขอ */
+        if (!self::useStock($roles) && self::requestIssue($roles)) return '/stock/requests/';
         return self::useStock($roles) ? '/stock/dashboard/' : '/';
     }
 

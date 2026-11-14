@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { can, useActor, WorkHead } from "@/stockmod/components/AppShell";
-import Paginator from "@/stockmod/components/Paginator";
+import Paginator, { usePerPage } from "@/stockmod/components/Paginator";
 import SortHead, { SortBar, useSort } from "@/stockmod/components/SortHead";
 import { Filter, FilterBar, withCount } from "@/stockmod/components/FilterBar";
 import RecordCard, { CardList } from "@/stockmod/components/RecordCard";
@@ -77,6 +77,7 @@ export default function MovementsPage() {
   const [type, setType] = useState("");
   const [who, setWho] = useState("");
   const [page, setPage] = useState(1);
+  const [per, setPer] = usePerPage("movements");
   /** ช่วงวันที่ของรายการ — ว่างทั้งคู่ = ทุกวัน · API รับ from/to อยู่แล้ว */
   const [range, setRange] = useState({ from: "", to: "" });
   /** สินค้าที่เปิดลิ้นชักดูล็อตอยู่ — กดชื่อสินค้าในแถว (ร้านขอ 18 ก.ย. 2026) */
@@ -96,7 +97,7 @@ export default function MovementsPage() {
   const onEdit = maySettle
     ? (r: MovementRow) => (r.actionType === "IN" ? setReceipt(r) : setEditing(r))
     : undefined;
-  const list = useApi<List>(`/movements${qs({ type, q: applied, who, from: range.from, to: range.to, sort, dir, page })}`);
+  const list = useApi<List>(`/movements${qs({ type, q: applied, who, from: range.from, to: range.to, sort, dir, page, per })}`);
   const rows = list.status === "ready" ? list.data.rows : [];
   const counts: Counts = list.status === "ready" ? list.data.counts : {};
 
@@ -128,7 +129,7 @@ export default function MovementsPage() {
             className="input"
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="เลขเอกสาร SKU ล็อต ชื่อคน สาขา หรือหมายเหตุ"
+            placeholder="เลขเอกสาร เลขบิล เลขเคส SKU ล็อต ชื่อคน สาขา หรือหมายเหตุ"
             autoComplete="off"
           />
           <button type="submit" className="btn btn--primary">
@@ -307,6 +308,10 @@ export default function MovementsPage() {
             perPage={list.data!.perPage}
             total={list.data!.total}
             onPage={setPage}
+            onPerPage={(n) => {
+              setPer(n);
+              setPage(1);
+            }}
             label="รายการ"
           />
         </>
@@ -350,6 +355,14 @@ function FixAction({ row: r, onEdit }: { row: MovementRow; onEdit: (r: MovementR
     );
   }
   if (r.actionType === "SCRAP") {
+    /* เลนส์สั่งตัดที่เจียร์เสีย (ร้านขอ 30 ก.ย. 2026) — ไม่ผูกล็อต จึงไม่มีของให้คืนเข้าชั้น */
+    if (r.lotNumber === null) {
+      return (
+        <Link href="/stock/rx" className="grid__link">
+          ดูที่ใบสั่งตัด RX
+        </Link>
+      );
+    }
     if (r.returned) return <span className="grid__muted">ยกเลิกแล้ว</span>;
     return (
       <button type="button" className="btn btn--small" onClick={() => onEdit(r)}>
@@ -377,6 +390,28 @@ function FixAction({ row: r, onEdit }: { row: MovementRow; onEdit: (r: MovementR
     <button type="button" className="btn btn--small" onClick={() => onEdit(r)}>
       เปิดการแก้ไข / ยกเลิก
     </button>
+  );
+}
+
+/** วันที่ติ๊กเลนส์มาถึงที่หน้าใบสั่งตัด RX (ร้านขอ 22 ต.ค. 2026) — ยังไม่ติ๊กคือรอเลนส์ */
+function RxArrived({ row: r }: { row: MovementRow }) {
+  if (!r.rxArrivedAt) return <span className="status status--pending">รอเลนส์</span>;
+  return (
+    <>
+      {dateTime(r.rxArrivedAt)}
+      {r.rxArrivedRef ? ` · เลขรับ ${r.rxArrivedRef}` : ""}
+    </>
+  );
+}
+
+/** เลขเคสหน้าร้านของใบสั่งตัด RX — กดแล้วไปหน้าเคส */
+function CaseLink({ row }: { row: MovementRow }) {
+  return row.caseId === null ? (
+    <>{row.caseCode}</>
+  ) : (
+    <a href={`/cases/detail?id=${row.caseId}`} className="grid__link">
+      {row.caseCode}
+    </a>
   );
 }
 
@@ -477,7 +512,10 @@ function MovementCard({
         { label: r.scrapBy ? "ทำเสียโดย" : "ใครเบิก", value: who },
         r.actorName ? { label: "บันทึกโดย", value: r.actorName } : null,
         r.referenceDoc ? { label: "เอกสาร", value: <span className="grid__doc">{r.referenceDoc}</span> } : null,
-        r.notes ? { label: "หมายเหตุ", value: r.notes } : null,
+        r.branchNote ? { label: "บิล", value: <span className="grid__doc">{r.branchNote}</span> } : null,
+        r.caseCode ? { label: "เคส", value: <CaseLink row={r} /> } : null,
+        r.actionType === "RX_ORDER" ? { label: "เลนส์มาถึง", value: <RxArrived row={r} /> } : null,
+        r.notes && r.notes !== r.branchNote ? { label: "หมายเหตุ", value: r.notes } : null,
       ]}
       actions={onEdit ? <FixAction row={r} onEdit={onEdit} /> : undefined}
     />
@@ -521,7 +559,20 @@ function Row({
       <td>
         <span className={`tag tag--${r.actionType.toLowerCase().replace("_", "-")}`}>{r.actionLabel}</span>
         {r.referenceDoc ? <span className="grid__sub grid__doc">{r.referenceDoc}</span> : null}
-        {r.notes ? <span className="grid__sub">{r.notes}</span> : null}
+        {/* บิลสาขายาวได้หลายท่อน (บิล · ออเดอร์ · เคส · คำขอ) — ให้ตัดบรรทัด ไม่งั้นดันตารางล้นจอ */}
+        {r.branchNote ? <span className="grid__sub grid__doc grid__doc--wrap">บิล {r.branchNote}</span> : null}
+        {r.caseCode ? (
+          <span className="grid__sub grid__doc">
+            เคส <CaseLink row={r} />
+          </span>
+        ) : null}
+        {r.actionType === "RX_ORDER" ? (
+          <span className="grid__sub">
+            เลนส์มาถึง <RxArrived row={r} />
+          </span>
+        ) : null}
+        {/* หมายเหตุที่ตรงกับบิลสาขาไม่ต้องพิมพ์ซ้ำ */}
+        {r.notes && r.notes !== r.branchNote ? <span className="grid__sub">{r.notes}</span> : null}
       </td>
 
       <td>

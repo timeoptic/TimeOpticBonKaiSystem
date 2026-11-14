@@ -368,6 +368,97 @@ GET('/api/pos/sales/:id', function (array $req) {
    --------------------------------------------------------------------------- */
 
 /**
+ * ตรวจรายการขายหนึ่งแถวจากคำขอ แล้วคืนรูปที่พร้อมเขียนลงใบ — ใช้ทั้งตอนเปิดใบ
+ * และตอนผู้ดูแลระบบเพิ่มแถวเข้าใบเดิม กฎจึงมีชุดเดียว · `$n` คือลำดับแถวที่โชว์ในข้อความ
+ */
+function posCleanItem(array $it, int $n): array
+{
+    $pid  = int_or($it['product_id'] ?? null);
+    $spid = int_or($it['stock_product_id'] ?? null);
+    $name = str_or($it['product_name'] ?? null);
+    $qty  = int_or($it['quantity'] ?? null, 0) ?? 0;
+    $price = num($it['unit_price'] ?? null);
+    $meta = is_array($it['item_meta'] ?? null) ? $it['item_meta'] : [];
+
+    /* ของจากคลัง (กรอบ / คอนแทคเลนส์) — ตัดสต็อกจริงตอนเขียนใบข้างล่าง */
+    if ($spid !== null) {
+        $sp = Db::get(
+            'SELECT id, sku, name, product_type FROM products WHERE id = ? AND is_custom_made = 0',
+            $spid
+        );
+        if (!$sp || !in_array($sp['product_type'], POS_STOCK_TYPES, true)) {
+            bad("รายการที่ $n: ไม่พบสินค้ารหัส $spid ในคลัง (ขายได้เฉพาะกรอบแว่นกับคอนแทคเลนส์)");
+        }
+        $name = $name !== '' ? $name : (string) $sp['name'];
+        if ($qty < 1) {
+            bad("รายการที่ $n ($name): จำนวนต้องอย่างน้อย 1");
+        }
+        if ($price < 0) {
+            bad("รายการที่ $n ($name): ราคาติดลบไม่ได้");
+        }
+        posCheckFields(posStockFields((string) $sp['product_type']), $meta, $n, $name);
+        return [
+            'pos_item_id'      => null,
+            'stock_product_id' => (int) $sp['id'],
+            'name'             => $name,
+            'sku'              => (string) $sp['sku'],
+            'qty'              => $qty,
+            'price'            => round2($price),
+            'line'             => round2($qty * $price),
+            'meta_arr'         => $meta,
+        ];
+    }
+
+    $item = null;
+    if ($pid !== null) {
+        /* `product_id` ในคำขอคือ id ของ pos_items ตั้งแต่ migration 033 — คงชื่อคีย์
+           เดิมไว้ หน้าเว็บ (cart.js) จึงไม่ต้องแก้ · id ของสินค้าในคลังที่ไคลเอนต์เก่า
+           จำไว้ต้องไม่ผ่าน และรายการที่เลิกขายแล้วก็ไม่ผ่าน */
+        $item = Db::get(
+            'SELECT id, sku, name, pos_fields, is_custom
+               FROM pos_items WHERE id = ? AND is_active = 1',
+            $pid
+        );
+        if (!$item) {
+            bad("รายการที่ $n: ไม่พบสินค้ารหัส $pid ในรายการของหน้าร้าน");
+        }
+    }
+
+    /* สินค้า Custom ("อื่นๆ") ต้องมีชื่อที่พิมพ์เอง — ชื่อในรายการคือ
+       "อื่นๆ (พิมพ์เอง)" ซึ่งพิมพ์ลงใบเสร็จแล้วลูกค้าอ่านไม่รู้เรื่อง */
+    if ($item === null || $item['is_custom']) {
+        $typed = str_or($it['custom_name'] ?? null) ?: $name;
+        if ($typed === '') {
+            bad("รายการที่ $n: สินค้าพิมพ์เองต้องระบุชื่อสินค้า");
+        }
+        $name = $typed;
+    } elseif ($name === '') {
+        $name = (string) $item['name'];
+    }
+
+    if ($qty < 1) {
+        bad("รายการที่ $n ($name): จำนวนต้องอย่างน้อย 1");
+    }
+    if ($price < 0) {
+        bad("รายการที่ $n ($name): ราคาติดลบไม่ได้");
+    }
+
+    /* ช่องกรอกเพิ่มที่สินค้าตัวนั้นบังคับ ต้องมีค่ามาจริง */
+    posCheckFields($item ? posFieldsOf($item) : [], $meta, $n, $name);
+
+    return [
+        'pos_item_id'      => $item ? (int) $item['id'] : null,
+        'stock_product_id' => null,
+        'name'             => $name,
+        'sku'              => $item ? (string) $item['sku'] : null,
+        'qty'              => $qty,
+        'price'            => round2($price),
+        'line'             => round2($qty * $price),
+        'meta_arr'         => $meta,
+    ];
+}
+
+/**
  * ทั้งใบอยู่ใน transaction เดียว — ใบขายที่มีแต่หัวไม่มีรายการ หรือมีรายการแต่
  * เงินไม่เข้า คือสิ่งที่ต้องไม่มีทางเกิด
  */
@@ -395,91 +486,7 @@ POST('/api/pos/sales', function (array $req) {
        แต่การตอบว่าผิดตรงไหนตั้งแต่ยังไม่เขียนอะไร อ่านง่ายกว่าสำหรับคนหน้าร้าน */
     $clean = [];
     foreach ($items as $i => $it) {
-        $n    = $i + 1;
-        $pid  = int_or($it['product_id'] ?? null);
-        $spid = int_or($it['stock_product_id'] ?? null);
-        $name = str_or($it['product_name'] ?? null);
-        $qty  = int_or($it['quantity'] ?? null, 0) ?? 0;
-        $price = num($it['unit_price'] ?? null);
-        $meta = is_array($it['item_meta'] ?? null) ? $it['item_meta'] : [];
-
-        /* ของจากคลัง (กรอบ / คอนแทคเลนส์) — ตัดสต็อกจริงตอนเขียนใบข้างล่าง */
-        if ($spid !== null) {
-            $sp = Db::get(
-                'SELECT id, sku, name, product_type FROM products WHERE id = ? AND is_custom_made = 0',
-                $spid
-            );
-            if (!$sp || !in_array($sp['product_type'], POS_STOCK_TYPES, true)) {
-                bad("รายการที่ $n: ไม่พบสินค้ารหัส $spid ในคลัง (ขายได้เฉพาะกรอบแว่นกับคอนแทคเลนส์)");
-            }
-            $name = $name !== '' ? $name : (string) $sp['name'];
-            if ($qty < 1) {
-                bad("รายการที่ $n ($name): จำนวนต้องอย่างน้อย 1");
-            }
-            if ($price < 0) {
-                bad("รายการที่ $n ($name): ราคาติดลบไม่ได้");
-            }
-            posCheckFields(posStockFields((string) $sp['product_type']), $meta, $n, $name);
-            $clean[] = [
-                'pos_item_id'      => null,
-                'stock_product_id' => (int) $sp['id'],
-                'name'             => $name,
-                'sku'              => (string) $sp['sku'],
-                'qty'              => $qty,
-                'price'            => round2($price),
-                'line'             => round2($qty * $price),
-                'meta_arr'         => $meta,
-            ];
-            continue;
-        }
-
-        $item = null;
-        if ($pid !== null) {
-            /* `product_id` ในคำขอคือ id ของ pos_items ตั้งแต่ migration 033 — คงชื่อคีย์
-               เดิมไว้ หน้าเว็บ (cart.js) จึงไม่ต้องแก้ · id ของสินค้าในคลังที่ไคลเอนต์เก่า
-               จำไว้ต้องไม่ผ่าน และรายการที่เลิกขายแล้วก็ไม่ผ่าน */
-            $item = Db::get(
-                'SELECT id, sku, name, pos_fields, is_custom
-                   FROM pos_items WHERE id = ? AND is_active = 1',
-                $pid
-            );
-            if (!$item) {
-                bad("รายการที่ $n: ไม่พบสินค้ารหัส $pid ในรายการของหน้าร้าน");
-            }
-        }
-
-        /* สินค้า Custom ("อื่นๆ") ต้องมีชื่อที่พิมพ์เอง — ชื่อในรายการคือ
-           "อื่นๆ (พิมพ์เอง)" ซึ่งพิมพ์ลงใบเสร็จแล้วลูกค้าอ่านไม่รู้เรื่อง */
-        if ($item === null || $item['is_custom']) {
-            $typed = str_or($it['custom_name'] ?? null) ?: $name;
-            if ($typed === '') {
-                bad("รายการที่ $n: สินค้าพิมพ์เองต้องระบุชื่อสินค้า");
-            }
-            $name = $typed;
-        } elseif ($name === '') {
-            $name = (string) $item['name'];
-        }
-
-        if ($qty < 1) {
-            bad("รายการที่ $n ($name): จำนวนต้องอย่างน้อย 1");
-        }
-        if ($price < 0) {
-            bad("รายการที่ $n ($name): ราคาติดลบไม่ได้");
-        }
-
-        /* ช่องกรอกเพิ่มที่สินค้าตัวนั้นบังคับ ต้องมีค่ามาจริง */
-        posCheckFields($item ? posFieldsOf($item) : [], $meta, $n, $name);
-
-        $clean[] = [
-            'pos_item_id'      => $item ? (int) $item['id'] : null,
-            'stock_product_id' => null,
-            'name'             => $name,
-            'sku'              => $item ? (string) $item['sku'] : null,
-            'qty'              => $qty,
-            'price'            => round2($price),
-            'line'             => round2($qty * $price),
-            'meta_arr'         => $meta,
-        ];
+        $clean[] = posCleanItem(is_array($it) ? $it : [], $i + 1);
     }
 
     /* มีของจากคลังแต่ตัดของจริงไม่ได้ (โหมดคลังปิด / ทดลอง) — ไม่รับบิล ดีกว่าออกบิล
@@ -552,23 +559,7 @@ POST('/api/pos/sales', function (array $req) {
             $meta = $c['meta_arr'];
             if ($c['stock_product_id'] !== null) {
                 $idem = posStockKey('pos-' . ($ref ?? $posNo) . '-' . ($n + 1) . '-' . $c['sku']);
-                try {
-                    $res = StockClient::post('/stock/issue', [
-                        'source'        => POS_STOCK_SOURCE,
-                        'idem_key'      => $idem,
-                        'sku'           => $c['sku'],
-                        'quantity'      => $c['qty'],
-                        'reference_doc' => $posNo,
-                        'note'          => "ขายหน้าร้าน $posNo",
-                    ]);
-                } catch (StockApiError $e) {
-                    bad('รายการที่ ' . ($n + 1) . " ({$c['name']}): " . $e->getMessage());
-                }
-                $meta['stock_idem_key'] = $idem;
-                $meta['stock_lots'] = array_values(array_filter(array_map(
-                    static fn($cut) => is_array($cut) ? int_or($cut['lot_id'] ?? null) : null,
-                    is_array($res['cuts'] ?? null) ? $res['cuts'] : []
-                )));
+                $meta = posIssue($c, $idem, $posNo, $n + 1) + $meta;
             }
             $metas[$n] = $meta;
         }
@@ -873,18 +864,7 @@ POST('/api/pos/sales/:id/void', function (array $req) {
             if ($key === '' || str_or($meta['stock_return_key'] ?? null) !== '') {
                 continue;
             }
-            $rev = posStockKey('rev-' . $key);
-            try {
-                StockClient::post('/stock/return', [
-                    'source'       => POS_STOCK_SOURCE,
-                    'idem_key'     => $rev,
-                    'reverses_key' => $key,
-                    'note'         => "ยกเลิกบิล {$sale['pos_no']} — $reason",
-                ]);
-            } catch (StockApiError $e) {
-                bad('คืนของเข้าคลังไม่สำเร็จ ยังไม่ได้ยกเลิกใบ — ' . $e->getMessage());
-            }
-            $meta['stock_return_key'] = $rev;
+            $meta['stock_return_key'] = posReturn($key, "ยกเลิกบิล {$sale['pos_no']} — $reason", 'ยังไม่ได้ยกเลิกใบ');
             $q->run(
                 'UPDATE pos_sale_items SET item_meta = ? WHERE id = ?',
                 json_encode($meta, JSON_UNESCAPED_UNICODE),
@@ -898,6 +878,287 @@ POST('/api/pos/sales/:id/void', function (array $req) {
         );
         voidReceiptIn($q, 'sale', $id, "ยกเลิกใบขาย {$sale['pos_no']} — $reason");
     });
+    return posSaleFull($id);
+});
+
+/**
+ * ตัดสต็อกของแถวหนึ่งในนามคนที่กด ผ่านฝั่งคลัง (FIFO + ล็อกล็อต + ต้นทุน + สมุด)
+ * คืนคีย์ที่ต้องจำไว้ใน item_meta — คีย์นี้คือสิ่งที่การคืนของอ้างถึงทีหลัง
+ */
+function posIssue(array $c, string $idem, string $posNo, int $n): array
+{
+    try {
+        $res = StockClient::post('/stock/issue', [
+            'source'        => POS_STOCK_SOURCE,
+            'idem_key'      => $idem,
+            'sku'           => $c['sku'],
+            'quantity'      => $c['qty'],
+            'reference_doc' => $posNo,
+            'note'          => "ขายหน้าร้าน $posNo",
+        ]);
+    } catch (StockApiError $e) {
+        bad("รายการที่ $n ({$c['name']}): " . $e->getMessage());
+    }
+    return [
+        'stock_idem_key' => $idem,
+        'stock_lots'     => array_values(array_filter(array_map(
+            static fn($cut) => is_array($cut) ? int_or($cut['lot_id'] ?? null) : null,
+            is_array($res['cuts'] ?? null) ? $res['cuts'] : []
+        ))),
+    ];
+}
+
+/** คืนของที่ตัดไปด้วยคีย์ `$key` กลับเข้าล็อตเดิมทั้งก้อน — คืนคีย์ของการคืน */
+function posReturn(string $key, string $note, string $notDone): string
+{
+    $rev = posStockKey('rev-' . $key);
+    try {
+        StockClient::post('/stock/return', [
+            'source'       => POS_STOCK_SOURCE,
+            'idem_key'     => $rev,
+            'reverses_key' => $key,
+            'note'         => $note,
+        ]);
+    } catch (StockApiError $e) {
+        bad("คืนของเข้าคลังไม่สำเร็จ $notDone — " . $e->getMessage());
+    }
+    return $rev;
+}
+
+/** ข้อความหนึ่งบรรทัดของแถวสินค้า สำหรับค่าก่อน → หลังในบันทึกการใช้งาน */
+function posLineText(string $name, int $qty, float $price): string
+{
+    return "$name × $qty @ " . number_format($price, 2);
+}
+
+/**
+ * แก้ใบขายที่บันทึกไปแล้ว — ผู้ดูแลระบบเท่านั้น (ร้านขอ 28 ต.ค. 2026)
+ *
+ * คำขอส่ง "รายการทั้งใบที่ต้องการ" มา ไม่ใช่ทีละแถว:
+ *
+ *   · แถวที่มี `id` = แถวเดิม แก้ชื่อ / จำนวน / ราคาต่อชิ้นได้ · สินค้าของแถวเปลี่ยน
+ *     ไม่ได้ (เปลี่ยนสินค้า = ลบแถวแล้วเพิ่มแถวใหม่ สต็อกจึงเดินถูกตัว)
+ *   · แถวเดิมที่ไม่อยู่ในคำขอ = ลบ · ของจากคลังคืนเข้าล็อตเดิม
+ *   · แถวที่ไม่มี `id` = เพิ่มใหม่ ตรวจด้วยกฎเดียวกับตอนเปิดใบ ของจากคลังตัดสต็อกให้
+ *   · ของจากคลังที่จำนวนเปลี่ยน คืนการตัดเดิมทั้งก้อนแล้วตัดจำนวนใหม่ — ฝั่งคลัง
+ *     คืนได้แค่ทั้งรายการ (อ่านล็อตจากคำขอเดิม) ไม่มีคืนบางส่วน
+ *   · `customer_name` / `customer_phone` / `note` แก้ได้ถ้าส่งมา
+ *
+ * ด่าน: ใบที่ยกเลิกแล้วแก้ไม่ได้ · บังคับเหตุผล · ยอดใหม่ต่ำกว่าเงินที่รับแล้วไม่ได้
+ * (ให้ไปแก้งวดเงินก่อน ตัวเลขเงินกับใบจึงไม่ขัดกันเลยสักขณะ) · ทั้งหมดอยู่ใน
+ * transaction เดียว ตัด/คืนสต็อกไม่ผ่านแถวเดียว ใบไม่เปลี่ยนเลย · ค่าก่อน → หลัง
+ * กับเหตุผลลง activity_log
+ */
+PUT('/api/pos/sales/:id/items', function (array $req) {
+    $actor = posActor();
+    if (!\Optic\Roles::manageSystem($actor['roles'])) {
+        throw new HttpError(403, 'แก้ไขรายการขายได้เฉพาะผู้ดูแลระบบ', ['reason' => 'forbidden']);
+    }
+    $id   = int_or($req['params']['id']) ?? 0;
+    $body = $req['body'];
+
+    $reason = trim((string) ($body['reason'] ?? ''));
+    if ($reason === '') {
+        bad('กรุณาใส่เหตุผลที่แก้ไข');
+    }
+    $items = $body['items'] ?? null;
+    if (!is_array($items) || $items === []) {
+        bad('ต้องมีสินค้าอย่างน้อย 1 รายการ');
+    }
+    /* คีย์ของการแก้ครั้งนี้ — หน้าเว็บสร้างใหม่ทุกครั้งที่เปิดหน้าต่าง กดบันทึกซ้ำจึงไม่ตัดสต็อกสองรอบ */
+    $editRef = substr(preg_replace('/[^A-Za-z0-9-]/', '', (string) ($body['edit_ref'] ?? '')), 0, 40)
+        ?: bin2hex(random_bytes(8));
+
+    $sale = Db::get('SELECT * FROM pos_sales WHERE id = ?', $id);
+    if (!$sale) {
+        missing();
+    }
+    if ($sale['status'] === 'void') {
+        bad('ใบขายนี้ถูกยกเลิกแล้ว แก้ไขไม่ได้');
+    }
+    $old = array_column(
+        Db::all('SELECT * FROM pos_sale_items WHERE sale_id = ? ORDER BY sort_order, id', $id),
+        null,
+        'id'
+    );
+
+    /* ตรวจทุกแถวให้ครบก่อนแตะฐาน — ตอบได้ว่าผิดแถวไหนตั้งแต่ยังไม่เขียนอะไร */
+    $keep = [];   // id แถวเดิม => ค่าใหม่
+    $add  = [];   // แถวใหม่ที่ผ่าน posCleanItem
+    foreach ($items as $i => $it) {
+        $n   = $i + 1;
+        $it  = is_array($it) ? $it : [];
+        $rid = int_or($it['id'] ?? null);
+        if ($rid === null) {
+            $add[] = posCleanItem($it, $n) + ['n' => $n];
+            continue;
+        }
+        if (!isset($old[$rid])) {
+            bad("รายการที่ $n: ไม่ใช่รายการของใบนี้");
+        }
+        if (isset($keep[$rid])) {
+            bad("รายการที่ $n: ส่งแถวเดิมซ้ำ");
+        }
+        $name  = str_or($it['product_name'] ?? null) ?: (string) $old[$rid]['product_name_snapshot'];
+        $qty   = int_or($it['quantity'] ?? null, 0) ?? 0;
+        $price = num($it['unit_price'] ?? null);
+        if ($qty < 1) {
+            bad("รายการที่ $n ($name): จำนวนต้องอย่างน้อย 1");
+        }
+        if ($price < 0) {
+            bad("รายการที่ $n ($name): ราคาติดลบไม่ได้");
+        }
+        $keep[$rid] = ['n' => $n, 'name' => $name, 'qty' => $qty, 'price' => round2($price)];
+    }
+    $drop    = array_diff_key($old, $keep);
+    $changed = array_filter(
+        $keep,
+        static fn(array $k, int $rid): bool => $k['name'] !== (string) $old[$rid]['product_name_snapshot']
+            || $k['qty'] !== (int) $old[$rid]['quantity']
+            || abs($k['price'] - (float) $old[$rid]['unit_price']) > 0.001,
+        ARRAY_FILTER_USE_BOTH
+    );
+
+    /* หัวใบ — แก้เฉพาะช่องที่ส่งมา */
+    $head = [];
+    foreach (['customer_name' => 'customer_name_snapshot', 'customer_phone' => 'customer_phone_snapshot', 'note' => 'note'] as $in => $col) {
+        if (array_key_exists($in, $body) && nul($body[$in]) !== nul($sale[$col])) {
+            $head[$col] = nul($body[$in]);
+        }
+    }
+
+    if (!$changed && !$drop && !$add && !$head) {
+        bad('ไม่มีอะไรเปลี่ยน');
+    }
+
+    $total = round2(
+        array_sum(array_map(static fn(array $k) => $k['qty'] * $k['price'], $keep))
+        + array_sum(array_column($add, 'line'))
+    );
+    $total = round2(max(0, $total - round2($sale['discount_amount'])));
+    $paid  = round2($sale['paid_amount']);
+    if ($total < $paid - 0.001) {
+        throw new HttpError(
+            400,
+            'ยอดใหม่ ' . number_format($total, 2) . ' บาท ต่ำกว่าเงินที่รับแล้ว ' . number_format($paid, 2)
+                . ' บาท — แก้ยอดในประวัติการรับเงินก่อน',
+            ['reason' => 'below_paid', 'total' => $total, 'paid' => $paid]
+        );
+    }
+
+    /* ใบที่ยังค้างเงินหรือของยังไม่ออกจากร้าน ต้องตามลูกค้าได้ — กฎเดียวกับตอนเปิดใบ */
+    $custName  = array_key_exists('customer_name_snapshot', $head) ? $head['customer_name_snapshot'] : nul($sale['customer_name_snapshot']);
+    $custPhone = array_key_exists('customer_phone_snapshot', $head) ? $head['customer_phone_snapshot'] : nul($sale['customer_phone_snapshot']);
+    if (($total > $paid + 0.001 || $sale['fulfillment_status'] !== 'delivered')
+        && $custName === null && $custPhone === null) {
+        bad('ใบที่ยังค้างเงินหรือยังไม่ส่งมอบ ต้องมีชื่อหรือเบอร์โทรลูกค้าอย่างน้อยหนึ่งอย่าง');
+    }
+
+    $restock = static fn(array $row, ?int $qty = null): bool => $row['product_id'] !== null
+        && ($qty === null || $qty !== (int) $row['quantity']);
+    $touchStock = array_filter(array_column($add, 'stock_product_id'))
+        || array_filter($drop, static fn(array $row) => $restock($row))
+        || array_filter($changed, static fn(array $k, int $rid) => $restock($old[$rid], $k['qty']), ARRAY_FILTER_USE_BOTH);
+    if ($touchStock && ($why = StockClient::unavailableReason()) !== null) {
+        bad('ปรับสต็อกไม่ได้ตอนนี้ — ' . $why);
+    }
+
+    $posNo = (string) $sale['pos_no'];
+    $note  = "แก้ไขบิล $posNo — $reason";
+
+    Db::tx(function (Tx $q) use ($id, $sale, $old, $drop, $add, $changed, $head, $posNo, $note, $editRef, $restock, $reason, $actor) {
+        $q->get('SELECT id FROM pos_sales WHERE id = ? FOR UPDATE', $id);
+        $log = [];
+
+        foreach ($drop as $rid => $row) {
+            $meta = json_decode((string) ($row['item_meta'] ?? ''), true);
+            $key  = is_array($meta) ? str_or($meta['stock_idem_key'] ?? null) : '';
+            if ($key !== '' && str_or($meta['stock_return_key'] ?? null) === '') {
+                posReturn($key, $note, 'ยังไม่ได้แก้ใบ');
+            }
+            $q->run('DELETE FROM pos_sale_items WHERE id = ?', $rid);
+            $log[] = [
+                'field'  => "pos_sale_items.$rid",
+                'before' => posLineText($row['product_name_snapshot'], (int) $row['quantity'], (float) $row['unit_price']),
+                'after'  => '(ลบ)',
+            ];
+        }
+
+        foreach ($changed as $rid => $k) {
+            $row  = $old[$rid];
+            $meta = json_decode((string) ($row['item_meta'] ?? ''), true);
+            $meta = is_array($meta) ? $meta : [];
+            $key  = str_or($meta['stock_idem_key'] ?? null);
+            if ($key !== '' && $restock($row, $k['qty'])) {
+                posReturn($key, $note, 'ยังไม่ได้แก้ใบ');
+                $meta = posIssue(
+                    ['sku' => (string) $row['sku_snapshot'], 'qty' => $k['qty'], 'name' => $k['name']],
+                    posStockKey("pos-edit-$editRef-$rid-{$row['sku_snapshot']}"),
+                    $posNo,
+                    $k['n']
+                ) + $meta;
+            }
+            $q->run(
+                'UPDATE pos_sale_items
+                    SET product_name_snapshot = ?, quantity = ?, unit_price = ?, line_total = ?, item_meta = ?
+                  WHERE id = ?',
+                $k['name'], $k['qty'], $k['price'], round2($k['qty'] * $k['price']),
+                $meta === [] ? null : json_encode($meta, JSON_UNESCAPED_UNICODE),
+                $rid
+            );
+            $log[] = [
+                'field'  => "pos_sale_items.$rid",
+                'before' => posLineText($row['product_name_snapshot'], (int) $row['quantity'], (float) $row['unit_price']),
+                'after'  => posLineText($k['name'], $k['qty'], $k['price']),
+            ];
+        }
+
+        $sort = (int) $q->get(
+            'SELECT COALESCE(MAX(sort_order), -1) AS m FROM pos_sale_items WHERE sale_id = ?',
+            $id
+        )['m'];
+        foreach ($add as $c) {
+            $meta = $c['meta_arr'];
+            if ($c['stock_product_id'] !== null) {
+                $idem = posStockKey("pos-edit-$editRef-new{$c['n']}-{$c['sku']}");
+                $meta = posIssue($c, $idem, $posNo, $c['n']) + $meta;
+            }
+            $q->run(
+                'INSERT INTO pos_sale_items (sale_id, product_id, pos_item_id, product_name_snapshot,
+                   sku_snapshot, quantity, unit_price, line_total, item_meta, sort_order)
+                 VALUES (?,?,?,?,?,?,?,?,?,?)',
+                $id, $c['stock_product_id'], $c['pos_item_id'], $c['name'], $c['sku'],
+                $c['qty'], $c['price'], $c['line'],
+                $meta === [] ? null : json_encode($meta, JSON_UNESCAPED_UNICODE), ++$sort
+            );
+            $log[] = [
+                'field'  => 'pos_sale_items.new',
+                'before' => '',
+                'after'  => posLineText($c['name'], $c['qty'], $c['price']),
+            ];
+        }
+
+        foreach ($head as $col => $val) {
+            $q->run("UPDATE pos_sales SET $col = ? WHERE id = ?", $val, $id);
+            $log[] = ['field' => "pos_sales.$col", 'before' => (string) $sale[$col], 'after' => (string) $val];
+        }
+
+        $after = posRecalc($q, $id);
+        if (round2($after['total_amount']) !== round2($sale['total_amount'])) {
+            $log[] = [
+                'field'  => 'pos_sales.total_amount',
+                'before' => (string) $sale['total_amount'],
+                'after'  => (string) $after['total_amount'],
+            ];
+        }
+
+        ActivityLog::record($log, [
+            'pos_no' => $posNo,
+            'reason' => $reason,
+            'by'     => (string) ($actor['displayName'] ?? $actor['username'] ?? ''),
+        ], 'item_edit');
+    });
+
     return posSaleFull($id);
 });
 

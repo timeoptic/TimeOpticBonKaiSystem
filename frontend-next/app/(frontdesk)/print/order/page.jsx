@@ -228,12 +228,13 @@ function whatsappOf(lineId) {
   return v.replace(/\D/g, '').length >= 8 ? v : '';
 }
 
-/** ป้ายกำกับ + ค่า หนึ่งบรรทัด ค่าว่างพิมพ์เส้นประไว้ให้เขียนมือ */
-function F({ k, v, fill = false }) {
+/** ป้ายกำกับ + ค่า หนึ่งบรรทัด ค่าว่างพิมพ์เส้นประไว้ให้เขียนมือ
+ *  wrap = ค่ายาวเกินแถว (ชื่อลูกค้า/กรอบ/เลนส์) ให้ขึ้นบรรทัดใหม่จนเห็นครบ แทนการตัดเป็น "…" */
+function F({ k, v, fill = false, wrap = false }) {
   return (
     <div className="iv-f">
       <span className="iv-f-k">{k}</span>
-      {v ? <span className="iv-f-v">{v}</span> : <span className={fill ? 'iv-f-blank' : 'iv-f-v iv-dim'}>{fill ? '' : DASH}</span>}
+      {v ? <span className={wrap ? 'iv-f-v iv-wrap' : 'iv-f-v'}>{v}</span> : <span className={fill ? 'iv-f-blank' : 'iv-f-v iv-dim'}>{fill ? '' : DASH}</span>}
     </div>
   );
 }
@@ -242,7 +243,7 @@ function F({ k, v, fill = false }) {
 function BrandMark() {
   const [bad, setBad] = useState(false);
   if (bad) return <div className="iv-brand-mark"><Icon name="glasses" /><b>TIME OPTIC</b></div>;
-  return <img className="iv-logo" src="/logo-bewell.png" alt="TIME OPTIC at Be Well" onError={() => setBad(true)} />;
+  return <img className="iv-logo" src="/logo-bewell.png" alt="TIME OPTIC สาขาบ่อนไก่" onError={() => setBad(true)} />;
 }
 
 /** หัวใบ — ใช้ซ้ำทั้งครึ่งบนและครึ่งล่าง สองครึ่งต้องอ่านเป็นใบเดียวกัน */
@@ -374,10 +375,10 @@ function OrderSheet() {
 
             <div className="iv-cust-body">
               <div className="iv-col">
-                <F k="Name" v={name} />
+                <F k="Name" v={name} wrap />
                 <F k="TestFor" v={glassesUseOf(rx)} />
-                <F k="Frame" v={frameLabel(o)} />
-                <F k="Lens" v={withRx(o.lens_r_rx_id || o.lens_l_rx_id, lensSpec(o))} />
+                <F k="Frame" v={frameLabel(o)} wrap />
+                <F k="Lens" v={withRx(o.lens_r_rx_id || o.lens_l_rx_id, lensSpec(o))} wrap />
               </div>
               <div className="iv-col iv-money">
                 {moneyRows.map(([k, v]) => <F key={k} k={k} v={v} />)}
@@ -414,7 +415,7 @@ function OrderSheet() {
             </div>
 
             <div className="iv-who">
-              <F k="Customer" v={name} />
+              <F k="Customer" v={name} wrap />
               <F k="Phone no." v={o.phone} />
               <F k="WhatsApp" v={whatsappOf(c?.line_id ?? o.line_id)} fill />
             </div>
@@ -442,9 +443,9 @@ function OrderSheet() {
             <div className="iv-spec">
               <div className="iv-col">
                 <F k="TestFor" v={glassesUseOf(rx)} />
-                <F k="Frame" v={frameLabel(o)} />
-                <F k="RightLen" v={withRx(o.lens_r_rx_id, o.lens_r_name)} />
-                <F k="LeftLen" v={withRx(o.lens_l_rx_id, o.lens_l_name)} />
+                <F k="Frame" v={frameLabel(o)} wrap />
+                <F k="RightLen" v={withRx(o.lens_r_rx_id, o.lens_r_name)} wrap />
+                <F k="LeftLen" v={withRx(o.lens_l_rx_id, o.lens_l_name)} wrap />
               </div>
               <div className="iv-col iv-money">
                 {moneyRows.map(([k, v]) => <F key={k} k={k} v={v} />)}
@@ -565,6 +566,7 @@ const sheetCss = `
 .iv-half.iv-bottom .iv-f-k{flex:0 0 21mm}
 .iv-f-v{flex:1 1 auto;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;
   color:var(--data);font-weight:500}
+.iv-f-v.iv-wrap{white-space:normal;overflow-wrap:anywhere;text-overflow:clip}
 .iv-f-v.iv-dim{color:#9a9a9a;font-weight:400}
 /* ค่าว่างที่ "ตั้งใจให้เขียนมือ" — เส้นจริง ไม่ใช่ขีดกลาง */
 .iv-f-blank{flex:1 1 auto;border-bottom:0.25mm dotted #999;height:3.4mm}

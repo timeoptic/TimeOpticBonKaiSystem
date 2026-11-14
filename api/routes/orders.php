@@ -80,9 +80,86 @@ function rxLensProduct(array $o): ?array
     return null;
 }
 
+/**
+ * ใบสั่งตัด RX ที่ฟอร์มส่งมา ถ้าถูกแทนด้วยใบใหม่ไปแล้ว ให้ตามไปใบล่าสุด
+ *
+ * คลังกด "เจียร์เสีย" แล้วเปิดใบใหม่แทน ช่องเลนส์ของออเดอร์ย้ายไปชี้ใบใหม่ (ร้านขอ 30 ก.ย. 2026)
+ * แต่ฟอร์มออเดอร์ที่เปิดค้างไว้ก่อนหน้านั้นยังถือเลขใบเดิม กดบันทึกแล้วจะเขียนทับกลับไปชี้ใบ
+ * ที่เสีย · ใบที่มีใบแทนจึงไม่ถูกเก็บลงออเดอร์ เก็บใบที่มาแทนมันแทน
+ */
+function rxFollow(array $b): array
+{
+    foreach (['r', 'l'] as $side) {
+        $id = int_or($b["lens_{$side}_rx_id"] ?? null);
+        for ($hop = 0; $id && $hop < 10; $hop++) {
+            $next = Db::get(
+                'SELECT nx.log_id, g.reference_doc
+                   FROM rx_orders nx JOIN inventory_logs g ON g.id = nx.log_id
+                  WHERE nx.replaces_log_id = ?',
+                $id
+            );
+            if (!$next) {
+                break;
+            }
+            $id = (int) $next['log_id'];
+            $b["lens_{$side}_rx_id"]  = $id;
+            $b["lens_{$side}_rx_doc"] = $next['reference_doc'];
+        }
+    }
+    return $b;
+}
+
+/**
+ * เลนส์สั่งตัดของช่องนี้: มาถึงหรือยัง เจียร์เสียไหม และเคยเสียมาแล้วกี่ใบ
+ *
+ * `scraps` คือใบที่เจียร์เสียของช่องนี้ ใหม่ไปเก่า — ใบที่ผูกอยู่ตอนนี้ถ้ามันเสีย (คลังยังไม่ได้
+ * สั่งใหม่) ตามด้วยใบก่อนหน้าที่ใบนี้เปิดมาแทน · ไม่ส่งชื่อคนทำเสียออกมา หน้าร้านต้องรู้ว่า
+ * เลนส์เสีย ไม่ใช่ว่าใครทำ
+ *
+ * @return array{arrived_at:?string, scrapped_at:?string, scraps:list<array{doc:?string,scrapped_at:string,note:?string}>}
+ */
+function rxLensState(int $rxId): array
+{
+    $out = ['arrived_at' => null, 'scrapped_at' => null, 'scraps' => [], 'gone' => false];
+    $id = $rxId;
+    for ($hop = 0; $id && $hop < 10; $hop++) {
+        $r = Db::get(
+            'SELECT r.arrived_at, r.scrapped_at, r.cancelled_at, r.cancelled_note, r.replaces_log_id,
+                    g.reference_doc
+               FROM rx_orders r JOIN inventory_logs g ON g.id = r.log_id
+              WHERE r.log_id = ?',
+            $id
+        );
+        if (!$r) {
+            /* ใบที่ออเดอร์ผูกไว้ถูกลบที่หน้าคลังไปแล้ว (เคส 13 ต.ค. 2026: CASE-2026-00001 ข้างซ้าย
+               ค้าง RX-2026-0044 ใบ #6517 ที่ไม่มีแล้ว ส่วนเลข 0044 ไปเป็นของลูกค้าอีกคน) */
+            $out['gone'] = $hop === 0;
+            break;
+        }
+        /* ใบเจียร์เสียก็มี cancelled_at แต่ยังเป็นใบของข้างนี้ — ยกเลิกเฉย ๆ ถึงนับว่าไม่มีแล้ว */
+        if ($hop === 0 && $r['cancelled_at'] !== null && $r['scrapped_at'] === null) {
+            $out['gone'] = true;
+            break;
+        }
+        if ($hop === 0) {
+            $out['arrived_at']  = $r['arrived_at'];
+            $out['scrapped_at'] = $r['scrapped_at'];
+        }
+        if ($r['scrapped_at'] !== null) {
+            $out['scraps'][] = [
+                'doc'         => $r['reference_doc'],
+                'scrapped_at' => $r['scrapped_at'],
+                'note'        => $r['cancelled_note'],
+            ];
+        }
+        $id = (int) ($r['replaces_log_id'] ?? 0);
+    }
+    return $out;
+}
+
 function orderVals(array $b): array
 {
-    $b = rxLensSpec($b);
+    $b = rxFollow(rxLensSpec($b));
     $hasBreakdown = array_key_exists('frame_price', $b) || array_key_exists('lens_od_price', $b)
         || array_key_exists('lens_os_price', $b) || array_key_exists('options_price', $b);
     if ($hasBreakdown) {
@@ -208,9 +285,22 @@ function orderDetail(?int $id): array
        หรือข้างนั้นไม่ได้สั่งตัด */
     foreach (['r', 'l'] as $side) {
         $rxId = (int) ($o["lens_{$side}_rx_id"] ?? 0);
-        $o["lens_{$side}_rx_arrived_at"] = $rxId
-            ? (Db::get('SELECT arrived_at FROM rx_orders WHERE log_id = ?', $rxId)['arrived_at'] ?? null)
-            : null;
+        $lens = $rxId ? rxLensState($rxId) : null;
+        /* ใบที่ไม่มีแล้วในคลังห้ามขึ้นเป็นการ์ด "สั่งตัดแล้ว" — การ์ดซ่อนปุ่มสั่งตัดของข้างนั้น
+           ข้างนั้นจึงเปิดใบใหม่ไม่ได้จนกว่าจะกดล้าง · ตัดลิงก์ออกจากคำตอบ ฟอร์มจะได้ขึ้นปุ่มสั่งตัด
+           ตามปกติ และบันทึกครั้งถัดไปก็ล้างค่าค้างในฐานไปเอง */
+        $o["lens_{$side}_rx_gone_doc"] = null;
+        if ($lens && $lens['gone']) {
+            $o["lens_{$side}_rx_gone_doc"] = $o["lens_{$side}_rx_doc"] ?? null;
+            $o["lens_{$side}_rx_id"]  = null;
+            $o["lens_{$side}_rx_doc"] = null;
+            $lens = null;
+        }
+        $o["lens_{$side}_rx_arrived_at"] = $lens['arrived_at'] ?? null;
+        /* เจียร์เสีย (ร้านขอ 30 ก.ย. 2026) — `scrapped_at` คือใบที่ผูกอยู่ตอนนี้เสียและคลังยังไม่ได้
+           สั่งใหม่ · `scraps` คือทุกใบของข้างนี้ที่เคยเสีย การ์ดเลนส์บอกได้ว่าใบนี้สั่งแทนใบไหน */
+        $o["lens_{$side}_rx_scrapped_at"] = $lens['scrapped_at'] ?? null;
+        $o["lens_{$side}_rx_scraps"]      = $lens['scraps'] ?? [];
     }
 
     $o['payment_rows'] = Db::all(
@@ -360,7 +450,7 @@ POST('/api/orders', function (array $req) {
 
 PUT('/api/orders/:id', function (array $req) {
     $id = int_or($req['params']['id']);
-    $cur = Db::get('SELECT id, appointment_date, appointment_time FROM custom_orders WHERE id = ?', $id);
+    $cur = Db::get('SELECT id, order_date, appointment_date, appointment_time FROM custom_orders WHERE id = ?', $id);
     if (!$cur) {
         missing();
     }
@@ -372,6 +462,10 @@ PUT('/api/orders/:id', function (array $req) {
             $body[$c] = $cur[$c];
         }
     }
+    /* วันเปิดบิลไม่ใช่ช่องของฟอร์มแก้ออเดอร์ (หน้าขายไม่ได้ส่งมา) — orderVals() เติม
+       "ตอนนี้" ให้ช่องที่ว่าง กดบันทึกแก้ไขแล้ววันเปิดบิลเลยกลายเป็นวันที่กด (ร้านเจอ 2 ต.ค. 2026)
+       · แก้วันเปิดบิลจริงเดินทาง PUT /api/orders/:id/order-date */
+    $body['order_date'] = $cur['order_date'];
     $set = implode(',', array_map(fn($c) => "$c=?", ORDER_COLS));
     Db::run("UPDATE custom_orders SET $set WHERE id=?", ...[...orderVals($body), $id]);
     syncSoldStock($id, int_or($body['employee_id'] ?? null));
@@ -453,6 +547,64 @@ PUT('/api/orders/:id/appointment', function (array $req) {
             'entity_id'   => $id,
             'employee_id' => int_or($req['body']['employee_id'] ?? null),
             'note'        => $date ?? 'ล้างวันนัดรับ',
+        ]);
+    });
+    return orderDetail($id);
+});
+
+/**
+ * วันเปิดบิล (order_date) — แอดมิน/เจ้าของร้านเท่านั้น (ร้านขอ 2 ต.ค. 2026)
+ *
+ * ใช้ตอนเปิดบิลย้อนหลังแล้ววันที่บนบิลเป็นวันที่คีย์ ไม่ใช่วันที่ขายจริง · แก้จากตาราง
+ * หน้ารายงานงานตัดแว่น · เกณฑ์สิทธิ์เดียวกับเปลี่ยนลูกค้าของเคส (`system.zone`)
+ *
+ * แตะคอลัมน์เดียว เหตุผลเดียวกับวันนัดรับข้างบน · เปลี่ยนแค่วัน เวลาเดิมคงไว้ บิลที่เปิด
+ * วันเดียวกันจึงยังเรียงตามลำดับเดิม · เลขใบเสร็จที่ออกแล้วไม่เปลี่ยน (เลขผูกถาวร —
+ * routes/receipts.php) อยากให้เลขเรียงตามวันใหม่ใช้ api/cli/renumber-receipts.php
+ * บังคับเหตุผล แล้วลงไทม์ไลน์เคส: จากวันไหนเป็นวันไหน ใครแก้
+ * เทสต์: api/tests/99-order-date-edit.test.php
+ */
+PUT('/api/orders/:id/order-date', function (array $req) {
+    $actor = StockModule::actor();
+    if (!$actor || !\Optic\Roles::systemZone($actor['roles'] ?? [])) {
+        throw new HttpError(403, 'แก้วันเปิดบิลได้เฉพาะแอดมินหรือเจ้าของร้าน', ['reason' => 'forbidden']);
+    }
+    $id = int_or($req['params']['id']);
+    $o  = Db::get('SELECT id, case_id, order_date FROM custom_orders WHERE id = ?', $id);
+    if (!$o) {
+        missing();
+    }
+    $date = substr(trim((string) ($req['body']['order_date'] ?? '')), 0, 10);
+    [$y, $m, $d] = array_pad(explode('-', $date), 3, '');
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) || !checkdate((int) $m, (int) $d, (int) $y)) {
+        bad('วันเปิดบิลไม่ถูกต้อง');
+    }
+    if ($date > date('Y-m-d')) {
+        bad('วันเปิดบิลต้องไม่เกินวันนี้');
+    }
+    $reason = trim((string) ($req['body']['reason'] ?? ''));
+    if ($reason === '') {
+        bad('กรุณาใส่เหตุผลที่แก้วันเปิดบิล');
+    }
+
+    $old  = (string) ($o['order_date'] ?? '');
+    $time = strlen($old) >= 19 ? substr($old, 11, 8) : '00:00:00';
+    $new  = "$date $time";
+    if (substr($old, 0, 10) === $date) {
+        throw new HttpError(400, 'วันเปิดบิลเป็นวันนี้อยู่แล้ว', ['reason' => 'same_date']);
+    }
+
+    Db::tx(function (Tx $q) use ($id, $o, $old, $new, $reason, $actor) {
+        $q->run('UPDATE custom_orders SET order_date = ? WHERE id = ?', $new, $id);
+        $by = (string) ($actor['displayName'] ?? $actor['username'] ?? '');
+        logEvent($q, int_or($o['case_id']), [
+            'action'      => 'order_date_changed',
+            'entity'      => 'custom_order',
+            'entity_id'   => $id,
+            'employee_id' => $actor['employeeId'] ?? null,
+            'note'        => sprintf('%s → %s · %s', substr($old, 0, 10) ?: '-', substr($new, 0, 10), $reason)
+                . ($by !== '' ? " · โดย $by" : ''),
+            'payload'     => ['from' => $old ?: null, 'to' => $new],
         ]);
     });
     return orderDetail($id);

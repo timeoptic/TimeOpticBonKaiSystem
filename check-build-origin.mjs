@@ -28,8 +28,8 @@ const CHUNKS = path.join(ROOT, 'frontend-next', 'out', '_next', 'static', 'chunk
 
 /** ค่าที่ห้ามโผล่ในบันเดิลฝั่งเบราว์เซอร์ พร้อมคำอธิบายว่ามันแปลว่าอะไร */
 const FORBIDDEN = [
-  /* 8095 = API ของ TimeOptic · 8096 = API ของ Bewell (start-bewell.bat) */
-  [/:809[56]/g, 'พอร์ต API ตรง ๆ — เบราว์เซอร์นอกวง LAN ยิงไม่ถึง เพราะ tunnel เปิดให้พอร์ตเดียว'],
+  /* 8095 = API ของ TimeOptic · 8097 = API ของ Bewell · 8099 = API ของสาขาบ่อนไก่ (start-bonkai.bat) */
+  [/:809[57]/g, 'พอร์ต API ตรง ๆ — เบราว์เซอร์นอกวง LAN ยิงไม่ถึง เพราะ tunnel เปิดให้พอร์ตเดียว'],
   [/https?:\/\/192\.168\.\d+\.\d+/g, 'เลข IP วง LAN — เครื่องคนอื่นตีความว่าเป็นเครื่องตัวเอง'],
   [/https?:\/\/(localhost|127\.0\.0\.1)/g, 'localhost — บนเครื่องผู้ชม ไม่ใช่เครื่องเรา'],
 ];

@@ -173,6 +173,6 @@ GET('/api/lens-usage/export.xlsx', function (array $req) {
     sendXlsx(
         LensUsage::workbook($req['query'], lensSeeCost())->toBytes(),
         LensUsage::fileName($req['query']),
-        'lens-usage-bewell.xlsx'
+        'lens-usage-bonkai.xlsx'
     );
 });

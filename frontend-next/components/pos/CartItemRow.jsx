@@ -10,6 +10,9 @@
  * พนักงานเลิกใช้ระบบแล้วไปจดใส่กระดาษแทน
  *
  * ราคาที่พิมพ์ตรงนี้คือราคาที่ถูกบันทึกเป็น snapshot ในใบขาย ไม่ใช่ราคาแคตตาล็อก
+ *
+ * การ์ดแคบ (จอโทรศัพท์ / คอลัมน์บิลแคบ) เรียงเป็นแนวตั้ง: จำนวน → ราคา → รวมเงิน + ลบ
+ * ดู container query ของ `.pos-line` ใน pos.css
  */
 import { money } from '../../lib/format.js';
 import { lineTotal } from '../../lib/pos/cart.js';
@@ -41,26 +44,39 @@ export function CartItemRow({ item, bad, onQty, onBump, onPrice, onMeta, onCusto
           )}
         </div>
 
-        <div className="pos-step">
-          <button type="button" onClick={() => onBump(-1)} aria-label="ลดจำนวน">−</button>
-          <input
-            inputMode="numeric"
-            value={item.quantity}
-            onChange={(e) => onQty(e.target.value)}
-            aria-label="จำนวน"
-          />
-          <button type="button" onClick={() => onBump(1)} aria-label="เพิ่มจำนวน">+</button>
+        {/* ป้ายชื่อช่อง (.pos-cell-lab) โผล่เฉพาะตอนการ์ดแคบ — ตอนกว้างมีหัวตารางบอกอยู่แล้ว */}
+        <div className="pos-cell pos-cell-qty">
+          <span className="pos-cell-lab">จำนวน</span>
+          <div className="pos-step">
+            <button type="button" onClick={() => onBump(-1)} aria-label="ลดจำนวน">−</button>
+            <input
+              inputMode="numeric"
+              value={item.quantity}
+              onChange={(e) => onQty(e.target.value)}
+              aria-label="จำนวน"
+            />
+            <button type="button" onClick={() => onBump(1)} aria-label="เพิ่มจำนวน">+</button>
+          </div>
         </div>
 
-        <input
-          className="pos-price"
-          inputMode="decimal"
-          value={item.unit_price}
-          onChange={(e) => onPrice(e.target.value)}
-          aria-label="ราคาต่อหน่วย"
-        />
+        <label className="pos-cell pos-cell-price">
+          <span className="pos-cell-lab">ราคา (บาท)</span>
+          <span className="pos-price-box">
+            <i aria-hidden="true">฿</i>
+            <input
+              className="pos-price"
+              inputMode="decimal"
+              value={item.unit_price}
+              onChange={(e) => onPrice(e.target.value)}
+              aria-label="ราคาต่อหน่วย"
+            />
+          </span>
+        </label>
 
-        <span className="pos-line-sum">{money(lineTotal(item))}</span>
+        <div className="pos-line-sum">
+          <span className="pos-cell-lab">รวมเงิน</span>
+          <b>{money(lineTotal(item))}</b>
+        </div>
 
         <button type="button" className="pos-del" onClick={onRemove} aria-label="ลบรายการ"><Icon name="trash" /></button>
       </div>

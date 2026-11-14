@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   iso, rangeFor, periodOf, readFilter, filterQuery, rangeLabel,
-  bucketLabel, bucketFull, GROUPS,
+  bucketLabel, bucketFull, GROUPS, BYS,
 } from '../reportRange.js';
 
 /** วันพุธที่ 2 ก.ย. 2026 — วันเดียวกับที่หน้ารายงานถูกเขียนขึ้น */
@@ -77,7 +77,7 @@ test('periodOf จับคู่ช่วงกลับเป็นปุ่�
 test('readFilter ไม่มีอะไรใน URL = เดือนนี้ ทุกช่องทาง ทุกสถานะ ทุกประเภทลูกค้า', () => {
   const f = readFilter(new URLSearchParams(''), WED);
   assert.deepEqual(f, {
-    from: '2026-09-01', to: '2026-09-02', channel: 'all', status: 'all', group: 'all',
+    from: '2026-09-01', to: '2026-09-02', channel: 'all', status: 'all', group: 'all', by: 'close',
   });
 });
 
@@ -132,7 +132,7 @@ test('filterQuery ไม่ใส่ค่า all ลง URL ทั้ง channe
 test('ตัวกรองเดินทางไป-กลับ URL ได้ครบทุกช่อง', () => {
   /* แท็บทุกอันส่งตัวกรองต่อกันด้วย filterQuery แล้วอ่านกลับด้วย readFilter —
      ช่องที่หล่นหายระหว่างทางแปลว่ากดสลับแท็บแล้วตัวกรองรีเซ็ตเอง */
-  const f = { from: '2026-01-01', to: '2026-12-31', channel: 'main', status: 'closed', group: 'sightfirst' };
+  const f = { from: '2026-01-01', to: '2026-12-31', channel: 'main', status: 'closed', group: 'sightfirst', by: 'open' };
   assert.deepEqual(readFilter(new URLSearchParams(filterQuery(f)), WED), f);
 });
 
@@ -163,4 +163,20 @@ test('bucketFull ใส่ปี พ.ศ. ให้กล่องลอย', ()
   assert.equal(bucketFull('month', '2026-09-01', '2026-09-30'), 'ก.ย. 2569');
   assert.equal(bucketFull('week', '2026-09-07', '2026-09-13'), '7 – 13 ก.ย. 2569');
   assert.equal(bucketFull('week', '2026-08-31', '2026-09-06'), '31 ส.ค. – 6 ก.ย. 2569');
+});
+
+test('readFilter ไม่มี by ใน URL = นับตามวันปิดบิล · ค่าแปลกก็ตกกลับมาที่เดียวกัน', () => {
+  assert.equal(readFilter(new URLSearchParams(''), WED).by, 'close');
+  assert.equal(readFilter(new URLSearchParams('by=open'), WED).by, 'open');
+  assert.equal(readFilter(new URLSearchParams('by=วันไหนก็ได้'), WED).by, 'close');
+});
+
+test('filterQuery ใส่ by ลง URL เฉพาะเมื่อไม่ใช่ค่าตั้งต้น (วันปิดบิล)', () => {
+  const base = { from: '2026-09-01', to: '2026-09-02', channel: 'all', status: 'all', group: 'all' };
+  assert.equal(filterQuery({ ...base, by: 'close' }), 'from=2026-09-01&to=2026-09-02');
+  assert.equal(filterQuery({ ...base, by: 'open' }), 'from=2026-09-01&to=2026-09-02&by=open');
+});
+
+test('BYS มีสองตัวเลือก วันปิดบิลมาก่อน', () => {
+  assert.deepEqual(BYS.map(([k]) => k), ['close', 'open']);
 });

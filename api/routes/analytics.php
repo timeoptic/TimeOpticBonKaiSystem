@@ -30,10 +30,42 @@ function reportMeta(array $r): array
         'channel' => $r['channel'],
         'status'  => $r['status'],
         'group'   => $r['group'],
+        'by'      => $r['by'],
         /* ขอบเขตของข้อมูลที่ร้านมีจริง — หน้าจอที่ว่างใช้บอกว่าทำไมถึงว่าง
            และเสนอช่วงที่มีข้อมูลให้กดได้ แทนที่จะขึ้น ฿0 เฉย ๆ */
-        'bounds'  => SalesReport::bounds($r['channel']),
+        'bounds'  => SalesReport::bounds($r['channel'], $r['by']),
     ];
+}
+
+/**
+ * บรรทัด "งานรอส่งมอบ" — มีเฉพาะโหมดวันปิดบิลที่กำลังดูงานตัดแว่นอยู่
+ *
+ * โหมดวันเปิดบิลนับใบที่ยังไม่ปิดรวมในยอดอยู่แล้ว ส่งไปอีกจะเป็นเลขซ้ำ · กรอง
+ * "ยังไม่จบ" อยู่ก็เหมือนกัน ตารางตรงหน้าคือใบพวกนั้นเอง
+ */
+function reportPending(array $r): ?array
+{
+    if ($r['by'] !== 'close' || $r['status'] === 'open' || !SalesReport::wantsMain($r['channel'])) {
+        return null;
+    }
+    return SalesReport::pendingMain($r['group']);
+}
+
+/**
+ * ชื่อเลนส์ที่ตัดจริงบนบิล ตัดค่าสายตาท้ายชื่อออก (เช่น " +2.00/-0.25")
+ *
+ * สองข้างเป็นรุ่นเดียวกันได้ชื่อเดียว · คนละรุ่นได้ "R: … / L: …" · ใบเก่าที่มีแค่
+ * lens_name ใช้ชื่อนั้นทั้งสองข้าง
+ */
+function billLensName(array $b): ?string
+{
+    $name = fn($s) => trim(preg_replace('~\s*[+-]?\d+\.\d\d/[+-]?\d+\.\d\d$~', '', trim((string) $s)));
+    $r = $name($b['lens_r_name'] ?: $b['lens_name']);
+    $l = $name($b['lens_l_name'] ?: $b['lens_name']);
+    if ($r === '' || $l === '' || $r === $l) {
+        return ($r ?: $l) ?: null;
+    }
+    return "R: $r / L: $l";
 }
 
 /**
@@ -48,7 +80,7 @@ GET('/api/reports/overview', function (array $req) {
     $r  = SalesReport::range($req['query']);
     $ch = $r['channel'];
 
-    $main = SalesReport::wantsMain($ch) ? SalesReport::mainBills($r['from'], $r['to'], $r['status'], $r['group']) : [];
+    $main = SalesReport::wantsMain($ch) ? SalesReport::mainBills($r['from'], $r['to'], $r['status'], $r['group'], $r['by']) : [];
     $pos  = SalesReport::wantsPos($ch)  ? SalesReport::posBills($r['from'], $r['to'], $r['status'], $r['group'])  : [];
 
     $mt  = SalesReport::totals($main);
@@ -69,6 +101,7 @@ GET('/api/reports/overview', function (array $req) {
             'avg_bill'             => $all['avg'],
             'paid'                 => $all['paid'],
         ],
+        'pending' => reportPending($r),
         /* สัดส่วนคิดจากยอดขายรวม · ยอดรวมเป็นศูนย์ (ยังไม่มีบิลในช่วงนี้) ให้
            สัดส่วนเป็น 0 ทั้งคู่ ไม่ใช่หารด้วยศูนย์แล้วได้ NaN ไปโผล่ที่โดนัท */
         'channels' => [
@@ -94,7 +127,7 @@ GET('/api/reports/overview', function (array $req) {
             ],
         ],
         'daily' => SalesReport::daily($r['from'], $r['to'], [
-            'main' => [$main, 'order_date'],
+            'main' => [$main, 'report_date'],
             'pos'  => [$pos,  'sale_date'],
         ]),
     ];
@@ -111,10 +144,10 @@ GET('/api/reports/main-process', function (array $req) {
     $r = SalesReport::range($req['query']);
     if (!SalesReport::wantsMain($r['channel'])) {
         return reportMeta($r) + ['kpi' => SalesReport::totals([]), 'bills' => [],
-            'by_lens' => [], 'by_employee' => [], 'daily' => [], 'profit' => null];
+            'by_lens' => [], 'by_employee' => [], 'daily' => [], 'profit' => null, 'pending' => null];
     }
 
-    $bills  = SalesReport::mainBills($r['from'], $r['to'], $r['status'], $r['group']);
+    $bills  = SalesReport::mainBills($r['from'], $r['to'], $r['status'], $r['group'], $r['by']);
     $labels = SalesReport::lensTypeLabels();
 
     $profit    = 0.0;
@@ -134,13 +167,15 @@ GET('/api/reports/main-process', function (array $req) {
             'case_id'       => $b['case_id'] !== null ? (int) $b['case_id'] : null,
             'code'          => $b['case_code'] ?: $b['invoice_code'],
             'date'          => $b['order_date'],
+            'closed_at'     => $b['order_closed'] ? $b['order_close_date'] : null,
             'customer'      => trim(implode(' ', array_filter(
                 [$b['first_name'], $b['mid_name'], $b['last_name']]
             ))) ?: '(ไม่มีชื่อ)',
             'employee'      => $b['employee_name'],
             'lens_type'     => $labels[$b['lens_type']] ?? $b['lens_type'],
             'product'       => trim((string) ($b['frame_name'] ?: '')) ?: null,
-            'revenue'       => (float) $b['revenue'],
+            'lens'          => billLensName($b),
+            'revenue'     => (float) $b['revenue'],
             'paid'          => (float) $b['paid'],
             'balance'       => max(0.0, (float) $b['balance']),
             'stage_group'   => $b['stage_group'],
@@ -156,7 +191,8 @@ GET('/api/reports/main-process', function (array $req) {
             'costed'   => $costed,
             'uncosted' => $uncosted,
         ],
-        'daily'  => SalesReport::daily($r['from'], $r['to'], ['main' => [$bills, 'order_date']]),
+        'pending' => reportPending($r),
+        'daily'  => SalesReport::daily($r['from'], $r['to'], ['main' => [$bills, 'report_date']]),
         'by_lens' => SalesReport::groupBy(
             $bills,
             fn($b) => $b['lens_type'] === null ? null : ($labels[$b['lens_type']] ?? $b['lens_type']),
@@ -231,7 +267,8 @@ GET('/api/reports/payments', function (array $req) {
     $r        = SalesReport::range($req['query']);
     $receipts = SalesReport::receipts($r['from'], $r['to'], $r['channel'], $r['group'], $r['status']);
 
-    /* บิลที่ผ่อนอยู่ — จ่ายมาแล้วบางส่วน ยังไม่ครบ นับจากบิลที่เปิดในช่วงนี้ */
+    /* บิลที่ผ่อนอยู่ — จ่ายมาแล้วบางส่วน ยังไม่ครบ นับจากบิลที่เปิดในช่วงนี้เสมอ
+       (หน้านี้ไม่ตาม `by` — บิลที่ยังผ่อนอยู่ส่วนใหญ่ยังไม่ปิด จึงไม่มีวันปิดให้นับ) */
     $main = SalesReport::wantsMain($r['channel']) ? SalesReport::mainBills($r['from'], $r['to'], $r['status'], $r['group']) : [];
     $pos  = SalesReport::wantsPos($r['channel'])  ? SalesReport::posBills($r['from'], $r['to'], $r['status'], $r['group'])  : [];
     $inst = ['bills' => 0, 'balance' => 0.0, 'paid' => 0.0];
@@ -285,7 +322,7 @@ GET('/api/reports/payments/transactions', function (array $req) {
 GET('/api/reports/profit', function (array $req) {
     $r = SalesReport::range($req['query']);
 
-    $main    = SalesReport::wantsMain($r['channel']) ? SalesReport::mainBills($r['from'], $r['to'], $r['status'], $r['group']) : [];
+    $main    = SalesReport::wantsMain($r['channel']) ? SalesReport::mainBills($r['from'], $r['to'], $r['status'], $r['group'], $r['by']) : [];
     $posRows = SalesReport::wantsPos($r['channel'])  ? SalesReport::posBills($r['from'], $r['to'], $r['status'], $r['group'])  : [];
 
     /* `revenue` คือยอดขายทั้งหมด · `costed_revenue` คือยอดขายเฉพาะใบที่รู้ต้นทุน
@@ -311,7 +348,7 @@ GET('/api/reports/profit', function (array $req) {
         $sum['lens_cost']  += (float) $m['lens_cost'];
         $sum['profit']     += (float) $m['profit'];
 
-        $d = substr((string) $b['order_date'], 0, 10);
+        $d = substr((string) $b['report_date'], 0, 10);
         if (!isset($daily[$d])) {
             $daily[$d] = ['date' => $d, 'cost' => 0.0, 'profit' => 0.0];
         }
@@ -367,7 +404,7 @@ GET('/api/reports/profit', function (array $req) {
 GET('/api/reports/employees', function (array $req) {
     $r = SalesReport::range($req['query']);
 
-    $main = SalesReport::wantsMain($r['channel']) ? SalesReport::mainBills($r['from'], $r['to'], $r['status'], $r['group']) : [];
+    $main = SalesReport::wantsMain($r['channel']) ? SalesReport::mainBills($r['from'], $r['to'], $r['status'], $r['group'], $r['by']) : [];
     $pos  = SalesReport::wantsPos($r['channel'])  ? SalesReport::posBills($r['from'], $r['to'], $r['status'], $r['group'])  : [];
 
     $blank = 'ไม่ระบุพนักงาน';
@@ -425,8 +462,9 @@ GET('/api/reports/employees', function (array $req) {
             'total'        => round2($mainRev + $posRev),
             'balance'      => round2($row['balance']),
             'closed'       => $row['closed'],
-            /* ไม่มีออเดอร์เลย = ตอบคำถามนี้ไม่ได้ ไม่ใช่ 0% ที่อ่านว่าทำงานล้มเหลว */
-            'conversion'   => $row['cases'] > 0
+            /* ไม่มีออเดอร์เลย = ตอบคำถามนี้ไม่ได้ ไม่ใช่ 0% ที่อ่านว่าทำงานล้มเหลว ·
+               โหมดวันปิดบิลมีแต่ใบที่ปิดแล้ว อัตรานี้จะเป็น 100% ทุกคนเสมอ จึงไม่ส่ง */
+            'conversion'   => $row['cases'] > 0 && $r['by'] !== 'close'
                 ? round($row['closed'] / $row['cases'] * 100, 1)
                 : null,
         ];
@@ -616,7 +654,7 @@ GET('/api/reports/channels', function (array $req) {
 GET('/api/reports/export.xlsx', function (array $req) {
     $r = SalesReport::range($req['query']);
     sendXlsx(
-        SalesExport::workbook($r['from'], $r['to'], $r['channel'], $r['status'], $r['group'])->toBytes(),
+        SalesExport::workbook($r['from'], $r['to'], $r['channel'], $r['status'], $r['group'], $r['by'])->toBytes(),
         SalesExport::fileName($r['from'], $r['to'], $r['group']),
         'sales-report-' . $r['from'] . '_' . $r['to'] . '.xlsx'
     );

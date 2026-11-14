@@ -4,14 +4,16 @@ import { useEffect, useState } from "react";
 import { can, useActor, WorkHead } from "@/stockmod/components/AppShell";
 import { useToast } from "@/stockmod/components/Toaster";
 import TaskDialog from "@/stockmod/components/TaskDialog";
-import Paginator from "@/stockmod/components/Paginator";
+import Paginator, { usePerPage } from "@/stockmod/components/Paginator";
 import Select from "@/stockmod/components/Select";
 import DateRangeField from "@/stockmod/components/DateRangeField";
 import InlineEdit from "@/stockmod/components/InlineEdit";
 import NewProductDialog from "@/stockmod/components/NewProductDialog";
 import { IconTrash } from "@/stockmod/components/Icon";
 import RxEditDialog from "@/stockmod/components/RxEditDialog";
+import RxScrapDialog from "@/stockmod/components/RxScrapDialog";
 import ExportDialog, { branchOf, fetchAll, when } from "@/stockmod/components/ExportDialog";
+import { byFirstDate } from "@/stockmod/lib/byFirstDate";
 import type { Sheet } from "@/stockmod/lib/workbook";
 import RecordCard, { CardList } from "@/stockmod/components/RecordCard";
 import { Filter, FilterBar, withCount } from "@/stockmod/components/FilterBar";
@@ -64,7 +66,7 @@ function rxLine(o: Order): string | null {
 }
 
 /** ตัวกรองสถานะใบสั่ง — ต้นทุนเป็นเรื่องของบัญชี เลนส์มาถึงเป็นเรื่องของหน้าร้าน */
-type Only = "all" | "pending" | "waiting" | "arrived";
+type Only = "all" | "pending" | "waiting" | "arrived" | "scrapped";
 
 /**
  * ช่วงวันที่เปิดใบสั่ง — ร้านขอไว้ 14 ก.ย. 2026 · ชุดเดียวกับหน้าการเบิกจากสาขา
@@ -126,6 +128,34 @@ function whoLine(o: Order): string {
   ]
     .filter(Boolean)
     .join(" · ");
+}
+
+/**
+ * เลนส์ของใบนี้เจียร์เสีย — ร้านขอไว้ 30 ก.ย. 2026
+ *
+ * ขึ้นแทนติ๊ก "เลนส์มาถึง": ใบที่เสียปิดไปแล้ว ไม่มีเลนส์ให้รอ · บอกว่าเสียเมื่อไร ใครทำ
+ * และสั่งใหม่เป็นใบไหนแล้วหรือยัง
+ */
+function ScrapInfo({ row }: { row: Order }) {
+  return (
+    <span>
+      <span className="tag tag--scrap">เจียร์เสีย</span>
+      <span className="grid__sub">
+        {[dateTime(row.scrappedAt as string), row.scrapBy ? `โดย ${row.scrapBy}` : null, row.scrapNote]
+          .filter(Boolean)
+          .join(" · ")}
+      </span>
+      <span className="grid__sub">
+        {row.replacedBy ? `สั่งใหม่เป็น ${row.replacedBy.referenceDoc ?? "ใบใหม่"}` : "ยังไม่ได้สั่งใหม่"}
+      </span>
+    </span>
+  );
+}
+
+/** ใบนี้เปิดแทนใบที่เจียร์เสีย — บรรทัดเล็กใต้เลขใบ */
+function ReplacesNote({ row }: { row: Order }) {
+  if (!row.replaces) return null;
+  return <span className="grid__sub">สั่งแทน {row.replaces.referenceDoc ?? "ใบเดิม"} ที่เจียร์เสีย</span>;
 }
 
 /**
@@ -314,14 +344,16 @@ export default function RxPage() {
   const [exporting, setExporting] = useState(false);
 
   const period = span === "all" ? { from: "", to: "" } : range;
+  const [per, setPer] = usePerPage("rx-orders");
   const book = useApi<Page<Order>>(
     `/rx/orders${qs({
       q: applied,
       pending: only === "pending" ? "1" : "",
-      lens: only === "waiting" || only === "arrived" ? only : "",
+      lens: only === "waiting" || only === "arrived" || only === "scrapped" ? only : "",
       from: period.from,
       to: period.to,
       page,
+      per,
     })}`,
   );
 
@@ -422,6 +454,14 @@ export default function RxPage() {
                   book.status === "ready" && only === "arrived" ? book.data.total : undefined,
                 ),
               },
+              /* เลนส์ที่เจียร์เสีย — ร้านขอไว้ 30 ก.ย. 2026 */
+              {
+                value: "scrapped",
+                label: withCount(
+                  "เจียร์เสีย",
+                  book.status === "ready" && only === "scrapped" ? book.data.total : undefined,
+                ),
+              },
             ]}
           />
         </FilterBar>
@@ -481,6 +521,8 @@ export default function RxPage() {
                 ? "ไม่มีใบสั่งที่รอเลนส์"
                 : only === "arrived"
                   ? "ยังไม่มีใบสั่งที่เลนส์มาถึง"
+                  : only === "scrapped"
+                    ? "ไม่มีใบสั่งที่เลนส์เจียร์เสีย"
                   : span !== "all"
                     ? "ไม่มีใบสั่งที่เปิดในช่วงวันที่นี้"
                     : "ยังไม่เคยเปิดใบสั่ง RX — กด เปิดใบสั่งใหม่ ด้านบน"}
@@ -525,6 +567,10 @@ export default function RxPage() {
               perPage={book.data.perPage}
               total={book.data.total}
               onPage={setPage}
+              onPerPage={(n) => {
+                setPer(n);
+                setPage(1);
+              }}
               label="ใบสั่ง"
             />
           ) : null}
@@ -561,7 +607,7 @@ export default function RxPage() {
             const orderKey = (r: Order) => r.caseCode ?? r.referenceDoc ?? "ไม่ระบุ";
             const sheet = (name: string, key: (r: Order) => string, other: (r: Order) => string): Sheet => ({
               name,
-              note: "ใบสั่งตัดที่เปิดในช่วงนี้ ยกเว้นใบที่ยกเลิก",
+              note: "ใบสั่งตัดที่เปิดในช่วงนี้ ยกเว้นใบที่ยกเลิก · ใบที่เจียร์เสียไม่มีราคาขาย (ราคาอยู่ที่ใบที่สั่งแทน)",
               groupBy: 0,
               columns: [
                 { header: name.includes("สาขา") ? "สาขา" : "เคส / ออเดอร์", width: 20 },
@@ -581,9 +627,7 @@ export default function RxPage() {
                 { header: "ผู้ขาย (พนักงาน)", width: 16 },
                 { header: "หมายเหตุ", width: 30 },
               ],
-              rows: [...rows]
-                .sort((a, b) => key(a).localeCompare(key(b), "th") || a.createdAt.localeCompare(b.createdAt))
-                .map((r) => [
+              rows: byFirstDate(rows, key, (r) => r.createdAt).map((r) => [
                   key(r),
                   other(r),
                   r.referenceDoc,
@@ -594,9 +638,13 @@ export default function RxPage() {
                   r.cyl,
                   r.axis,
                   r.add,
-                  r.salePrice,
+                  r.scrappedAt ? null : r.salePrice,
                   mayCost || can.seeCost(actor) ? r.unitCost : null,
-                  r.arrivedAt ? dateTime(r.arrivedAt) : "รอเลนส์",
+                  r.scrappedAt
+                    ? `เจียร์เสีย${r.scrapBy ? ` (${r.scrapBy})` : ""}`
+                    : r.arrivedAt
+                      ? dateTime(r.arrivedAt)
+                      : "รอเลนส์",
                   r.arrivedRef,
                   r.salesName ?? r.actorName,
                   r.note,
@@ -693,6 +741,11 @@ function ConfirmMoney({
 function useOrderRow(row: Order, onDone: () => void) {
   const toast = useToast();
   const [editing, setEditing] = useState(false);
+  /* กล่องเจียร์เสีย / เปิดใบใหม่แทน (ร้านขอ 30 ก.ย. 2026) — null = ปิดอยู่ */
+  const [scrapping, setScrapping] = useState<"scrap" | "reorder" | null>(null);
+  /* ใบที่เจียร์เสียปิดไปแล้ว: แก้ไม่ได้ ติ๊กเลนส์มาถึงไม่ได้ ราคาขายย้ายไปใบที่สั่งแทน ·
+     ที่ยังทำได้คือลงต้นทุน (ร้านยังต้องจ่ายผู้ขาย) และเปิดใบใหม่แทนถ้ายังไม่มี */
+  const scrapped = Boolean(row.scrappedAt);
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
@@ -822,6 +875,7 @@ function useOrderRow(row: Order, onDone: () => void) {
 
   return {
     editing, setEditing,
+    scrapping, setScrapping, scrapped,
     value, setValue,
     busy, problem,
     editCost, setEditCost,
@@ -865,7 +919,13 @@ function OrderCard({
           )
         }
         title={shortName(row.name)}
-        sub={[row.referenceDoc ?? "—", row.branch ?? "TIMEOPTIC @ Be Well MEDICAL CENTER"].join(" · ")}
+        sub={[
+          row.referenceDoc ?? "—",
+          row.branch ?? "TIMEOPTIC @ สาขาบ่อนไก่",
+          row.replaces ? `สั่งแทน ${row.replaces.referenceDoc ?? "ใบเดิม"} ที่เจียร์เสีย` : null,
+        ]
+          .filter(Boolean)
+          .join(" · ")}
         fields={[
           row.caseId !== null ? { label: "เคส", value: <CaseLink row={row} /> } : null,
           row.eyeSide ? { label: "ข้างตา", value: <EyeTag side={row.eyeSide} /> } : null,
@@ -873,22 +933,27 @@ function OrderCard({
           { label: "เปิดเมื่อ", value: dateTime(row.createdAt) },
           row.salesName ? { label: "ผู้ขาย", value: row.salesName } : null,
           row.actorName ? { label: "บันทึกโดย", value: row.actorName } : null,
-          { label: "เลนส์มาถึง", value: <ArrivedCheck row={row} onDone={onDone} /> },
+          c.scrapped
+            ? { label: "เลนส์", value: <ScrapInfo row={row} /> }
+            : { label: "เลนส์มาถึง", value: <ArrivedCheck row={row} onDone={onDone} /> },
           mayCost && !c.waiting
             ? { label: "ต้นทุน", value: money(row.unitCost as number) }
             : null,
-          {
-            label: "ราคาขาย",
-            value:
-              row.salePrice === null ? (
-                <span className="grid__muted">ยังไม่ตั้ง</span>
-              ) : (
-                money(row.salePrice)
-              ),
-          },
-          row.salePrice !== null && row.unitCost !== null
+          c.scrapped
+            ? null
+            : {
+                label: "ราคาขาย",
+                value:
+                  row.salePrice === null ? (
+                    <span className="grid__muted">ยังไม่ตั้ง</span>
+                  ) : (
+                    money(row.salePrice)
+                  ),
+              },
+          !c.scrapped && row.salePrice !== null && row.unitCost !== null
             ? { label: "กำไร", value: money(row.salePrice - row.unitCost) }
             : null,
+          row.note ? { label: "หมายเหตุ", value: row.note } : null,
         ]}
         actions={
           <>
@@ -935,7 +1000,7 @@ function OrderCard({
               </button>
             ) : null}
 
-            {c.editPrice ? (
+            {c.scrapped ? null : c.editPrice ? (
               <div className="reccard__field">
                 <label className="reccard__fieldlabel" htmlFor={`rxp-m-${row.id}`}>
                   ราคาขาย
@@ -972,9 +1037,22 @@ function OrderCard({
               </button>
             )}
 
-            <button type="button" className="btn btn--quiet btn--small" onClick={() => c.setEditing(true)}>
-              เปิดการแก้ไขใบสั่ง
-            </button>
+            {c.scrapped ? (
+              !row.replacedBy ? (
+                <button type="button" className="btn btn--small" onClick={() => c.setScrapping("reorder")}>
+                  เปิดใบใหม่แทน
+                </button>
+              ) : null
+            ) : (
+              <>
+                <button type="button" className="btn btn--quiet btn--small" onClick={() => c.setEditing(true)}>
+                  เปิดการแก้ไขใบสั่ง
+                </button>
+                <button type="button" className="btn btn--quiet btn--small" onClick={() => c.setScrapping("scrap")}>
+                  เจียร์เสีย
+                </button>
+              </>
+            )}
 
             {c.problem ? (
               <div className="notice notice--error" role="alert">
@@ -1021,6 +1099,9 @@ function OrderCard({
       {c.editing ? (
         <RxEditDialog row={row} onClose={() => c.setEditing(false)} onSaved={onDone} />
       ) : null}
+      {c.scrapping ? (
+        <RxScrapDialog row={row} mode={c.scrapping} onClose={() => c.setScrapping(null)} onSaved={onDone} />
+      ) : null}
     </>
   );
 }
@@ -1037,6 +1118,7 @@ function OrderRow({
   const r = useOrderRow(row, onDone);
   const {
     editing, setEditing,
+    scrapping, setScrapping, scrapped,
     value, setValue,
     busy, problem,
     editCost, setEditCost,
@@ -1055,22 +1137,23 @@ function OrderRow({
       <th scope="row" className="grid__lot">
         {row.referenceDoc ?? "—"}
         <CaseLink row={row} />
+        <ReplacesNote row={row} />
         {/* ทุกแถวบอกว่าใครสั่ง — ใบที่ไม่มีสาขาคือ TimeOptic สั่งเอง · เขียนให้ครบ
             ทุกแถวเพราะคอลัมน์ที่ว่างบ้างไม่ว่างบ้าง อ่านเหมือนข้อมูลหาย */}
-        <span className="grid__sub">{row.branch ?? "TIMEOPTIC @ Be Well MEDICAL CENTER"}</span>
+        <span className="grid__sub">{row.branch ?? "TIMEOPTIC @ สาขาบ่อนไก่"}</span>
       </th>
       <td>
         <EyeTag side={row.eyeSide} />
         <span className="grid__name">{shortName(row.name)}</span>
         <span className="grid__sub grid__rx">{rx ?? "ไม่ได้บันทึกค่าสายตา"}</span>
+        {/* หมายเหตุตอนเปิดใบ — เดิมมีแค่ในไฟล์ Excel (ร้านขอ 22 ต.ค. 2026) */}
+        {row.note ? <span className="grid__sub">หมายเหตุ: {row.note}</span> : null}
       </td>
       <td className="grid__muted grid__when">
         {dateTime(row.createdAt)}
         {whoLine(row) ? <span className="grid__sub">{whoLine(row)}</span> : null}
       </td>
-      <td>
-        <ArrivedCheck row={row} onDone={onDone} />
-      </td>
+      <td>{scrapped ? <ScrapInfo row={row} /> : <ArrivedCheck row={row} onDone={onDone} />}</td>
       <td>
         {!mayCost ? (
           /* คนที่ไม่มีสิทธิ์เห็นต้นทุน — ใบที่ยังไม่ลงได้ป้ายบอกว่างานค้างอยู่ที่ใคร
@@ -1151,7 +1234,10 @@ function OrderRow({
         ) : null}
       </td>
       <td className="grid__num">
-        {editPrice ? (
+        {scrapped ? (
+          /* เลนส์ที่เสียไม่ได้ขาย — ราคาขายไปอยู่กับใบที่สั่งแทน */
+          <span className="grid__muted" title="เลนส์เจียร์เสีย ราคาขายอยู่ที่ใบที่สั่งแทน">—</span>
+        ) : editPrice ? (
           <div className="chips">
             <label className="sr-only" htmlFor={`rxp-${row.id}`}>
               ราคาขายของ {row.referenceDoc ?? row.sku}
@@ -1226,16 +1312,38 @@ function OrderRow({
       {/* ปุ่มของตัวเอง ไม่ใช่กดที่แถว — ในแถวนี้มีช่องกรอกต้นทุนกับปุ่มราคาขาย
           อยู่แล้ว แถวที่กดตรงไหนก็เปิดหน้าต่างจะแย่งการกดกับสองอย่างนั้นตลอด */}
       <td className="grid__act">
-        <button
-          type="button"
-          className="btn btn--quiet btn--small"
-          onClick={() => setEditing(true)}
-          aria-label={`แก้ไขใบสั่ง ${row.referenceDoc ?? row.sku}`}
-        >
-          เปิดการแก้ไข
-        </button>
+        {scrapped ? (
+          /* ใบที่เสียแล้วยังไม่มีใบแทน — ปุ่มเดียวกับที่ไม่ได้กดตอนบันทึกว่าเสีย */
+          !row.replacedBy ? (
+            <button type="button" className="btn btn--small" onClick={() => setScrapping("reorder")}>
+              เปิดใบใหม่แทน
+            </button>
+          ) : null
+        ) : (
+          <>
+            <button
+              type="button"
+              className="btn btn--quiet btn--small"
+              onClick={() => setEditing(true)}
+              aria-label={`แก้ไขใบสั่ง ${row.referenceDoc ?? row.sku}`}
+            >
+              เปิดการแก้ไข
+            </button>
+            <button
+              type="button"
+              className="btn btn--quiet btn--small"
+              onClick={() => setScrapping("scrap")}
+              aria-label={`เลนส์ของใบสั่ง ${row.referenceDoc ?? row.sku} เจียร์เสีย`}
+            >
+              เจียร์เสีย
+            </button>
+          </>
+        )}
         {editing ? (
           <RxEditDialog row={row} onClose={() => setEditing(false)} onSaved={onDone} />
+        ) : null}
+        {scrapping ? (
+          <RxScrapDialog row={row} mode={scrapping} onClose={() => setScrapping(null)} onSaved={onDone} />
         ) : null}
       </td>
     </tr>
@@ -1252,13 +1360,49 @@ function OrderRow({
  * mean going to the receiving screen, which is a strange place to create
  * something that is never received.
  */
+/**
+ * ช่องของใบสั่งที่ส่งเข้า `POST /rx` — คำขอจากสาขาเก็บรูปเดียวกันนี้ (`IssueRequests`)
+ */
+export type RxDraft = {
+  brand?: string | null;
+  lens_model?: string | null;
+  lens_design?: string | null;
+  reference_doc?: string | null;
+  eye_side?: "right" | "left" | null;
+  sph?: string | null;
+  cyl?: string | null;
+  axis?: string | null;
+  add?: string | null;
+  sale_price?: string | null;
+  note?: string | null;
+  branch_id?: number | null;
+};
+
+/**
+ * ใช้ฟอร์มนี้กับคำขอจากสาขา แทนการเปิดใบสั่งตรง
+ *
+ * สาขากรอกคำขอ และแอดมินแก้คำขอก่อนยืนยัน ด้วยฟอร์มเดียวกัน · เลือกสาขาได้เฉพาะ `branches`
+ * (ไม่มี TimeOptic ไม่มี Bewell) ไม่มีช่องต้นทุน และเลขใบว่างไว้ได้ (ระบบออกให้ตอนยืนยัน) ·
+ * `send` ได้บอดี้ชุดเดียวกับที่จะส่งเข้า `/rx`
+ */
+export type RxRequestMode = {
+  initial?: RxDraft;
+  branches: { id: number; name: string }[];
+  eyebrow: string;
+  submitLabel: string;
+  send: (body: RxDraft) => Promise<void>;
+};
+
 export function NewOrderDialog({
   lensOnly = false,
   eyeSide = null,
   mayCost,
   onClose,
   onSaved,
+  request = null,
 }: {
+  /** กรอกเป็นคำขอจากสาขา ไม่ใช่เปิดใบสั่งตรง — ดู `RxRequestMode` */
+  request?: RxRequestMode | null;
   /** Ask for the lens only and open the order from the first stop. */
   lensOnly?: boolean;
   /**
@@ -1298,9 +1442,10 @@ export function NewOrderDialog({
    * name so the same lens ordered twice stays one row in the catalogue and two
    * rows in the order book. Coating and index are not asked here.
    */
-  const [brand, setBrand] = useState("");
-  const [lensModel, setLensModel] = useState("");
-  const [design, setDesign] = useState("");
+  const init = request?.initial ?? {};
+  const [brand, setBrand] = useState(init.brand ?? "");
+  const [lensModel, setLensModel] = useState(init.lens_model ?? "");
+  const [design, setDesign] = useState(init.lens_design ?? "");
 
   /**
    * Which of the two ways in is being used.
@@ -1312,7 +1457,7 @@ export function NewOrderDialog({
    * routes with only one of them asking anything.
    */
 
-  const [eye, setEye] = useState("");
+  const [eye, setEye] = useState<string>(init.eye_side ?? "");
   /**
    * The two powers start at plano.
    *
@@ -1321,11 +1466,11 @@ export function NewOrderDialog({
    * that needs no correction, which is a real prescription rather than a blank
    * one. The same start the catalogue form gives a stocked lens.
    */
-  const [sph, setSph] = useState(PLANO);
-  const [cyl, setCyl] = useState(PLANO);
-  const [axis, setAxis] = useState("");
-  const [add, setAdd] = useState("");
-  const [doc, setDoc] = useState("");
+  const [sph, setSph] = useState(init.sph ?? PLANO);
+  const [cyl, setCyl] = useState(init.cyl ?? PLANO);
+  const [axis, setAxis] = useState(init.axis ?? "");
+  const [add, setAdd] = useState(init.add ?? "");
+  const [doc, setDoc] = useState(init.reference_doc ?? "");
 
   /**
    * Whether the number on screen is the one the system issued.
@@ -1335,7 +1480,8 @@ export function NewOrderDialog({
    * got to. Typing over it turns this off: a job sheet that arrives with its own
    * number should be filed under that number.
    */
-  const [autoDoc, setAutoDoc] = useState(true);
+  /* คำขอยังไม่ได้เลขจริง — เลขออกตอนยืนยัน ไม่ใช่ตอนสาขากรอก */
+  const [autoDoc, setAutoDoc] = useState(request === null);
 
   const issued = useApi<{ referenceDoc: string }>(autoDoc ? "/rx/next-doc" : null);
 
@@ -1345,8 +1491,8 @@ export function NewOrderDialog({
   const docLocked = autoDoc && issued.status !== "error";
 
   const [cost, setCost] = useState("");
-  const [price, setPrice] = useState("");
-  const [note, setNote] = useState("");
+  const [price, setPrice] = useState(init.sale_price ?? "");
+  const [note, setNote] = useState(init.note ?? "");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
 
@@ -1356,7 +1502,9 @@ export function NewOrderDialog({
    * ว่างเป็นค่าปกติ ไม่ใช่ช่องที่ลืมกรอก: ใบส่วนใหญ่เป็นงานของร้านนี้ · มีไว้
    * เพื่อตอบคำถามเดียวกับที่ฝั่งเบิกของตอบได้อยู่แล้ว — เดือนนี้สาขาไหนสั่งอะไรไป
    */
-  const [branch, setBranch] = useState("");
+  const [branch, setBranch] = useState(
+    init.branch_id === null || init.branch_id === undefined ? "" : String(init.branch_id),
+  );
   const branches = useApi<{ branches: BranchRow[] }>("/branches?active=1");
 
   /**
@@ -1398,9 +1546,27 @@ export function NewOrderDialog({
     setStep((n) => Math.min(n + 1, STOPS.length - 1));
   }
 
-  // What may actually be special-ordered: made to order, or stocked and run out.
-  const models = useApi<Page<ProductRow>>(`/products${qs({ make: "rx", per: 500 })}`);
-  const rows = models.status === "ready" ? models.data.rows : [];
+  /* เลนส์ที่สั่งพิเศษได้ (ทำตามสั่ง หรือของสต็อกที่หมดแล้ว) ค้นที่เซิร์ฟเวอร์ตามที่พิมพ์ ·
+     เดิมโหลดมาทีเดียวแล้วกรองในเครื่อง แต่ API ให้หน้าละไม่เกิน 100 แถว และรายการนั้นมี
+     กรอบแว่นกับเลนส์สต็อกหมดปนอยู่ 2,000 กว่าตัว เลนส์ RX ที่เก่ากว่า 100 ตัวล่าสุดจึงค้นไม่เจอ
+     (ร้านแจ้ง 27 ต.ค. 2026: Hitop M6, Hitop S4) */
+  const [copyText, setCopyText] = useState("");
+  const [copyAsk, setCopyAsk] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setCopyAsk(copyText.trim()), 250);
+    return () => clearTimeout(t);
+  }, [copyText]);
+  /* ไม่โหลดล่วงหน้าตอนเปิดฟอร์มแล้ว — รอให้พิมพ์ก่อน (ร้านแจ้ง 3 พ.ย. 2026: เปิดฟอร์มแล้ว
+     ช่องนี้ค้าง "กำลังโหลดรายการเลนส์…" กดอะไรไม่ได้ เว็บช้ามาก) · ช่องพิมพ์ได้ทันที */
+  const models = useApi<Page<ProductRow>>(
+    copyAsk ? `/products${qs({ make: "rx", type: "Lens", q: copyAsk, per: 100 })}` : null,
+  );
+  // ผลชุดก่อนค้างไว้ระหว่างโหลดชุดใหม่ ไม่งั้นรายการกะพริบว่างทุกตัวอักษรที่พิมพ์
+  const [rows, setRows] = useState<ProductRow[] | null>(null);
+  useEffect(() => {
+    if (!copyAsk) setRows(null);
+    else if (models.status === "ready") setRows(models.data.rows);
+  }, [copyAsk, models.status, models.data]);
 
   /**
    * The spellings the shop has already used, offered back in every box.
@@ -1480,7 +1646,11 @@ export function NewOrderDialog({
       setProblem("บอกก่อนว่าสั่งเลนส์อะไร — กรอกอย่างน้อยหนึ่งช่อง แบรนด์ รุ่น หรือชนิดเลนส์");
       return;
     }
-    if (!autoDoc && !doc.trim()) {
+    if (request !== null && branch === "") {
+      setProblem("เลือกก่อนว่าสั่งให้สาขาไหน");
+      return;
+    }
+    if (request === null && !autoDoc && !doc.trim()) {
       setProblem("ใส่เลขที่ใบสั่งก่อน");
       return;
     }
@@ -1496,9 +1666,7 @@ export function NewOrderDialog({
       : { branch, eye, sph, cyl, axis, add, cost, price, note };
 
     try {
-      const { order } = await api.post<{
-        order: { id: number; sku: string; name: string; referenceDoc: string; awaitingCost: boolean };
-      }>("/rx", {
+      const body = {
         // The lens as written on this sheet. The API files the model once and
         // reuses it every time the same lens is written out again, matching on
         // the composed name — so the catalogue does not grow by one row per
@@ -1513,10 +1681,18 @@ export function NewOrderDialog({
         cyl: sheet.cyl.trim() || null,
         axis: sheet.axis.trim() || null,
         add: sheet.add.trim() || null,
-        unit_cost: mayCost && sheet.cost.trim() ? sheet.cost.trim() : null,
         sale_price: sheet.price.trim() || null,
         note: sheet.note.trim() || null,
-      });
+      };
+
+      if (request !== null) {
+        await request.send({ ...body, eye_side: body.eye_side === "right" || body.eye_side === "left" ? body.eye_side : null });
+        return;
+      }
+
+      const { order } = await api.post<{
+        order: { id: number; sku: string; name: string; referenceDoc: string; awaitingCost: boolean };
+      }>("/rx", { ...body, unit_cost: mayCost && sheet.cost.trim() ? sheet.cost.trim() : null });
 
       onSaved(order.referenceDoc, order.awaitingCost, order);
     } catch (err) {
@@ -1526,7 +1702,11 @@ export function NewOrderDialog({
   }
 
   return (
-    <TaskDialog eyebrow="ใบสั่งตัด RX" title="เปิดใบสั่งใหม่" onClose={onClose}>
+    <TaskDialog
+      eyebrow={request?.eyebrow ?? "ใบสั่งตัด RX"}
+      title={request ? "สั่งตัด RX ให้สาขา" : "เปิดใบสั่งใหม่"}
+      onClose={onClose}
+    >
         <form className="pform" onSubmit={submit} noValidate>
           {lensOnly ? null : (
           <ol className="wizard__steps" aria-label="ขั้นตอนการเปิดใบสั่ง">
@@ -1572,21 +1752,28 @@ export function NewOrderDialog({
               id="rx-copy"
               value=""
               onChange={(id) => {
-                const row = rows.find((r) => String(r.id) === id);
+                const row = rows?.find((r) => String(r.id) === id);
                 if (row) startFrom(row);
               }}
-              disabled={busy || models.status !== "ready"}
-              placeholder={
-                models.status === "ready"
-                  ? "พิมพ์ชื่อรุ่น · SKU · แบรนด์"
-                  : "กำลังโหลดรายการเลนส์…"
-              }
-              options={rows.map((r) => ({
+              onQuery={setCopyText}
+              disabled={busy}
+              placeholder="พิมพ์ชื่อรุ่น · SKU · แบรนด์ เพื่อค้นหา"
+              options={(rows ?? []).map((r) => ({
                 value: String(r.id),
                 label: r.name,
                 keywords: `${r.sku} ${r.brand ?? ""}`,
               }))}
             />
+            {/* โหลดพังครั้งเดียว ช่องเคยค้าง "กำลังโหลด…" กดไม่ได้จนปิดฟอร์ม (ร้านแจ้ง 28 ต.ค. 2026)
+                ตอนนี้บอกตรง ๆ · พิมพ์ต่อก็โหลดใหม่เอง หรือกดลองใหม่ */}
+            {copyAsk && models.status === "error" ? (
+              <p className="field__help" role="alert">
+                โหลดรายการเลนส์ไม่สำเร็จ ({models.error}){" "}
+                <button type="button" className="btn btn--small" onClick={models.reload}>
+                  ลองใหม่
+                </button>
+              </p>
+            ) : null}
           </div>
 
           {/* The lens this sheet is for, asked the way the catalogue asks for
@@ -1723,6 +1910,8 @@ export function NewOrderDialog({
           <fieldset className="pform__set">
             <legend className="pform__legend">ใบสั่งและราคา</legend>
             <div className="pform__grid">
+            {/* คำขอจากสาขาไม่ถามเลขใบ — ระบบออกให้ตอนยืนยัน เลขออเดอร์ใส่ในหมายเหตุ */}
+            {request ? null : (
             <div className="field">
               <label className="field__label" htmlFor="rx-doc">
                 เลขที่ใบสั่ง
@@ -1746,6 +1935,22 @@ export function NewOrderDialog({
               />
               {docLocked ? <span className="field__help">ระบบออกเลขให้เอง</span> : null}
             </div>
+            )}
+            {request ? (
+            <div className="field">
+              <label className="field__label" htmlFor="rx-branch">
+                สาขาที่สั่ง
+              </label>
+              <Select
+                id="rx-branch"
+                value={branch}
+                onChange={setBranch}
+                disabled={busy}
+                placeholder="เลือกสาขา"
+                options={request.branches.map((b) => ({ value: String(b.id), label: b.name }))}
+              />
+            </div>
+            ) : (
             <div className="field">
               <label className="field__label" htmlFor="rx-branch">
                 สาขาที่สั่ง
@@ -1756,17 +1961,19 @@ export function NewOrderDialog({
                 onChange={setBranch}
                 disabled={busy || branches.status !== "ready"}
                 options={[
-                  { value: "", label: "TIMEOPTIC @ Be Well MEDICAL CENTER" },
+                  { value: "", label: "TIMEOPTIC @ สาขาบ่อนไก่" },
                   ...(branches.status === "ready"
                     ? branches.data.branches.map((b) => ({ value: String(b.id), label: b.name }))
                     : []),
                 ]}
               />
               {/* บรรทัดนี้มีเพราะช่องว่างกับช่องที่ลืมกรอกหน้าตาเหมือนกัน — และ
-                  ที่นี่ว่างแปลว่า "TIMEOPTIC @ Be Well MEDICAL CENTER" ซึ่งเป็นคำตอบที่ถูกต้องของ
+                  ที่นี่ว่างแปลว่า "TIMEOPTIC @ สาขาบ่อนไก่" ซึ่งเป็นคำตอบที่ถูกต้องของ
                   ใบส่วนใหญ่ ไม่ใช่งานที่ยังทำไม่เสร็จ */}
               <span className="field__help">เลือกเมื่อสาขาอื่นเป็นคนสั่ง — ยอดจะไปรวมในแดชบอร์ดแยกตามสาขา</span>
             </div>
+            )}
+            {request ? null : (
             <div className="field">
               <label className="field__label" htmlFor="rx-cost">
                 ต้นทุนจากผู้ขาย (฿)
@@ -1781,6 +1988,7 @@ export function NewOrderDialog({
                 disabled={busy || !mayCost}
               />
             </div>
+            )}
             <div className="field">
               <label className="field__label" htmlFor="rx-price">
                 ราคาขายให้ลูกค้า (฿)
@@ -1808,7 +2016,7 @@ export function NewOrderDialog({
               className="input"
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              placeholder="เช่น ชื่อลูกค้า หรือเลขที่ใบสั่งขาย"
+              placeholder={request ? "ใส่เลขออเดอร์ที่นี่ เช่น ออเดอร์ 77654 ชื่อลูกค้า" : "เช่น ชื่อลูกค้า หรือเลขที่ใบสั่งขาย"}
               disabled={busy}
               autoComplete="off"
               />
@@ -1857,7 +2065,7 @@ export function NewOrderDialog({
 
             {last ? (
               <button key="save" type="submit" className="btn btn--primary" disabled={busy}>
-                {busy ? "กำลังเปิดใบสั่ง…" : "เปิดใบสั่ง RX"}
+                {busy ? "กำลังบันทึก…" : request ? request.submitLabel : "เปิดใบสั่ง RX"}
               </button>
             ) : (
               <button
@@ -1892,11 +2100,12 @@ export function LensModels() {
   const [q, setQ] = useState("");
   const [applied, setApplied] = useState("");
   const [page, setPage] = useState(1);
+  const [per, setPer] = usePerPage("rx-models");
   const [adding, setAdding] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
 
   const list = useApi<Page<ProductRow>>(
-    `/products${qs({ make: "custom", q: applied, page, sort: "name", dir: "asc" })}`,
+    `/products${qs({ make: "custom", q: applied, page, per, sort: "name", dir: "asc" })}`,
   );
 
   const rows = list.status === "ready" ? list.data.rows : [];
@@ -2045,6 +2254,10 @@ export function LensModels() {
               perPage={list.data.perPage}
               total={list.data.total}
               onPage={setPage}
+              onPerPage={(n) => {
+                setPer(n);
+                setPage(1);
+              }}
               label="รุ่น"
             />
           ) : null}

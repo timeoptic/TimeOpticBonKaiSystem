@@ -18,8 +18,6 @@ export type SettlementScope = {
   to: string | null;
 };
 
-const thai = new Intl.Collator("th");
-
 /**
  * 'YYYY-MM-DD HH:MM:SS' → [วันที่, เวลาเป็นเศษส่วนของวัน]
  *
@@ -38,14 +36,30 @@ function moment(at: string | null): [Date | null, number | null] {
 
 const cents = (n: number): number => Math.round(n * 100) / 100;
 
-/** ก้อนตามสาขา แล้วตามเวลาเบิกจากเก่าไปใหม่ — ไฟล์นี้ถูกอ่านทีละสาขา */
+/**
+ * ก้อนตามสาขา สาขาที่เบิกก่อนขึ้นก่อน แล้วตามเวลาเบิกจากเก่าไปใหม่ — ไฟล์นี้ถูกอ่านทีละสาขา
+ *
+ * เคยเรียงก้อนตามชื่อสาขา วันที่จึงกระโดดทุกครั้งที่ขึ้นสาขาใหม่ (ร้านแจ้ง 22 ต.ค. 2026) ·
+ * ตรรกะเดียวกับ `byFirstDate.ts` แต่เขียนซ้ำไว้ที่นี่ เพราะเทสต์ของไฟล์นี้รันด้วย node ตรง ๆ
+ * ซึ่ง import ไฟล์ .ts ข้างเคียงโดยไม่มีนามสกุลไม่ได้
+ */
 function ordered(rows: SettlementRow[]): SettlementRow[] {
-  return [...rows].sort(
-    (a, b) =>
-      thai.compare(a.branchName ?? "", b.branchName ?? "") ||
+  const first = new Map<string, string>();
+  for (const r of rows) {
+    const k = r.branchName ?? "";
+    const seen = first.get(k);
+    if (seen === undefined || r.issuedAt < seen) first.set(k, r.issuedAt);
+  }
+  return [...rows].sort((a, b) => {
+    const ka = a.branchName ?? "";
+    const kb = b.branchName ?? "";
+    return (
+      first.get(ka)!.localeCompare(first.get(kb)!) ||
+      ka.localeCompare(kb, "th") ||
       a.issuedAt.localeCompare(b.issuedAt) ||
-      a.id - b.id,
-  );
+      a.id - b.id
+    );
+  });
 }
 
 const SUMMARY: Column[] = [

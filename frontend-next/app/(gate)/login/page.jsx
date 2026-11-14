@@ -51,7 +51,7 @@ export default function LoginPage() {
       <div style={{ textAlign: 'center', marginBottom: 14 }}>
         <div style={{ fontSize: 30, letterSpacing: 2 }}>◎◎</div>
         {/* ย่อฟอนต์ตามความกว้างจอเพื่อให้ชื่ออยู่บรรทัดเดียวเสมอ — ที่ 20px ต้องการ ~384px */}
-        <h1 style={{ margin: '6px 0 2px', fontSize: 'clamp(13px, 4.3vw, 20px)', whiteSpace: 'nowrap' }}>TIMEOPTIC @ Be Well MEDICAL CENTER</h1>
+        <h1 style={{ margin: '6px 0 2px', fontSize: 'clamp(13px, 4.3vw, 20px)', whiteSpace: 'nowrap' }}>TIMEOPTIC @ สาขาบ่อนไก่</h1>
         <p className="muted" style={{ margin: 0 }}>หน้าร้าน · คลังและต้นทุน</p>
       </div>
 

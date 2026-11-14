@@ -7,6 +7,10 @@
  * its final values (that is what the customer is wearing); opening a round
  * shows all three side by side, read-only — this is a record of what happened,
  * so editing goes through the case's own วัดสายตา step.
+ *
+ * ทุกรอบพิมพ์ใบสายตาได้จากหัวรอบ — ใบที่พิมพ์คือชุดเดียวกับที่บรรทัดสรุปแสดง
+ * (ค่าที่ใช้จริง ถ้าไม่มีก็ค่าที่วัดได้) · รอบเก่าจากระบบเดิมไม่ผูกเคส จึงไม่มีขั้น
+ * วัดสายตาให้เข้าไปกดพิมพ์ ที่นี่เป็นทางเดียวของรอบพวกนั้น
  */
 import { useState } from 'react';
 import Link from 'next/link';
@@ -25,6 +29,7 @@ export function ExamHistory({ sessions }) {
     <div className="exam-rounds">
       {rounds.map((s, i) => {
         const summary = s.final || s.measured;
+        const printable = summary || s.old;
         const isOpen = open === s.key;
         return (
           <div className={`exam-round ${isOpen ? 'open' : ''}`} key={s.key}>
@@ -37,9 +42,17 @@ export function ExamHistory({ sessions }) {
                   : <span className="muted">ไม่ผูกเคส</span>}
                 {s.examiner ? <span className="muted">{`ตรวจโดย ${s.examiner}`}</span> : null}
               </div>
-              <button type="button" className="btn btn-sm btn-light" onClick={() => setOpen(isOpen ? null : s.key)}>
-                {isOpen ? 'ปิด' : 'ดูรายละเอียด ›'}
-              </button>
+              {/* ห่อสองปุ่มไว้ด้วยกัน — .exam-round-head > .btn ดันปุ่มเดี่ยวไปชิดขวา สองปุ่มจะแยกกันคนละฝั่ง */}
+              <span style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {printable?.id ? (
+                  <Link className="btn btn-sm btn-light" href={'/print/prescription?id=' + printable.id}>
+                    <Icon name="printer" /> พิมพ์
+                  </Link>
+                ) : null}
+                <button type="button" className="btn btn-sm btn-light" onClick={() => setOpen(isOpen ? null : s.key)}>
+                  {isOpen ? 'ปิด' : 'ดูรายละเอียด ›'}
+                </button>
+              </span>
             </div>
 
             <Row className="exam-round-summary">

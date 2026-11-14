@@ -295,12 +295,14 @@ test('ส่วนใบเสร็จของหน้าเคส: ทุก
     });
 });
 
-test('ปุ่มออกใบเสร็จ: ออกได้เฉพาะ Pom Tik Bow Japiica + superuser — sales คนอื่นได้ 403 ไม่เกิดเลข', function () {
+test('ปุ่มออกใบเสร็จ: ออกได้เฉพาะเจ้าของร้าน + Pom Tik Bow Japiica + superuser — sales คนอื่นได้ 403 ไม่เกิดเลข', function () {
     ok(\Optic\Roles::issueReceipt(['sales', 'stock'], 'Bow'), 'Bow (sales) ออกได้');
     ok(\Optic\Roles::issueReceipt(['owner'], ' pom '), 'ชื่อไม่สนตัวพิมพ์/ช่องว่าง');
     ok(\Optic\Roles::issueReceipt(['superuser'], 'admin'), 'superuser ออกได้เสมอ');
     ok(!\Optic\Roles::issueReceipt(['sales'], 'Mild'), 'sales คนอื่นออกไม่ได้');
-    ok(!\Optic\Roles::issueReceipt(['owner', 'admin'], 'someone'), 'owner ที่ไม่อยู่ในรายชื่อออกไม่ได้');
+    ok(\Optic\Roles::issueReceipt(['owner'], 'someone'), 'เจ้าของร้านออกได้ทุกสาขา (สั่ง 14 พ.ย. 2026)');
+    ok(!\Optic\Roles::issueReceipt(['admin'], 'someone'), 'แอดมินที่ไม่อยู่ในรายชื่อออกไม่ได้');
+    ok(!\Optic\Roles::issueReceipt(['admin', 'sales'], 'someone'), 'แอดมิน + sales ที่ไม่อยู่ในรายชื่อออกไม่ได้');
 
     rollback(function (Tx $q) {
         $order = rcptOrder(rcptCustomer($q), '1000');
@@ -315,5 +317,55 @@ test('ปุ่มออกใบเสร็จ: ออกได้เฉพา
         }
         eq($status, 403, 'sales ที่ไม่อยู่ในรายชื่อโดน 403');
         eq($q->get('SELECT COUNT(*) n FROM receipts WHERE order_id = ?', (int) $order['id'])['n'] ?? null, 0, 'ไม่เกิดเลข');
+    });
+});
+
+test('เลือกวันที่บนใบตอนออก: เลขเป็นชุดของเดือนที่เลือก เดินต่อจากเลขสูงสุดของเดือนนั้น', function () {
+    rollback(function (Tx $q) {
+        $cid = rcptCustomer($q);
+        $n   = 0;
+        /* ราคาไม่ซ้ำกันทุกใบ — ออเดอร์หน้าตาเหมือนกันของลูกค้าเดียวกันถูกกันซ้ำเป็นใบเดิม */
+        $mk  = function (string $date) use ($q, $cid, &$n): int {
+            $id = (int) rcptOrder($cid, (string) (1500 + ++$n))['id'];
+            $q->run('UPDATE custom_orders SET order_date = ? WHERE id = ?', "$date 10:00:00", $id);
+            return $id;
+        };
+        /* ใบที่ถือเลขสูงสุดของ ต.ค. อยู่แล้ว — ใบย้อนหลังต้องได้เลขถัดจากนี้ ไม่ชนกัน */
+        $prev = rcptIssue(['order_id' => $mk('2026-10-02'), 'doc_date' => '2026-10-02']);
+        ok(str_starts_with($prev['receipt_no'], 'Bill-2026-10-'), 'ได้เลข ต.ค. — ' . $prev['receipt_no']);
+        eq($prev['doc_date'], '2026-10-02', 'วันที่บนใบตามที่เลือก');
+        eq(substr((string) $prev['issued_at'], 0, 10), date('Y-m-d'), 'issued_at ยังเป็นวันที่กดจริง');
+
+        $next = rcptIssue(['order_id' => $mk('2026-10-05'), 'doc_date' => '2026-10-28']);
+        eq(rcptSeq($next['receipt_no']), rcptSeq($prev['receipt_no']) + 1, 'เดินต่อในชุด ต.ค.');
+
+        $today = rcptIssue(['order_id' => $mk(date('Y-m-d'))]);
+        ok(str_starts_with($today['receipt_no'], 'Bill-' . date('Y-m') . '-'), 'ไม่ส่งวันที่ = วันนี้');
+        eq($today['doc_date'], date('Y-m-d'), 'วันที่บนใบ = วันนี้');
+    });
+});
+
+test('เลือกวันที่บนใบ: ล่วงหน้า / ก่อน 1 ก.ย. 2026 / ก่อนวันที่บนบิล / รูปแบบผิด → 400 ไม่เกิดเลข', function () {
+    rollback(function (Tx $q) {
+        $id = (int) rcptOrder(rcptCustomer($q), '900')['id'];
+        $q->run('UPDATE custom_orders SET order_date = ? WHERE id = ?', '2026-10-10 10:00:00', $id);
+        foreach ([
+            date('Y-m-d', strtotime('+1 day')) => 'ล่วงหน้า',
+            '2026-08-31'                       => 'ก่อนเริ่มชุดเลข',
+            '2026-10-09'                       => 'ก่อนวันที่บนบิล',
+            '2026-13-01'                       => 'เดือนไม่มีจริง',
+            '10/10/2026'                       => 'รูปแบบผิด',
+        ] as $d => $why) {
+            $status = null;
+            try {
+                rcptIssue(['order_id' => $id, 'doc_date' => $d]);
+            } catch (HttpError $e) {
+                $status = $e->status;
+            }
+            eq($status, 400, "$why ($d) โดนปฏิเสธ");
+        }
+        eq(rcptOf($q, 'order_id', $id), null, 'ไม่มีใบเกิดขึ้น');
+        $ok = rcptIssue(['order_id' => $id, 'doc_date' => '2026-10-10']);
+        ok(str_starts_with($ok['receipt_no'], 'Bill-2026-10-'), 'วันเดียวกับบิลออกได้');
     });
 });

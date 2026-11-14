@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Card, Loading } from '../ui.jsx';
 import { Icon } from '../Icon.jsx';
+import { count, money } from '../../lib/format.js';
 import {
   BUCKET_NAME, bucketFull, bucketLabel, filterQuery, rangeLabel,
 } from '../../lib/reportRange.js';
@@ -95,6 +96,25 @@ export function NoData({ bounds, channel, what = 'บิล' }) {
         </button>
       </div>
     </Card>
+  );
+}
+
+/**
+ * งานรอส่งมอบ — คู่กับโหมด "นับตาม: วันปิดบิล"
+ *
+ * บิลที่ยังไม่ส่งมอบไม่มีวันปิด จึงไม่อยู่ในยอดของเดือนไหนเลยในโหมดนั้น · บรรทัดนี้
+ * บอกว่ามันไม่ได้หาย แค่ยังไม่ถึงวันที่ถูกนับ · API ส่ง `pending: null` เมื่อไม่
+ * เกี่ยว (โหมดวันเปิดบิลนับใบพวกนี้รวมในยอดอยู่แล้ว) จึงไม่ต้องเช็กโหมดซ้ำที่นี่
+ */
+export function PendingNote({ pending }) {
+  if (!pending?.bills) return null;
+  return (
+    <div className="report-note">
+      <b>งานรอส่งมอบ {count(pending.bills)} ใบ · {money(pending.revenue)}</b>
+      {' '}— ยังไม่ปิดบิล จึงยังไม่นับในยอดขายของช่วงนี้ (นับทั้งร้าน ณ ตอนนี้ ไม่ขึ้นกับช่วงวันที่)
+      {pending.balance > 0 ? ` · ยังค้างชำระ ${money(pending.balance)}` : ''}
+      {' '}· สลับ “นับตาม” เป็นวันเปิดบิลเพื่อดูแบบรวมงานที่ยังไม่ส่งมอบ
+    </div>
   );
 }
 

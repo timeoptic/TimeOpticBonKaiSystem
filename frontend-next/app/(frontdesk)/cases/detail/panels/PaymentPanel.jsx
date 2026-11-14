@@ -69,6 +69,15 @@ const ACCEPT = 'image/jpeg,image/png,image/webp,application/pdf';
  */
 const QUICK_DAYS = [['วันนี้', 0], ['+3 วัน', 3], ['+7 วัน', 7], ['+14 วัน', 14]];
 
+/** วันของปุ่มลัด — ปุ่ม +N วันที่บวกแล้วตกวันอาทิตย์ เลื่อนเป็นวันจันทร์ (ร้านขอ 2 ต.ค. 2026)
+ *  · ปุ่ม "วันนี้" คือวันนี้เสมอ ไม่เลื่อน */
+const quickDate = (days) => {
+  if (!days) return todayISO(0);
+  const iso = todayISO(days);
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(y, m - 1, d).getDay() === 0 ? todayISO(days + 1) : iso;
+};
+
 function PickupDateCard({ c, reload }) {
   const { ok, err } = useToast();
   const saved = dateOnly(c.order?.appointment_date);
@@ -153,8 +162,8 @@ function PickupDateCard({ c, reload }) {
             <button
               type="button"
               key={label}
-              className={`chip-btn ${date && date === todayISO(days) ? 'active' : ''}`}
-              onClick={() => setDate(todayISO(days))}
+              className={`chip-btn ${date && date === quickDate(days) ? 'active' : ''}`}
+              onClick={() => setDate(quickDate(days))}
             >
               {label}
             </button>

@@ -397,6 +397,7 @@ export default function StockDrawer({
                             : ""}
                       {g.branchStatusLabel ? ` · ${g.branchStatusLabel}` : ""}
                       {g.referenceDoc ? ` · ${g.referenceDoc}` : ""}
+                      {g.settles?.length ? ` · จ่ายค้างส่งให้ ${g.settles.join(", ")}` : ""}
                     </span>
                   </li>
                 ))}
@@ -457,6 +458,7 @@ function DrawerLotCard({
               }
             : null,
           lot.expiryDate ? { label: "หมดอายุ", value: date(lot.expiryDate) } : null,
+          lot.notes ? { label: "หมายเหตุ", value: lot.notes } : null,
         ]}
         actions={
           <button type="button" className="btn btn--small" onClick={() => setEditing(true)}>
@@ -635,7 +637,10 @@ function LotRow({
   return (
     <>
       <tr className={showCost && lot.costPerUnit === null ? "grid__row grid__row--pending" : "grid__row"}>
-        <th scope="row" className="grid__muted">{lot.supplierName ?? "ไม่ระบุผู้ขาย"}</th>
+        <th scope="row" className="grid__muted">
+          {lot.supplierName ?? "ไม่ระบุผู้ขาย"}
+          {lot.notes ? <span className="grid__sub">หมายเหตุ: {lot.notes}</span> : null}
+        </th>
         <td className="grid__num">
           {lot.remainingQty === 0 ? (
             <span className="status status--out">หมด</span>

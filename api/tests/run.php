@@ -62,12 +62,16 @@ require __DIR__ . '/../routes/pos.php';
    · ไฟล์ Excel ของหน้าการรับเงิน (91-payment-export) เปิดไฟล์ที่สร้างได้ออกมาตรวจ */
 require __DIR__ . '/../services/Xlsx.php';
 require __DIR__ . '/../services/PaymentExport.php';
+/* Excel รายงานยอดขาย (93-sales-export-close-order) */
+require __DIR__ . '/../services/SalesExport.php';
 require __DIR__ . '/../routes/analytics.php';
 /* รับเงินของเคส (95-payment-guards) — ยิง POST /api/payments ตัวจริง */
 require __DIR__ . '/../routes/payments.php';
 /* ใบเบิกเลนส์ของ Bewell (98-lens-requisition) */
 require __DIR__ . '/../routes/lens.php';
 require __DIR__ . '/../routes/lens-catalog.php';
+/* ลบพนักงาน (40-employee-delete) */
+require __DIR__ . '/../routes/employees.php';
 require __DIR__ . '/harness.php';
 
 Db::configure($config['db']);

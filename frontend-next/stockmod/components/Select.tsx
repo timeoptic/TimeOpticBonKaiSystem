@@ -48,6 +48,7 @@ export default function Select({
   className = "",
   placeholder = "— ไม่ระบุ —",
   free = false,
+  onQuery,
 }: {
   id?: string;
   value: string;
@@ -60,6 +61,11 @@ export default function Select({
   placeholder?: string;
   /** Take anything typed, and treat the options as suggestions. */
   free?: boolean;
+  /**
+   * The list is searched by the caller (the server), not here: every keystroke
+   * is handed over, and `options` are taken as the results as they stand.
+   */
+  onQuery?: (text: string) => void;
 }) {
   const wrap = useRef<HTMLDivElement>(null);
   const face = useRef<HTMLInputElement>(null);
@@ -119,7 +125,7 @@ export default function Select({
     const t = text.trim().toLowerCase();
     return options.filter((o) => `${o.label} ${o.keywords ?? ""}`.toLowerCase().includes(t));
   };
-  const shown = q === "" || (exact && !typing) ? options : match(q);
+  const shown = onQuery || q === "" || (exact && !typing) ? options : match(q);
 
   /**
    * ตอนเปิด รายการหยุดตรงค่าที่ช่องถืออยู่ — แล้วอยู่นิ่ง
@@ -204,6 +210,7 @@ export default function Select({
   function hide() {
     setOpen(false);
     setQuery("");
+    onQuery?.("");
     setTyping(false);
     quiet(false);
   }
@@ -286,10 +293,12 @@ export default function Select({
             setAt(-1);
           } else {
             setQuery(e.target.value);
+            onQuery?.(e.target.value);
             /* ไฮไลต์ตัวที่ตรงกับที่พิมพ์เป๊ะก่อน — พิมพ์ 0.75 แล้ว Enter ต้องได้ 0.75
                ไม่ใช่ -10.75 ที่บังเอิญอยู่บนสุดของรายการที่กรองแล้ว */
             const t = e.target.value.trim().toLowerCase();
-            const hits = match(t);
+            // ผลค้นจากเซิร์ฟเวอร์ยังไม่มา — ไฮไลต์แถวแรกของผลที่จะขึ้น
+            const hits = onQuery ? [] : match(t);
             const v = (o: Choice) => o.value.trim().toLowerCase();
             let same = hits.findIndex((o) => v(o) === t);
             /* พิมพ์ค่าสายตาไม่ใส่เครื่องหมาย (0.75) — เลือกตัวที่ต่างแค่เครื่องหมาย ไม่มีเครื่องหมาย

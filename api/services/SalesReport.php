@@ -10,7 +10,8 @@
  * สองคำที่ห้ามยุบเป็นคำเดียว
  * ─────────────────────────────────────────────────────────────────────────
  *
- *   ยอดขาย    = ราคาที่ตกลงกันในบิล  → นับด้วย "วันที่เปิดบิล"
+ *   ยอดขาย    = ราคาที่ตกลงกันในบิล  → งานตัดแว่นนับด้วย "วันที่ปิดบิล" (ส่งมอบ)
+ *                                       หรือ "วันที่เปิดบิล" ตามที่เลือก (ดู BYS)
  *   ยอดรับเงิน = เงินที่เข้ามาจริง     → นับด้วย "วันที่กดรับเงิน" (paid_at)
  *
  * สองตัวนี้ไม่เท่ากันโดยตั้งใจ ร้านนี้รับมัดจำเดือนนี้แล้วปิดยอดเดือนหน้าได้ และ
@@ -76,6 +77,18 @@ final class SalesReport
     public const GROUPS = ['all', 'shop', 'sightfirst'];
 
     /**
+     * งานตัดแว่นนับเข้าช่วงวันที่ด้วยวันไหน
+     *
+     *   close = วันปิดบิล (วันส่งมอบ) — แบบที่ร้านนับยอดของเดือน จึงเป็นค่าตั้งต้น
+     *   open  = วันเปิดบิล — แบบเดิมของรายงานนี้
+     *
+     * มีผลเฉพาะงานตัดแว่น · ขายหน้าร้านขายแล้วจบในใบเดียว วันขายคือทั้งสองอย่าง
+     * · หน้าการรับเงินนับด้วย paid_at และหน้าช่องทางลูกค้านับด้วยวันเปิดเคส ทั้งสอง
+     * โหมดจึงให้ตัวเลขเดียวกันในสองหน้านั้น
+     */
+    public const BYS = ['close', 'open'];
+
+    /**
      * ช่วงวันที่ + ช่องทาง + สถานะงาน + ประเภทลูกค้า จาก query string
      *
      * ไม่มีอะไรส่งมา = วันนี้วันเดียว · ส่ง from มาอย่างเดียว = วันนั้นวันเดียว
@@ -100,7 +113,33 @@ final class SalesReport
         if (!in_array($group, self::GROUPS, true)) {
             $group = 'all';
         }
-        return ['from' => $from, 'to' => $to, 'channel' => $channel, 'status' => $status, 'group' => $group];
+        $by = str_or($query['by'] ?? null, 'close');
+        if (!in_array($by, self::BYS, true)) {
+            $by = 'close';
+        }
+        return ['from' => $from, 'to' => $to, 'channel' => $channel, 'status' => $status, 'group' => $group, 'by' => $by];
+    }
+
+    /**
+     * ท่อน WHERE ที่เลือกงานตัดแว่นเข้าช่วงวันที่ — มีพารามิเตอร์ `?` สองตัว (from, to)
+     *
+     * โหมดวันปิดบิลนับเฉพาะใบที่ปิดแล้ว เพราะใบที่ยังไม่ส่งมอบไม่มีวันปิดให้นับ ·
+     * ยกเว้นตอนถามหา "ยังไม่จบ" ตรง ๆ ซึ่งไม่มีวันปิดทั้งชุด จึงตกไปใช้วันเปิดบิล
+     * ไม่งั้นตัวกรองนั้นจะว่างเสมอ · `SalesExport::mainRows` ใช้ท่อนเดียวกันนี้
+     */
+    public static function mainWhereSql(string $status, string $by): string
+    {
+        if ($by === 'close' && $status !== 'open') {
+            return 'o.order_closed = 1 AND DATE(o.order_close_date) BETWEEN ? AND ?';
+        }
+        return 'DATE(o.order_date) BETWEEN ? AND ?'
+            . self::statusSql($status, 'o.order_closed = 1', 'o.order_closed = 0');
+    }
+
+    /** คอลัมน์วันที่ที่บิลถูกนับ — คู่กับ mainWhereSql() */
+    public static function mainDateSql(string $status, string $by): string
+    {
+        return $by === 'close' && $status !== 'open' ? 'o.order_close_date' : 'o.order_date';
     }
 
     /**
@@ -161,18 +200,27 @@ final class SalesReport
      * สถานะมาจาก `v_case_board` ซึ่งเป็น view เดียวกับที่กระดานงานใช้ — รายงาน
      * กับกระดานจึงพูดสถานะชุดเดียวกัน · ออเดอร์ที่ไม่มีเคส (เปิดจากหน้าออเดอร์
      * ตรง ๆ) จะได้ค่าว่างและตกไปเป็น "ไม่ผูกเคส" ที่หน้าเว็บ
+     *
+     * `$by` เลือกว่านับเข้าช่วงด้วยวันเปิดบิลหรือวันปิดบิล (ดู BYS) · แต่ละแถวมี
+     * `report_date` = วันที่ที่ใบนั้นถูกนับ ให้กราฟรายวันวางยอดลงวันเดียวกับที่กรอง
      */
-    public static function mainBills(string $from, string $to, string $status = 'all', string $group = 'all'): array
-    {
-        $onlyStatus = self::statusSql($status, 'o.order_closed = 1', 'o.order_closed = 0')
-            . self::groupSql($group, 'cs.customer_category');
+    public static function mainBills(
+        string $from,
+        string $to,
+        string $status = 'all',
+        string $group = 'all',
+        string $by = 'open'
+    ): array {
+        $where = self::mainWhereSql($status, $by) . self::groupSql($group, 'cs.customer_category');
+        $date  = self::mainDateSql($status, $by);
         return Db::all(
             "SELECT o.id, o.invoice_code, o.order_date, o.lens_type,
-                    o.order_closed, o.case_id,
+                    o.order_closed, o.order_close_date, o.case_id,
+                    $date AS report_date,
                     ROUND(o.total_price - o.discount, 2)                       AS revenue,
                     ROUND(COALESCE(pay.paid, 0), 2)                            AS paid,
                     ROUND(o.total_price - o.discount - COALESCE(pay.paid,0),2) AS balance,
-                    o.frame_name, o.lens_name,
+                    o.frame_name, o.lens_name, o.lens_r_name, o.lens_l_name,
                     c.id AS customer_id, c.first_name, c.mid_name, c.last_name,
                     e.id AS employee_id, e.employee_name,
                     cs.case_code,
@@ -195,11 +243,41 @@ final class SalesReport
                LEFT JOIN v_stock_lot_all fl ON fl.id = o.frame_product_id
                LEFT JOIN v_stock_lot_all ll ON ll.id = o.lens_product_id
                LEFT JOIN v_stock_lot_all lr ON lr.id = o.right_lens_product_id
-              WHERE DATE(o.order_date) BETWEEN ? AND ? $onlyStatus
-              ORDER BY o.order_date DESC, o.id DESC",
+              WHERE $where
+              ORDER BY report_date DESC, o.id DESC",
             $from,
             $to
         );
+    }
+
+    /**
+     * งานรอส่งมอบ — บิลงานตัดแว่นที่ยังไม่ปิด ทั้งร้าน ณ ตอนนี้
+     *
+     * คู่กับโหมดวันปิดบิล: ใบที่ยังไม่ส่งมอบไม่อยู่ในยอดของเดือนไหนเลย ถ้าไม่มี
+     * บรรทัดนี้มันจะหายไปจากรายงานจนกว่าจะส่งมอบ · ไม่ขึ้นกับช่วงวันที่ที่กรองอยู่
+     * เพราะบิลเก่าที่ค้างส่งก็ยังเป็นงานที่ค้างอยู่วันนี้ · เคสที่ยกเลิกแล้วไม่นับ —
+     * ไม่มีอะไรจะส่งมอบ
+     */
+    public static function pendingMain(string $group = 'all'): array
+    {
+        $r = Db::get(
+            "SELECT COUNT(*) n,
+                    COALESCE(SUM(o.total_price - o.discount), 0) revenue,
+                    COALESCE(SUM(GREATEST(o.total_price - o.discount - COALESCE(pay.paid, 0), 0)), 0) balance
+               FROM custom_orders o
+               JOIN customers c   ON c.id  = o.customer_id
+               LEFT JOIN cases cs ON cs.id = o.case_id
+               LEFT JOIN (SELECT order_id, SUM(amount) paid FROM payments
+                           WHERE order_id IS NOT NULL AND cancelled_at IS NULL
+                           GROUP BY order_id) pay ON pay.order_id = o.id
+              WHERE o.order_closed = 0 AND (cs.status IS NULL OR cs.status <> 'cancelled')"
+                . self::groupSql($group, 'cs.customer_category')
+        );
+        return [
+            'bills'   => (int) ($r['n'] ?? 0),
+            'revenue' => round2($r['revenue'] ?? 0),
+            'balance' => round2($r['balance'] ?? 0),
+        ];
     }
 
     /**
@@ -608,11 +686,13 @@ final class SalesReport
      *
      * คืน null ทั้งคู่เมื่อร้านยังไม่มีบิลสักใบ ซึ่งเป็นคนละเรื่องกับ "ช่วงนี้ว่าง"
      */
-    public static function bounds(string $channel): array
+    public static function bounds(string $channel, string $by = 'open'): array
     {
         $dates = [];
         if (self::wantsMain($channel)) {
-            $r = Db::get('SELECT MIN(DATE(order_date)) a, MAX(DATE(order_date)) b FROM custom_orders');
+            $r = Db::get($by === 'close'
+                ? 'SELECT MIN(DATE(order_close_date)) a, MAX(DATE(order_close_date)) b FROM custom_orders WHERE order_closed = 1'
+                : 'SELECT MIN(DATE(order_date)) a, MAX(DATE(order_date)) b FROM custom_orders');
             $dates[] = [$r['a'] ?? null, $r['b'] ?? null];
         }
         if (self::wantsPos($channel)) {

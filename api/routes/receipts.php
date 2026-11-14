@@ -5,7 +5,8 @@
  * กติกาตั้งแต่ 13 ต.ค. 2026 (ร้านขอ):
  *   - เลขออกเมื่อพนักงานกด "ออกใบเสร็จ" เท่านั้น — เปิดออเดอร์ เปิดเคส ขาย POS หรือเปิดหน้า
  *     ใบเสร็จ ไม่ทำให้เกิดเลข (เดิม 1 ต.ค.–13 ต.ค. ออกเลขตอนเปิดออเดอร์/ขาย)
- *   - ปี/เดือนบนเลข และวันที่บนใบ = วันที่กดออกใบจริง (issued_at / doc_date)
+ *   - วันที่บนใบ (doc_date) = วันที่พนักงานเลือกตอนกดออก ค่าปริยายวันนี้ ย้อนหลังได้ (ร้านขอ 3 พ.ย. 2026)
+ *     ปี/เดือนบนเลขตามวันนั้น เดินต่อจากชุดของเดือนนั้น · issued_at = เวลาที่กดจริง
  *   - หนึ่งออเดอร์ (เคส) หรือหนึ่งใบขาย POS ได้ใบเสร็จใบเดียว — ใบนั้นครอบการรับเงินทุกครั้ง
  *     ของออเดอร์ (มัดจำ + ส่วนที่เหลือ) ผูกไว้ใน receipt_payments
  *   - พิมพ์ซ้ำ = ใบเดิม เลขเดิม ยอดเดิม วันที่เดิม · ทุกการกดพิมพ์ลง receipt_print_logs
@@ -13,7 +14,7 @@
  * รูปแบบ  Bill-2026-10-00042   ใบเสร็จของเคสแว่น
  *         BillP-2026-10-00007  ใบเสร็จของการขาย POS  (คนละชุด เดินเลขแยกกัน — ร้านเลือกเอง)
  * เลขท้ายเริ่ม 00001 ใหม่ทุกเดือน แยกชุด Bill / BillP (ร้านขอ 13 ต.ค. 2026 — เดิมเดินยาวทั้งปี)
- * เดือนในเลข = เดือนที่กดออกใบ · เลขที่ออกแล้วไม่นำกลับมาใช้
+ * เดือนในเลข = เดือนของวันที่บนใบ · เลขที่ออกแล้วไม่นำกลับมาใช้
  *
  * ลบออเดอร์ / ยกเลิกใบขาย: แถวยังอยู่ status = VOIDED เลขจึงไม่หลุดจากชุด
  * source_type/source_id จำว่าเคยเป็นของใคร แม้ order_id/sale_id จะถูกปลดเป็น NULL
@@ -116,12 +117,43 @@ function linkReceiptPayments(?Tx $q, array $rc): void
 }
 
 /**
+ * วันที่บนใบที่พนักงานเลือกตอนกดออกใบ (ร้านขอ 3 พ.ย. 2026) — ไม่ส่งมา = วันนี้
+ *
+ * เลือกย้อนหลังได้ แต่ไม่ล่วงหน้า ไม่ก่อน RECEIPT_START และไม่ก่อนวันที่บนบิล
+ * (ใบเสร็จลงวันก่อนมีบิลไม่ได้) · เดือนของวันนี้คือเดือนของเลข จึงต้องตรวจก่อนออกเลข
+ */
+function receiptDocDate(?string $pick, string $billDate): string
+{
+    $today = date('Y-m-d');
+    if ($pick === null || $pick === '') {
+        return $today;
+    }
+    $d = DateTime::createFromFormat('!Y-m-d', $pick);
+    if (!$d || $d->format('Y-m-d') !== $pick) {
+        bad('วันที่ใบเสร็จไม่ถูกต้อง');
+    }
+    if ($pick > $today) {
+        bad('เลือกวันที่ใบเสร็จล่วงหน้าไม่ได้');
+    }
+    if ($pick < RECEIPT_START) {
+        bad('วันที่ใบเสร็จต้องไม่ก่อน ' . RECEIPT_START);
+    }
+    $bill = substr($billDate, 0, 10);
+    if ($pick < $bill) {
+        bad("วันที่ใบเสร็จต้องไม่ก่อนวันที่บนบิล ($bill)");
+    }
+    return $pick;
+}
+
+/**
  * ออกใบเสร็จให้ออเดอร์/ใบขายนี้ภายใน transaction ของคนเรียก — มีแล้วคืนของเดิม
  *
- * ยอดบนใบมาจากฐาน ไม่ใช่จากหน้าเว็บ · วันที่บนใบคือวันที่กดออกจริง
+ * ยอดบนใบมาจากฐาน ไม่ใช่จากหน้าเว็บ · วันที่บนใบ (doc_date) คือวันที่พนักงานเลือก
+ * ค่าปริยายวันนี้ · ปี/เดือนบนเลขตามวันนั้น เดินต่อจากชุดของเดือนนั้น
+ * issued_at ยังเป็นเวลาที่กดจริง ไว้เป็นหลักฐาน
  * บิลที่วันที่บนบิลก่อน RECEIPT_START ได้แถว (ไว้จำชื่อบนใบ) แต่ไม่ได้เลข Bill
  */
-function issueReceiptIn(Tx $q, string $kind, int $id, ?string $idemKey, ?int $by): array
+function issueReceiptIn(Tx $q, string $kind, int $id, ?string $idemKey, ?int $by, ?string $docDate = null): array
 {
     $col = receiptCol($kind);
     if ($row = $q->get("SELECT * FROM receipts WHERE $col = ?", $id)) {
@@ -155,16 +187,19 @@ function issueReceiptIn(Tx $q, string $kind, int $id, ?string $idemKey, ?int $by
         $total    = round2((float) $s['total_amount']);
     }
 
-    $now = nowStamp();
+    $now     = nowStamp();
+    $legacy  = substr($billDate, 0, 10) < RECEIPT_START;
+    /* บิลยุค Access ไม่ได้เลข Bill จึงไม่มีเดือนให้ตรวจ — คงวันนี้ตามเดิม */
+    $docDate = $legacy ? substr($now, 0, 10) : receiptDocDate($docDate, $billDate);
     $q->run(
         "INSERT INTO receipts (receipt_no, $col, source_type, source_id, status, doc_date, total_amount,
                                issued_at, issued_by, idem_key)
          VALUES (?, ?, ?, ?, 'ISSUED', ?, ?, ?, ?, ?)",
-        substr($billDate, 0, 10) >= RECEIPT_START ? nextReceiptNo($q, RECEIPT_PREFIX[$kind], $now) : null,
+        $legacy ? null : nextReceiptNo($q, RECEIPT_PREFIX[$kind], $docDate),
         $id,
         $kind === 'order' ? 'CASE' : 'POS',
         $id,
-        substr($now, 0, 10),
+        $docDate,
         $total,
         $now,
         $by,
@@ -197,14 +232,14 @@ function voidReceiptIn(Tx $q, string $kind, int $id, string $reason, bool $detac
  * อ่านแถวที่ฝั่งชนะเพิ่งเขียน จึงได้ใบเดียวกัน · ต้องดู errno ไม่ใช่ SQLSTATE เพราะ
  * FK ล้ม (1452) ก็เป็น 23000 เหมือนกัน ดักรวมแล้วจะกลืนบั๊กจริง
  */
-function issueReceipt(string $kind, int $id, ?string $idemKey, ?int $by): array
+function issueReceipt(string $kind, int $id, ?string $idemKey, ?int $by, ?string $docDate = null): array
 {
     for ($attempt = 0; $attempt < 3; $attempt++) {
         if ($row = receiptFor($kind, $id)) {
             return $row;
         }
         try {
-            return Db::tx(fn(Tx $q) => issueReceiptIn($q, $kind, $id, $idemKey, $by));
+            return Db::tx(fn(Tx $q) => issueReceiptIn($q, $kind, $id, $idemKey, $by, $docDate));
         } catch (PDOException $e) {
             if ((int) ($e->errorInfo[1] ?? 0) !== 1062) {
                 throw $e;
@@ -303,18 +338,20 @@ POST('/api/receipts', function (array $req) {
 });
 
 /**
- * POST /api/receipts/issue  { order_id | sale_id, idem_key } — ปุ่ม "ออกใบเสร็จ"
+ * POST /api/receipts/issue  { order_id | sale_id, idem_key, doc_date? } — ปุ่ม "ออกใบเสร็จ"
  * ทางเดียวที่ทำให้เกิดเลข · กดซ้ำ / สองเครื่องพร้อมกัน / เน็ตหลุดแล้วยิงใหม่ ได้ใบเดิม
+ * doc_date (YYYY-MM-DD) = วันที่บนใบ เลือกย้อนหลังได้ เลขออกตามเดือนของวันนั้น
  */
 POST('/api/receipts/issue', function (array $req) {
     $by  = receiptActorId();
     $actor = StockModule::actor();
     if (!\Optic\Roles::issueReceipt($actor['roles'] ?? [], $actor['username'] ?? null)) {
-        throw new HttpError(403, 'ออกใบเสร็จได้เฉพาะ Pom, Tik', ['reason' => 'forbidden']);
+        throw new HttpError(403, 'ออกใบเสร็จได้เฉพาะเจ้าของร้าน', ['reason' => 'forbidden']);
     }
     [$kind, $id] = receiptSource($req['body']);
     $key = nul($req['body']['idem_key'] ?? null);
-    $rc  = issueReceipt($kind, $id, $key === null ? null : mb_substr($key, 0, 120), $by ?: null);
+    $rc  = issueReceipt($kind, $id, $key === null ? null : mb_substr($key, 0, 120), $by ?: null,
+        nul($req['body']['doc_date'] ?? null));
     return receiptWithLegacyNo(receiptView($rc));
 });
 

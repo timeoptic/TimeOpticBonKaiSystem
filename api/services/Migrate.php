@@ -14,7 +14,7 @@ final class Migrate
         'telegram_bot_token'       => '',
         'telegram_chat_id'         => '',
         'reminder_default_minutes' => '10',
-        'shop_name'                => 'TIMEOPTIC @ Be Well MEDICAL CENTER',
+        'shop_name'                => 'TIMEOPTIC @ สาขาบ่อนไก่',
         'shop_open_time'           => '10:00',
         'shop_close_time'          => '20:00',
         'slot_minutes'             => '30',

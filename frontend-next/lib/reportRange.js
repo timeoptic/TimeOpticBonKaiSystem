@@ -60,6 +60,17 @@ export const GROUPS = [
 ];
 
 /**
+ * งานตัดแว่นนับเข้าช่วงวันที่ด้วยวันไหน — คีย์ชุดเดียวกับ SalesReport::BYS
+ *
+ * ตั้งต้นที่วันปิดบิล (วันส่งมอบ) เพราะร้านนับยอดของเดือนจากงานที่ส่งมอบในเดือนนั้น ·
+ * บิลที่เปิดปลายเดือนแล้วส่งมอบต้นเดือนถัดไปเคยหายจากเดือนที่ร้านนับมัน
+ */
+export const BYS = [
+  ['close', 'วันปิดบิล'],
+  ['open', 'วันเปิดบิล'],
+];
+
+/**
  * ทุกช่วงจบที่ "วันนี้" ไม่ใช่วันสิ้นสัปดาห์หรือวันสิ้นเดือน
  *
  * วันที่ยังไม่มาถึงไม่มียอดขายอยู่แล้ว การลากช่วงไปถึงสิ้นเดือนแปลว่ากราฟรายวัน
@@ -119,12 +130,14 @@ export function readFilter(searchParams, now = new Date()) {
   const channel = get('channel');
   const status = get('status');
   const group = get('group');
+  const by = get('by');
   return {
     from,
     to,
     channel: CHANNELS.some(([c]) => c === channel) ? channel : 'all',
     status: STATUSES.some(([s]) => s === status) ? status : 'all',
     group: GROUPS.some(([g]) => g === group) ? group : 'all',
+    by: BYS.some(([b]) => b === by) ? by : 'close',
   };
 }
 
@@ -134,11 +147,12 @@ export function readFilter(searchParams, now = new Date()) {
  * ค่า 'all' ไม่ถูกเขียนลง URL — URL ที่สั้นที่สุดที่ยังให้ผลเดิมคือ URL ที่คนส่ง
  * ต่อกันแล้วอ่านออก และฝั่ง API ก็ตกกลับเป็น 'all' อยู่แล้วเมื่อไม่มีค่าส่งมา
  */
-export function filterQuery({ from, to, channel, status, group }) {
+export function filterQuery({ from, to, channel, status, group, by }) {
   const p = new URLSearchParams({ from, to });
   if (channel && channel !== 'all') p.set('channel', channel);
   if (status && status !== 'all') p.set('status', status);
   if (group && group !== 'all') p.set('group', group);
+  if (by && by !== 'close') p.set('by', by);
   return p.toString();
 }
 

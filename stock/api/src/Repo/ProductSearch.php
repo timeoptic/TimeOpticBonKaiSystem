@@ -103,8 +103,9 @@ final class ProductSearch
     public static function where(string $term, bool $any = false): array
     {
         [$rest, $pairs] = self::powers($term);
+        [$rest, $sphs] = self::spheres($rest);
         $tokens = self::tokens($rest);
-        if ($tokens === [] && $pairs === []) {
+        if ($tokens === [] && $pairs === [] && $sphs === []) {
             return ['', []];
         }
 
@@ -129,7 +130,65 @@ final class ProductSearch
             array_push($args, $sph, $cyl, '%' . $fmt($sph) . '/' . $fmt($cyl) . '%');
         }
 
+        /* SPH เดี่ยวก็ต้องตรงเสมอเหมือนคู่ · เทียบกับ sph ในสเปกเท่านั้น ไม่ดู CYL · สินค้าที่ไม่มี sph
+           (คีย์ชื่อเอง) ดูเลขหน้า "/" ในชื่อ — กรอบแว่นไม่มีทั้งสองอย่างจึงไม่ขึ้น */
+        $sphAttr = self::attr('sph');
+        foreach ($sphs as $sph) {
+            $where[] = "((COALESCE({$sphAttr}, '') <> '' AND CAST({$sphAttr} AS DECIMAL(6,2)) = ?)"
+                . " OR (COALESCE({$sphAttr}, '') = '' AND p.name REGEXP ?))";
+            $abs = sprintf('%.2f', abs($sph));
+            $sign = $sph > 0 ? '[+]?' : ($sph < 0 ? '-' : '[+-]?');
+            array_push($args, $sph, '(^|[^0-9.+-])' . $sign . str_replace('.', '[.]', $abs) . '/');
+        }
+
         return ['(' . implode(' AND ', $where) . ')', $args];
+    }
+
+    /** index ของเลนส์ที่มีขาย — เลขพวกนี้ไม่มีเครื่องหมายคือ index ไม่ใช่ SPH */
+    private const INDEXES = [1.5, 1.53, 1.56, 1.59, 1.6, 1.67, 1.74];
+
+    /**
+     * เลขเดี่ยวที่เป็นค่าสายตา คือ SPH อย่างเดียว (ร้านขอ 27 ต.ค. 2026)
+     *
+     * เดิม "Hitop Blue 0" ได้ทุกตัว เพราะ "0" ไม่มีจุดจึงค้นเป็นข้อความ และทุกชื่อมีเลข 0 ·
+     * "0.00" ก็ได้ -4.00/0.00 ด้วยเพราะเจอที่ตำแหน่ง CYL · ตอนนี้คำที่เป็นค่าสายตาถูกดึงออกมาเทียบ
+     * กับ sph ในสเปกแบบตัวเลข:
+     *   · มีเครื่องหมาย: -2, +1.25, -350 (= -3.50 แบบเดียวกับคู่)
+     *   · ศูนย์: 0, 0.00
+     *   · ทศนิยมไม่มีเครื่องหมายที่ไม่ใช่ index: 2.25, 0.75 (นับเป็นบวก)
+     * ที่ยังค้นแบบเดิม: index ไม่มีเครื่องหมาย (1.5, 1.6, 1.67 …), เลขเต็มไม่มีเครื่องหมาย
+     * (3 ใน "Lifestyle 3", 0748 ใน SKU), เลขที่ติดตัวอักษร ("FRM-0727", "Add+1.50") และค่าที่ไม่ลง
+     * ขั้น 0.25 (เลนส์ไม่มีค่านั้น)
+     *
+     * อ่านจากข้อความทั้งช่อง ไม่ใช่จาก tokens() เพราะ tokens() แยก "FRM-0727" เป็น FRM กับ -0727
+     *
+     * หน้าบ้าน (`api/core/StockSearch.php`) ยังไม่ได้ทำตาม
+     *
+     * @return array{0:string,1:list<float>} [คำที่เหลือ, SPH]
+     */
+    public static function spheres(string $term): array
+    {
+        $sphs = [];
+        $rest = preg_replace_callback(
+            '~(?<![\w.+\-\x{2212}])([+\-\x{2212}]?)(\d{1,2}(?:\.\d{1,2})?|\d{3,4})(?![\w.])~u',
+            static function (array $m) use (&$sphs): string {
+                $v = (float) $m[2];
+                $dot = str_contains($m[2], '.');
+                if ($m[1] === '' && $v != 0.0 && (!$dot || in_array($v, self::INDEXES, true))) {
+                    return $m[0];
+                }
+                if (!$dot && $v >= 100) {
+                    $v /= 100;
+                }
+                if ($v > 20 || fmod(round($v * 100), 25.0) != 0.0) {
+                    return $m[0];
+                }
+                $sphs[] = round($m[1] === '' || $m[1] === '+' ? $v : -$v, 2);
+                return ' ';
+            },
+            $term,
+        );
+        return [trim((string) $rest), $sphs];
     }
 
     /**
@@ -293,10 +352,12 @@ final class ProductSearch
      */
     public static function rank(array $rows, string $term): array
     {
-        $tokens = self::tokens($term);
-        if ($tokens === []) {
+        if (trim($term) === '') {
             return $rows;
         }
+        /* ค่าสายตา (คู่และ SPH เดี่ยว) ไม่นับตอนเรียง — where() กรองให้ตรงครบทุกแถวแล้ว ถ้านับเป็นคำ
+           แถวที่บังเอิญมีเลขเดียวกันที่ CYL จะได้คะแนนตรงคำนั้นเพิ่ม · เหลือแต่ค่าสายตาก็ยังเรียงชื่อตามธรรมชาติ */
+        $tokens = self::tokens(self::spheres(self::powers($term)[0])[0]);
 
         $keyed = [];
         foreach ($rows as $i => $row) {

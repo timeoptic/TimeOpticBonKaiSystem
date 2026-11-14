@@ -68,23 +68,51 @@ function EmployeeListInner() {
      ฟอร์มหกช่องที่ค้างไว้ตลอดดันรายชื่อลงไปพ้นจอไปเปล่า ๆ ทุกครั้งที่เปิดหน้า
      (แบบเดียวกับหน้าตำแหน่งสินค้า /locations) · busy กันกดบันทึกซ้ำระหว่างรอ API
      ไม่งั้นได้พนักงานชื่อซ้ำสองแถว */
-  const [adding, setAdding] = useState(false);
+  /* ป๊อปอัปเดียวใช้ทั้งเพิ่มและแก้ไข: null = ปิด, {} = เพิ่มใหม่, แถวพนักงาน = แก้ไขคนนั้น */
+  const [editing, setEditing] = useState(null);
+  const adding = editing !== null;
+  const isEdit = Boolean(editing && editing.id);
+  const setAdding = (v) => setEditing(v ? {} : null);
   const [busy, setBusy] = useState(false);
 
-  const add = async (body) => {
+  const save = async (body) => {
     setBusy(true);
     try {
-      await api.post('/api/employees', body);
+      if (isEdit) {
+        /* PUT เขียนทับทุกช่องรวม active — ส่งสถานะเดิมไปด้วย ไม่งั้นแก้ชื่อแล้วกลายเป็นลาออก */
+        await api.put('/api/employees/' + editing.id, { ...body, active: Number(editing.active) ? 1 : 0 });
+        ok('บันทึกการแก้ไขแล้ว');
+      } else {
+        await api.post('/api/employees', body);
+        ok('เพิ่มพนักงานแล้ว');
+      }
       await reloadMeta();
-      ok('เพิ่มพนักงานแล้ว');
       /* ปิดป๊อปอัปเมื่อบันทึกผ่าน — แถวใหม่อยู่ในตารางข้างหลังแล้ว ถ้าค้างไว้ก็บัง
          ของที่ตัวเองเพิ่งเพิ่ม · พลาดแล้วไม่ปิด ค่าที่กรอกไว้จะได้ไม่หายไปทั้งชุด */
-      setAdding(false);
+      setEditing(null);
       reload();
     } catch (ex) {
       err(ex);
     } finally {
       setBusy(false);
+    }
+  };
+
+  /* ลบจริงได้เฉพาะคนที่ยังไม่มีประวัติในระบบ (เช่น เพิ่มผิด) — ถ้ามีประวัติแล้ว
+     เซิร์ฟเวอร์ปฏิเสธพร้อมบอกให้ใช้ "ปิดใช้งาน" แทน ข้อความนั้นขึ้นเป็น toast */
+  const remove = async (r) => {
+    if (!await confirm(
+      'ลบพนักงาน',
+      `ลบ ${r.employee_name || r.first_name || `ID ${r.id}`} ออกจากระบบถาวร — ลบได้เฉพาะคนที่ยังไม่มีประวัติการใช้งาน`,
+      { confirmText: 'ลบ', danger: true },
+    )) return;
+    try {
+      await api.del('/api/employees/' + r.id);
+      await reloadMeta();
+      ok('ลบพนักงานแล้ว');
+      reload();
+    } catch (ex) {
+      err(ex);
     }
   };
 
@@ -179,9 +207,17 @@ function EmployeeListInner() {
               render: (r) => (
                 <EditGate>
                   {(close) => (
-                    <button type="button" className="btn btn-sm btn-light" onClick={() => { close(); toggle(r); }}>
-                      {Number(r.active) ? 'ปิดใช้งาน' : 'เปิดใช้งาน'}
-                    </button>
+                    <>
+                      <button type="button" className="btn btn-sm" onClick={() => { close(); setEditing(r); }}>
+                        <Icon name="pencil" /> แก้ไข
+                      </button>
+                      <button type="button" className="btn btn-sm btn-light" onClick={() => { close(); toggle(r); }}>
+                        {Number(r.active) ? 'ปิดใช้งาน' : 'เปิดใช้งาน'}
+                      </button>
+                      <button type="button" className="btn btn-sm btn-danger" onClick={() => { close(); remove(r); }}>
+                        <Icon name="trash" /> ลบ
+                      </button>
+                    </>
                   )}
                 </EditGate>
               ),
@@ -210,8 +246,9 @@ function EmployeeListInner() {
           onClick={(e) => { if (e.target === e.currentTarget) setAdding(false); }}
         >
           <div className="modal">
-            <h3>เพิ่มพนักงานใหม่</h3>
-            <form onSubmit={onSubmit(add)}>
+            <h3>{isEdit ? `แก้ไขพนักงาน · ID ${editing.id}` : 'เพิ่มพนักงานใหม่'}</h3>
+            {/* key ตาม id — สลับจากคนหนึ่งไปอีกคน ช่อง defaultValue จะได้โหลดค่าใหม่ */}
+            <form key={editing.id || 'new'} onSubmit={onSubmit(save)}>
               <div className="m-body">
                 {/* สองคอลัมน์ในกล่อง ไม่ใช่สามแบบค่าตั้งต้นของ .modal — ช่องกว้าง 160px
                     แคบเกินกว่าจะอ่านป้าย "ชื่อเล่น / Nickname" ได้จบในบรรทัดเดียว
@@ -220,14 +257,14 @@ function EmployeeListInner() {
                   <FormGrid>
                     <Field label="ชื่อเล่น / Nickname *" className="full">
                       {/* ป๊อปอัปเพิ่งเด้งมาเพราะเพิ่งกดเปิด พิมพ์ได้เลยไม่ต้องคลิกช่องอีกที */}
-                      <input name="employee_name" required autoFocus autoComplete="off" />
+                      <input name="employee_name" required autoFocus autoComplete="off" defaultValue={editing.employee_name || ''} />
                     </Field>
-                    <Field label="ชื่อจริง"><input name="first_name" autoComplete="off" /></Field>
-                    <Field label="นามสกุล"><input name="last_name" autoComplete="off" /></Field>
-                    <Field label="เพศ"><ListSelect name="sex" kind="sex" defaultValue="Female" /></Field>
-                    <Field label="วันเกิด"><DateField name="birth_date" /></Field>
+                    <Field label="ชื่อจริง"><input name="first_name" autoComplete="off" defaultValue={editing.first_name || ''} /></Field>
+                    <Field label="นามสกุล"><input name="last_name" autoComplete="off" defaultValue={editing.last_name || ''} /></Field>
+                    <Field label="เพศ"><ListSelect name="sex" kind="sex" defaultValue={isEdit ? (editing.sex || '') : 'Female'} /></Field>
+                    <Field label="วันเกิด"><DateField name="birth_date" defaultValue={String(editing.birth_date || '').slice(0, 10)} /></Field>
                     <Field label="หน้าที่ / Roles" className="full">
-                      <input name="roles" autoComplete="off" placeholder="เช่น sales, optometrist, technician" />
+                      <input name="roles" autoComplete="off" placeholder="เช่น sales, optometrist, technician" defaultValue={editing.roles || ''} />
                     </Field>
                   </FormGrid>
                 </div>
@@ -237,7 +274,7 @@ function EmployeeListInner() {
                   ยกเลิก
                 </button>
                 <button className="btn" type="submit" disabled={busy}>
-                  <Icon name="check" /> {busy ? 'กำลังบันทึก…' : 'เพิ่มพนักงาน'}
+                  <Icon name="check" /> {busy ? 'กำลังบันทึก…' : (isEdit ? 'บันทึกการแก้ไข' : 'เพิ่มพนักงาน')}
                 </button>
               </div>
             </form>

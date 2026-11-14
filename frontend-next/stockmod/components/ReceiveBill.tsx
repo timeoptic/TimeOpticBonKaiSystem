@@ -2,13 +2,15 @@
 
 import { useEffect, useState } from "react";
 import TaskDialog from "./TaskDialog";
+import NewProductDialog from "./NewProductDialog";
 import SupplierSelect, { supplierIdOf } from "./SupplierSelect";
 import DateField from "./DateField";
 import { IconCart } from "./Icon";
 import { useToast } from "./Toaster";
-import { api, ApiError, type CreatedLot, type ProductRow, type ReceiveDefaults } from "@/stockmod/lib/api";
+import { api, ApiError, type CreatedLot, type ProductDetail, type ProductRow, type ReceiveDefaults } from "@/stockmod/lib/api";
 import { useApi } from "@/stockmod/lib/useApi";
 import { count, money, shortName } from "@/stockmod/lib/format";
+import { uuid } from "@/stockmod/lib/uuid";
 
 /** หนึ่งบรรทัดในบิล — ช่องที่แก้ได้เก็บเป็นข้อความตามที่พิมพ์ แปลงตอนกดบันทึก */
 type Line = {
@@ -44,32 +46,41 @@ export function useReceiveBill(mayCost: boolean, onSaved: () => void) {
   const [open, setOpen] = useState(false);
   /** นับทุกครั้งที่ใส่บิล ให้ไอคอนเด้งบอกว่าได้ยิน (แบบเดียวกับหน้าเบิก) */
   const [taps, setTaps] = useState(0);
+  /**
+   * กุญแจกันบันทึกซ้ำ (idem_key) — หนึ่งค่าต่อบิล จำไว้กับร่าง · เน็ตหลุดตอนกดบันทึกแล้วกดใหม่
+   * ได้คำตอบเดิม ไม่รับเข้าซ้ำ · บันทึกสำเร็จหรือล้างบิลแล้วได้กุญแจใหม่ (ยกจากระบบหลัก)
+   */
+  const [idem, setIdem] = useState("");
+  const renewIdem = () => setIdem(uuid());
 
   // บิลที่ค้างอยู่ในเครื่อง — ความสะดวกของคนนี้คนเดียว อ่านไม่ได้ก็เริ่มบิลใหม่
   useEffect(() => {
+    let key = "";
     try {
       const raw = localStorage.getItem(DRAFT);
       if (raw) {
-        const d = JSON.parse(raw) as { bill?: Bill; lines?: Line[] };
+        const d = JSON.parse(raw) as { bill?: Bill; lines?: Line[]; idem?: string };
         if (d.bill) setBill({ ...EMPTY_BILL(), ...d.bill });
         if (Array.isArray(d.lines)) setLines(d.lines);
+        if (typeof d.idem === "string") key = d.idem;
       }
     } catch {
       /* เริ่มบิลใหม่ */
     }
+    setIdem(key.length >= 8 ? key : uuid());
     setLoaded(true);
   }, []);
   useEffect(() => {
     if (!loaded) return;
     try {
       if (lines.length === 0 && !bill.doc && !bill.note && !bill.supplier) localStorage.removeItem(DRAFT);
-      else localStorage.setItem(DRAFT, JSON.stringify({ bill, lines }));
+      else localStorage.setItem(DRAFT, JSON.stringify({ bill, lines, idem }));
     } catch {
       /* เก็บไม่ได้ก็แค่ไม่จำ */
     }
-  }, [bill, lines, loaded]);
+  }, [bill, lines, loaded, idem]);
 
-  async function add(p: ProductRow) {
+  async function add(p: Pick<ProductRow, "sku" | "name" | "isCustomMade">) {
     if (p.isCustomMade) {
       toast.info({
         text: `${shortName(p.name)} เป็นสินค้าสั่งตัด`,
@@ -106,7 +117,7 @@ export function useReceiveBill(mayCost: boolean, onSaved: () => void) {
     }
   }
 
-  return { bill, setBill, lines, setLines, open, setOpen, taps, add, mayCost, onSaved };
+  return { bill, setBill, lines, setLines, open, setOpen, taps, add, mayCost, onSaved, idem, renewIdem };
 }
 
 export type ReceiveBillState = ReturnType<typeof useReceiveBill>;
@@ -139,7 +150,25 @@ export function ReceiveBill({ b }: { b: ReceiveBillState }) {
   const suppliers = useApi<{ suppliers: { id: number; name: string }[] }>("/suppliers");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  /** เพิ่มสินค้าใหม่จากในบิล — ร้านขอ 21 ก.ย. 2026 ของที่ไม่เคยมีมากับบิลก็ใส่บิลเดียวกันได้ */
+  const [creating, setCreating] = useState(false);
   const { bill, setBill, lines, setLines, mayCost } = b;
+
+  async function putInBill(id: number, failed: string) {
+    setCreating(false);
+    try {
+      const { product } = await api.get<{ product: ProductDetail }>(`/products/${id}`);
+      await b.add(product);
+    } catch {
+      toast.warning({ text: failed, detail: "ค้นสินค้าแล้วกด + ใส่บิล เอง" });
+    }
+    b.setOpen(true);
+  }
+
+  function startNew() {
+    b.setOpen(false);
+    setCreating(true);
+  }
 
   const setB = (patch: Partial<Bill>) => setBill((x) => ({ ...x, ...patch }));
   const setLine = (sku: string, patch: Partial<Line>) =>
@@ -159,6 +188,7 @@ export function ReceiveBill({ b }: { b: ReceiveBillState }) {
     setProblem(null);
     try {
       const { lots } = await api.post<{ lots: CreatedLot[] }>("/lots/many", {
+        idem_key: b.idem || null,
         supplier_id: await supplierIdOf(bill.supplier),
         received_date: bill.received,
         reference_doc: bill.doc.trim() || null,
@@ -182,6 +212,7 @@ export function ReceiveBill({ b }: { b: ReceiveBillState }) {
       else toast.success(said);
       setLines([]);
       setBill(EMPTY_BILL());
+      b.renewIdem();
       b.setOpen(false);
       b.onSaved();
     } catch (err) {
@@ -219,6 +250,9 @@ export function ReceiveBill({ b }: { b: ReceiveBillState }) {
               <div className="chips">
                 <button type="button" className="btn btn--primary" onClick={() => b.setOpen(false)}>
                   ไปเลือกสินค้า
+                </button>
+                <button type="button" className="btn" onClick={startNew}>
+                  + สินค้าใหม่
                 </button>
               </div>
             </div>
@@ -345,6 +379,11 @@ export function ReceiveBill({ b }: { b: ReceiveBillState }) {
                     </li>
                   ))}
                 </ul>
+                <div className="chips">
+                  <button type="button" className="btn btn--small" onClick={startNew} disabled={busy}>
+                    + สินค้าใหม่ที่ยังไม่เคยมี
+                  </button>
+                </div>
                 {/* ต้นทุนรวมทั้งบิล — ไว้เทียบยอดท้ายใบกำกับ (ร้านขอ 19 ก.ย. 2026) */}
                 {mayCost ? (
                   <p className="billtotal">
@@ -380,6 +419,7 @@ export function ReceiveBill({ b }: { b: ReceiveBillState }) {
                   onClick={() => {
                     setLines([]);
                     setBill(EMPTY_BILL());
+                    b.renewIdem();
                     setProblem(null);
                   }}
                   disabled={busy}
@@ -390,6 +430,24 @@ export function ReceiveBill({ b }: { b: ReceiveBillState }) {
             </form>
           )}
         </TaskDialog>
+      ) : null}
+
+      {creating ? (
+        <NewProductDialog
+          title="เพิ่มสินค้าใหม่เข้าบิล"
+          make="stock"
+          // ไม่เปิดล็อตตรงนี้ — ของเข้าคลังพร้อมบิลทั้งใบตอนกดรับเข้า
+          onClose={() => {
+            setCreating(false);
+            b.setOpen(true);
+          }}
+          onSaved={async (id) => {
+            await putInBill(id, "เพิ่มสินค้าแล้ว แต่ใส่บิลไม่สำเร็จ");
+            b.onSaved();
+          }}
+          // ชื่อซ้ำกับของเดิม แล้วกดใช้ตัวเดิม — ใส่ตัวเดิมลงบิลแทน
+          onUseExisting={(id) => void putInBill(id, "ใส่บิลไม่สำเร็จ")}
+        />
       ) : null}
     </>
   );

@@ -132,6 +132,7 @@ final class ActivityLog
         'deliver'      => 'ส่งมอบ',
         'payments'     => 'รับชำระเงิน',
         'payment_edit' => 'แก้ไขการรับเงิน',
+        'item_edit'    => 'แก้ไขรายการขาย',
         'appointment'  => 'นัดหมาย',
         'open-case'    => 'เปิดเคสจากคิว',
         'remind'       => 'ส่งเตือนคิว',

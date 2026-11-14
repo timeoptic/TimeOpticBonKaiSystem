@@ -23,19 +23,19 @@
      สามสีหลักของระบบ ทั้งสามสว่างราว L 76% เท่ากันหมด เขียนตัวหนังสือทับไม่ได้
      (คอนทราสต์บนขาวแค่ 1.9–2.2:1) คู่ ink/deep ข้างล่างจึงมีไว้สำหรับตัวอักษร
      และไอคอน ส่วน tint/edge ไว้ทำพื้นชิปกับขอบ — ทุกค่าคำนวณแล้วผ่าน WCAG AA */
-  /* Bewell: สีหลักเป็นฟ้าของเว็บทีม #1E73BE — ชื่อตัวแปรยัง "green" ไว้ เพราะถูกอ้าง
+  /* Bewell: สีหลักเป็นฟ้าของเว็บทีม #1C1C1C — ชื่อตัวแปรยัง "green" ไว้ เพราะถูกอ้าง
      อยู่ร้อยกว่าจุด เปลี่ยนค่าที่นี่ที่เดียวทั้งแอปเปลี่ยนตาม · ฟ้านี้เข้มพอ (ขาวทับได้ 4.9:1)
      ปุ่ม/เมนูที่ทาสีหลักจึงใช้ตัวหนังสือขาว (--on-brand) แทนหมึกเข้มแบบเขียวเดิม */
-  --green:#1E73BE;   /* สีหลัก — ตัวตนแบรนด์ ปุ่มหลัก */
-  --mint:#3D8FD6;    /* สีรอง — งานที่กำลังเดินอยู่ */
-  --cyan:#4DBDD1;    /* สีเสริม — ข้อมูล นัดหมาย หมวดหมู่ */
+  --green:#1C1C1C;   /* สีหลัก — ตัวตนแบรนด์ ปุ่มหลัก */
+  --mint:#D62828;    /* สีรอง — งานที่กำลังเดินอยู่ */
+  --cyan:#1F5FD6;    /* สีเสริม — ข้อมูล นัดหมาย หมวดหมู่ */
   --on-brand:#FFFFFF;
-  --brand-hover:#1A65A8;
+  --brand-hover:#000000;
 
-  --green-ink:#1E73BE; --mint-ink:#2A6FAE; --cyan-ink:#1E8292;    /* 4.5:1 บนขาว */
-  --green-deep:#124E82; --mint-deep:#174F80; --cyan-deep:#13616E; /* 7:1 — ตัวเล็ก */
-  --green-tint:#E8F1FA; --mint-tint:#E6F0FA; --cyan-tint:#E1FAFE;
-  --green-edge:#B9D5EF; --mint-edge:#BCD6EE; --cyan-edge:#B1E8F3;
+  --green-ink:#1C1C1C; --mint-ink:#C1121F; --cyan-ink:#1A55C2;    /* 4.5:1 บนขาว */
+  --green-deep:#000000; --mint-deep:#8B0D16; --cyan-deep:#123E8C; /* 7:1 — ตัวเล็ก */
+  --green-tint:#F1F1F1; --mint-tint:#FDECEC; --cyan-tint:#E8F0FD;
+  --green-edge:#D4D4D4; --mint-edge:#F5C2C4; --cyan-edge:#BCD2F7;
 
   /* สถานะ "เสร็จแล้ว / สำเร็จ" ยังเป็นเขียว — สีหลักเป็นฟ้าแล้ว ถ้าตามไปเป็นฟ้าด้วย
      ป้าย "เสร็จ" จะกลืนกับปุ่มและลิงก์ทั้งหน้า */
@@ -43,7 +43,7 @@
 
   /* ไล่สีมีที่เดียวในระบบ: เมนูที่กำลังเปิดอยู่ ที่อื่นห้ามใช้
      ไล่สีเป็นของประดับที่ถูกที่สุดและเลี่ยนที่สุด — จำกัดไว้จุดเดียวมันถึงมีความหมาย */
-  --grad-brand:linear-gradient(135deg,#1E73BE 0%,#3D8FD6 100%);
+  --grad-brand:linear-gradient(135deg,#1C1C1C 0%,#D62828 100%);
 
   /* ── กระดาษกับหมึก ───────────────────────────────────────────────────────
      พื้นแอปเย็นอ่อน การ์ดขาวสนิท — ต่างกันแค่ 5% แต่พอให้การ์ดลอยโดยไม่ต้องตีกรอบ */
@@ -81,7 +81,7 @@
   --shadow-lg:0 2px 4px rgba(15,23,42,.04), 0 18px 40px -18px rgba(15,23,42,.20);
   --shadow-pop:0 8px 12px -6px rgba(15,23,42,.10), 0 32px 64px -24px rgba(15,23,42,.28);
   /* เงาสีแบรนด์ ใช้กับของที่เป็นสีเขียวเท่านั้น — เงาเทาใต้ปุ่มเขียวดูเป็นคราบ */
-  --shadow-green:0 2px 6px rgba(30,115,190,.16), 0 10px 24px -12px rgba(30,115,190,.36);
+  --shadow-green:0 2px 6px rgba(28,28,28,.16), 0 10px 24px -12px rgba(28,28,28,.36);
 
   --rule-hair:1px solid var(--line-soft);
   --rule-soft:1px solid var(--line);
@@ -1059,7 +1059,7 @@ legend{font-size:12px;font-weight:700;color:var(--accent-deep);letter-spacing:.3
 
 /* ---------------- buttons ---------------- */
 /* ปุ่มหลักเป็นเขียวแบรนด์เต็ม ๆ กับตัวหนังสือหมึกเข้ม ไม่ใช่ขาว
-   (Bewell: สีหลักเป็นฟ้า #1E73BE แล้ว — เข้มพอให้ตัวหนังสือขาวทับได้ 4.9:1 ปุ่มหลักจึงใช้ --on-brand)
+   (Bewell: สีหลักเป็นฟ้า #1C1C1C แล้ว — เข้มพอให้ตัวหนังสือขาวทับได้ 4.9:1 ปุ่มหลักจึงใช้ --on-brand)
    ซึ่งเป็นทั้งเรื่องอ่านออกและเรื่องทิศทาง — ทั้งจอต้องสว่าง
 
    ลำดับชั้นของปุ่มมีสามระดับเท่านั้น:
@@ -3884,6 +3884,20 @@ table.grid.data-grid tr.row-danger td:first-child{border-left-color:var(--danger
 .dup-who b{font-size:14px}
 .dup-who .muted{font-size:12.5px}
 .dup-why{display:flex;gap:5px;flex-wrap:wrap;margin-top:2px}
+.dup-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.btn.dup-force{background:#FCD34D;border-color:#FCD34D;color:#1f2937}
+.btn.dup-force:hover{background:#FBBF24;border-color:#FBBF24}
+.dup-force-ico{display:none}
+/* จอโทรศัพท์: ปุ่มลงไปอยู่ใต้ชื่อเต็มแถว "ใช้ลูกค้ารายนี้" ขึ้นก่อน เพราะเป็นทางที่อยากให้กดมากกว่า */
+@media (max-width:640px){
+  .dup-list li{flex-direction:column;align-items:stretch}
+  /* สองปุ่มอยู่แถวเดียวเมื่อพอ จอแคบกว่านั้นปุ่มเหลืองลงไปเต็มแถวของมันเอง — ไม่ล้นกล่อง */
+  .dup-actions{gap:8px}
+  .dup-actions .btn{flex:1 1 130px;padding:10px 14px}
+  .dup-actions .btn:not(.dup-force){order:1}
+  .dup-actions .dup-force{order:2;flex-basis:260px;white-space:normal;text-align:center;line-height:1.35}
+  .dup-force-ico{display:inline-block}
+}
 
 /* ── หน้าเลือกระบบ (/hub) ───────────────────────────────────────────────────
    สองทางเลือกเท่านั้น จึงเป็นสองการ์ดเท่ากัน ไม่ใช่รายการ — คนที่มาถึงหน้านี้
@@ -3911,8 +3925,8 @@ table.grid.data-grid tr.row-danger td:first-child{border-left-color:var(--danger
   display:flow-root;
   min-height:100dvh;
   background:
-    radial-gradient(1200px 600px at 12% -10%, rgba(30,115,190,.14), transparent 60%),
-    radial-gradient(900px 500px at 88% 8%, rgba(77,189,209,.20), transparent 55%),
+    radial-gradient(1200px 600px at 12% -10%, rgba(28,28,28,.14), transparent 60%),
+    radial-gradient(900px 500px at 88% 8%, rgba(31,95,214,.20), transparent 55%),
     var(--bg);
 }
 

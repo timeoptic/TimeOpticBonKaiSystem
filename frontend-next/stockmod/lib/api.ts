@@ -164,7 +164,7 @@ export type Actor = {
   mustChangePassword: boolean;
 };
 
-export type RoleKey = "superuser" | "owner" | "admin" | "sales" | "trainee" | "stock";
+export type RoleKey = "superuser" | "owner" | "admin" | "sales" | "trainee" | "stock" | "accounting" | "branch";
 
 /**
  * The five product types, in the order every screen lists them.
@@ -242,6 +242,8 @@ export type LotRow = {
   expiryDate: string | null;
   expiringSoon: boolean;
   value: number | null;
+  /** หมายเหตุตอนรับเข้า — ไม่มีในล็อตที่หน้ารับเข้าประกอบเองตอนเปิดกล่องแก้ล็อต */
+  notes?: string | null;
 };
 
 export type MovementRow = {
@@ -267,12 +269,21 @@ export type MovementRow = {
   returned: boolean;
   /** เคสหน้าร้านที่ตัดของรายการนี้ — แก้ที่หน้าเคส ไม่ใช่ที่คลัง */
   caseId: number | null;
+  /** เลขเคสของใบสั่งตัด RX (มากกว่าหนึ่งคั่นด้วยจุลภาค) — แถวอื่นเป็น null */
+  caseCode: string | null;
+  /** วันที่ติ๊กเลนส์ RX มาถึงร้าน และเลขรับ — เฉพาะแถว RX_ORDER · null คือยังรอเลนส์ */
+  rxArrivedAt: string | null;
+  rxArrivedRef: string | null;
   /** Set only when another branch took it, which makes the row a receivable. */
   branchIssueId: number | null;
   branchName: string | null;
   takenBy: string | null;
+  /** เลขบิล/หมายเหตุที่พิมพ์ตอนสาขาเบิก — แถวรับคืนของใบเดียวกันก็มี */
+  branchNote: string | null;
   branchStatus: "pending" | "settled" | "written_off" | "cancelled" | null;
   branchStatusLabel: string | null;
+  /** แถวหักกลบค้างส่ง: เลขเคส/เอกสารของการขายที่ของล็อตนี้ไปจ่ายแทน (ลิ้นชักสินค้าเท่านั้น) */
+  settles?: string[] | null;
   settledAmount: number | null;
   settledAt: string | null;
   /** Null until the branch has paid — profit belongs to the day money arrived. */
@@ -374,6 +385,15 @@ export type RxOrderRow = {
   arrivedByName: string | null;
   /** เลขรับของที่มากับเลนส์ ใส่ตอนติ๊กว่ามาถึง (037) */
   arrivedRef: string | null;
+  /** เลนส์ใบนี้เจียร์เสียเมื่อไร (039) — null คือไม่ได้เสีย · ใบที่เสียปิดไปแล้ว แก้ไม่ได้ */
+  scrappedAt: string | null;
+  /** ชื่อคนที่ทำเสีย พิมพ์ตอนกด — ไม่ใช่บัญชีผู้ใช้ */
+  scrapBy: string | null;
+  scrapNote: string | null;
+  /** ใบที่เปิดแทนใบนี้ — null คือยังไม่ได้สั่งใหม่ */
+  replacedBy: { id: number; referenceDoc: string | null } | null;
+  /** ใบที่เจียร์เสียซึ่งใบนี้เปิดแทน — null คือใบสั่งปกติ */
+  replaces: { id: number; referenceDoc: string | null } | null;
 };
 
 /**

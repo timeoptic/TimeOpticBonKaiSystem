@@ -15,7 +15,7 @@
  * (Task 2's orderVals()) will compute and validate. The stored discount rides
  * along in the same live state even though nothing here can edit it any more.
  */
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api } from '../../../lib/apiClient.js';
@@ -218,6 +218,17 @@ export function OrderFormView({
   /** ข้างที่กำลังยกเลิกใบสั่งตัดอยู่ กันกดซ้ำระหว่างรอ API */
   const [dropping, setDropping] = useState(null);
 
+  /* บันทึกออเดอร์เองทันทีหลังเปิดหรือล้างใบสั่งตัด RX (ร้านขอ 3 พ.ย. 2026) — เดิมต้องกด
+     "บันทึกการแก้ไข" ก่อน ใบสั่งจึงผูกกับออเดอร์ · CASE-2026-00408: เปิด RX แล้วกด "จบขั้นตอน"
+     ทันที ออเดอร์ไม่ถูกบันทึก ใบ RX ลอย และเลนส์สต็อกเดิมโดนตัดซ้ำ · ส่งทั้งฟอร์มผ่าน
+     requestSubmit หลัง render ที่ rxLens เปลี่ยนแล้ว ให้ save() อ่านค่าใหม่ · เฉพาะออเดอร์ที่มีอยู่แล้ว
+     ออเดอร์ใหม่ยังต้องกด "เปิดออเดอร์" เอง ไม่สร้างออเดอร์ครึ่ง ๆ กลาง ๆ ให้ */
+  const formRef = useRef(null);
+  const [autoSave, setAutoSave] = useState(0);
+  useEffect(() => {
+    if (autoSave && editing) formRef.current?.requestSubmit();
+  }, [autoSave, editing]);
+
   /* ประวัติแว่นเดิม — ยิงแยกจากตัวออเดอร์เพราะลูกค้าเปลี่ยนได้ทีหลัง เมื่อคนขายเลือก
      จาก Picker ในโหมดออเดอร์ลอย (ไม่มีเคส) ต้องโหลดประวัติของคนใหม่ตามไปด้วย
      exclude_case กันไม่ให้เคสที่กำลังเปิดอยู่โผล่มาเป็น "ของเดิม" ของตัวเอง */
@@ -326,6 +337,9 @@ export function OrderFormView({
         sku: o[`lens_${side}_sku`] || '',
         /* คลังติ๊กว่าเลนส์มาถึงเมื่อไร (orderDetail) — ใบที่เพิ่งเปิดในหน้านี้ยังไม่มีทางมาถึง */
         arrivedAt: o[`lens_${side}_rx_arrived_at`] || null,
+        /* คลังกดว่าเลนส์เจียร์เสีย (orderDetail) — ใบนี้เสียและยังไม่มีใบแทน / ใบก่อนหน้าที่เสีย */
+        scrappedAt: o[`lens_${side}_rx_scrapped_at`] || null,
+        scraps: o[`lens_${side}_rx_scraps`] || [],
       }
       : null;
   };
@@ -338,7 +352,9 @@ export function OrderFormView({
     setDropping(side);
     try {
       await api.post(`/stock-api/rx/${rx.id}/delete`, { note: 'ล้างเลนส์ออกจากออเดอร์ที่หน้าเคส' });
-      ok(`ยกเลิกใบสั่ง ${rx.referenceDoc} แล้ว — กดบันทึกออเดอร์เพื่อเก็บการเปลี่ยนแปลง`);
+      ok(editing
+        ? `ยกเลิกใบสั่ง ${rx.referenceDoc} แล้ว`
+        : `ยกเลิกใบสั่ง ${rx.referenceDoc} แล้ว — กดเปิดออเดอร์เพื่อเก็บการเปลี่ยนแปลง`);
     } catch (ex) {
       if (ex.status !== 404 && ex.reason !== 'already_cancelled') {
         err(ex);
@@ -348,6 +364,7 @@ export function OrderFormView({
     }
     setDropping(null);
     setRxLens((m) => ({ ...m, [side]: null }));
+    setAutoSave((n) => n + 1);
   };
 
   const chooseCustomer = async (r) => {
@@ -584,7 +601,7 @@ export function OrderFormView({
         </Card>
       </Split>
 
-      <form onSubmit={onSubmit(save)}>
+      <form ref={formRef} onSubmit={onSubmit(save)}>
         {/* ล็อก = ปิดทุกช่องในครั้งเดียว · display:contents ไม่ให้กล่องนี้เปลี่ยนเลย์เอาต์
             pointerEvents กันแถวในรายการที่กดได้แต่ไม่ใช่ปุ่ม ซึ่ง disabled ไปไม่ถึง */}
         {locked ? <style>{'.order-form-locked .card{opacity:.65}'}</style> : null}
@@ -710,7 +727,9 @@ export function OrderFormView({
                         {asking === side ? 'ยกเลิกใบสั่งนี้ในคลังด้วย?' : rxSub(rx)}
                       </span>
                       <span className="p-id">{rx.referenceDoc}</span>
-                      {asking === side ? null : <RxArrival arrivedAt={rx.arrivedAt} />}
+                      {asking === side ? null : (
+                        <RxArrival arrivedAt={rx.arrivedAt} scrappedAt={rx.scrappedAt} scraps={rx.scraps} />
+                      )}
                       {asking === side ? (
                         <>
                           <button
@@ -771,6 +790,14 @@ export function OrderFormView({
                         >
                           <Icon name="glasses" /> สั่งตัดเลนส์ RX ({side.toUpperCase()})
                         </button>
+                      ) : null}
+                      {/* ใบที่ออเดอร์เคยผูกไว้ถูกลบ/ยกเลิกที่หน้าคลังแล้ว (API ตัดลิงก์ทิ้ง
+                          ใน orderDetail) — บอกไว้ คนจะได้ไม่งงว่าใบเดิมหายไปไหน */}
+                      {!item && rxLens[side] === undefined && o[`lens_${side}_rx_gone_doc`] ? (
+                        <p className="muted" style={{ margin: '0 0 10px' }}>
+                          ใบสั่งตัด {o[`lens_${side}_rx_gone_doc`]} ที่เคยผูกไว้ถูกลบที่หน้าคลังแล้ว
+                          — กดสั่งตัดใหม่ แล้วบันทึกออเดอร์
+                        </p>
                       ) : null}
                     </>
                   )}
@@ -847,6 +874,7 @@ export function OrderFormView({
             onRx={(order) => {
               setRxLens((m) => ({ ...m, [rxFor]: order }));
               setRxFor(null);
+              setAutoSave((n) => n + 1);
             }}
           />
         ) : null}

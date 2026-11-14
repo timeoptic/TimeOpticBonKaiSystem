@@ -212,10 +212,12 @@ export default function IssuePage() {
   const [scrapBy, setScrapBy] = useState("");
 
   /**
-   * ตัวเลือกที่กดในดรอปดาวน์สาเหตุ — ของหน้าจอ ไม่ใช่ของสมุด
+   * ตัวเลือกที่กดในดรอปดาวน์สาเหตุ — หมวดของสาเหตุ
    *
-   * สิ่งที่ถูกบันทึกคือ `note` เสมอ ตัวนี้แค่จำว่าดรอปดาวน์ค้างอยู่บรรทัดไหน
-   * เก็บแยกกันเพราะ "อื่น ๆ" ไม่ใช่ข้อความที่จะลงสมุด มันคือคำสั่งให้เปิดช่องพิมพ์
+   * ช่องเขียนสาเหตุอยู่คู่กันเสมอ (ร้านขอ 30 ก.ย. 2026) — "เจียร์เสีย" เฉย ๆ ยังไม่บอกว่าเสีย
+   * เพราะอะไร (เลนส์หลวม เลนส์แตก) · ไม่บังคับทั้งสองช่อง · ที่ลงสมุดคือ "หมวด — สาเหตุที่เขียน"
+   * (ดู `scrapNote`) หมวดยังอยู่ต้นบรรทัด การไล่ดูว่าของหายไปกับอะไรมากที่สุดจึงยังนับตาม
+   * หมวดได้ · "อื่น ๆ" กับไม่เลือกหมวด ลงเฉพาะสาเหตุที่เขียน
    */
   const [reason, setReason] = useState("");
 
@@ -272,15 +274,16 @@ export default function IssuePage() {
   const isBranch = kind === "issue" && recipient === "branch";
   const activeBranches = branches.status === "ready" ? branches.data.branches : [];
 
-  /**
-   * เลือกสาเหตุแล้วสาเหตุนั้นกลายเป็นหมายเหตุเลย
-   *
-   * ยกเว้น "อื่น ๆ" ซึ่งเปิดช่องพิมพ์แทน — ล้างของเดิมทิ้งด้วย ไม่งั้นสาเหตุที่
-   * เพิ่งกดไว้จะค้างอยู่ในช่องที่กำลังจะพิมพ์ทับ
-   */
+  /** เลือกหมวดของสาเหตุ — สาเหตุที่เขียนไว้แล้วไม่ถูกแตะ */
   function pickReason(v: string) {
     setReason(v);
-    setNote(v === OTHER_REASON ? "" : v);
+  }
+
+  /** ข้อความที่ลงสมุดของแถวของเสีย: หมวด (ถ้าเลือก) นำหน้าสาเหตุที่เขียน (ถ้าเขียน) */
+  function scrapNote(): string | null {
+    const why = note.trim();
+    const group = reason !== "" && reason !== OTHER_REASON ? reason : "";
+    return [group, why].filter(Boolean).join(" — ") || null;
   }
 
   function reset() {
@@ -446,7 +449,7 @@ export default function IssuePage() {
         idem_key: idemKey,
         items: going.map((l) => ({ sku: l.sku, quantity: l.qty })),
         reference_doc: doc.trim() || null,
-        note: note.trim() || null,
+        note: kind === "scrap" ? scrapNote() : note.trim() || null,
         // Exactly one of these, which is what the API insists on. A scrap names
         // the person by the name typed, never by an account.
         ...(kind === "scrap"
@@ -960,8 +963,11 @@ export default function IssuePage() {
                 ปล่อยให้พิมพ์เองแปลว่า "เจียร์เสีย" "เจียรเสีย" "เจียนเสีย" จะ
                 กลายเป็นสามสาเหตุตอนไล่ดูย้อนหลังว่าของหายไปกับอะไรมากที่สุด
 
-                เหลือ "อื่น ๆ" ไว้ให้พิมพ์ เพราะวันหนึ่งจะมีสาเหตุที่สี่ และการ
-                บังคับให้เลือกผิด ๆ ไปหนึ่งข้อแย่กว่าปล่อยให้เขียนตามจริง */}
+                เหลือ "อื่น ๆ" ไว้ เพราะวันหนึ่งจะมีสาเหตุที่สี่ และการบังคับให้เลือก
+                ผิด ๆ ไปหนึ่งข้อแย่กว่าปล่อยให้เขียนตามจริง
+
+                ช่องเขียนสาเหตุอยู่ตลอด ไม่ใช่เฉพาะตอนเลือก "อื่น ๆ" (ร้านขอ 30 ก.ย. 2026)
+                — หมวดบอกว่าเสียแบบไหน ช่องนี้บอกว่าเพราะอะไร · ไม่บังคับกรอก */}
             {kind === "scrap" ? (
               <>
                 <div className="field">
@@ -982,22 +988,21 @@ export default function IssuePage() {
                   />
                 </div>
 
-                {reason === OTHER_REASON ? (
-                  <div className="field">
-                    <label className="field__label" htmlFor="if-note">
-                      เขียนสาเหตุ
-                    </label>
-                    <input
-                      id="if-note"
-                      className="input"
-                      value={note}
-                      onChange={(e) => setNote(e.target.value)}
-                      placeholder="เช่น ขอบบิ่นตอนใส่กรอบ"
-                      disabled={busy}
-                      autoComplete="off"
-                    />
-                  </div>
-                ) : null}
+                <div className="field">
+                  <label className="field__label" htmlFor="if-note">
+                    เขียนสาเหตุ
+                  </label>
+                  <input
+                    id="if-note"
+                    className="input"
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    placeholder="เช่น เลนส์หลวม · เลนส์แตก · ขอบบิ่นตอนใส่กรอบ"
+                    maxLength={400}
+                    disabled={busy}
+                    autoComplete="off"
+                  />
+                </div>
               </>
             ) : (
               <div className="field">

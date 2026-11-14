@@ -17,7 +17,8 @@ const CASE = JSON.parse(readFileSync(new URL('./fixtures/case-payment.json', imp
 const ORDER = CASE.order;
 const ACTOR = {
   id: 1, username: 'e2e.admin', displayName: 'แอดมินทดสอบ', roleText: 'Admin',
-  roles: ['admin'], perms: ['frontdesk.use', 'case.view_all', 'money.zone', 'system.zone'],
+  /* receipt.issue — ปุ่มออกใบเสร็จเห็นเฉพาะคนในรายชื่อ (Pom/Tik/Bow) */
+  roles: ['admin'], perms: ['frontdesk.use', 'case.view_all', 'money.zone', 'system.zone', 'receipt.issue'],
   home: '/', mustChangePassword: false,
 };
 const META = {
@@ -91,11 +92,19 @@ test('หน้าใบเสร็จ: ยังไม่ออก → ไม�
   expect(calls.some((c) => c.p.endsWith('/issue'))).toBe(false);
 
   await page.getByRole('button', { name: 'ออกใบเสร็จ' }).first().click();
-  await page.locator('.modal').getByRole('button', { name: 'ออกใบเสร็จ' }).click();
+  /* กล่องยืนยันมีช่องวันที่บนใบ ค่าเริ่มวันนี้ และบอกชุดเลขของเดือนที่เลือก */
+  const modal = page.locator('.modal');
+  await expect(modal.getByText('วันที่บนใบเสร็จ')).toBeVisible();
+  const now = new Date();
+  const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  await expect(modal.getByText(`Bill-${ym}-xxxxx`, { exact: false })).toBeVisible();
+  await modal.screenshot({ path: 'test-results/receipt-issue-date.png' });
+  await modal.getByRole('button', { name: 'ออกใบเสร็จ' }).click();
   await expect(page.getByText('Bill-2026-10-00343').first()).toBeVisible();
   const issueCall = calls.find((c) => c.p.endsWith('/issue'));
   expect(issueCall.body.order_id).toBe(ORDER.id);
   expect(issueCall.body.idem_key).toBeTruthy();
+  expect(issueCall.body.doc_date).toMatch(new RegExp(`^${ym}-\\d{2}$`));
 
   await page.getByRole('button', { name: /พิมพ์ใบเสร็จ/ }).click();
   await expect(page.getByText(/กระดาษออกมาหรือไม่/)).toBeVisible();

@@ -64,7 +64,7 @@ export default function LensHistoryPage() {
     }
     setExporting(true);
     try {
-      await frontdesk.download(`/api/lens-usage/export.xlsx${qs(query)}`, "Lens Usage - Be Well.xlsx");
+      await frontdesk.download(`/api/lens-usage/export.xlsx${qs(query)}`, "Lens Usage - BonKai.xlsx");
     } catch (e) {
       setNotice(`Export ไม่สำเร็จ: ${e instanceof Error ? e.message : ""}`);
     } finally {

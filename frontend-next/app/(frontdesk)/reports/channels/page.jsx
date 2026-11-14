@@ -62,6 +62,7 @@ export default function ChannelsReport() {
       <ReportFilter
         actions={<ExportButtons onExcel={csv} disabled={!data?.by_referral?.length} />}
         statusNote="หน้านี้ต้องนับเคสทั้งหมดเพื่อคิดอัตราปิดการขาย จึงกรองตามสถานะงานไม่ได้"
+        hideBy
       />
 
       <ReportState loading={loading} error={error} data={data}>

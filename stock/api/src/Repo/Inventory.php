@@ -513,6 +513,8 @@ final class Inventory
                     (SELECT cs.case_id FROM case_stock_issues cs
                       WHERE g.reference_doc IS NOT NULL AND cs.reference_doc = g.reference_doc
                       ORDER BY cs.id DESC LIMIT 1) AS case_id,
+                    /* เลขบิลที่พิมพ์ตอนสาขาเบิก — แถวรับคืนของใบเดียวกันได้เลขนี้ด้วย (ร้านขอ 22 ต.ค. 2026) */
+                    bi.note AS branch_note,
                     g.branch_issue_id, bi.taken_by, bi.status AS branch_status,
                     bi.settled_amount, bi.settled_at, bi.cost_total, br.name AS branch_name
              FROM inventory_logs g
@@ -526,6 +528,14 @@ final class Inventory
              LIMIT 40',
             [$id],
         );
+
+        $settles = self::shortfallSettles($id);
+        foreach ($logs as &$g) {
+            $g['settles'] = $g['action_type'] === 'ADJUST' && $g['reference_doc'] !== null
+                ? ($settles[$g['reference_doc']] ?? null)
+                : null;
+        }
+        unset($g);
 
         $onHand = 0;
         $value = 0.0;
@@ -560,6 +570,92 @@ final class Inventory
             'lots'         => array_map(static fn(array $r): array => self::shapeLot($r, $money), $lots),
             'logs'         => array_map(static fn(array $r): array => self::shapeLog($r, $money), $logs),
         ];
+    }
+
+    /**
+     * การหักกลบค้างส่งแต่ละครั้งไปจ่ายแทนการขายใบไหน (ร้านขอ 10 พ.ย. 2026)
+     *
+     * ตอนของมาถึง `Receiving::settleShortfall` ลงสองแถว ADJUST ที่มีเลข GRN-<ล็อตใหม่>
+     * แต่ไม่ได้จดว่าจ่ายแทนการขายใบไหน · ที่นี่ไล่ย้อนจากสมุดของล็อตค้างส่ง
+     * (`SHORT-<sku>`) แบบ FIFO: การขายเกินของ (OUT) เรียงตามลำดับลงสมุด หักแถวที่
+     * ยกเลิกคืนไปแล้ว แล้วแถวหักกลบ (ADJUST +) แต่ละแถวกินคิวนั้นตามจำนวน
+     * — ตรงกับที่ล็อตค้างส่งเป็นยอดรวมก้อนเดียว ไม่ได้ผูกชิ้นกับใบขาย
+     *
+     * @return array<string,list<string>> เลข GRN-… => เลขเคส/เอกสารของการขายที่จ่ายแทน
+     */
+    private static function shortfallSettles(int $productId): array
+    {
+        $rows = Db::all(
+            "SELECT g.id, g.action_type, g.quantity, g.reference_doc, g.reverses_log_id
+               FROM inventory_logs g
+               JOIN stock_lots l ON l.id = g.lot_id
+               JOIN products p ON p.id = l.product_id
+              WHERE g.product_id = ? AND l.lot_number = CONCAT('SHORT-', p.sku)
+              ORDER BY g.id",
+            [$productId],
+        );
+        if ($rows === []) {
+            return [];
+        }
+
+        // การขายเกินของที่ยังค้าง: id => [จำนวน, เลขอ้างอิง]
+        $owed = [];
+        foreach ($rows as $r) {
+            $qty = (int) $r['quantity'];
+            if ($r['action_type'] === 'OUT' && $qty < 0) {
+                $owed[(int) $r['id']] = [-$qty, $r['reference_doc'] ?? ('#' . $r['id'])];
+            } elseif ($r['action_type'] === 'RETURN' && $qty > 0) {
+                // คืนของจากการขายที่ยกเลิก — ใบนั้นไม่ต้องจ่ายแทนแล้ว
+                $target = $r['reverses_log_id'] !== null ? (int) $r['reverses_log_id'] : null;
+                if ($target === null) {
+                    foreach (array_reverse($owed, true) as $oid => [, $ref]) {
+                        if ($ref === $r['reference_doc']) {
+                            $target = $oid;
+                            break;
+                        }
+                    }
+                }
+                if ($target !== null && isset($owed[$target])) {
+                    $owed[$target][0] -= $qty;
+                    if ($owed[$target][0] <= 0) {
+                        unset($owed[$target]);
+                    }
+                }
+            }
+        }
+
+        $out = [];
+        $queue = $owed;
+        // เดินใหม่ตามลำดับเวลา: แถวหักกลบกินได้เฉพาะการขายที่เกิดก่อนมัน
+        $seen = [];
+        foreach ($rows as $r) {
+            $id = (int) $r['id'];
+            if (isset($queue[$id])) {
+                $seen[$id] = $queue[$id];
+                continue;
+            }
+            if ($r['action_type'] !== 'ADJUST' || (int) $r['quantity'] <= 0 || $r['reference_doc'] === null) {
+                continue;
+            }
+            $need = (int) $r['quantity'];
+            $refs = [];
+            foreach ($seen as $oid => [$left, $ref]) {
+                if ($need <= 0) {
+                    break;
+                }
+                $take = min($left, $need);
+                $need -= $take;
+                $refs[] = $ref;
+                $seen[$oid][0] -= $take;
+                if ($seen[$oid][0] <= 0) {
+                    unset($seen[$oid]);
+                }
+            }
+            if ($refs !== []) {
+                $out[$r['reference_doc']] = array_values(array_unique([...($out[$r['reference_doc']] ?? []), ...$refs]));
+            }
+        }
+        return $out;
     }
 
     /* ----------------------------------------------------------------- lots */
@@ -607,14 +703,15 @@ final class Inventory
              WHERE {$clause}",
             $args,
         );
-        [$page, $offset] = self::pageOf($filter['page'] ?? 1, $total);
-        array_push($args, self::PER_PAGE, $offset);
+        $per = self::perPage($filter['per'] ?? null);
+        [$page, $offset] = self::pageOf($filter['page'] ?? 1, $total, $per);
+        array_push($args, $per, $offset);
 
         $rows = Db::all(
             'SELECT l.id, l.lot_number, l.product_id, p.sku, p.name AS product_name,
                     p.product_type, sup.name AS supplier_name,
                     l.cost_per_unit, l.initial_qty, l.remaining_qty,
-                    l.received_date, l.expiry_date,
+                    l.received_date, l.expiry_date, l.notes,
                     (l.expiry_date IS NOT NULL AND l.remaining_qty > 0
                      AND l.expiry_date <= DATE_ADD(CURDATE(), INTERVAL ' . self::EXPIRY_WARN_DAYS . ' DAY)) AS expiring_soon
              FROM stock_lots l
@@ -630,7 +727,7 @@ final class Inventory
             'rows'    => array_map(static fn(array $r): array => self::shapeLotRow($r, $money), $rows),
             'total'   => $total,
             'page'    => $page,
-            'perPage' => self::PER_PAGE,
+            'perPage' => $per,
         ];
     }
 
@@ -658,6 +755,21 @@ final class Inventory
     }
 
     /* ------------------------------------------------------------ movements */
+
+    /**
+     * เลขใบสั่งตัด RX → เคสหน้าร้านที่ผูกใบนั้นไว้ (ร้านขอ 17 ต.ค. 2026 — ค้นหน้าความเคลื่อนไหวด้วยเลขเคส)
+     *
+     * ผูกด้วยเลขใบ ไม่ใช่ id แถว แถวลงต้นทุน / แก้ราคาขายของใบเดียวกันจึงขึ้นเลขเคสด้วย ·
+     * ใบที่กดซ้ำจนติดสองเคสได้เลขเคสทุกตัว คั่นด้วยจุลภาค
+     */
+    private const RX_CASES =
+        "SELECT rl.reference_doc AS doc, MAX(c.id) AS case_id,
+                GROUP_CONCAT(DISTINCT c.case_code ORDER BY c.id DESC SEPARATOR ', ') AS case_codes
+           FROM (SELECT lens_r_rx_id AS rx_id, case_id FROM custom_orders WHERE lens_r_rx_id IS NOT NULL
+                 UNION SELECT lens_l_rx_id, case_id FROM custom_orders WHERE lens_l_rx_id IS NOT NULL) x
+           JOIN inventory_logs rl ON rl.id = x.rx_id
+           JOIN cases c ON c.id = x.case_id
+          GROUP BY rl.reference_doc";
 
     /**
      * The ledger, which is also the list of transactions the books are built
@@ -688,10 +800,11 @@ final class Inventory
 
         if (!empty($filter['q'])) {
             $where[] = '(g.reference_doc LIKE ? OR p.sku LIKE ? OR p.name LIKE ? OR l.lot_number LIKE ?
-                         OR g.notes LIKE ? OR who.display_name LIKE ? OR bi.taken_by LIKE ? OR br.name LIKE ?
-                         OR g.scrap_by LIKE ?)';
+                         OR g.notes LIKE ? OR who.display_name LIKE ? OR bi.taken_by LIKE ? OR br.name LIKE ? OR bi.note LIKE ?
+                         OR g.scrap_by LIKE ?
+                         OR g.reference_doc IN (SELECT doc FROM (' . self::RX_CASES . ') hit WHERE hit.case_codes LIKE ?))';
             $like = '%' . $filter['q'] . '%';
-            array_push($args, $like, $like, $like, $like, $like, $like, $like, $like, $like);
+            array_push($args, $like, $like, $like, $like, $like, $like, $like, $like, $like, $like, $like);
         }
 
         // `< to + 1 day` rather than `<= to 23:59:59` — the latter drops anything
@@ -712,12 +825,15 @@ final class Inventory
              LEFT JOIN admins a ON a.id = g.created_by
              LEFT JOIN admins who ON who.id = g.issued_to_admin_id
              LEFT JOIN branch_issues bi ON bi.id = g.branch_issue_id
-             LEFT JOIN branches br ON br.id = bi.branch_id';
+             LEFT JOIN branches br ON br.id = bi.branch_id
+             LEFT JOIN (' . self::RX_CASES . ') rxc ON rxc.doc = g.reference_doc
+             LEFT JOIN rx_orders rxo ON rxo.log_id = g.id';
 
         $clause = implode(' AND ', $where);
         $total = (int) Db::value("SELECT COUNT(*) {$joins} WHERE {$clause}", $args);
-        [$page, $offset] = self::pageOf($filter['page'] ?? 1, $total);
-        array_push($args, self::PER_PAGE, $offset);
+        $per = self::perPage($filter['per'] ?? null);
+        [$page, $offset] = self::pageOf($filter['page'] ?? 1, $total, $per);
+        array_push($args, $per, $offset);
 
         $rows = Db::all(
             "SELECT g.id, g.action_type, g.quantity, g.unit_cost, g.sale_price, g.reference_doc, g.notes,
@@ -736,9 +852,14 @@ final class Inventory
                       (SELECT COALESCE(SUM(b.quantity), 0) FROM inventory_logs b
                         WHERE b.product_id = g.product_id AND b.lot_id IS NOT NULL AND b.id <= g.id)
                     END AS balance_after,
-                    (SELECT cs.case_id FROM case_stock_issues cs
+                    COALESCE((SELECT cs.case_id FROM case_stock_issues cs
                       WHERE g.reference_doc IS NOT NULL AND cs.reference_doc = g.reference_doc
-                      ORDER BY cs.id DESC LIMIT 1) AS case_id,
+                      ORDER BY cs.id DESC LIMIT 1), rxc.case_id) AS case_id,
+                    rxc.case_codes,
+                    /* วันที่เลนส์ RX มาถึงร้าน (036) — มีแค่แถวสั่งตัด RX (ร้านขอ 22 ต.ค. 2026) */
+                    rxo.arrived_at AS rx_arrived_at, rxo.arrived_ref AS rx_arrived_ref,
+                    /* เลขบิลที่พิมพ์ตอนสาขาเบิก — แถวรับคืนของใบเดียวกันได้เลขนี้ด้วย (ร้านขอ 22 ต.ค. 2026) */
+                    bi.note AS branch_note,
                     g.branch_issue_id, bi.taken_by, bi.status AS branch_status,
                     bi.settled_amount, bi.settled_at, bi.cost_total, br.name AS branch_name
              {$joins}
@@ -752,7 +873,7 @@ final class Inventory
             'rows'    => array_map(static fn(array $r): array => self::shapeLog($r, $money), $rows),
             'total'   => $total,
             'page'    => $page,
-            'perPage' => self::PER_PAGE,
+            'perPage' => $per,
         ];
     }
 
@@ -1418,6 +1539,7 @@ final class Inventory
             'expiryDate'   => $r['expiry_date'],
             'expiringSoon' => (bool) $r['expiring_soon'],
             'value'        => $cost === null ? null : round($cost * (int) $r['remaining_qty'], 2),
+            'notes'        => $r['notes'] ?? null,
         ];
     }
 
@@ -1454,11 +1576,19 @@ final class Inventory
             'returned'      => (bool) ($r['returned'] ?? false),
             // เคสหน้าร้านที่ตัดของรายการนี้ — แถวแบบนี้แก้ที่หน้าเคส ไม่ใช่ที่คลัง
             'caseId'        => isset($r['case_id']) && $r['case_id'] !== null ? (int) $r['case_id'] : null,
+            // เลขเคสของใบสั่งตัด RX (ผูกผ่าน custom_orders) — แถวอื่นไม่มี
+            'caseCode'      => $r['case_codes'] ?? null,
+            // ติ๊กเลนส์มาถึงที่หน้าใบสั่งตัด RX — ไม่ลงแถวใหม่ในสมุด จึงแสดงบนแถวสั่งตัดเอง
+            'rxArrivedAt'   => $r['rx_arrived_at'] ?? null,
+            'rxArrivedRef'  => $r['rx_arrived_ref'] ?? null,
+            // แถวหักกลบค้างส่ง: จ่ายแทนการขายใบไหน (เฉพาะลิ้นชักสินค้า · shortfallSettles)
+            'settles'       => $r['settles'] ?? null,
             'branchIssueId' => isset($r['branch_issue_id']) && $r['branch_issue_id'] !== null
                 ? (int) $r['branch_issue_id']
                 : null,
             'branchName'    => $r['branch_name'] ?? null,
             'takenBy'       => $r['taken_by'] ?? null,
+            'branchNote'    => $r['branch_note'] ?? null,
             'branchStatus'  => $r['branch_status'] ?? null,
             'branchStatusLabel' => match ($r['branch_status'] ?? null) {
                 'pending'     => 'ค้างรับเงิน',

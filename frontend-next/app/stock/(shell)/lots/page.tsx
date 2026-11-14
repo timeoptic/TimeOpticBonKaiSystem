@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { can, useActor, WorkHead } from "@/stockmod/components/AppShell";
 import { useToast } from "@/stockmod/components/Toaster";
-import Paginator from "@/stockmod/components/Paginator";
+import Paginator, { usePerPage } from "@/stockmod/components/Paginator";
 import SortHead, { SortBar, useSort } from "@/stockmod/components/SortHead";
 import LotEditDialog from "@/stockmod/components/LotEditDialog";
 import DateRangeField from "@/stockmod/components/DateRangeField";
@@ -57,6 +57,7 @@ export default function LotsPage() {
   const [applied, setApplied] = useState("");
   const [state, setState] = useState<string>("all");
   const [page, setPage] = useState(1);
+  const [per, setPer] = usePerPage("lots");
   /** ช่วงวันรับเข้า — ว่างทั้งคู่ = ทุกวัน */
   const [range, setRange] = useState({ from: "", to: "" });
   const { sort, dir, sortBy } = useSort<SortKey>("received", NATURAL_ASC);
@@ -75,7 +76,7 @@ export default function LotsPage() {
 
   const money$ = can.seeCost(useActor());
   const list = useApi<List>(
-    `/lots${qs({ state: state === "all" ? "" : state, q: applied, from: range.from, to: range.to, sort, dir, page })}`,
+    `/lots${qs({ state: state === "all" ? "" : state, q: applied, from: range.from, to: range.to, sort, dir, page, per })}`,
   );
   const summary = useApi<Summary>("/summary");
 
@@ -270,6 +271,7 @@ export default function LotsPage() {
                   : null,
                 money$ && r.value !== null ? { label: "มูลค่าคงเหลือ", value: money(r.value) } : null,
                 { label: "วันที่รับเข้า", value: date(r.receivedDate) },
+                r.notes ? { label: "หมายเหตุ", value: r.notes } : null,
                 r.expiryDate
                   ? {
                       label: "หมดอายุ",
@@ -331,6 +333,7 @@ export default function LotsPage() {
                   <td>
                     <span className="grid__name">{shortName(r.productName)}</span>
                     <span className="grid__sub">{r.sku}</span>
+                    {r.notes ? <span className="grid__sub">หมายเหตุ: {r.notes}</span> : null}
                   </td>
                   <td className="grid__num">
                     {r.remainingQty === 0 ? (
@@ -383,6 +386,10 @@ export default function LotsPage() {
             perPage={list.data.perPage}
             total={list.data.total}
             onPage={setPage}
+            onPerPage={(n) => {
+              setPer(n);
+              setPage(1);
+            }}
             label="ล็อต"
           />
         ) : null}

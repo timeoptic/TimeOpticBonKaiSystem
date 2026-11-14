@@ -247,7 +247,7 @@
 
 .pos-cart-empty b{display:block;color:var(--ink);font-weight:600;font-size:var(--t-base);margin-bottom:3px}
 
-.pos-line{padding:14px 16px;border-top:1px solid var(--line-soft);background:var(--card)}
+.pos-line{padding:14px 16px;border-top:1px solid var(--line-soft);background:var(--card);container-type:inline-size}
 
 .pos-thead + .pos-line{border-top:0}
 
@@ -282,8 +282,38 @@
 
 @media (max-width:760px){
   .pos-thead{display:none}
-  .pos-grid{grid-template-columns:1fr auto;row-gap:10px}
-  .pos-grid .pos-line-name{grid-column:1 / -1}
+}
+
+/* ช่องในแถว: ตอนกว้างเป็นเซลล์ตารางธรรมดา ป้ายชื่อซ่อน (หัวตารางบอกแล้ว) */
+.pos-cell-lab{display:none}
+.pos-price-box{position:relative;display:block}
+.pos-price-box i{display:none}
+.pos-line-sum b{font-weight:inherit}
+
+/* การ์ดแคบ — วัดจากความกว้างของแถวเอง ไม่ใช่จอ เพราะคอลัมน์บิลแคบได้แม้จอกว้าง
+   เรียงแนวตั้ง: ชื่อ → จำนวน (เต็มแถว) → ราคา (เต็มแถว) → รวมเงิน + ปุ่มลบ
+   ของเดิมยัด +/- กับช่องราคาไว้บรรทัดเดียว ช่องจำนวนเลยเหลือกว้างไม่ถึงตัวเลขหลักเดียว */
+@container (max-width:560px){
+  .pos-grid{grid-template-columns:minmax(0,1fr) auto;gap:12px}
+  .pos-grid .pos-line-name,
+  .pos-grid .pos-cell{grid-column:1 / -1}
+  .pos-cell{display:flex;flex-direction:column;gap:5px}
+  .pos-cell-lab{display:block;font-size:var(--t-xs);font-weight:600;color:var(--ink-soft)}
+
+  .pos-step{width:100%;background:var(--card)}
+  .pos-step button{width:48px;height:44px;flex:0 0 auto}
+  .pos-step input{flex:1 1 auto;min-width:0;width:auto;height:44px}
+
+  .pos-price-box i{
+    display:block;position:absolute;left:14px;top:50%;transform:translateY(-50%);
+    font-style:normal;color:var(--ink-faint);pointer-events:none;
+  }
+  .pos-line .pos-price{width:100%;height:44px;padding-left:32px;background:var(--card);border-color:var(--line)}
+
+  .pos-line .pos-line-sum{display:flex;align-items:baseline;gap:12px;text-align:left}
+  .pos-line-sum .pos-cell-lab{display:inline}
+  .pos-line-sum b{font-size:var(--t-lg);font-weight:700;color:var(--danger)}
+  .pos-line .pos-del{width:44px;height:44px}
 }
 
 .pos-line-top{display:flex;gap:10px;align-items:flex-start}
@@ -410,11 +440,6 @@
 .pos-newc-hit:hover{background:var(--green-tint);border-color:var(--green)}
 
 .pos-newc-hit small{display:block;color:var(--ink-faint)}
-
-@media (max-width:640px){
-  .pos-line-sum{margin-left:0;width:100%}
-  .pos-price{flex:1 1 90px;width:auto}
-}
 
 /* ---- ค้นหาสินค้า ---- */
 .pos-search{position:relative}

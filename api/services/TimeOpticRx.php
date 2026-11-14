@@ -150,7 +150,7 @@ final class TimeOpticRx
         $label = 'ใบสั่งตัด ' . ($doc !== '' ? $doc : '#' . $rx['id']) . ' (' . ($side === 'r' ? 'ขวา' : 'ซ้าย') . ')';
         $num   = static fn($v) => $v === null || $v === '' ? null : (string) $v;
         $note  = implode(' · ', array_filter([
-            'Bewell ' . $label,
+            'BonKai ' . $label,
             $o['invoice_code'] ? 'ออเดอร์ ' . $o['invoice_code'] : null,
             $o['case_code'] ? 'เคส ' . $o['case_code'] : null,
             trim((string) ($o['customer_name'] ?? '')) ?: null,

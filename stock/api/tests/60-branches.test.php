@@ -2104,8 +2104,8 @@ test('แดชบอร์ดนับใบสั่งแยกตามค�
         foreach ($rows as $r) {
             if ($r['branchId'] === null) { $self = $r; }
         }
-        ok($self !== null, 'ใบที่ร้านสั่งเองต้องมีก้อนของตัวเองชื่อ TIMEOPTIC @ Be Well MEDICAL CENTER');
-        eq($self['branch'], 'TIMEOPTIC @ Be Well MEDICAL CENTER', 'ชื่อก้อนของร้านเอง');
+        ok($self !== null, 'ใบที่ร้านสั่งเองต้องมีก้อนของตัวเองชื่อ TIMEOPTIC @ สาขาบ่อนไก่');
+        eq($self['branch'], 'TIMEOPTIC @ สาขาบ่อนไก่', 'ชื่อก้อนของร้านเอง');
         ok($self['orders'] >= 1, 'ใบที่ร้านสั่งเองต้องถูกนับ');
     });
 });

@@ -14,9 +14,10 @@ import { useToast } from "@/stockmod/components/Toaster";
 import RecordCard, { CardList } from "@/stockmod/components/RecordCard";
 import { IconChart } from "@/stockmod/components/Icon";
 import { download, type Sheet } from "@/stockmod/lib/workbook";
-import { when } from "@/stockmod/components/ExportDialog";
+import { rxArrivedSheet, when, type RxArrived } from "@/stockmod/components/ExportDialog";
+import { byFirstDate } from "@/stockmod/lib/byFirstDate";
 import { daysPng, INK, piePng, rankPng } from "@/stockmod/lib/chartimage";
-import Paginator from "@/stockmod/components/Paginator";
+import Paginator, { usePerPage } from "@/stockmod/components/Paginator";
 
 /**
  * ตารางในหน้านี้ที่ยาวได้ไม่จำกัด — แบ่งหน้าให้ทีละ 25 แถว
@@ -44,17 +45,23 @@ function Paged<T>({
   children: (shown: T[]) => ReactNode;
 }) {
   const [page, setPage] = useState(1);
-  const last = Math.max(1, Math.ceil(rows.length / perPage));
+  const [chosen, setChosen] = usePerPage("dashboard");
+  const per = chosen ?? perPage;
+  const last = Math.max(1, Math.ceil(rows.length / per));
   const current = Math.min(page, last);
 
   return (
     <>
-      {children(rows.slice((current - 1) * perPage, current * perPage))}
+      {children(rows.slice((current - 1) * per, current * per))}
       <Paginator
         page={current}
-        perPage={perPage}
+        perPage={per}
         total={rows.length}
         onPage={setPage}
+        onPerPage={(n) => {
+          setChosen(n);
+          setPage(1);
+        }}
         label={label}
       />
     </>
@@ -204,13 +211,14 @@ const SHEETS: readonly { value: string; label: string; hint: string }[] = [
   { value: "ใครเบิกมากสุด", label: "ใครเบิกมากสุด", hint: "นับทั้งการเบิกและการตัดของเสีย" },
   { value: "ของเสียแยกตามคน", label: "ของเสียแยกตามคน", hint: "เฉพาะใบที่ระบุชื่อคนทำไว้" },
   /* สองชีตทีละบรรทัด (ร้านขอ 18 ก.ย. 2026) — ดึงจาก /report/lines ตอนกดสร้างไฟล์ ไม่ได้มากับหน้าจอ */
-  { value: "ตัดออกแยกตามออเดอร์", label: "ตัดออกแยกตามออเดอร์", hint: "ของที่จ่ายออก/ตัดเสีย จัดกลุ่มตามเลขออเดอร์ มียอดรวมย่อย" },
+  { value: "ตัดออกแยกตามออเดอร์", label: "ตัดออกแยกตามออเดอร์", hint: "ของที่จ่ายออก/ตัดเสีย/สั่งตัด RX จัดกลุ่มตามเลขออเดอร์ มียอดรวมย่อย" },
   { value: "รับเข้ารายวัน", label: "รับเข้ารายวัน", hint: "แต่ละวันรับอะไรเข้ามา ทีละล็อต มียอดรวมย่อยรายวัน" },
+  { value: "เลนส์ RX มาถึง", label: "เลนส์ RX มาถึง", hint: "ใบสั่งตัด RX ที่ติ๊กเลนส์มาถึงในช่วงนี้ นับตามวันที่ติ๊ก" },
 ];
 
 /** หนึ่งบรรทัดของ /report/lines */
 type Line = {
-  kind: "IN" | "OUT" | "SCRAP";
+  kind: "IN" | "OUT" | "SCRAP" | "RX_ORDER";
   at: string;
   doc: string | null;
   branch: string | null;
@@ -381,7 +389,7 @@ export default function DashboardPage() {
     branch === ""
       ? null
       : branch === "self"
-        ? "TIMEOPTIC @ Be Well MEDICAL CENTER"
+        ? "TIMEOPTIC @ สาขาบ่อนไก่"
         : ((branches.status === "ready"
             ? branches.data.branches.find((b) => String(b.id) === branch)?.name
             : undefined) ?? "สาขา"),
@@ -707,8 +715,9 @@ export default function DashboardPage() {
       /* ชีตทีละบรรทัด — ถามเฉพาะตอนเลือกไว้ เพราะช่วงยาว ๆ มีหลายพันบรรทัด */
       const wantOrders = exSheets.includes("ตัดออกแยกตามออเดอร์");
       const wantIn = exSheets.includes("รับเข้ารายวัน");
-      if (wantOrders || wantIn) {
-        const res = await api.get<{ rows: Line[]; truncated: boolean }>(
+      const wantRx = exSheets.includes("เลนส์ RX มาถึง");
+      if (wantOrders || wantIn || wantRx) {
+        const res = await api.get<{ rows: Line[]; truncated: boolean; rxArrived?: RxArrived[] }>(
           `/report/lines${qs({ from: d.from, to: d.to, branch, type: ptype })}`,
         );
         const cut = res.truncated ? " · เกิน 20,000 บรรทัด ตัดท้ายออก — แคบช่วงวันลงแล้วออกใหม่" : "";
@@ -716,12 +725,14 @@ export default function DashboardPage() {
         if (wantOrders) {
           /* ออเดอร์ = เลขเอกสารในสมุด (หน้าร้านใส่เลขเคส) · ใบเบิกสาขาที่ไม่มีเลขใช้ชื่อสาขา */
           const keyOf = (l: Line) => l.doc ?? (l.branch ? `สาขา ${l.branch}` : "ไม่ระบุเอกสาร");
-          const out = res.rows
-            .filter((l) => l.kind !== "IN")
-            .sort((a, b) => keyOf(a).localeCompare(keyOf(b), "th") || a.at.localeCompare(b.at));
+          const out = byFirstDate(
+            res.rows.filter((l) => l.kind !== "IN"),
+            keyOf,
+            (l) => l.at,
+          );
           sheets.push({
             name: "ตัดออกแยกตามออเดอร์",
-            note: `จ่ายออกและตัดเสีย จัดกลุ่มตามเลขเอกสาร/ออเดอร์ มียอดรวมย่อยทุกออเดอร์${cut}`,
+            note: `จ่ายออก ตัดเสีย และสั่งตัด RX จัดกลุ่มตามเลขเอกสาร/ออเดอร์ มียอดรวมย่อยทุกออเดอร์${cut}`,
             groupBy: 0,
             columns: [
               { header: "ออเดอร์ / เอกสาร", width: 22 },
@@ -739,7 +750,7 @@ export default function DashboardPage() {
             rows: out.map((l) => [
               keyOf(l),
               when(l.at),
-              l.kind === "SCRAP" ? "ตัดเสีย" : "จ่ายออก",
+              l.kind === "SCRAP" ? "ตัดเสีย" : l.kind === "RX_ORDER" ? "สั่งตัด RX" : "จ่ายออก",
               l.sku,
               l.name,
               l.lot,
@@ -788,6 +799,8 @@ export default function DashboardPage() {
             ]),
           });
         }
+
+        if (wantRx) sheets.push(rxArrivedSheet(res.rxArrived ?? [], money$));
       }
 
       /* ไม่มีชีตไหนถูกตัดออกเพราะ "กรองไม่ได้" อีกแล้ว — ทุกชีตประกอบจากข้อมูล
@@ -916,7 +929,7 @@ export default function DashboardPage() {
               disabled={branches.status !== "ready"}
               options={[
                 { value: "", label: "ทุกสาขา" },
-                { value: "self", label: "TIMEOPTIC @ Be Well MEDICAL CENTER (ร้านนี้เอง)" },
+                { value: "self", label: "TIMEOPTIC @ สาขาบ่อนไก่ (ร้านนี้เอง)" },
                 ...(branches.status === "ready"
                   ? branches.data.branches.map((b) => ({ value: String(b.id), label: b.name }))
                   : []),

@@ -70,7 +70,7 @@ final class TimeOpticRequests
     public static function note(array $r): string
     {
         $parts = array_filter([
-            'Bewell ' . $r['req_no'],
+            'BonKai ' . $r['req_no'],
             $r['invoice_code'] ? 'ออเดอร์ ' . $r['invoice_code'] : null,
             $r['case_code'] ? 'เคส ' . $r['case_code'] : null,
             trim((string) ($r['customer_name'] ?? '')) ?: null,

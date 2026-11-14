@@ -138,6 +138,30 @@ test('คู่ค่าสายตา -1.25/-1.75 คือ SPH กับ CYL 
     });
 });
 
+test('เลขเดี่ยวคือ SPH อย่างเดียว ไม่ดู CYL · index ไม่มีเครื่องหมายยังเป็น index (ร้านขอ 27 ต.ค. 2026)', function () {
+    withRollback(function () {
+        $b = psBrand();
+        psLens($b, 'Blue (1.60) 0.00/0.00', ['sph' => '0.00', 'cyl' => '0.00', 'lens_index' => '1.60']);
+        psLens($b, 'Blue (1.60) 0.00/-4.00', ['sph' => '0.00', 'cyl' => '-4.00', 'lens_index' => '1.60']);
+        psLens($b, 'Blue (1.60) -4.00/0.00', ['sph' => '-4.00', 'cyl' => '0.00', 'lens_index' => '1.60']);
+        psLens($b, 'Blue (1.50) +1.50/0.00', ['sph' => '1.50', 'cyl' => '0.00', 'lens_index' => '1.50']);
+        psLens($b, 'Blue (1.60) +2.25/-0.50', ['sph' => '2.25', 'cyl' => '-0.50', 'lens_index' => '1.60']);
+        psLens($b, 'M6 Single -3.50/-1.00');   // คีย์ชื่อเอง ไม่มี sph ในสเปก
+        $zero = ["{$b} Blue (1.60) 0.00/-4.00", "{$b} Blue (1.60) 0.00/0.00"];
+
+        eq(psNames(['q' => "{$b} 0"]), $zero, '0 ได้ SPH 0 ทุก CYL ไม่ได้ -4.00/0.00');
+        eq(psNames(['q' => "{$b} 0.00"]), $zero, '0.00 ไม่ดูที่ CYL');
+        eq(psNames(['q' => "{$b} -4"]), ["{$b} Blue (1.60) -4.00/0.00"], '-4 ไม่ได้ 0.00/-4.00');
+        eq(psNames(['q' => "{$b} +1.5"]), ["{$b} Blue (1.50) +1.50/0.00"], 'ใส่ + คือ SPH');
+        eq(count(psNames(['q' => "{$b} 1.6"])), 4, '1.6 ไม่มีเครื่องหมาย = index 1.60');
+        eq(psNames(['q' => "{$b} 2.25"]), ["{$b} Blue (1.60) +2.25/-0.50"], 'ทศนิยมที่ไม่ใช่ index = SPH บวก');
+        eq(psNames(['q' => "{$b} -350"]), ["{$b} M6 Single -3.50/-1.00"], 'ไม่มี sph ในสเปก ดูเลขหน้า / ในชื่อ');
+        eq(psNames(['q' => "{$b} M6"]), ["{$b} M6 Single -3.50/-1.00"], 'คำที่มีตัวเลขปนยังค้นแบบข้อความ');
+        $sku = (string) Db::value('SELECT sku FROM products WHERE name = ?', ["{$b} M6 Single -3.50/-1.00"]);
+        eq(psNames(['q' => $sku]), ["{$b} M6 Single -3.50/-1.00"], 'SKU ที่มีขีด ไม่ถูกอ่านเป็น SPH');
+    });
+});
+
 test('แบ่งหน้าหลังเรียงความตรง — หน้าสองต่อจากหน้าหนึ่ง ไม่ซ้ำไม่ข้าม', function () {
     withRollback(function () {
         $b = psBrand();

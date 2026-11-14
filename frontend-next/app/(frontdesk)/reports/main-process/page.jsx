@@ -13,11 +13,15 @@ import { Pager } from '../../../../components/Pager.jsx';
 import { PAGE_SIZES } from '../../../../lib/pager.js';
 import { ExportButtons, ReportFilter, useReport } from '../../../../components/ReportFilter.jsx';
 import {
-  DrillKpi, NoData, ReportState, TableSearch, bucketNote, filterRows, toSeries,
+  DrillKpi, NoData, PendingNote, ReportState, TableSearch, bucketNote, filterRows, toSeries,
 } from '../../../../components/reports/bits.jsx';
 import { Bars, HBars } from '../../../../components/charts.jsx';
 import { count, fmtDate, money, moneyShort } from '../../../../lib/format.js';
 import { downloadCsv } from '../../../../lib/exportCsv.js';
+import { useAuth } from '../../../../contexts/AuthContext.jsx';
+import { inSystemZone } from '../../../../lib/roles.js';
+import { Icon } from '../../../../components/Icon.jsx';
+import { EditBillDateDialog } from '../../../../components/reports/EditBillDateDialog.jsx';
 
 /** สีป้ายตามขั้นตอนที่เคสค้างอยู่ — เสร็จแล้วเขียว กำลังเดินน้ำเงิน */
 function StatusBadge({ row }) {
@@ -27,14 +31,36 @@ function StatusBadge({ row }) {
   return <Badge kind={row.order_closed ? 'ok' : 'blue'}>{row.status}</Badge>;
 }
 
-const COLUMNS = [
+/* `onEditDate` มีเฉพาะแอดมิน/เจ้าของร้าน — ปุ่มดินสอข้างวันเปิดบิล (API กันสิทธิ์เองอีกชั้น)
+   · stopPropagation เพราะกดแถวคือเปิดหน้าเคส */
+const columns = (onEditDate) => [
   { label: 'เลขเคส', key: 'code', mobile: 'title' },
-  { label: 'วันที่', sortKey: 'date', render: (r) => fmtDate(r.date), mobile: 'body' },
+  { label: 'วันเปิดบิล', sortKey: 'date', mobile: 'body', render: (r) => (
+    <>
+      {fmtDate(r.date)}
+      {onEditDate ? (
+        <button
+          type="button"
+          className="btn btn-sm btn-ghost"
+          title="แก้วันเปิดบิล"
+          aria-label={`แก้วันเปิดบิล ${r.code}`}
+          style={{ padding: '2px 6px', marginLeft: 4 }}
+          onClick={(e) => { e.stopPropagation(); onEditDate(r); }}
+        >
+          <Icon name="pencil" />
+        </button>
+      ) : null}
+    </>
+  ) },
+  /* วันปิดงาน = วันส่งมอบ (ยืนยันส่งมอบแล้วบิลปิดเอง) · ใบที่ยังไม่ปิดเว้นเป็นขีด */
+  { label: 'วันปิดงาน', sortKey: 'closed_at', mobile: 'body', render: (r) => (
+    r.closed_at ? fmtDate(r.closed_at) : <span className="muted">—</span>
+  ) },
   { label: 'ลูกค้า', key: 'customer', mobile: 'subtitle' },
   { label: 'พนักงาน', key: 'employee', mobile: 'meta' },
-  { label: 'ประเภทสินค้า', sortKey: 'lens_type', mobile: 'meta', render: (r) => (
+  { label: 'ประเภทสินค้า', sortKey: 'lens', mobile: 'meta', render: (r) => (
     <>
-      {r.lens_type || <span className="muted">—</span>}
+      {r.lens || <span className="muted">—</span>}
       {r.product ? <div className="muted sm">{r.product}</div> : null}
     </>
   ) },
@@ -46,7 +72,9 @@ const COLUMNS = [
 ];
 
 export default function MainProcessReport() {
-  const { filter, data, error, loading } = useReport('main-process');
+  const { filter, data, error, loading, reload } = useReport('main-process');
+  const { actor } = useAuth();
+  const [editing, setEditing] = useState(null);
   const [term, setTerm] = useState('');
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(PAGE_SIZES[0]);
@@ -61,10 +89,11 @@ export default function MainProcessReport() {
     `รายงานงานตัดแว่น ${filter.from} ถึง ${filter.to}`,
     [
       { label: 'เลขเคส', value: (r) => r.code },
-      { label: 'วันที่', value: (r) => r.date },
+      { label: 'วันเปิดบิล', value: (r) => r.date },
+      { label: 'วันปิดงาน', value: (r) => r.closed_at },
       { label: 'ลูกค้า', value: (r) => r.customer },
       { label: 'พนักงาน', value: (r) => r.employee },
-      { label: 'ประเภทเลนส์', value: (r) => r.lens_type },
+      { label: 'เลนส์', value: (r) => r.lens },
       { label: 'สินค้า', value: (r) => r.product },
       { label: 'ยอดขาย', value: (r) => r.revenue },
       { label: 'ชำระแล้ว', value: (r) => r.paid },
@@ -72,7 +101,10 @@ export default function MainProcessReport() {
       { label: 'กำไร', value: (r) => r.profit },
       { label: 'สถานะ', value: (r) => r.status },
     ],
-    rows,
+    /* ไฟล์เรียงตามวันปิดงานเก่าไปใหม่ · ใบที่ยังไม่ปิดต่อท้าย (ตารางบนจอยังเรียงตามที่กดหัวคอลัมน์) */
+    [...rows].sort((a, b) => (!a.closed_at - !b.closed_at)
+      || String(a.closed_at || '').localeCompare(String(b.closed_at || ''))
+      || String(a.date).localeCompare(String(b.date))),
   );
 
   return (
@@ -80,6 +112,7 @@ export default function MainProcessReport() {
       <ReportFilter actions={<ExportButtons onExcel={csv} disabled={!rows.length} />} />
 
       <ReportState loading={loading} error={error} data={data}>
+        <PendingNote pending={data?.pending} />
         {data && !data.kpi.bills
           ? <NoData bounds={data.bounds} channel={filter.channel} what="เคส" />
           : null}
@@ -135,12 +168,13 @@ export default function MainProcessReport() {
               tight
             >
               <DataTable
-                columns={COLUMNS}
+                columns={columns(inSystemZone(actor) ? setEditing : null)}
                 rows={rows}
                 sortable
                 /* หั่นหน้าใน DataTable ไม่ใช่หั่นก่อนส่งเข้าไป — ตารางนี้เรียงคอลัมน์ได้
                    ถ้าหั่นก่อน ปุ่ม "ยอดมากไปน้อย" จะเรียงแค่แถวของหน้าที่เปิดอยู่ */
-                defaultSort={{ key: 'date', dir: 'desc' }}
+                /* เรียงตามวันที่ที่ใบนั้นถูกนับ — โหมดวันปิดบิลจึงไล่ตามวันส่งมอบ */
+                defaultSort={{ key: filter.by === 'close' && filter.status !== 'open' ? 'closed_at' : 'date', dir: 'desc' }}
                 page={page}
                 perPage={perPage}
                 empty={term ? 'ไม่พบรายการที่ค้นหา' : 'ช่วงนี้ยังไม่มีเคส'}
@@ -160,6 +194,14 @@ export default function MainProcessReport() {
           </>
         ) : null}
       </ReportState>
+
+      {editing && (
+        <EditBillDateDialog
+          row={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => { setEditing(null); reload(); }}
+        />
+      )}
     </>
   );
 }

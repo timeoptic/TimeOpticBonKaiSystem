@@ -162,6 +162,16 @@ final class Receiving
         }
         $head = array_intersect_key($req, array_flip(['supplier_id', 'received_date', 'reference_doc', 'note']));
 
+        /* ยกจากระบบหลัก 78c38ab (เฉพาะส่วนที่ไม่เกี่ยวกับ AI สแกนบิล) —
+           idem_key กันกดบันทึกซ้ำ · optional ไม่ส่งมาก็คือบิลแบบเดิมทุกอย่าง */
+        $idem = null;
+        if (($req['idem_key'] ?? null) !== null) {
+            $idem = $req['idem_key'];
+            if (!is_string($idem) || strlen($idem) < 8 || strlen($idem) > 64) {
+                throw ApiError::badRequest('idem_key ต้องเป็นข้อความยาว 8 ถึง 64 ตัวอักษร');
+            }
+        }
+
         // ตรวจที่ผิดบ่อยของทุกบรรทัดก่อนเขียนอะไรเลย — รหัสที่ไม่มี สินค้าสั่งตัด จำนวนไม่ใช่เลข
         foreach (array_values($lines) as $i => $line) {
             $sku = is_array($line) ? trim((string) ($line['sku'] ?? '')) : '';
@@ -179,7 +189,46 @@ final class Receiving
             }
         }
 
-        return Db::tx(static function () use ($lines, $head, $roles, $actorId): array {
+        return Db::tx(static function (PDO $pdo) use ($req, $lines, $head, $roles, $actorId, $idem): array {
+            /* กดบันทึกซ้ำ (เน็ตหลุดแล้วกดอีกที) — คืนคำตอบครั้งแรก ไม่รับเข้าซ้ำ ไม่ทำอะไรเพิ่ม
+               FOR UPDATE ให้คำขอที่สองรอคำขอแรกจบก่อนอ่าน */
+            if ($idem !== null) {
+                $st = $pdo->prepare('SELECT result_json FROM receipt_bills WHERE idem_key = ? FOR UPDATE');
+                $st->execute([$idem]);
+                $done = $st->fetchColumn();
+                if ($done !== false) {
+                    return json_decode((string) $done, true);
+                }
+            }
+
+            /* บิลเดิมของผู้ขายเดิมรับซ้ำไม่ได้ — ตรวจกับของที่อยู่ในคลังจริงตอนนี้ ไม่ใช่ตาราง UNIQUE แยก
+               แก้ผู้ขายในใบรับเข้าหรือลบล็อตทิ้ง บิลนั้นจึงปลดเองโดยไม่ต้องแก้เส้นอื่น ·
+               ล็อกแถวผู้ขายก่อนตรวจ สองคนบันทึกบิลเดียวกันพร้อมกันจะได้ไม่ผ่านทั้งคู่ */
+            $sid = $head['supplier_id'] ?? null;
+            $supplierId = is_int($sid) || (is_string($sid) && ctype_digit($sid)) ? (int) $sid : null;
+            $doc = trim((string) ($head['reference_doc'] ?? ''));
+            if ($supplierId !== null && $doc !== '') {
+                $pdo->prepare('SELECT id FROM suppliers WHERE id = ? FOR UPDATE')->execute([$supplierId]);
+                $hit = Db::one(
+                    "SELECT l.lot_number, l.received_date
+                       FROM inventory_logs g
+                       JOIN stock_lots l ON l.id = g.lot_id
+                      WHERE g.action_type = 'IN'
+                        AND LOWER(TRIM(g.reference_doc)) = LOWER(TRIM(?))
+                        AND l.supplier_id = ?
+                      ORDER BY g.id
+                      LIMIT 1",
+                    [$doc, $supplierId],
+                );
+                if ($hit !== null) {
+                    throw ApiError::conflict(
+                        'duplicate_bill',
+                        "บิล {$doc} ของผู้ขายนี้รับเข้าไปแล้วเมื่อ {$hit['received_date']} (ล็อต {$hit['lot_number']})",
+                        ['lot' => $hit['lot_number'], 'date' => $hit['received_date']],
+                    );
+                }
+            }
+
             $out = [];
             foreach (array_values($lines) as $i => $line) {
                 if (!is_array($line)) {
@@ -197,6 +246,21 @@ final class Receiving
                     );
                 }
             }
+
+            // บันทึกบิลไว้ตอบซ้ำ — idem_key UNIQUE คือด่านสุดท้ายถ้าสองคำขอแข่งกันมาถึงพร้อมกัน
+            if ($idem !== null) {
+                $pdo->prepare(
+                    'INSERT INTO receipt_bills
+                       (idem_key, supplier_id, reference_doc, received_date, lot_ids_json, result_json, created_by)
+                     VALUES (?, ?, ?, ?, ?, ?, ?)'
+                )->execute([
+                    $idem, $supplierId, $doc === '' ? null : $doc, $req['received_date'],
+                    json_encode(array_column($out, 'lotId')),
+                    json_encode($out, JSON_UNESCAPED_UNICODE),
+                    $actorId,
+                ]);
+            }
+
             return $out;
         });
     }

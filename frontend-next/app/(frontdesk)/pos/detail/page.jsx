@@ -17,7 +17,7 @@ import { EditGate } from '../../../../components/EditLock.jsx';
 import { useAsync, useNowLocal } from '../../../../lib/hooks.js';
 import { fmtDateTime, money, toStamp } from '../../../../lib/format.js';
 import { useAuth } from '../../../../contexts/AuthContext.jsx';
-import { inSystemZone } from '../../../../lib/roles.js';
+import { inSystemZone, isSuperuser } from '../../../../lib/roles.js';
 import {
   Card, Field, Kv, Loading,
 } from '../../../../components/ui.jsx';
@@ -30,6 +30,7 @@ import { Select } from '../../../../components/Selects.jsx';
 import { DateTimeField } from '../../../../components/DateTimeField.jsx';
 import { useConfirm } from '../../../../components/Confirm.jsx';
 import { ReceiptPanel } from '../../../../components/ReceiptPanel.jsx';
+import { PosSaleEditDialog } from '../../../../components/pos/PosSaleEditDialog.jsx';
 
 const ITEM_COLS = [
   { label: 'สินค้า', mobile: 'title', render: (r) => (
@@ -200,6 +201,7 @@ function PosDetail() {
   const [received, setReceived] = useState('');
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [editingItems, setEditingItems] = useState(false);
 
   if (loading) return <Loading />;
   if (error) return <Card><p className="muted">{error.message}</p></Card>;
@@ -309,7 +311,16 @@ function PosDetail() {
         />
       </Card>
 
-      <Card title="รายการสินค้า" tight>
+      <Card
+        title="รายการสินค้า"
+        tight
+        right={isSuperuser(actor) && sale.status !== 'void' ? (
+          /* แก้ใบที่บันทึกแล้ว — ผู้ดูแลระบบเท่านั้น API ตรวจซ้ำ (PUT /api/pos/sales/:id/items) */
+          <button type="button" className="btn btn-sm btn-light" onClick={() => setEditingItems(true)}>
+            <Icon name="pencil" /> แก้ไขรายการ
+          </button>
+        ) : null}
+      >
         <DataTable columns={ITEM_COLS} rows={sale.items} />
       </Card>
 
@@ -326,6 +337,14 @@ function PosDetail() {
           p={editing}
           onClose={() => setEditing(null)}
           onSaved={() => { setEditing(null); reload(); }}
+        />
+      )}
+
+      {editingItems && (
+        <PosSaleEditDialog
+          sale={sale}
+          onClose={() => setEditingItems(false)}
+          onSaved={() => { setEditingItems(false); reload(); }}
         />
       )}
 
