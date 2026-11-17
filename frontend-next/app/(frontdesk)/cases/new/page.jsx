@@ -297,7 +297,7 @@ function CaseFormInner() {
               เพราะความกว้างจริงของการ์ดให้ 3 คอลัมน์ ซึ่งทิ้งช่องว่างค้างไว้หนึ่งช่อง */}
           <FormGrid className="intake">
             <Field label="พนักงานผู้รับเรื่อง" hint="ผู้รับลูกค้าในเคสนี้ ตรวจย้อนหลังได้จากไทม์ไลน์">
-              <StepEmployeeSelect step="reception" caseType={c.case_type} name="received_by" defaultValue="" />
+              <StepEmployeeSelect step="reception" caseType={caseType} name="received_by" defaultValue="" />
             </Field>
             {/* ข้อความแนะนำเรื่องเคส "ตรวจสายตา" ถูกถอดไว้ก่อน — สเปกเคสตรวจสายตาอย่างเดียวยังไม่อนุมัติ
                 และ API ของมัน (processes.php · Lookups.php · cases.php) ยังไม่ขึ้นเว็บ */}
