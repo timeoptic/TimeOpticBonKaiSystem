@@ -9,7 +9,7 @@
  */
 declare(strict_types=1);
 
-POST('/api/centerings', upsertFactory([
+$saveCentering = upsertFactory([
     'table'  => 'centerings',
     'action' => 'centering_saved',
     'status' => 'centering',
@@ -18,7 +18,14 @@ POST('/api/centerings', upsertFactory([
         'center_point_note', 'other_params', 'measured_at', 'corridor',
         'performed_by', 'photo_taken_by', 'recorded_by', 'notes'],
     'intCols' => ['order_id', 'frame_product_id', 'performed_by', 'photo_taken_by', 'recorded_by'],
-]));
+]);
+POST('/api/centerings', function (array $req) use ($saveCentering) {
+    /* ผู้วัดต้องอยู่ในรายชื่อของขั้นวัด Center (ค่าคอม — ProcessStaff) · คนเดิมไม่ตรวจซ้ำ */
+    $caseId = int_or($req['body']['case_id'] ?? null);
+    $old = $caseId ? Db::get('SELECT performed_by FROM centerings WHERE case_id = ? ORDER BY id DESC LIMIT 1', $caseId) : null;
+    ProcessStaff::check('centering', $caseId, int_or($req['body']['performed_by'] ?? null), int_or($old['performed_by'] ?? null));
+    return $saveCentering($req);
+});
 
 GET('/api/centerings/:case_id', fn(array $r) => Db::get(
     'SELECT * FROM centerings WHERE case_id = ? ORDER BY id DESC LIMIT 1',
@@ -70,6 +77,10 @@ POST('/api/case-deliveries', function (array $req) use ($saveDelivery) {
        0 = "ไม่มีคนเจีย" (11 พ.ย. 2026) — งานที่ไม่ได้เจีย เลือกได้แทนการเลือกบัญชีผู้ดูแลระบบ
        ค่าคอมงานเจียใน HRMS ไม่จ่ายงานที่เป็น 0 */
     $grinder = int_or($req['body']['grinder_employee_id'] ?? null);
+    /* ผู้ส่งมอบ / คนเจีย ต้องอยู่ในรายชื่อของช่องนั้น (ค่าคอม — ProcessStaff) · คนเดิมไม่ตรวจซ้ำ */
+    $prevPeople = $caseId ? Db::get('SELECT handed_over_by, grinder_employee_id FROM case_deliveries WHERE case_id = ?', $caseId) : null;
+    ProcessStaff::check('delivery', $caseId, int_or($req['body']['handed_over_by'] ?? null), int_or($prevPeople['handed_over_by'] ?? null));
+    ProcessStaff::check('grinder', $caseId, $grinder, int_or($prevPeople['grinder_employee_id'] ?? null));
     if (empty($ex['delivered_at']) && ($grinder === null || $grinder < 0)) {
         bad('กรุณาเลือกคนเจีย');
     }

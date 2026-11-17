@@ -71,6 +71,8 @@ POST('/api/payments', function (array $req) {
 
     $orderId = int_or($body['order_id'] ?? null);
     $caseId  = int_or($body['case_id'] ?? null);
+    /* ผู้รับเงินต้องอยู่ในรายชื่อของขั้นชำระเงิน (ค่าคอม — ProcessStaff) · บิล POS ไม่มีเคส ไม่ตรวจ */
+    ProcessStaff::check('payment', $caseId, $receivedBy);
     if ($unpaid && !$orderId) {
         bad('บันทึก "ยังไม่ชำระ" ต้องผูกกับออเดอร์');
     }
@@ -266,6 +268,7 @@ PUT('/api/payments/:id', function (array $req) {
         if (!$receiver) {
             bad('กรุณาเลือกผู้รับเงิน');
         }
+        ProcessStaff::check('payment', int_or($p['case_id']), $receivedBy, int_or($p['received_by']));
         $kind   = array_key_exists((string) ($body['kind'] ?? ''), PAYMENT_KIND_TH) ? (string) $body['kind'] : $p['kind'];
         $method = str_or($body['method'] ?? null) ?: $p['method'];
         $paidAt = str_or($body['paid_at'] ?? null) ?: (string) $p['paid_at'];

@@ -111,6 +111,7 @@ POST('/api/prescriptions', function (array $req) {
     if (!int_or($body['customer_id'] ?? null)) {
         bad('กรุณาเลือกลูกค้า');
     }
+    ProcessStaff::check('exam', int_or($body['case_id'] ?? null), int_or($body['performed_by'] ?? null));
     ['cols' => $cols, 'vals' => $vals] = rxColsValues($body);
 
     $id = Db::tx(function (Tx $q) use ($cols, $vals, $body) {
@@ -136,6 +137,9 @@ PUT('/api/prescriptions/:id', function (array $req) {
     if (!Db::get('SELECT id FROM prescriptions WHERE id = ?', $id)) {
         missing();
     }
+    $old = Db::get('SELECT case_id, performed_by FROM prescriptions WHERE id = ?', $id);
+    ProcessStaff::check('exam', int_or($req['body']['case_id'] ?? null) ?? int_or($old['case_id'] ?? null),
+        int_or($req['body']['performed_by'] ?? null), int_or($old['performed_by'] ?? null));
     ['cols' => $cols, 'vals' => $vals] = rxColsValues($req['body']);
     $set = implode(',', array_map(fn($c) => "$c=?", $cols));
     Db::run("UPDATE prescriptions SET $set WHERE id=?", ...[...$vals, $id]);

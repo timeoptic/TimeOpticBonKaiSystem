@@ -18,6 +18,8 @@ GET('/api/meta', fn() => [
         'channels'         => Booking::CHANNELS,
         'intake_questions' => Booking::INTAKE_QUESTIONS,
     ],
+    /* ใครเลือกได้ในขั้นไหน (services/ProcessStaff.php) — ช่องเลือกพนักงานของหน้าเคสกรองจากชุดนี้ */
+    'process_staff' => (object) ProcessStaff::config(),
     'today'     => today(),
     'now'       => nowStamp(),
 ]);

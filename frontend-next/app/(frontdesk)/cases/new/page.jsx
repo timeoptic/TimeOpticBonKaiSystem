@@ -31,7 +31,8 @@ import {
 } from '../../../../components/ui.jsx';
 import { QueryParamPage } from '../../../../components/QueryParamPage.jsx';
 import { Picker } from '../../../../components/Picker.jsx';
-import { EmployeeSelect, ListSelect, NationalitySelect } from '../../../../components/Selects.jsx';
+import { ListSelect, NationalitySelect } from '../../../../components/Selects.jsx';
+import { StepEmployeeSelect } from '../../../../components/StepEmployeeSelect.jsx';
 import { custName, fmtDate } from '../../../../lib/format.js';
 import { Icon } from '../../../../components/Icon.jsx';
 import { BirthAgeFields } from '../../../../components/BirthAgeFields.jsx';
@@ -177,6 +178,8 @@ function CaseFormInner() {
      It is also what gets recorded on the case as the customer's status at the
      moment it was opened. */
   const [mode, setMode] = useState(queryCustomer ? 'existing' : null);
+  /* ประเภทงานที่เลือกไว้ — รายชื่อผู้รับเรื่องขึ้นตามประเภท (ProcessStaff) */
+  const [caseType, setCaseType] = useState('');
   const [picked, setPicked] = useState(null);
   const [created, setCreated] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -294,12 +297,12 @@ function CaseFormInner() {
               เพราะความกว้างจริงของการ์ดให้ 3 คอลัมน์ ซึ่งทิ้งช่องว่างค้างไว้หนึ่งช่อง */}
           <FormGrid className="intake">
             <Field label="พนักงานผู้รับเรื่อง" hint="ผู้รับลูกค้าในเคสนี้ ตรวจย้อนหลังได้จากไทม์ไลน์">
-              <EmployeeSelect name="received_by" defaultValue="" />
+              <StepEmployeeSelect step="reception" caseType={c.case_type} name="received_by" defaultValue="" />
             </Field>
             {/* ข้อความแนะนำเรื่องเคส "ตรวจสายตา" ถูกถอดไว้ก่อน — สเปกเคสตรวจสายตาอย่างเดียวยังไม่อนุมัติ
                 และ API ของมัน (processes.php · Lookups.php · cases.php) ยังไม่ขึ้นเว็บ */}
             <Field label="ประเภทงาน / Case Type" hint="งานชิ้นนี้คืองานอะไร">
-              <ListSelect name="case_type" kind="case_type" defaultValue="" blank="— เลือกประเภทงาน —" />
+              <ListSelect name="case_type" kind="case_type" defaultValue="" blank="— เลือกประเภทงาน —" onChange={(e) => setCaseType(e.target.value)} />
             </Field>
             <Field label="ประเภทลูกค้า / Customer Category" hint="ใช้แยกสมุดงานบนกระดาน">
               <ListSelect

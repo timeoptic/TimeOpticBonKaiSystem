@@ -28,7 +28,8 @@ import { useConfirm } from '../../../../../components/Confirm.jsx';
 import {
   Badge, Field, FormGrid, Row,
 } from '../../../../../components/ui.jsx';
-import { EmployeeSelect, ListSelect } from '../../../../../components/Selects.jsx';
+import { ListSelect } from '../../../../../components/Selects.jsx';
+import { StepEmployeeSelect } from '../../../../../components/StepEmployeeSelect.jsx';
 import { MultiSelect } from '../../../../../components/MultiSelect.jsx';
 import { useProcessActions } from '../../../../../components/ProcessShell.jsx';
 import { GlassesUseTag } from '../../../../../components/RxSets.jsx';
@@ -889,7 +890,9 @@ export function ExamPanel({ c, reload }) {
               กับอะไร คำถามนั้นเป็นของ Final ข้างล่าง */}
           <FormGrid>
             <Field label="ผู้วัด">
-              <EmployeeSelect
+              <StepEmployeeSelect
+                step="exam"
+                caseType={c.case_type}
                 name="performed_by"
                 value={form.performed_by ?? ''}
                 onChange={(e) => set('performed_by', e.target.value)}

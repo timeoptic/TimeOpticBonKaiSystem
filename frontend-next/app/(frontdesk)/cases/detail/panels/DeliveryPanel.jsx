@@ -28,7 +28,8 @@ import { useAsync, useObjectUrls } from '../../../../../lib/hooks.js';
 import { useToast } from '../../../../../components/Toast.jsx';
 import { useConfirm } from '../../../../../components/Confirm.jsx';
 import { Badge, Card, CardFold, Field, FormGrid, Kv, Row, Split, Stack } from '../../../../../components/ui.jsx';
-import { EmployeeSelect, Select } from '../../../../../components/Selects.jsx';
+import { Select } from '../../../../../components/Selects.jsx';
+import { StepEmployeeSelect, useStepEmployees } from '../../../../../components/StepEmployeeSelect.jsx';
 import { useProcessActions } from '../../../../../components/ProcessShell.jsx';
 import { useMeta } from '../../../../../contexts/MetaContext.jsx';
 import { custName, fmtDate, fmtDateTime, money, nowLocal, toStamp } from '../../../../../lib/format.js';
@@ -307,10 +308,12 @@ export function DeliveryPanel({ c, reload }) {
   const [handedBy, setHandedBy] = useState('');
   const [grinderId, setGrinderId] = useState('');
   /* "ไม่มีคนเจีย" แทนการเลือกบัญชีผู้ดูแลระบบ (ร้านเคยเลือกบัญชีนี้เมื่องานไม่ได้เจีย) */
+  /* รายชื่อคนเจียตามที่แอดมินกำหนด (ProcessStaff — ค่าคอมงานเจีย) */
+  const grinderPool = useStepEmployees('grinder', c.case_type, grinderId).list;
   const grinderOptions = [
     ['', '— เลือกคนเจีย —'],
     ['0', NO_GRINDER_LABEL],
-    ...meta.employees
+    ...grinderPool
       .filter((e) => !NOT_GRINDERS.has(String(e.employee_name || '').trim()))
       .map((e) => [e.id, e.employee_name]),
   ];
@@ -607,7 +610,9 @@ export function DeliveryPanel({ c, reload }) {
 
                 <FormGrid>
                   <Field label="ผู้รับเงิน *">
-                    <EmployeeSelect
+                    <StepEmployeeSelect
+                      step="payment"
+                      caseType={c.case_type}
                       name="received_by"
                       value={receivedBy}
                       onChange={(e) => setReceivedBy(e.target.value)}
@@ -722,7 +727,9 @@ export function DeliveryPanel({ c, reload }) {
         <Card title={<><Icon name="file" /> บันทึกการส่งมอบ</>}>
           <FormGrid>
             <Field label="ผู้ส่งมอบ *">
-              <EmployeeSelect
+              <StepEmployeeSelect
+                step="delivery"
+                caseType={c.case_type}
                 name="handed_over_by"
                 value={handedBy}
                 onChange={(e) => setHandedBy(e.target.value)}

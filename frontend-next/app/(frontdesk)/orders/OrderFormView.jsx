@@ -31,7 +31,8 @@ import { LENS_SOURCE, requisitionItems, savedLens } from '../../../lib/lens/lens
 import { RxSets } from '../../../components/RxSets.jsx';
 import { RxArrival } from '../../../components/RxLensBadge.jsx';
 import { EyewearHistory } from '../../../components/EyewearHistory.jsx';
-import { EmployeeSelect, ListSelect } from '../../../components/Selects.jsx';
+import { ListSelect } from '../../../components/Selects.jsx';
+import { StepEmployeeSelect } from '../../../components/StepEmployeeSelect.jsx';
 import { StockEmbedModal } from '../../../components/StockEmbedModal.jsx';
 import { RX_KIND_LABEL } from '../../../lib/constants.js';
 import {
@@ -657,7 +658,8 @@ export function OrderFormView({
           <input type="hidden" name="marketing" value={o.marketing || ''} readOnly />
           <FormGrid>
             <Field label="พนักงานผู้ขาย / Employee">
-              <EmployeeSelect name="employee_id" defaultValue={o.employee_id || ''} />
+              {/* ถ้าออเดอร์ผูกเคส contextCustomer คือตัวเคส — ใช้ประเภทงานของเคสเลือกรายชื่อผู้ขาย */}
+              <StepEmployeeSelect step="sales" caseType={caseId ? contextCustomer?.case_type : null} name="employee_id" defaultValue={o.employee_id || ''} />
             </Field>
           </FormGrid>
         </Card>

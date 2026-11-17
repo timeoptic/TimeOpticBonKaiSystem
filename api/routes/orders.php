@@ -393,6 +393,8 @@ GET('/api/orders/:id', fn(array $r) => orderDetail(int_or($r['params']['id'])));
 
 POST('/api/orders', function (array $req) {
     $body = $req['body'];
+    /* พนักงานขายต้องอยู่ในรายชื่อของขั้นขาย (ค่าคอม — ProcessStaff) */
+    ProcessStaff::check('sales', int_or($body['case_id'] ?? null), int_or($body['employee_id'] ?? null));
     $cid  = int_or($body['customer_id'] ?? null);
     if (!$cid) {
         bad('กรุณาเลือกลูกค้า');
@@ -477,9 +479,12 @@ PUT('/api/orders/:id', function (array $req) {
     if (!$cur) {
         missing();
     }
+    $body = $req['body'];
+    $prevSale = Db::get('SELECT case_id, employee_id FROM custom_orders WHERE id = ?', $id);
+    ProcessStaff::check('sales', int_or($body['case_id'] ?? null) ?? int_or($prevSale['case_id'] ?? null),
+        int_or($body['employee_id'] ?? null), int_or($prevSale['employee_id'] ?? null));
     /* วันนัดรับกรอกที่ขั้นชำระเงิน ฟอร์มขายไม่มีช่องนี้ — ไม่ได้ส่งมา = คงค่าเดิม ไม่ใช่ล้างทิ้ง
        (กดบันทึกแก้ไขแล้ววันนัดหาย ร้านเจอ 31 ต.ค. 2026) · ล้างวันนัดจริงเดินทาง PUT .../appointment */
-    $body = $req['body'];
     foreach (['appointment_date', 'appointment_time'] as $c) {
         if (!array_key_exists($c, $body)) {
             $body[$c] = $cur[$c];
@@ -736,6 +741,10 @@ POST('/api/orders/:id/close', function (array $req) {
     }
     if ((int) $o['order_closed']) {
         bad('ออเดอร์นี้ปิดการขายไปแล้ว');
+    }
+    /* ประเภทกรอบบังคับก่อนปิดการขาย รวมใบที่เปิดก่อน 11 พ.ย. 2026 (ร้านสั่ง 17 พ.ย. 2026) */
+    if (trim((string) ($o['frame_type'] ?? '')) === '') {
+        bad('ยังปิดการขายไม่ได้ — กรุณาเลือกประเภทกรอบในออเดอร์ก่อน');
     }
 
     Db::tx(function (Tx $q) use ($id, $o, $body) {

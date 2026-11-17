@@ -17,6 +17,7 @@
  * ซึ่งเปิดป๊อปอัปแก้ไขโดยตรง ส่วนปุ่มตา (และคลิกแถว) เปิดดูอย่างเดียว
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 import { api } from '../../../lib/apiClient.js';
 import { useAsync, onSubmit } from '../../../lib/hooks.js';
 import { pageWindow } from '../../../lib/pager.js';
@@ -388,6 +389,10 @@ function EmployeeListInner() {
         <button type="button" className={`em-icon-btn ${refreshing ? 'spin' : ''}`} aria-label="โหลดใหม่" title="โหลดใหม่" onClick={refresh}>
           <Icon name="refresh" />
         </button>
+        {/* ใครเลือกได้ในขั้นไหน — ค่าคอมคิดจากชื่อที่เลือก (หน้าแยก /employees/process-staff) */}
+        <Link href="/employees/process-staff" className="em-steps-link">
+          <Icon name="clipboard" /> ผู้รับผิดชอบแต่ละขั้นตอน
+        </Link>
         <button type="button" className="em-add" onClick={() => setDlg({ mode: 'add' })}>
           <Icon name="plus" /> เพิ่มพนักงาน
         </button>
@@ -532,6 +537,10 @@ const CSS = `
 .em-icon-btn .ico{width:19px;height:19px}
 .em-icon-btn.spin .ico{animation:em-spin .7s linear infinite}
 @keyframes em-spin{to{transform:rotate(360deg)}}
+.em-steps-link{display:inline-flex;align-items:center;gap:7px;min-height:44px;padding:0 16px;border:1px solid var(--green-edge);
+  border-radius:var(--radius-pill);background:var(--card);color:var(--green-deep);font-weight:600;white-space:nowrap}
+.em-steps-link:hover{background:var(--green-tint)}
+.em-steps-link .ico{width:17px;height:17px}
 .em-add{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:0 20px;border:0;border-radius:var(--radius-pill);
   background:var(--green-deep);color:#fff;font:inherit;font-weight:700;cursor:pointer;box-shadow:var(--shadow-green);white-space:nowrap}
 .em-add:hover{background:#0F561E}

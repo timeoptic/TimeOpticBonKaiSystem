@@ -486,6 +486,9 @@ POST('/api/cases', function (array $req) {
         $referral = 'returning';
     }
 
+    /* ผู้รับลูกค้าต้องอยู่ในรายชื่อของขั้นรับลูกค้า (ค่าคอม — ProcessStaff) */
+    ProcessStaff::check('reception', null, int_or($body['received_by'] ?? null), null, (string) ($body['case_type'] ?? ''));
+
     $id = Db::tx(function (Tx $q) use ($body, $cid, $code, $status, $category, $referral) {
         $r = $q->run(
             'INSERT INTO cases (case_code, customer_id, status, is_new_customer, is_rush,
@@ -522,9 +525,12 @@ POST('/api/cases', function (array $req) {
 PUT('/api/cases/:id', function (array $req) {
     $id   = int_or($req['params']['id']);
     $body = $req['body'];
-    if (!Db::get('SELECT id FROM cases WHERE id = ?', $id)) {
+    $old  = Db::get('SELECT id, received_by, case_type FROM cases WHERE id = ?', $id);
+    if (!$old) {
         missing();
     }
+    ProcessStaff::check('reception', $id, int_or($body['received_by'] ?? null), int_or($old['received_by']),
+        (string) ($body['case_type'] ?? $old['case_type'] ?? ''));
     /* แก้โน้ตแล้วประเภทตามไปด้วย · เลือกมาเองก็ใช้ของที่เลือก
        ตรงนี้ไม่ลบเคสออนไลน์ทิ้ง แม้โน้ตจะเข้าเงื่อนไข — การกดบันทึกแล้วเคสหาย
        ต่อหน้าอ่านยังไงก็เป็นบั๊ก · การลบเดินผ่าน api/cli/classify-cases.php

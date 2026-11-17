@@ -20,7 +20,8 @@ import { useToast } from '../../../../../components/Toast.jsx';
 import {
   Badge, Field, FormActions, FormGrid, Kv, Row,
 } from '../../../../../components/ui.jsx';
-import { EmployeeSelect, ListSelect } from '../../../../../components/Selects.jsx';
+import { ListSelect } from '../../../../../components/Selects.jsx';
+import { StepEmployeeSelect } from '../../../../../components/StepEmployeeSelect.jsx';
 import { custName, fmtDate } from '../../../../../lib/format.js';
 import { birthOrAge } from '../../../../../lib/customerAge.js';
 import { emptyFields, missingText } from '../../../../../lib/customerFill.js';
@@ -54,7 +55,7 @@ export function ReceptionPanel({ c, reload }) {
         <LockFieldset locked={lock.locked}>
         <FormGrid>
           <Field label="พนักงานผู้รับเรื่อง">
-            <EmployeeSelect name="received_by" defaultValue={c.received_by || ''} />
+            <StepEmployeeSelect step="reception" caseType={c.case_type} name="received_by" defaultValue={c.received_by || ''} />
           </Field>
           <Field label="ประเภทงาน / Case Type">
             <ListSelect name="case_type" kind="case_type" defaultValue={c.case_type || ''} blank="— ไม่ระบุ —" />

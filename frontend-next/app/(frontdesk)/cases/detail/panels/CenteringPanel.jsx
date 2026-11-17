@@ -22,7 +22,7 @@ import { useToast } from '../../../../../components/Toast.jsx';
 import {
   Badge, Card, Field, Kv, Stack,
 } from '../../../../../components/ui.jsx';
-import { EmployeeSelect } from '../../../../../components/Selects.jsx';
+import { StepEmployeeSelect } from '../../../../../components/StepEmployeeSelect.jsx';
 import { PhotoUpload } from '../../../../../components/PhotoUpload.jsx';
 import { CENTERING_PHOTO_MAX } from '../../../../../lib/photos.js';
 import { Icon } from '../../../../../components/Icon.jsx';
@@ -318,7 +318,9 @@ export function CenteringPanel({ c, reload }) {
         <Card title="ผู้ดำเนินการ">
           <div className="measure-grid">
             <Field label="ผู้วัด / Technician">
-              <EmployeeSelect
+              <StepEmployeeSelect
+                step="centering"
+                caseType={c.case_type}
                 name="performed_by"
                 value={form.performed_by ?? ''}
                 onChange={(e) => set('performed_by')(e.target.value)}

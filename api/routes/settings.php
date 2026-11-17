@@ -164,3 +164,22 @@ PUT('/api/settings/case-keywords', function (array $req) {
     }
     return ['keywords' => CaseSource::saveKeywords($patch), 'preview' => CaseSource::tally()];
 });
+
+/**
+ * ผู้รับผิดชอบแต่ละขั้นตอน (services/ProcessStaff.php) — อ่านได้ทุกคน เขียนได้เฉพาะแอดมิน
+ * (ประตูของ /api/settings ใน index.php)
+ */
+GET('/api/settings/process-staff', fn() => [
+    'config'       => (object) ProcessStaff::config(),
+    'slots'        => ProcessStaff::SLOTS,
+    'slot_process' => ProcessStaff::SLOT_PROCESS,
+    'case_types'   => ProcessStaff::caseTypes(),
+    'processes'    => array_combine(
+        ProcessStaff::caseTypes(),
+        array_map(fn($t) => processesFor($t), ProcessStaff::caseTypes())
+    ),
+]);
+
+PUT('/api/settings/process-staff', function (array $req) {
+    return ['config' => (object) ProcessStaff::save($req['body']['config'] ?? [])];
+});

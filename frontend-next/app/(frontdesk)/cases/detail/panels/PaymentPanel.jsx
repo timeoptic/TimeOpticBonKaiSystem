@@ -18,7 +18,7 @@ import { useAsync, readForm, useNowLocal, useObjectUrls } from '../../../../../l
 import { useToast } from '../../../../../components/Toast.jsx';
 import { useConfirm } from '../../../../../components/Confirm.jsx';
 import { Badge, Card, Field, FormGrid, Row, Split } from '../../../../../components/ui.jsx';
-import { EmployeeSelect } from '../../../../../components/Selects.jsx';
+import { StepEmployeeSelect } from '../../../../../components/StepEmployeeSelect.jsx';
 import { Icon } from '../../../../../components/Icon.jsx';
 import { EditGate } from '../../../../../components/EditLock.jsx';
 import { useMeta } from '../../../../../contexts/MetaContext.jsx';
@@ -467,7 +467,7 @@ function PaymentEditDialog({ p, c, onClose, onSaved }) {
               <input id="pe-reference" value={reference} onChange={(e) => setReference(e.target.value)} />
             </Field>
             <Field label="ผู้รับเงิน *">
-              <EmployeeSelect value={receivedBy} onChange={(e) => setReceivedBy(e.target.value)} />
+              <StepEmployeeSelect step="payment" caseType={c.case_type} value={receivedBy} onChange={(e) => setReceivedBy(e.target.value)} />
             </Field>
           </FormGrid>
 
@@ -818,7 +818,9 @@ export function PaymentPanel({ c, reload }) {
           <FormGrid>
             {isUnpaid ? null : <Field label="อ้างอิง (เลขที่โอน / เลขอนุมัติ)"><input name="reference" /></Field>}
             <Field label={isUnpaid ? 'ผู้บันทึก *' : 'ผู้รับเงิน *'}>
-              <EmployeeSelect
+              <StepEmployeeSelect
+                step="payment"
+                caseType={c.case_type}
                 name="received_by"
                 value={receivedBy}
                 onChange={(e) => setReceivedBy(e.target.value)}
