@@ -52,15 +52,16 @@ final class ProcessStaff
     }
 
     /** ค่าที่บันทึกไว้ ตัดของที่ไม่รู้จักทิ้ง · ไม่เคยตั้ง = [] */
+    private static ?array $cache = null;
+
     public static function config(): array
     {
-        static $cache = null;
-        if ($cache !== null) {
-            return $cache;
+        if (self::$cache !== null) {
+            return self::$cache;
         }
         $raw = Db::get('SELECT `value` FROM app_settings WHERE `key` = ?', self::KEY);
         $data = json_decode((string) ($raw['value'] ?? ''), true);
-        return $cache = self::normalize(is_array($data) ? $data : []);
+        return self::$cache = self::normalize(is_array($data) ? $data : []);
     }
 
     private static function normalize(array $data): array
@@ -108,7 +109,7 @@ final class ProcessStaff
             self::KEY,
             json_encode($clean, JSON_UNESCAPED_UNICODE)
         );
-        return $clean;
+        return self::$cache = $clean;
     }
 
     /** รายชื่อ id ที่เลือกได้ · null = ไม่จำกัด */
