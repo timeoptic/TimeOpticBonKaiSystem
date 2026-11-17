@@ -34,10 +34,9 @@ import { DateField } from '../../../components/DateField.jsx';
 
 const PER_PAGE = [10, 25, 50, 100];
 
+/* ทำงานอยู่ / ลาออก แยกเป็นแท็บแล้ว (state tab) — ช่องนี้เหลือตัวกรองข้อมูลไม่ครบ */
 const STATUS_OPTS = [
   ['', 'ทุกสถานะ'],
-  ['on', 'ทำงานอยู่'],
-  ['off', 'ลาออก'],
   ['incomplete', 'ข้อมูลไม่ครบ'],
 ];
 
@@ -245,6 +244,8 @@ function EmployeeListInner() {
 
   /* กรองในเครื่อง — /api/employees คืนทั้งตาราง (หลักสิบคน) มารอบเดียวอยู่แล้ว */
   const [term, setTerm] = useState('');
+  /* คนที่ลาออกอยู่แท็บของตัวเอง ไม่ปนกับคนที่ยังทำงาน — เปิดหน้ามาเจอแท็บทำงานอยู่ */
+  const [tab, setTab] = useState('on');
   const [status, setStatus] = useState('');
   const [role, setRole] = useState('');
   const [sort, setSort] = useState('name');
@@ -285,8 +286,7 @@ function EmployeeListInner() {
   const shown = useMemo(() => {
     const q = term.trim().toLowerCase();
     const out = (rows || []).filter((r) => {
-      if (status === 'on' && !isOn(r)) return false;
-      if (status === 'off' && isOn(r)) return false;
+      if (isOn(r) !== (tab === 'on')) return false;
       if (status === 'incomplete' && !missingOf(r).length) return false;
       if (role === '-' && roleList(r.roles).length) return false;
       if (role && role !== '-' && !roleList(r.roles).some((x) => roleKey(x) === role)) return false;
@@ -304,10 +304,10 @@ function EmployeeListInner() {
       birth: (a, b) => (!a.birth_date) - (!b.birth_date) || String(a.birth_date).localeCompare(String(b.birth_date)) || byName(a, b),
     }[sort];
     return [...out].sort(cmp);
-  }, [rows, term, status, role, sort]);
+  }, [rows, term, tab, status, role, sort]);
 
   /* เปลี่ยนตัวกรอง = ผลคนละชุด กลับไปหน้า 1 เสมอ */
-  useEffect(() => { setPage(1); }, [term, status, role, sort, perPage]);
+  useEffect(() => { setPage(1); }, [term, tab, status, role, sort, perPage]);
 
   const total = shown.length;
   const pages = Math.max(1, Math.ceil(total / perPage));
@@ -367,9 +367,9 @@ function EmployeeListInner() {
       <Hero />
 
       <div className="em-stats">
-        <StatCard tone="green" icon="users" label="ทั้งหมด" value={counts['']} active={status === ''} onClick={() => setStatus('')} />
-        <StatCard tone="green" glyph="briefcase" label="ทำงานอยู่" value={counts.on} active={status === 'on'} onClick={() => setStatus('on')} />
-        <StatCard tone="amber" glyph="door" label="ลาออก" value={counts.off} active={status === 'off'} onClick={() => setStatus('off')} />
+        <StatCard tone="green" icon="users" label="ทั้งหมด" value={counts['']} active={false} onClick={() => { setTab('on'); setStatus(''); }} />
+        <StatCard tone="green" glyph="briefcase" label="ทำงานอยู่" value={counts.on} active={tab === 'on' && !status} onClick={() => { setTab('on'); setStatus(''); }} />
+        <StatCard tone="amber" glyph="door" label="ลาออก" value={counts.off} active={tab === 'off' && !status} onClick={() => { setTab('off'); setStatus(''); }} />
         <StatCard tone="red" icon="userX" label="ข้อมูลไม่ครบ" value={counts.incomplete} active={status === 'incomplete'} onClick={() => setStatus('incomplete')} />
       </div>
 
@@ -400,8 +400,21 @@ function EmployeeListInner() {
 
       <div className="em-card">
         <div className="em-card-head">
-          <h2>รายชื่อพนักงาน</h2>
-          <span className="em-count">{total} คน</span>
+          <div className="em-tabs" role="tablist">
+            {[['on', 'ทำงานอยู่'], ['off', 'ลาออก']].map(([k, label]) => (
+              <button
+                type="button"
+                key={k}
+                role="tab"
+                aria-selected={tab === k}
+                className={`em-tab t-${k} ${tab === k ? 'on' : ''}`}
+                onClick={() => setTab(k)}
+              >
+                {label} <span className="em-tab-n">{counts[k]}</span>
+              </button>
+            ))}
+          </div>
+          {filtered && <span className="em-count">พบ {total} คน</span>}
           {filtered && (
             <button type="button" className="em-clear" onClick={() => { setTerm(''); setStatus(''); setRole(''); }}>
               <Icon name="x" /> ล้างตัวกรอง
@@ -443,7 +456,7 @@ function EmployeeListInner() {
             page={cur}
             perPage={perPage}
             onRowClick={(r) => setDlg({ mode: 'view', row: r })}
-            empty={filtered ? 'ไม่พบพนักงานที่ตรงกับที่ค้นหา' : 'ยังไม่มีพนักงาน'}
+            empty={filtered ? 'ไม่พบพนักงานที่ตรงกับที่ค้นหา' : (tab === 'off' ? 'ยังไม่มีพนักงานที่ลาออก' : 'ยังไม่มีพนักงาน')}
           />
         </div>
 
@@ -549,6 +562,13 @@ const CSS = `
 .em-card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px 18px 0}
 .em-card-head{display:flex;align-items:center;gap:10px;margin:0 2px 14px}
 .em-card-head h2{margin:0;font-size:18px;font-weight:800;color:var(--ink)}
+.em-tabs{display:flex;gap:4px;padding:4px;border-radius:12px;background:var(--surface-alt)}
+.em-tab{display:inline-flex;align-items:center;gap:8px;border:0;background:transparent;cursor:pointer;padding:8px 16px;border-radius:9px;font:inherit;font-size:15px;font-weight:700;color:var(--ink-soft)}
+.em-tab:hover{color:var(--ink)}
+.em-tab.on{background:var(--surface,#fff);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.em-tab-n{font-size:var(--t-xs);font-weight:700;padding:2px 8px;border-radius:var(--radius-pill);background:var(--surface-alt);color:var(--ink-soft)}
+.em-tab.t-on.on .em-tab-n{background:var(--green-tint);color:var(--green-deep)}
+.em-tab.t-off.on .em-tab-n{background:#fdf0d5;color:#9a6200}
 .em-count{font-size:var(--t-xs);font-weight:600;padding:3px 10px;border-radius:var(--radius-pill);background:var(--surface-alt);color:var(--ink-soft)}
 .em-clear{margin-left:auto;display:inline-flex;align-items:center;gap:5px;border:0;background:none;color:var(--ink-soft);
   font:inherit;font-size:var(--t-sm);cursor:pointer;padding:4px 8px;border-radius:var(--radius-xs)}
