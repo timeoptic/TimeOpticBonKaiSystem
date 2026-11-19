@@ -68,6 +68,7 @@ const roleLabel = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 const Glyph = {
   dots: <path d="M6 10.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zm6 0a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zm6 0a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z" />,
   power: <path d="M11 3h2v9h-2V3zm-4.2 2.8 1.4 1.4A6 6 0 1 0 15.8 7.2l1.4-1.4A8 8 0 1 1 6.8 5.8z" />,
+  trash: <path d="M9 3h6l1 2h4v2H4V5h4l1-2zM6 9h12l-1 12H7L6 9zm4 2v8h2v-8h-2zm4 0v8h2v-8h-2z" />,
   briefcase: <path d="M9 3h6a2 2 0 0 1 2 2v1h3a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3V5a2 2 0 0 1 2-2zm0 3h6V5H9v1zM4 8v3h16V8H4zm0 5v5h16v-5h-7v1h-2v-1H4z" />,
   door: <path d="M5 3h10a2 2 0 0 1 2 2v1h-2V5H5v14h10v-1h2v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zm11.6 5.4L20.2 12l-3.6 3.6-1.4-1.4 1.2-1.2H9v-2h7.4l-1.2-1.2 1.4-1.4z" />,
 };
@@ -131,7 +132,7 @@ function StatCard({ tone, icon, glyph, label, value, active, onClick }) {
   );
 }
 
-function RowMenu({ row, onToggle }) {
+function RowMenu({ row, onToggle, onRemove }) {
   const [open, setOpen] = useState(false);
   const box = useRef(null);
   useEffect(() => {
@@ -149,6 +150,10 @@ function RowMenu({ row, onToggle }) {
         <span className="em-menu-pop" role="menu">
           <button type="button" role="menuitem" className={isOn(row) ? 'danger' : ''} onClick={() => { setOpen(false); onToggle(row); }}>
             <G name="power" /> {isOn(row) ? 'ปิดใช้งาน (ลาออก)' : 'เปิดใช้งานอีกครั้ง'}
+          </button>
+          {/* ลบจริงได้เฉพาะคนที่ยังไม่มีประวัติ (เช่น เพิ่มผิด) — เซิร์ฟเวอร์ปฏิเสธพร้อมบอกให้ปิดใช้งานแทน */}
+          <button type="button" role="menuitem" className="danger" onClick={() => { setOpen(false); onRemove(row); }}>
+            <G name="trash" /> ลบพนักงาน
           </button>
         </span>
       )}
@@ -357,6 +362,24 @@ function EmployeeListInner() {
     }
   };
 
+  /* ลบจริงได้เฉพาะคนที่ยังไม่มีประวัติในระบบ (เช่น เพิ่มผิด) — มีประวัติแล้วเซิร์ฟเวอร์ปฏิเสธ
+     พร้อมบอกให้ใช้ "ปิดใช้งาน" แทน ข้อความนั้นขึ้นเป็น toast (Bewell ขอ 14 พ.ย. 2026) */
+  const remove = async (r) => {
+    if (!await confirm(
+      'ลบพนักงาน',
+      `ลบ ${r.employee_name || r.first_name || `ID ${r.id}`} ออกจากระบบถาวร — ลบได้เฉพาะคนที่ยังไม่มีประวัติการใช้งาน`,
+      { confirmText: 'ลบ', danger: true },
+    )) return;
+    try {
+      await api.del('/api/employees/' + r.id);
+      await reloadMeta();
+      ok('ลบพนักงานแล้ว');
+      reload();
+    } catch (ex) {
+      err(ex);
+    }
+  };
+
   if (loading && !rows) return <Loading />;
 
   const filtered = !!(term.trim() || status || role);
@@ -447,7 +470,7 @@ function EmployeeListInner() {
                     <button type="button" className="em-act" aria-label="แก้ไขข้อมูล" title="แก้ไขข้อมูล" onClick={() => setDlg({ mode: 'edit', row: r })}>
                       <Icon name="pencil" />
                     </button>
-                    <RowMenu row={r} onToggle={toggle} />
+                    <RowMenu row={r} onToggle={toggle} onRemove={remove} />
                   </span>
                 ),
               },
