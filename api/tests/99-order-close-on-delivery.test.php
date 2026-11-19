@@ -38,6 +38,11 @@ function ocFixtures(Tx $q, float $price = 2100): array
         'INSERT INTO case_deliveries (case_id, delivered_at) VALUES (?, NOW())',
         $case
     );
+    /* หลักฐานก่อนส่งมอบ (กติกาจากระบบหลัก 10 พ.ย. 2026) — เทสต์นี้ดูเรื่องปิดออเดอร์ ไม่ใช่เรื่องหลักฐาน */
+    foreach (['exam', 'centering'] as $k) {
+        $q->run("INSERT INTO case_photos (case_id, kind, file_name) VALUES (?, ?, 'x.jpg')", $case, $k);
+    }
+    $q->run('INSERT INTO centerings (case_id, r_pd, l_pd, pd_total) VALUES (?, 31, 31, 62)', $case);
     return ['case' => $case, 'order' => $order, 'emp' => $emp];
 }
 

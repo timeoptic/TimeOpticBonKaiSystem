@@ -134,6 +134,8 @@ test('ทางเดินจริง: Progressive เคสเก่า — �
         ok($g !== null && (int) $g === 0, 'ไม่มีคนเจีย บันทึกเป็น 0');
 
         $call('POST', '/api/case-deliveries', $dlv + ['grinder_employee_id' => $emp]);
+        /* สาขา (Bewell): บิลปิดตอนส่งมอบเมื่อจ่ายครบเท่านั้น — จ่ายให้ครบก่อน */
+        $q->run("INSERT INTO payments (case_id, order_id, kind, method, amount, received_by, paid_at) VALUES (?, ?, 'full', 'Cash', 1000, ?, NOW())", $case, $order, $emp);
         $call('POST', $complete);
         $c = Db::get('SELECT c.status, s.is_terminal FROM cases c JOIN case_statuses s ON s.code = c.status WHERE c.id = ?', $case);
         eq((int) $c['is_terminal'], 1, 'เคสปิดแล้ว (' . $c['status'] . ')');

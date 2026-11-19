@@ -46,6 +46,7 @@ require __DIR__ . '/../routes/workflow.php';
 require __DIR__ . '/../core/Lookups.php';
 require __DIR__ . '/../routes/orders.php';
 require __DIR__ . '/../services/ActivityLog.php';
+require __DIR__ . '/../services/ProcessStaff.php';
 require __DIR__ . '/../services/Telegram.php';
 require __DIR__ . '/../services/DeliveryDigest.php';
 /* POS ขายหน้าร้าน (80-pos-items) — posActor() ถามคนล็อกอินผ่าน StockModule
