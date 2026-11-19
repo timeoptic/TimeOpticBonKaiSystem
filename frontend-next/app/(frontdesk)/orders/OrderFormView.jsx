@@ -899,16 +899,17 @@ export function OrderFormView({
                           ข้างบน — ปุ่มนี้เปิดใบสั่งจากค่าสายตาที่เพิ่งวัดได้เลย
                           ผลที่ได้คือชื่อกับ SKU ไม่ใช่ล็อต ตอนยืนยันการขายจึงไม่มี
                           อะไรถูกตัดจากคลังซ้ำอีกรอบ */}
-                      {!item ? (
-                        <button
-                          type="button"
-                          className="btn btn-light btn-sm"
-                          style={{ marginBottom: 10 }}
-                          onClick={() => setRxFor(side)}
-                        >
-                          <Icon name="glasses" /> สั่งตัดเลนส์ RX ({side.toUpperCase()})
-                        </button>
-                      ) : null}
+                      {/* ขึ้นเสมอ แม้ข้างนี้มีเลนส์อยู่แล้ว (ร้านขอ 19 พ.ย. 2026 — ออเดอร์เก่าจาก Access มีเลนส์
+                          ติดมา และรายการเลนส์ไม่มีปุ่มล้าง ปุ่มนี้เลยหายไปทั้งเคส) · สั่งตัดแล้วใบ RX แทนเลนส์เดิม
+                          ของข้างนี้ (ดู onRx ข้างล่าง) */}
+                      <button
+                        type="button"
+                        className="btn btn-light btn-sm"
+                        style={{ marginBottom: 10 }}
+                        onClick={() => setRxFor(side)}
+                      >
+                        <Icon name="glasses" /> {item ? 'สั่งตัดเลนส์ RX แทน' : 'สั่งตัดเลนส์ RX'} ({side.toUpperCase()})
+                      </button>
                       {/* ใบที่ออเดอร์เคยผูกไว้ถูกลบ/ยกเลิกที่หน้าคลังแล้ว (API ตัดลิงก์ทิ้ง
                           ใน orderDetail) — บอกไว้ คนจะได้ไม่งงว่าใบเดิมหายไปไหน */}
                       {!item && rxLens[side] === undefined && o[`lens_${side}_rx_gone_doc`] ? (
@@ -991,6 +992,9 @@ export function OrderFormView({
             title={`สั่งตัดเลนส์ ${rxFor === 'r' ? 'ขวา (R)' : 'ซ้าย (L)'}`}
             onClose={() => setRxFor(null)}
             onRx={(order) => {
+              /* ใบ RX แทนเลนส์ที่เลือกไว้ของข้างนี้ — ไม่งั้นข้างเดียวมีทั้งเลนส์และใบสั่งตัด (การ์ด RX ไม่ขึ้น) */
+              const slot = rxFor === 'r' ? 'lensOd' : 'lensOs';
+              if (picked[slot]) setItems({ ...picked, [slot]: null });
               setRxLens((m) => ({ ...m, [rxFor]: order }));
               setRxFor(null);
               setAutoSave((n) => n + 1);
