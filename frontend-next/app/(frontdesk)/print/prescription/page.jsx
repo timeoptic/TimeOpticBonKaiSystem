@@ -7,7 +7,7 @@
  *
  * มุมขวาบนคือโซนโลโก้ (--logo x --logo-h) ชื่อลูกค้าที่ยาวจะไม่วิ่งไปทับ
  * TimeOptic เดิมใช้กระดาษที่มีโลโก้พิมพ์มาแล้วจึงเว้นว่าง · Bewell ใช้กระดาษเปล่า
- * จึงพิมพ์โลโก้ public/logo-bewell.png ลงโซนนั้นเอง (ร้านขอ 21 ก.ย. 2026)
+ * จึงพิมพ์โลโก้ public/logo-shop.png ลงโซนนั้นเอง (ร้านขอ 21 ก.ย. 2026 · เปลี่ยนเป็นโลโก้ถูกดี 19 พ.ย. 2026)
  *
  * ทำไมกว้าง 180 สูง 55: ใบนี้ต้องมีตารางค่าสายตาอยู่ซ้ายและบล็อก CASE / วันที่ /
  * Lens / Frame / Test for อยู่ขวา "ระดับเดียวกัน" ห้ามตกลงไปใต้ตาราง — 6 คอลัมน์ตัวเลข
@@ -166,7 +166,7 @@ function SlipInner() {
               <span className="v">{c || rx?.first_name || rx?.last_name ? custName(c || rx) : DASH}</span>
             </div>
             <div className="slip-logo">
-              <img src="/logo-bewell.png" alt="TIME OPTIC สาขาบ่อนไก่" />
+              <img src="/logo-shop.png" alt="ร้านแว่นตาถูกดี สาขาบ่อนไก่" />
             </div>
           </div>
 
@@ -234,7 +234,7 @@ const slipCss = (portrait) => `
   /* ขอบขวาของตาราง = 5 + 3 + 10.6 + 6*11.85 = 89.7mm — ไม่เกินครึ่งใบ 90mm (ร้านขอ 12 ก.ย. 2026) */
   --rule:0.25mm solid #000;   /* เส้นตาราง — บางพอสำหรับเครื่องพิมพ์สลิป */
   --name:13pt;    /* ชื่อลูกค้าใหญ่กว่าตัวอื่นบนใบ — คนหยิบใบต้องอ่านชื่อออกจากระยะไกล */
-  --logo:38mm;    /* โซนโลโก้มุมขวาบน — Bewell พิมพ์โลโก้ลงเอง (logo-bewell.png) */
+  --logo:38mm;    /* โซนโลโก้มุมขวาบน — พิมพ์โลโก้ลงเอง (logo-shop.png) */
   --logo-h:12mm;
   box-sizing:border-box;
   width:180mm; height:55mm; padding:var(--pad);

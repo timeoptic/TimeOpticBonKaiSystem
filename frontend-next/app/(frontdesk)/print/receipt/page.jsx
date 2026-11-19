@@ -50,18 +50,22 @@ import {
    นำหน้า เพราะป้าย (โทร / Tel) เปลี่ยนตามภาษาของใบ ส่วนชื่อกับที่อยู่แยกสองชุด
    ชื่อไทยเอามาจาก SHOP.tagline ใน lib/constants.js ที่แอปใช้อยู่แล้ว จะได้ไม่มี
    ชื่อร้านภาษาไทยสองแบบในระบบเดียวกัน */
+/* taxId ว่าง = ร้านไม่ได้จดภาษีมูลค่าเพิ่ม (ถูกดี ณ 19 พ.ย. 2026) ใบจึงเป็น "ใบเสร็จรับเงิน"
+   อย่างเดียว ไม่มีบรรทัดเลขผู้เสียภาษีของร้าน และไม่แยก VAT 7% ท้ายใบ — ใส่เลขเมื่อไร
+   หัวใบกลับเป็นใบกำกับภาษี/ใบเสร็จ พร้อมบล็อก VAT เหมือนเดิมเอง */
 const SHOP = {
-  tel: '+66 32 511 360, +66 81 643 9282',
-  taxId: '3101800278601',
+  tel: '092-296-3788',
+  taxId: '',
   th: {
-    name: 'ร้านแว่นตาไทม์ออพติก (สำนักงานใหญ่)',
-    address: '106/4 ถ.เพชรเกษม อ.หัวหิน จ.ประจวบคีรีขันธ์',
+    name: 'ร้านแว่นตาถูกดี บ่อนไก่',
+    address: '6/115 ถ.รถไฟฝั่งตะวันตก ต.หัวหิน อ.หัวหิน จ.ประจวบคีรีขันธ์ 77110',
   },
   en: {
-    name: 'Timeoptic Optical shop (Head Office)',
-    address: '106/4 Phechkasem Rd. Hua-Hin  Prachuabkhirikhan',
+    name: 'TOKDEE Optical – Bonkai',
+    address: '6/115 Rot Fai Fang Tawan Tok Rd., Hua Hin, Hua Hin District, Prachuap Khiri Khan 77110',
   },
 };
+const HAS_VAT = Boolean(SHOP.taxId);
 
 /**
  * ป้ายบนใบสองภาษา — ลูกค้าต่างชาติขอใบภาษาอังกฤษได้ ลูกค้าไทยเอาไปยื่นภาษีได้
@@ -75,23 +79,23 @@ const SHOP = {
  */
 const TEXT = {
   th: {
-    title: 'ใบกำกับภาษี/ใบเสร็จรับเงิน', original: 'ต้นฉบับ', dup: 'สำเนา',
+    title: HAS_VAT ? 'ใบกำกับภาษี/ใบเสร็จรับเงิน' : 'ใบเสร็จรับเงิน', original: 'ต้นฉบับ', dup: 'สำเนา',
     tel: 'โทร', shopTaxId: 'เลขประจำตัวผู้เสียภาษี',
     billNo: 'เลขที่', date: 'วันที่',
     custName: 'ชื่อลูกค้า', custTaxId: 'เลขประจำตัวผู้เสียภาษี',
     address: 'ที่อยู่', custTel: 'โทร',
     colDesc: 'รายการ', colQty: 'จำนวน', colUnit: 'ราคาต่อหน่วย', colAmount: 'ราคารวม',
-    vatExcl: 'ราคาก่อนภาษี', vatVat: 'ภาษีมูลค่าเพิ่ม 7%', vatIncl: 'ราคารวมภาษี',
+    vatExcl: 'ราคาก่อนภาษี', vatVat: 'ภาษีมูลค่าเพิ่ม 7%', vatIncl: 'ราคารวมภาษี', total: 'รวมเงิน',
     approvedBy: 'ผู้อนุมัติเอกสาร',
   },
   en: {
-    title: 'TAX INVOICE/RECEIPT', original: 'Original', dup: 'Copy',
+    title: HAS_VAT ? 'TAX INVOICE/RECEIPT' : 'RECEIPT', original: 'Original', dup: 'Copy',
     tel: 'Tel', shopTaxId: 'Tax ID',
     billNo: 'Bill No.', date: 'Date',
     custName: 'Customer name', custTaxId: 'Tax ID Number',
     address: 'Address', custTel: 'Tel',
     colDesc: 'Description', colQty: 'Amount', colUnit: 'Unit Price', colAmount: 'Price',
-    vatExcl: 'Price Excluding VAT', vatVat: 'Value Added Tax (VAT) 7%', vatIncl: 'Total Including VAT',
+    vatExcl: 'Price Excluding VAT', vatVat: 'Value Added Tax (VAT) 7%', vatIncl: 'Total Including VAT', total: 'Total',
     approvedBy: 'Approved by',
   },
 };
@@ -137,8 +141,8 @@ const money2 = (v) =>
 /** โลโก้หัวใบ — ไฟล์หายก็ยังพิมพ์ได้ กลับไปเป็นไอคอนแว่น + ชื่อร้าน (เหมือน /print/order) */
 function BrandMark() {
   const [bad, setBad] = useState(false);
-  if (bad) return <span className="rc-mark"><Icon name="glasses" /><b>TIME OPTIC</b></span>;
-  return <img className="rc-logo" src="/logo-bewell.png" alt="TIME OPTIC สาขาบ่อนไก่" onError={() => setBad(true)} />;
+  if (bad) return <span className="rc-mark"><Icon name="glasses" /><b>TOKDEE</b></span>;
+  return <img className="rc-logo" src="/logo-shop.png" alt="ร้านแว่นตาถูกดี สาขาบ่อนไก่" onError={() => setBad(true)} />;
 }
 
 /** แถว "ป้าย : ค่า" ของบล็อกหัวใบและบล็อกลูกค้า — ค่าว่างพิมพ์ขีดให้เขียนมือ */
@@ -179,7 +183,7 @@ function Copy({ r, cust, t, lang, vat, kind }) {
           <b>{shop.name}</b>
           <span>{shop.address}</span>
           <span>{t.tel} : {SHOP.tel}</span>
-          <span>{t.shopTaxId} : {SHOP.taxId}</span>
+          {HAS_VAT && <span>{t.shopTaxId} : {SHOP.taxId}</span>}
         </div>
         <div className="rc-ref">
           <F k={t.billNo} v={r.billNo} />
@@ -232,9 +236,13 @@ function Copy({ r, cust, t, lang, vat, kind }) {
           <div className="rc-w-row"><span>รวม</span><b>{bahtText(r.total)}</b></div>
         </div>
         <div className="rc-vat">
-          <div className="rc-v-row"><span>{t.vatExcl}</span><b>{money2(vat.excl)}</b></div>
-          <div className="rc-v-row"><span>{t.vatVat}</span><b>{money2(vat.vat)}</b></div>
-          <div className="rc-v-row rc-v-sum"><span>{t.vatIncl}</span><b>{money2(vat.incl)}</b></div>
+          {HAS_VAT ? <>
+            <div className="rc-v-row"><span>{t.vatExcl}</span><b>{money2(vat.excl)}</b></div>
+            <div className="rc-v-row"><span>{t.vatVat}</span><b>{money2(vat.vat)}</b></div>
+            <div className="rc-v-row rc-v-sum"><span>{t.vatIncl}</span><b>{money2(vat.incl)}</b></div>
+          </> : (
+            <div className="rc-v-row rc-v-sum"><span>{t.total}</span><b>{money2(vat.incl)}</b></div>
+          )}
         </div>
       </div>
 
@@ -755,10 +763,10 @@ function ReceiptSheet() {
           Print Preview ต้องขึ้น <b>1 หน้า</b> และเห็นครบทั้งสองใบ — ถ้าขึ้น 2 หน้า
           แปลว่ามาตราส่วนไม่ใช่ 100% หรือแนวกระดาษยังเป็นแนวตั้งอยู่
         </p>
-        <p className="rc-vat-note">
+        {HAS_VAT && <p className="rc-vat-note">
           ราคาที่กรอกในระบบถือเป็นราคา <b>รวม VAT แล้ว</b> ใบจึงถอด 7% ย้อนกลับ
           (ยอดรวม ÷ 1.07) ไม่ใช่บวกเพิ่มจากยอด — ตรงกับลำดับ Excluding → VAT → Including ของฟอร์มเดิม
-        </p>
+        </p>}
       </div>
 
       {/* A4 แนวนอน = 297mm กว้างกว่าจอโทรศัพท์เกือบสามเท่า — PaperView คืนทางดู

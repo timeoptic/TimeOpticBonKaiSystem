@@ -77,15 +77,15 @@ const caseNo = (o) =>
 /* ที่ติดต่อของร้านที่พิมพ์ลงใบให้ลูกค้า — ยังไม่มีช่องเก็บในตาราง settings
    (มีแค่ shop_name / เวลาเปิด-ปิด) แก้ตรงนี้ที่เดียวเมื่อร้านย้ายหรือเปลี่ยนเบอร์ */
 const SHOP = {
-  tel: '+66 (032) 511-360, 081-643-9282',
-  email: 'timeoptic.hh@gmail.com',
+  tel: '092-296-3788',
+  email: 'tokdeeoptical2@gmail.com',
 };
 
 /* QR สองอันวางเป็นไฟล์ไว้ที่ frontend-next/public/ แล้วมันขึ้นเอง ไม่ต้องแก้โค้ด
    ยังไม่มีไฟล์ก็พิมพ์ได้ — ช่องจะเป็นกรอบเส้นประที่กว้างเท่าของจริง เลย์เอาต์ไม่ขยับ */
 const QRS = [
-  ['/qr-line.png', 'LINE'],
-  ['/qr-location.png', 'LOCATION'],
+  ['/qr-line-shop.png', 'LINE'],
+  ['/qr-location-shop.png', 'LOCATION'],
 ];
 
 /** ค่าสายตาหนึ่งข้าง — ลำดับนี้คือลำดับที่พิมพ์ออกมา */
@@ -242,8 +242,8 @@ function F({ k, v, fill = false, wrap = false }) {
 /** โลโก้หัวใบ — ไฟล์รูปหายก็ยังพิมพ์ได้ ตกกลับไปเป็นไอคอนแว่น+ชื่อร้านแบบเดิม */
 function BrandMark() {
   const [bad, setBad] = useState(false);
-  if (bad) return <div className="iv-brand-mark"><Icon name="glasses" /><b>TIME OPTIC</b></div>;
-  return <img className="iv-logo" src="/logo-bewell.png" alt="TIME OPTIC สาขาบ่อนไก่" onError={() => setBad(true)} />;
+  if (bad) return <div className="iv-brand-mark"><Icon name="glasses" /><b>TOKDEE</b></div>;
+  return <img className="iv-logo" src="/logo-shop.png" alt="ร้านแว่นตาถูกดี สาขาบ่อนไก่" onError={() => setBad(true)} />;
 }
 
 /** หัวใบ — ใช้ซ้ำทั้งครึ่งบนและครึ่งล่าง สองครึ่งต้องอ่านเป็นใบเดียวกัน */
@@ -359,8 +359,8 @@ function OrderSheet() {
           แปลว่ามาตราส่วนไม่ใช่ 100% หรือระยะขอบไม่ใช่ None
         </p>
         <p className="iv-qr-note">
-          รูปบนใบอ่านจาก <b>frontend-next/public/</b> — โลโก้หัวใบ <b>logo-bewell.png</b>
-          และ QR <b>qr-line.png</b> / <b>qr-location.png</b> เปลี่ยนรูปคือทับไฟล์เดิม ไม่ต้องแก้โค้ด
+          รูปบนใบอ่านจาก <b>frontend-next/public/</b> — โลโก้หัวใบ <b>logo-shop.png</b>
+          และ QR <b>qr-line-shop.png</b> / <b>qr-location-shop.png</b> เปลี่ยนรูปคือทับไฟล์เดิม ไม่ต้องแก้โค้ด
           ไฟล์หายก็ยังพิมพ์ได้ โลโก้กลับไปเป็นไอคอนแว่น+ชื่อร้าน ช่อง QR เป็นกรอบเปล่าที่กว้างเท่าเดิม
         </p>
       </div>
