@@ -194,6 +194,78 @@ test('ดึงสถานะล่าสุด: ตัดแล้วได้
     });
 });
 
+test('คลังตัดบางส่วน: แยกสถานะตัดบางส่วน/รอของ บอกทีละข้าง · ยกเลิกที่รอแล้วบอกเหตุผล', function () {
+    $eyes = TimeOpticRequests::eyesOf([
+        ['lens_code' => 'LNS-0264', 'eye' => 'R'],
+        ['lens_code' => 'LNS-0263', 'eye' => 'L'],
+    ]);
+    $partial = TimeOpticRequests::shape([
+        'id' => 152, 'status' => 'approved',
+        'result'  => ['referenceDoc' => 'REQ-00152', 'lines' => [['sku' => 'LNS-0263', 'quantity' => 1]]],
+        'waiting' => [['sku' => 'LNS-0264', 'quantity' => 1]],
+    ], $eyes);
+    eq([$partial['status'], $partial['note']], ['partial', 'ตัดแล้ว: L LNS-0263 · รอของ: R LNS-0264'], 'ตัดข้างซ้าย ขวารอ');
+
+    $all = TimeOpticRequests::shape([
+        'id' => 153, 'status' => 'approved',
+        'result'  => ['lines' => []],
+        'waiting' => [['sku' => 'LNS-0264', 'quantity' => 1], ['sku' => 'LNS-0263', 'quantity' => 1]],
+    ], $eyes);
+    eq([$all['status'], $all['note']], ['waiting', 'รอของ: R LNS-0264, L LNS-0263'], 'ทั้งใบรอของ');
+
+    $pair = TimeOpticRequests::shape([
+        'id' => 154, 'status' => 'approved',
+        'result'  => ['lines' => [['sku' => 'LNS-1', 'quantity' => 1]]],
+        'waiting' => [['sku' => 'LNS-1', 'quantity' => 1]],
+    ], TimeOpticRequests::eyesOf([['lens_code' => 'LNS-1', 'eye' => 'R'], ['lens_code' => 'LNS-1', 'eye' => 'L']]));
+    eq($pair['note'], 'ตัดแล้ว: LNS-1 · รอของ: LNS-1', 'SKU เดียวกันสองข้าง ตัดไปหนึ่ง ไม่เดาข้าง');
+
+    $dropped = TimeOpticRequests::shape([
+        'id' => 155, 'status' => 'approved',
+        'result' => [
+            'referenceDoc' => 'REQ-00155',
+            'lines'   => [['sku' => 'LNS-0263', 'quantity' => 1]],
+            'dropped' => [['reason' => 'เลิกผลิต', 'lines' => [['sku' => 'LNS-0264', 'quantity' => 1]]]],
+        ],
+        'waiting' => [],
+    ], $eyes);
+    eq(
+        [$dropped['status'], $dropped['note']],
+        ['approved', 'ใบเบิก REQ-00155 · ตัดแล้ว: L LNS-0263 · ยกเลิกที่รอของ: R LNS-0264 (เลิกผลิต)'],
+        'ยกเลิกที่รอ ส่วนที่ตัดอยู่ตามเดิม',
+    );
+
+    $none = TimeOpticRequests::shape([
+        'id' => 156, 'status' => 'approved',
+        'result'  => ['lines' => [], 'dropped' => [['reason' => 'สาขายกเลิกคำขอ', 'lines' => [['sku' => 'LNS-0264', 'quantity' => 1]]]]],
+        'waiting' => [],
+    ], $eyes);
+    eq($none['status'], 'cancelled', 'ไม่ได้ตัดอะไรเลยแล้วยกเลิกที่รอ = ยกเลิก');
+
+    eq(TimeOpticRequests::shape(['id' => 1, 'status' => 'approved', 'result' => ['referenceDoc' => 'REQ-1']])['note'], 'ใบเบิก REQ-1', 'คำขอแบบเดิมไม่เปลี่ยน');
+});
+
+test('ดึงสถานะล่าสุด: คลังตัดบางส่วน → ใบได้สถานะตัดบางส่วน · ลงไทม์ไลน์เคส', function () {
+    tosReset('partial');
+    rollback(function (Tx $q) {
+        $r = tosReq($q, lrFixture($q));
+        lrStatus((int) $r['id'], 'issued');
+        Router::dispatch('POST', '/api/lens-requisitions/timeoptic-refresh', [], []);
+        $row = $q->get('SELECT timeoptic_status, timeoptic_note FROM lens_requisitions WHERE id = ?', (int) $r['id']);
+        eq([$row['timeoptic_status'], $row['timeoptic_note']], ['partial', 'ตัดแล้ว: LNS-C · รอของ: LNS-W'], 'สถานะ + หมายเหตุ');
+        $ev = $q->get("SELECT action, note FROM case_events WHERE entity = 'lens_requisition' AND entity_id = ? ORDER BY id DESC LIMIT 1", (int) $r['id']);
+        eq($ev['action'], 'lens_timeoptic_status', 'ไทม์ไลน์');
+        ok(str_contains((string) $ev['note'], 'TimeOptic ตัดบางส่วน · รอของ'), 'ไทม์ไลน์บอกสถานะ: ' . $ev['note']);
+
+        $again = Router::dispatch('POST', '/api/lens-requisitions/timeoptic-refresh', [], []);
+        eq(
+            (int) $q->get("SELECT COUNT(*) AS n FROM case_events WHERE action = 'lens_timeoptic_status' AND entity_id = ?", (int) $r['id'])['n'],
+            1,
+            'ดึงซ้ำไม่ลงซ้ำ',
+        );
+    });
+});
+
 test('ยืนยันขั้นขาย = ส่งคำขอเข้าคลังทันที ใบยังรอเบิก · กดซ้ำไม่ส่งซ้ำ · เลื่อนสถานะต่อก็ไม่ส่งซ้ำ', function () {
     $seen = tosReset();
     rollback(function (Tx $q) use ($seen) {

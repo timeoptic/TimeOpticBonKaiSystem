@@ -25,6 +25,10 @@ final class TimeOpticRequests
     public const LABEL = [
         'pending'   => 'รอ TimeOptic ตรวจ',
         'approved'  => 'TimeOptic ตัดสต็อกแล้ว',
+        /* คลังของไม่พอตอนยืนยัน — ตัดเท่าที่มี ที่ขาดค้างรอของในคำขอเดิม (ร้านขอ 19 พ.ย. 2026)
+           ฝั่งคลังเก็บเป็น approved + result.waiting · ฝั่งนี้แยกออกมาให้พนักงานเห็น */
+        'partial'   => 'TimeOptic ตัดบางส่วน · รอของ',
+        'waiting'   => 'TimeOptic รอของเข้าคลัง',
         'rejected'  => 'TimeOptic ตีกลับ',
         'cancelled' => 'ยกเลิกคำขอแล้ว',
     ];
@@ -203,10 +207,11 @@ final class TimeOpticRequests
         $r    = $q->get('SELECT req_no, timeoptic_req_id, timeoptic_req_code, timeoptic_status FROM lens_requisitions WHERE id = ?', $id);
         $code = (string) $r['timeoptic_req_code'];
         $st   = (string) ($r['timeoptic_status'] ?? 'pending');
-        if ($st === 'pending') {
+        /* รอตรวจ ถอนได้ · ทั้งใบรอของ (ยังไม่ได้ตัดอะไร) ถอนส่วนที่รอได้ ได้สถานะใหม่กลับมา */
+        if ($st === 'pending' || $st === 'waiting') {
             $st = self::cancel((int) $r['timeoptic_req_id'])['status'];
         }
-        if ($st === 'approved') {
+        if ($st === 'approved' || $st === 'partial') {
             throw new HttpError(
                 409,
                 "คำขอ $code TimeOptic ตัดสต็อกไปแล้ว เปลี่ยนเลนส์ไม่ได้ — ยกเลิกใบเบิกเดิมก่อนถ้าต้องการเปลี่ยนเลนส์",
@@ -326,28 +331,101 @@ final class TimeOpticRequests
      */
     public static function mine(): array
     {
+        return array_map(static fn(array $r): array => self::shape($r), self::mineRaw());
+    }
+
+    /**
+     * คำขอตามที่คลังส่งมา (ยังไม่แปลง) — ให้คนเรียกแปลงเองพร้อมข้างตาของใบเบิก (`shape($r, $eyes)`)
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    public static function mineRaw(): array
+    {
         $rows = self::session(fn(callable $call) => $call('GET', '/issue-requests/mine', null)['requests'] ?? []);
         $out  = [];
         foreach ($rows as $r) {
-            if (isset($r['id'])) {
-                $out[(int) $r['id']] = self::shape($r);
+            if (is_array($r) && isset($r['id'])) {
+                $out[(int) $r['id']] = $r;
             }
         }
         return $out;
     }
 
-    /** คำขอจากคลัง → ช่องที่ Bewell เก็บ */
-    public static function shape(array $r): array
+    /**
+     * ข้างตาของแต่ละ SKU ในใบเบิก → ['LNS-0264' => ['R'], ...] สำหรับ shape()
+     *
+     * @param list<array<string,mixed>> $items แถว lens_requisition_items (lens_code, eye)
+     * @return array<string,list<string>>
+     */
+    public static function eyesOf(array $items): array
     {
-        $status = (string) ($r['status'] ?? 'pending');
-        $note   = null;
+        $out = [];
+        foreach ($items as $it) {
+            $sku = trim((string) ($it['lens_code'] ?? ''));
+            $eye = (string) ($it['eye'] ?? '');
+            if ($sku === '' || $eye === '') {
+                continue;
+            }
+            foreach ($eye === 'pair' ? ['R', 'L'] : [$eye] as $e) {
+                if (!in_array($e, $out[$sku] ?? [], true)) {
+                    $out[$sku][] = $e;
+                }
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * คำขอจากคลัง → ช่องที่ Bewell เก็บ
+     *
+     * approved ที่ยังมีรายการรอของ (คลังของไม่พอ) แยกเป็น partial (ตัดไปบางส่วน) / waiting (ยังไม่ได้ตัดเลย)
+     * แล้วบอกทีละข้างว่าข้างไหนตัดแล้ว ข้างไหนรอ · รายการรอที่ถูกยกเลิกบอกในหมายเหตุพร้อมเหตุผล
+     * ทุกรายการถูกยกเลิกโดยไม่ได้ตัดอะไรเลย = cancelled
+     *
+     * @param array<string,list<string>> $eyes ข้างตาต่อ SKU (`eyesOf`) — ไม่ส่ง = บอกแค่รหัส
+     */
+    public static function shape(array $r, array $eyes = []): array
+    {
+        $status  = (string) ($r['status'] ?? 'pending');
+        $note    = null;
+        $result  = is_array($r['result'] ?? null) ? $r['result'] : [];
+        $cut     = is_array($result['lines'] ?? null) ? $result['lines'] : [];
+        $waiting = is_array($r['waiting'] ?? null) ? $r['waiting'] : (is_array($result['waiting'] ?? null) ? $result['waiting'] : []);
+        $drops   = is_array($result['dropped'] ?? null) ? $result['dropped'] : [];
+        $dropped = [];
+        $why     = [];
+        foreach ($drops as $d) {
+            if (is_array($d)) {
+                $dropped = array_merge($dropped, is_array($d['lines'] ?? null) ? $d['lines'] : []);
+                if (trim((string) ($d['reason'] ?? '')) !== '') {
+                    $why[] = trim((string) $d['reason']);
+                }
+            }
+        }
+        $dropWhy = $why ? ' (' . implode(' / ', $why) . ')' : '';
+        $undone  = $r['undone']['state'] ?? null;
+
         if ($status === 'rejected') {
             $note = $r['rejectReason'] ?? null;
+        } elseif ($status === 'approved' && $undone) {
+            $note = 'คลังย้อนรายการแล้ว (' . $undone . ')';
+        } elseif ($status === 'approved' && $waiting) {
+            $status = $cut ? 'partial' : 'waiting';
+            $note   = implode(' · ', array_filter([
+                $cut ? 'ตัดแล้ว: ' . self::linesText($cut, $eyes) : null,
+                'รอของ: ' . self::linesText($waiting, $eyes),
+                $dropped ? 'ยกเลิก: ' . self::linesText($dropped, $eyes) . $dropWhy : null,
+            ]));
+        } elseif ($status === 'approved' && !$cut && $dropped) {
+            $status = 'cancelled';
+            $note   = 'TimeOptic ยกเลิกรายการที่รอของ: ' . self::linesText($dropped, $eyes) . $dropWhy;
         } elseif ($status === 'approved') {
-            $undone = $r['undone']['state'] ?? null;
-            $note   = $undone
-                ? 'คลังย้อนรายการแล้ว (' . $undone . ')'
-                : (($r['result']['referenceDoc'] ?? null) ? 'ใบเบิก ' . $r['result']['referenceDoc'] : null);
+            $note = implode(' · ', array_filter([
+                ($result['referenceDoc'] ?? null) ? 'ใบเบิก ' . $result['referenceDoc'] : null,
+                $dropped
+                    ? 'ตัดแล้ว: ' . self::linesText($cut, $eyes) . ' · ยกเลิกที่รอของ: ' . self::linesText($dropped, $eyes) . $dropWhy
+                    : null,
+            ])) ?: null;
         }
         if ($note === null && !empty($r['edited'])) {
             $note = 'TimeOptic แก้รายการก่อนยืนยัน';
@@ -361,6 +439,30 @@ final class TimeOpticRequests
     }
 
     /* ─────────────────────────────────────────────────────── ภายใน */
+
+    /**
+     * บรรทัด {sku, quantity} → "R LNS-0264, L LNS-0263" (SKU ซ้ำรวมกัน)
+     * ระบุข้างเมื่อ SKU นั้นมีข้างเดียวในใบเบิก หรือจำนวนเท่ากับจำนวนข้างพอดี ไม่งั้นบอกจำนวน
+     *
+     * @param list<mixed> $lines
+     * @param array<string,list<string>> $eyes
+     */
+    private static function linesText(array $lines, array $eyes): string
+    {
+        $qty = [];
+        foreach ($lines as $l) {
+            if (is_array($l) && isset($l['sku'])) {
+                $qty[(string) $l['sku']] = ($qty[(string) $l['sku']] ?? 0) + (int) ($l['quantity'] ?? 0);
+            }
+        }
+        $out = [];
+        foreach ($qty as $sku => $n) {
+            $e     = $eyes[$sku] ?? [];
+            $side  = count($e) === 1 || (count($e) > 1 && count($e) === $n) ? implode('+', $e) . ' ' : '';
+            $out[] = $side . $sku . ($n > 1 && $side === '' ? " ×$n" : '');
+        }
+        return implode(', ', $out);
+    }
 
     /** @return array{api:string,user:string,pass:string,branch:int}|null */
     private static function cfg(): ?array

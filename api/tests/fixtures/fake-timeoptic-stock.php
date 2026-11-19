@@ -61,6 +61,15 @@ if (preg_match('#^/stock-api/issue-requests/(\d+)/cancel$#', $path, $m)) {
     }
     out(200, ['request' => $req((int) $m[1], 'cancelled')]);
 }
+if ($path === '/stock-api/issue-requests/mine' && $mode === 'partial') {
+    /* คลังของไม่พอ — ตัดไปตัวเดียว อีกตัวรอของ */
+    out(200, ['requests' => [
+        $req(77, 'approved', [
+            'result'  => ['referenceDoc' => 'REQ-00077', 'lines' => [['sku' => 'LNS-C', 'quantity' => 1]]],
+            'waiting' => [['sku' => 'LNS-W', 'quantity' => 1, 'name' => 'ตัวที่หมด', 'onHand' => 0, 'available' => 0]],
+        ]),
+    ]]);
+}
 if ($path === '/stock-api/issue-requests/mine') {
     out(200, ['requests' => [
         $req(77, 'approved', ['result' => ['referenceDoc' => 'REQ-00077']]),

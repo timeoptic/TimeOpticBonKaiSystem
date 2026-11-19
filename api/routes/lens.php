@@ -121,19 +121,46 @@ POST('/api/lens-requisitions/timeoptic-refresh', function () {
     if (!TimeOpticRequests::enabled()) {
         return ['enabled' => false, 'updated' => 0];
     }
-    $mine = TimeOpticRequests::mine();
+    $mine = TimeOpticRequests::mineRaw();
     $n    = 0;
-    foreach (Db::all('SELECT id, timeoptic_req_id, timeoptic_status, timeoptic_note FROM lens_requisitions WHERE timeoptic_req_id IS NOT NULL') as $r) {
-        $t = $mine[(int) $r['timeoptic_req_id']] ?? null;
-        if (!$t || ($t['status'] === $r['timeoptic_status'] && $t['note'] === $r['timeoptic_note'])) {
+    foreach (Db::all(
+        'SELECT id, req_no, case_id, timeoptic_req_id, timeoptic_req_code, timeoptic_status, timeoptic_note
+           FROM lens_requisitions WHERE timeoptic_req_id IS NOT NULL'
+    ) as $r) {
+        $raw = $mine[(int) $r['timeoptic_req_id']] ?? null;
+        if (!$raw) {
             continue;
         }
-        Db::run(
-            'UPDATE lens_requisitions SET timeoptic_status = ?, timeoptic_note = ?, timeoptic_synced_at = NOW() WHERE id = ?',
-            $t['status'],
-            $t['note'],
-            (int) $r['id']
-        );
+        /* ข้างตาของใบนี้ — บอกได้ว่าข้างไหนตัดแล้ว ข้างไหนรอของ (ร้านขอ 19 พ.ย. 2026) */
+        $t = TimeOpticRequests::shape($raw, TimeOpticRequests::eyesOf(
+            Db::all('SELECT lens_code, eye FROM lens_requisition_items WHERE requisition_id = ?', (int) $r['id'])
+        ));
+        if ($t['status'] === $r['timeoptic_status'] && $t['note'] === $r['timeoptic_note']) {
+            continue;
+        }
+        Db::tx(function (Tx $q) use ($r, $t) {
+            $q->run(
+                'UPDATE lens_requisitions SET timeoptic_status = ?, timeoptic_note = ?, timeoptic_synced_at = NOW() WHERE id = ?',
+                $t['status'],
+                $t['note'],
+                (int) $r['id']
+            );
+            /* สถานะเปลี่ยน → ลงไทม์ไลน์เคส ให้เห็นว่าคลังตัดครบ/ตัดบางส่วน/รอของ/ตีกลับเมื่อไร */
+            if ($t['status'] !== $r['timeoptic_status']) {
+                logEvent($q, (int) $r['case_id'], [
+                    'action'    => 'lens_timeoptic_status',
+                    'entity'    => 'lens_requisition',
+                    'entity_id' => (int) $r['id'],
+                    'note'      => mb_substr(
+                        $r['req_no'] . ': คำขอ ' . $r['timeoptic_req_code'] . ' — '
+                        . (TimeOpticRequests::LABEL[$t['status']] ?? $t['status'])
+                        . ($t['note'] ? ' (' . $t['note'] . ')' : ''),
+                        0,
+                        250
+                    ),
+                ]);
+            }
+        });
         $n++;
     }
     return ['enabled' => true, 'updated' => $n];
