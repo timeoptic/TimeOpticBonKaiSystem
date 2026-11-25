@@ -58,7 +58,9 @@ final class TimeOpticRequests
                     ['reason' => 'lens_no_sku']
                 );
             }
-            $qty[$sku] = ($qty[$sku] ?? 0) + max(1, (int) ($it['quantity'] ?? 1));
+            /* หน้าขายเลือกรุ่นเดียวกันสองข้าง = แถวเดียว eye "pair" quantity 1 (หน่วยคู่) — คลังนับเป็นชิ้น จึง ×2 */
+            $pieces    = max(1, (int) ($it['quantity'] ?? 1)) * (($it['eye'] ?? '') === 'pair' ? 2 : 1);
+            $qty[$sku] = ($qty[$sku] ?? 0) + $pieces;
         }
         if (!$qty) {
             throw new HttpError(409, 'ใบเบิกนี้ไม่มีรายการเลนส์', ['reason' => 'lens_req_empty']);

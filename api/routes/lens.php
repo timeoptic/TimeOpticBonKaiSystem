@@ -234,7 +234,7 @@ POST('/api/lens-requisitions/sync', function (array $req) {
         /* ใบที่ส่งคำขอเข้าคลัง TimeOptic แล้ว (ยืนยันขาย) — จำตะกร้าเดิมไว้เทียบ เปลี่ยนเลนส์จริงค่อยส่งใหม่ */
         $sentBasket = null;
         if ($open && $open['timeoptic_req_id']) {
-            $sentBasket = lensReqBasket($q->all('SELECT lens_code, quantity FROM lens_requisition_items WHERE requisition_id = ?', (int) $open['id']));
+            $sentBasket = lensReqBasket($q->all('SELECT lens_code, eye, quantity FROM lens_requisition_items WHERE requisition_id = ?', (int) $open['id']));
         }
         if ($open) {
             $id = (int) $open['id'];
@@ -292,7 +292,7 @@ POST('/api/lens-requisitions/sync', function (array $req) {
             }
         }
         if ($sentBasket !== null
-            && $sentBasket !== lensReqBasket($q->all('SELECT lens_code, quantity FROM lens_requisition_items WHERE requisition_id = ?', $id))) {
+            && $sentBasket !== lensReqBasket($q->all('SELECT lens_code, eye, quantity FROM lens_requisition_items WHERE requisition_id = ?', $id))) {
             TimeOpticRequests::resend($q, $id, (int) $order['case_id'], $employee);
         }
         $after = implode(' + ', array_map(static fn($it) => (string) ($it['lens_name'] ?? $it['design'] ?? ''), $items));

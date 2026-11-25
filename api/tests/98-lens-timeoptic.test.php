@@ -94,6 +94,19 @@ test('ตะกร้า: SKU เดียวกันสองข้างร�
     eq(lrStatusCode(fn() => TimeOpticRequests::basket([['lens_code' => null, 'brand' => 'HOYA']])), 409, 'ไม่มีรหัส');
 });
 
+test('ตะกร้า: แถว "pair" (หน้าขายเลือกรุ่นเดียวกันสองข้าง) = 2 ชิ้น — REQ-00155 แพไม้ได้ ×1', function () {
+    eq(
+        TimeOpticRequests::basket([['lens_code' => 'LNS-2335', 'eye' => 'pair', 'quantity' => 1]]),
+        [['sku' => 'LNS-2335', 'quantity' => 2]],
+        'คู่ = 2 ชิ้น'
+    );
+    eq(
+        TimeOpticRequests::basket([['lens_code' => 'LNS-1', 'eye' => 'R', 'quantity' => 1]]),
+        [['sku' => 'LNS-1', 'quantity' => 1]],
+        'ข้างเดียว = 1 ชิ้น'
+    );
+});
+
 test('กด "ส่งรายการเบิก" = ส่งคำขอเข้าคลังในนามสาขา Bewell แล้วเก็บเลข REQ', function () {
     $seen = tosReset();
     rollback(function (Tx $q) use ($seen) {
